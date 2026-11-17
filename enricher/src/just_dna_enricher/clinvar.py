@@ -19,6 +19,7 @@ The snapshot ships as parquet only (built by `clinvar_build`, `[dev]`); there is
 
 import logging
 from collections import defaultdict
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 import duckdb
@@ -27,7 +28,7 @@ from just_dna_format.snapshot import CLINVAR_DATASET_PREFIX as CLINVAR_DATASET_P
 from just_dna_format.snapshot import clinvar_release_label, read_release, release_label
 
 from just_dna_enricher.locations import CITATIONS_DIRNAME
-from just_dna_enricher.resolver import _lookup_rsid_candidates, probe_table
+from just_dna_enricher.resolver import _lookup_rsid_candidates, probe_table, rows_connection
 from just_dna_enricher.sequences import per_alt_loci
 
 logger = logging.getLogger(__name__)
@@ -108,16 +109,74 @@ def _lookup_loci(
     candidate_loci: dict[tuple, dict[str, list[LocusSpelling]]] | None = None,
 ) -> tuple[dict[str, list[dict]], dict[tuple, list[str]], list[str]]:
     """`lookup_loci`, plus each reverse candidate's alleles into `candidate_loci`: `resolver._lookup_loci`'s twin (RM438)."""
-    warnings: list[str] = []
     con = _connect(reference)
     try:
-        rsid_to_loci = _lookup_positions_by_rsid(con, sorted(set(rsids)), warnings) if rsids else {}
-        pos_candidates = (
-            _lookup_rsid_candidates(con, "clinvar", "rsid", positions, candidate_loci) if positions else {}
-        )
+        return _loci_over(con, rsids, positions, candidate_loci)
     finally:
         con.close()
+
+
+#: What a miss says was searched when the local snapshot was (`_lookup_positions_by_rsid`).
+INJECTED_SNAPSHOT = "the injected ClinVar snapshot"
+
+
+def _loci_over(
+    con: duckdb.DuckDBPyConnection,
+    rsids: list[str],
+    positions: list[tuple[str | None, int | None, str | None, str | None]],
+    candidate_loci: dict[tuple, dict[str, list[LocusSpelling]]] | None = None,
+    searched: str = INJECTED_SNAPSHOT,
+) -> tuple[dict[str, list[dict]], dict[tuple, list[str]], list[str]]:
+    """The ClinVar loci queries over a connection exposing `clinvar`: the one copy (RM430)."""
+    warnings: list[str] = []
+    rsid_to_loci = _lookup_positions_by_rsid(con, sorted(set(rsids)), warnings, searched) if rsids else {}
+    pos_candidates = (
+        _lookup_rsid_candidates(con, "clinvar", "rsid", positions, candidate_loci) if positions else {}
+    )
     return rsid_to_loci, pos_candidates, warnings
+
+
+#: The ClinVar snapshot's columns the loci and clinical readers read, typed for a remote answer's rows.
+CLINVAR_READ_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("chrom", "VARCHAR"),
+    ("start", "BIGINT"),
+    ("ref", "VARCHAR"),
+    ("alt", "VARCHAR"),
+    ("rsid", "VARCHAR"),
+    ("clin_sig", "VARCHAR"),
+    ("clin_sig_raw", "VARCHAR"),
+    ("review_status", "VARCHAR"),
+    ("review_stars", "BIGINT"),
+    ("condition", "VARCHAR"),
+    ("variation_id", "VARCHAR"),
+)
+
+
+def _loci_from_rows(
+    rows: Sequence[Mapping[str, object]],
+    rsids: list[str],
+    positions: list[tuple[str | None, int | None, str | None, str | None]],
+    searched: str,
+) -> tuple[dict[str, list[dict]], dict[tuple, list[str]], list[str]]:
+    """`lookup_loci`'s answer over a remote answer's rows; a miss names `searched` (RM430)."""
+    con = rows_connection("clinvar", CLINVAR_READ_COLUMNS, rows)
+    try:
+        return _loci_over(con, rsids, positions, searched=searched)
+    finally:
+        con.close()
+
+
+def _clin_sig_from_rows(
+    rows: Sequence[Mapping[str, object]], alleles: list[tuple[str, int, str, str]]
+) -> dict[tuple[str, int, str, str], list[dict]]:
+    """`lookup_clin_sig`'s answer over a remote answer's rows (RM430)."""
+    if not alleles:
+        return {}
+    con = rows_connection("clinvar", CLINVAR_READ_COLUMNS, rows)
+    try:
+        return _clin_sig_over(con, alleles)
+    finally:
+        con.close()
 
 
 def lookup_clin_sig(
@@ -139,25 +198,31 @@ def lookup_clin_sig(
         return {}
     con = _connect(reference)
     try:
-        wanted = list(dict.fromkeys(alleles))
-        probe_table(
-            con,
-            "_wanted_alleles",
-            [("chrom", "VARCHAR"), ("start", "BIGINT"), ("ref", "VARCHAR"), ("alt", "VARCHAR")],
-            wanted,
-        )
-        rows = con.execute(
-            """
-            SELECT c.chrom, c.start, c.ref, c.alt, c.clin_sig, c.clin_sig_raw, c.review_status,
-                   c.review_stars, c.condition, c.variation_id
-            FROM clinvar c
-            JOIN _wanted_alleles w
-              ON c.chrom = w.chrom AND c.start = w.start AND c.ref = w.ref AND c.alt = w.alt
-            ORDER BY c.chrom, c.start, c.ref, c.alt, c.review_stars DESC, c.variation_id
-            """
-        ).fetchall()
+        return _clin_sig_over(con, alleles)
     finally:
         con.close()
+
+
+def _clin_sig_over(
+    con: duckdb.DuckDBPyConnection, alleles: list[tuple[str, int, str, str]]
+) -> dict[tuple[str, int, str, str], list[dict]]:
+    """`lookup_clin_sig`'s query over a connection exposing `clinvar`: the one copy (RM430)."""
+    probe_table(
+        con,
+        "_wanted_alleles",
+        [("chrom", "VARCHAR"), ("start", "BIGINT"), ("ref", "VARCHAR"), ("alt", "VARCHAR")],
+        list(dict.fromkeys(alleles)),
+    )
+    rows = con.execute(
+        """
+        SELECT c.chrom, c.start, c.ref, c.alt, c.clin_sig, c.clin_sig_raw, c.review_status,
+               c.review_stars, c.condition, c.variation_id
+        FROM clinvar c
+        JOIN _wanted_alleles w
+          ON c.chrom = w.chrom AND c.start = w.start AND c.ref = w.ref AND c.alt = w.alt
+        ORDER BY c.chrom, c.start, c.ref, c.alt, c.review_stars DESC, c.variation_id
+        """
+    ).fetchall()
     result: dict[tuple[str, int, str, str], list[dict]] = defaultdict(list)
     for chrom, start, ref, alt, clin_sig, raw, status, stars, condition, variation_id in rows:
         result[(str(chrom), int(start), str(ref), str(alt))].append(
@@ -174,7 +239,7 @@ def lookup_clin_sig(
 
 
 def _lookup_positions_by_rsid(
-    con: duckdb.DuckDBPyConnection, rsids: list[str], warnings: list[str]
+    con: duckdb.DuckDBPyConnection, rsids: list[str], warnings: list[str], searched: str = INJECTED_SNAPSHOT
 ) -> dict[str, list[dict]]:
     """Batch lookup: rsid -> [{chrom, start, ref, alts}, ...] (all loci, deterministically ordered).
 
@@ -209,7 +274,7 @@ def _lookup_positions_by_rsid(
             # is what was searched, not ClinVar, and whether the position stays unset is the caller's
             # to state once every leg has run (S61). This half kept the older wording straight through
             # the pass that corrected the other one — signature-identical is not reviewed together.
-            warnings.append(f"{rsid}: not in the injected ClinVar snapshot")
+            warnings.append(f"{rsid}: not in {searched}")
     return dict(result)
 
 

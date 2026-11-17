@@ -8,6 +8,7 @@ laid out one file per chromosome under a `manifest.json` as the published repo i
 the registry reads them, so the two routes are two independent readers of one snapshot.
 """
 
+import ast
 import hashlib
 import json
 import threading
@@ -19,11 +20,14 @@ import duckdb
 import httpx
 import polars as pl
 import pytest
-from just_dna_enricher import remote
+from just_dna_enricher import clinvar, remote, resolver
+from just_dna_enricher import lookup as lookup_module
 from just_dna_enricher.caches import CACHE_LANES, LANES_BY_NAME
+from just_dna_enricher.clients import LookupClients
 from just_dna_enricher.clinvar_build import build_snapshot
 from just_dna_enricher.licensing import LicenseRefusal
 from just_dna_enricher.locations import SNAPSHOT_REPO_IDS
+from just_dna_enricher.lookup import lookup_variant
 from just_dna_enricher.net import could_not_ask_reason
 from just_dna_enricher.remote import (
     REMOTE_LANES,
@@ -565,3 +569,206 @@ def test_a_lane_whose_registry_entry_states_no_terms_is_not_gated() -> None:
     with RemoteSnapshots(huggingface=False) as holder, pytest.raises(SnapshotRouteUnavailable) as failed:
         holder.lookup("clinvar", "clinvar", {"rsid": ["rs334"]})
     assert "Hugging Face is off" in str(failed.value)  # past the gate: it was the routes that were missing
+
+
+# ── `lookup_variant` with a holder ─────────────────────────────────────────────────────────────
+
+
+class _Eutils:
+    """dbSNP that knows nothing: the currency leg runs and asks no network."""
+
+    def esummary(self, db: str, ids: list[str]) -> dict:
+        return {}
+
+    def close(self) -> None:
+        pass
+
+
+class _Ensembl:
+    """Live Ensembl REST, recording what it was asked, answering nothing."""
+
+    def __init__(self) -> None:
+        self.asked: list[str] = []
+
+    def resolve_rsid(self, rsid: str) -> tuple[list[dict] | None, str | None]:
+        self.asked.append(rsid)
+        return [], "ensembl-rest"
+
+    def close(self) -> None:
+        pass
+
+
+def _ask(tmp_path: Path, holder: RemoteSnapshots | None, **question: Any):
+    """`lookup_variant` on a box with no local snapshot, live legs stubbed, `holder` as `snapshots`."""
+    nowhere = tmp_path / "no-snapshot-here"
+    ensembl = _Ensembl()
+    clients = LookupClients(eutils=_Eutils(), ensembl=ensembl, snapshots=holder)
+    hint = lookup_variant(ensembl_cache=nowhere, clinvar_cache=nowhere, clients=clients, **question)
+    return hint, ensembl
+
+
+def test_without_a_holder_nothing_is_read_remotely(no_ambient_caches, loopback_hub, tmp_path: Path) -> None:
+    hint, _ensembl = _ask(tmp_path, None, rsid="rs334", chrom="11", start=5227002)
+    assert hint.routes is None and loopback_hub.requests == []
+    assert LookupClients().snapshots is None
+
+
+def test_offline_with_a_holder_reads_nothing_remotely(
+    no_ambient_caches, loopback_hub, tmp_path: Path
+) -> None:
+    with RemoteSnapshots(hf_base_url=loopback_hub.base_url) as holder:
+        hint = lookup_variant(
+            rsid="rs334",
+            chrom="11",
+            start=5227002,
+            offline=True,
+            ensembl_cache=tmp_path / "none",
+            clinvar_cache=tmp_path / "none",
+            clients=LookupClients(snapshots=holder),
+        )
+    assert hint.routes is None and loopback_hub.requests == []
+
+
+def test_a_position_is_answered_from_hf_as_the_local_snapshots_answer_it(
+    httpfs, no_ambient_caches, loopback_hub, clinvar_root: Path, ensembl_root: Path, tmp_path: Path
+) -> None:
+    """Same rows, same reader SQL: the remote answer is the local reader's answer, and says its route."""
+    _published(loopback_hub, clinvar_root, ensembl_root)
+    position = ("16", 23635706, None, None)
+    local = resolver.lookup_loci(ensembl_root, [], [position])[1]
+    assert local[position]  # the slice holds rsIDs there, so an empty answer cannot pass
+    with RemoteSnapshots(hf_base_url=loopback_hub.base_url) as holder:
+        hint, _ensembl = _ask(tmp_path, holder, chrom="16", start=23635706)
+    assert hint.rsid_candidates == local[position]
+    assert hint.routes["ensembl"] == RemoteRoute("hf", ENSEMBL_RELEASE, None, COMMIT_A)
+    assert "ensembl" in hint.checked and "ensembl" not in hint.snapshots
+
+
+def test_an_rsid_is_answered_by_clinvar_remotely_with_its_clinical_calls_and_live_ensembl_is_not_asked(
+    httpfs, no_ambient_caches, loopback_hub, clinvar_root: Path, ensembl_root: Path, tmp_path: Path
+) -> None:
+    _published(loopback_hub, clinvar_root, ensembl_root)
+    local_loci = clinvar.lookup_loci(clinvar_root, ["rs334"], [])[0]["rs334"]
+    alleles = [
+        (lo["chrom"], int(lo["start"]), lo["ref"], a) for lo in local_loci for a in lo["alts"].split(",")
+    ]
+    local_calls = [
+        record for records in clinvar.lookup_clin_sig(clinvar_root, alleles).values() for record in records
+    ]
+    assert local_loci and local_calls
+    with RemoteSnapshots(hf_base_url=loopback_hub.base_url) as holder:
+        hint, ensembl = _ask(tmp_path, holder, rsid="rs334")
+    assert hint.loci == local_loci and hint.clin_sig == local_calls
+    assert ensembl.asked == []  # the remote snapshot answered, so live REST was not needed
+    release = json.loads((clinvar_root / "release.json").read_text())["dataset"]
+    assert hint.routes == {"clinvar": RemoteRoute("hf", release, None, COMMIT_A)}
+    messages = [f.message for f in hint.findings]
+    assert (
+        "ensembl: no local snapshot, and an rsID alone is never asked remotely (it needs chrom + start)"
+        in messages
+    )
+
+
+def test_an_rsid_the_remote_snapshot_lacks_is_named_as_that_snapshots_miss(
+    httpfs, no_ambient_caches, loopback_hub, clinvar_root: Path, ensembl_root: Path, tmp_path: Path
+) -> None:
+    _published(loopback_hub, clinvar_root, ensembl_root)
+    with RemoteSnapshots(hf_base_url=loopback_hub.base_url) as holder:
+        hint, ensembl = _ask(tmp_path, holder, rsid="rs999999999")
+    release = json.loads((clinvar_root / "release.json").read_text())["dataset"]
+    assert f"rs999999999: not in the ClinVar snapshot read over hf (release {release})" in [
+        f.message for f in hint.findings
+    ]
+    assert ensembl.asked == [
+        "rs999999999"
+    ]  # the remote miss falls through to live REST, as a local miss does
+
+
+def test_the_proxy_answers_a_lookup_and_its_route_says_so(
+    no_ambient_caches, clinvar_root: Path, ensembl_root: Path, tmp_path: Path
+) -> None:
+    proxy = _Proxy({"clinvar": clinvar_root, "ensembl": ensembl_root})
+    with _with_proxy(RemoteSnapshots(proxy_url=PROXY, huggingface=False), proxy) as holder:
+        hint, _ensembl = _ask(tmp_path, holder, rsid="rs334")
+    assert hint.loci == clinvar.lookup_loci(clinvar_root, ["rs334"], [])[0]["rs334"]
+    assert hint.routes == {"clinvar": RemoteRoute("proxy", None, "local", None)}
+
+
+def test_two_routes_in_one_lookup_are_both_said(
+    httpfs, no_ambient_caches, loopback_hub, clinvar_root: Path, ensembl_root: Path, tmp_path: Path
+) -> None:
+    """A 429 after the first request sends the rest of the lookup to Hugging Face: each answer keeps its route."""
+    _published(loopback_hub, clinvar_root, ensembl_root)
+    proxy = _Proxy({"clinvar": clinvar_root, "ensembl": ensembl_root})
+    proxy.status = lambda request: _staged(429)(request) if len(proxy.asked) >= 1 else None
+    with _with_proxy(RemoteSnapshots(proxy_url=PROXY, hf_base_url=loopback_hub.base_url), proxy) as holder:
+        hint, _ensembl = _ask(tmp_path, holder, rsid="rs334")
+    assert hint.routes["clinvar"].route == "proxy"
+    said = [f.message for f in hint.findings if "answered over two routes" in f.message]
+    assert said == [
+        f"clinvar answered over two routes in one lookup: {hint.routes['clinvar']} and "
+        f"{RemoteRoute('hf', json.loads((clinvar_root / 'release.json').read_text())['dataset'], None, COMMIT_A)}"
+    ]
+
+
+def test_a_remote_snapshot_that_could_not_be_asked_is_unchecked_never_empty(
+    httpfs, no_ambient_caches, loopback_hub, clinvar_root: Path, ensembl_root: Path, tmp_path: Path
+) -> None:
+    _published(loopback_hub, clinvar_root, ensembl_root)
+    loopback_hub.fail["/revision/"] = 503
+    with RemoteSnapshots(hf_base_url=loopback_hub.base_url) as holder:
+        hint, ensembl = _ask(tmp_path, holder, chrom="16", start=23635706)
+    unchecked = [f for f in hint.findings if "could not be asked remotely" in f.message]
+    assert {f.message.split(":", 1)[0] for f in unchecked} == {"ensembl", "clinvar"}
+    assert all(f.level == "warning" and "unchecked rather than empty" in f.message for f in unchecked)
+    assert hint.routes is None and hint.rsid_candidates == []
+
+
+#: The two `try` blocks in `lookup.py` that read a snapshot locally or remotely, by enclosing function.
+_SNAPSHOT_READING_TRIES = {"_lookup_from_cache", "_lookup_clin_sig"}
+
+
+def _handler_order_faults(source: str) -> tuple[set[str], list[str]]:
+    """Every function holding a `try` that catches both types, and each one where `duckdb.Error` comes first."""
+    seen: set[str] = set()
+    faults: list[str] = []
+    for function in ast.walk(ast.parse(source)):
+        if not isinstance(function, ast.FunctionDef):
+            continue
+        for node in ast.walk(function):
+            if not isinstance(node, ast.Try):
+                continue
+            names = [ast.unparse(handler.type) for handler in node.handlers if handler.type is not None]
+            if "SnapshotRouteUnavailable" in names and "duckdb.Error" in names:
+                seen.add(function.name)
+                if names.index("duckdb.Error") < names.index("SnapshotRouteUnavailable"):
+                    faults.append(function.name)
+    return seen, faults
+
+
+def test_lookup_catches_a_remote_route_before_a_duckdb_error() -> None:
+    """`@client-exception-contract`: the could-not-ask arm sits first wherever both are caught."""
+    seen, faults = _handler_order_faults(Path(lookup_module.__file__).read_text(encoding="utf-8"))
+    assert seen == _SNAPSHOT_READING_TRIES and faults == []
+    reversed_order = (
+        "def _leg():\n    try:\n        pass\n    except duckdb.Error:\n        pass\n"
+        "    except SnapshotRouteUnavailable:\n        pass\n"
+    )
+    assert _handler_order_faults(reversed_order) == ({"_leg"}, ["_leg"])
+
+
+def test_nothing_in_the_package_builds_a_holder_lazily() -> None:
+    """No leg fills `snapshots` through `ensure`: a holder built behind the caller's back is remote reads turned on."""
+    package = Path(lookup_module.__file__).resolve().parent
+    lazily = [
+        f"{path.name}:{node.lineno}"
+        for path in sorted(package.rglob("*.py"))
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8")))
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "ensure"
+        and node.args
+        and isinstance(node.args[0], ast.Constant)
+        and node.args[0].value == "snapshots"
+    ]
+    assert lazily == []

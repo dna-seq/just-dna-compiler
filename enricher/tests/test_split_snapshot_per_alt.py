@@ -389,7 +389,7 @@ READERS: dict[str, Callable[[Path], dict[str, set[Spelling]]]] = {
 
 #: Functions that read `alt` off a snapshot table and are no regrouping reader, each with its reason.
 NOT_READERS: dict[str, str] = {
-    "clinvar.lookup_clin_sig": "allele-exact join on ClinVar's own per-record caller spelling; regroups nothing",
+    "clinvar._clin_sig_over": "allele-exact join on ClinVar's own per-record caller spelling; regroups nothing",
     "clinvar.select_by_gene": "drafts one row per ClinVar record, in ClinVar's own per-record spelling",
 }
 

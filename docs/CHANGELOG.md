@@ -137,6 +137,13 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   `cpic`, `drug_labels`; a gated lane goes through `check_declared_use` first. Every could-not-ask is
   `remote.SnapshotRouteUnavailable` (`lane`, `route`, `cause`); a wrong request is `ValueError`. CI installs
   `httpfs` before the suite; a test that reads over HTTP through duckdb skips where it is not installed.
+- **`lookup_variant` reads a lane remotely when its `clients` hold `snapshots`** (RM430), in the local snapshot's
+  place and before live Ensembl REST, never under `offline=True`: Ensembl by position, ClinVar by rsID, position
+  and for the clinical calls. `VariantHint` gains `routes: dict[str, RemoteRoute] | None`, set only for lanes
+  answered remotely. The ClinVar and Ensembl readers' queries now run one body over the local glob and over a
+  remote answer's rows (`lookup_loci` and `lookup_clin_sig` keep their signatures and stay local). A route that
+  could not be asked is a `warning` finding, never an empty answer; `lookup.py` catches
+  `SnapshotRouteUnavailable` before `duckdb.Error`, held by an AST walk.
 
 ## 2026-11-17 — RM446: a reused client's earlier 410 no longer tells a later run's outage to upgrade (patch, on `main`)
 

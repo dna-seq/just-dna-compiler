@@ -345,20 +345,71 @@ def _lookup_loci(
     What `enrich` calls, so its back-fill narrows the candidates by the row's alleles (`_hosting_rsids`)
     from the same query. Private, so the public signature `clinvar.lookup_loci` mirrors stays as it was.
     """
-    warnings: list[str] = []
     con = _connect(reference)
     try:
-        rsid_to_loci = (
-            _lookup_positions_by_rsid(con, sorted(set(rsids)), warnings, non_nucleotide) if rsids else {}
-        )
-        pos_candidates = (
-            _lookup_rsid_candidates(con, "ensembl_variations", "id", positions, candidate_loci)
-            if positions
-            else {}
-        )
+        return _loci_over(con, rsids, positions, non_nucleotide, candidate_loci)
     finally:
         con.close()
+
+
+def _loci_over(
+    con: duckdb.DuckDBPyConnection,
+    rsids: list[str],
+    positions: list[tuple[str | None, int | None, str | None, str | None]],
+    non_nucleotide: set[str] | None = None,
+    candidate_loci: dict[tuple, dict[str, list[LocusSpelling]]] | None = None,
+) -> tuple[dict[str, list[dict]], dict[tuple, list[str]], list[str]]:
+    """The Ensembl reader's queries over a connection exposing `ensembl_variations`: the one copy (RM430).
+
+    The local reader runs them over the snapshot's glob; a remote answer's rows run them through
+    `_loci_from_rows`, so a lookup answered remotely is read by the same SQL as one answered from disk.
+    """
+    warnings: list[str] = []
+    rsid_to_loci = (
+        _lookup_positions_by_rsid(con, sorted(set(rsids)), warnings, non_nucleotide) if rsids else {}
+    )
+    pos_candidates = (
+        _lookup_rsid_candidates(con, "ensembl_variations", "id", positions, candidate_loci)
+        if positions
+        else {}
+    )
     return rsid_to_loci, pos_candidates, warnings
+
+
+#: The Ensembl snapshot's columns the readers read, and how a remote answer's rows are typed for them.
+ENSEMBL_READ_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("chrom", "VARCHAR"),
+    ("start", "BIGINT"),
+    ("ref", "VARCHAR"),
+    ("alt", "VARCHAR"),
+    ("id", "VARCHAR"),
+)
+
+
+def rows_connection(
+    name: str, columns: Sequence[tuple[str, str]], rows: Sequence[Mapping[str, object]]
+) -> duckdb.DuckDBPyConnection:
+    """An in-memory connection holding `rows` as table `name` with `columns`, for a reader's SQL (RM430).
+
+    A remote answer is the snapshot's own rows; loading them under the view name the reader queries
+    lets the reader's one copy of its SQL run over them unchanged. A column a row lacks is `NULL`.
+    """
+    con = duckdb.connect(":memory:")
+    probe_table(con, name, columns, [tuple(row.get(column) for column, _ in columns) for row in rows])
+    return con
+
+
+def _loci_from_rows(
+    rows: Sequence[Mapping[str, object]],
+    rsids: list[str],
+    positions: list[tuple[str | None, int | None, str | None, str | None]],
+) -> tuple[dict[str, list[dict]], dict[tuple, list[str]], list[str]]:
+    """`lookup_loci`'s answer over a remote answer's rows rather than a snapshot directory (RM430)."""
+    con = rows_connection("ensembl_variations", ENSEMBL_READ_COLUMNS, rows)
+    try:
+        return _loci_over(con, rsids, positions)
+    finally:
+        con.close()
 
 
 def probe_table(

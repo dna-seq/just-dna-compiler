@@ -2416,6 +2416,17 @@ with RemoteSnapshots(declared_use="non_commercial") as snapshots:      # proxy f
   `cause`) is every could-not-ask, with duckdb's or `httpx`'s error as its `__cause__`. A 410 is its
   subclass `SnapshotRouteRetired`, which `net.could_not_ask_reason` reads as `retired`, so one handler
   still catches every route. Neither is a `duckdb.Error` or an `httpx` error.
+- **`lookup.lookup_variant` with a holder.** A lane with no local snapshot is asked through the holder
+  where the local snapshot would have been, before live Ensembl REST, and never under `offline=True`:
+  Ensembl by the question's position only (an rsID-only question skips it with an `info` finding saying
+  so), ClinVar by rsID and by position, and ClinVar again for the clinical calls at the resolved alleles.
+  The rows go through the reader's own SQL (`resolver`/`clinvar` run one body over their glob and over a
+  remote answer's rows), so a remote answer reads exactly as a local one. `VariantHint.routes` maps
+  each lane answered remotely to its `RemoteRoute`, and stays `None` when none was; a lane answered over
+  two routes in one lookup keeps the first and says both in an `info` finding. A route that could not be
+  asked is a `warning` finding (`…could not be asked remotely, so its answer is unchecked rather than
+  empty`), never an empty answer, and a remote miss names what was searched (`rsN: not in the ClinVar
+  snapshot read over hf (release …)`).
 - **`remote_url(base, *parts)`** builds every URL a holder asks; the root `conftest.py` wraps it, so a
   test that would hand duckdb a host other than this machine is refused and recorded like a socket reach.
 

@@ -34,6 +34,8 @@ import duckdb
 from just_dna_compiler.hints import Alteration, Finding
 from just_dna_format.vrs import normalize_chrom
 
+from just_dna_enricher import clinvar, resolver
+
 # Re-exported so `lookup.LookupClients` and `lookup.CLIENT_FIELDS` stay importable (P3); the home is `clients`.
 from just_dna_enricher.clients import CLIENT_FIELDS as CLIENT_FIELDS
 from just_dna_enricher.clients import LookupClients as LookupClients
@@ -64,6 +66,7 @@ from just_dna_enricher.locations import (
 )
 from just_dna_enricher.net import dedupe
 from just_dna_enricher.pubmind_draft import PubMindDraftError, select_by_positions
+from just_dna_enricher.remote import RemoteAnswer, RemoteRoute, RemoteSnapshots, SnapshotRouteUnavailable
 from just_dna_enricher.resolver import lookup_loci
 
 logger = logging.getLogger(__name__)
@@ -120,6 +123,11 @@ class VariantHint:
     #: does not want to publish its layout drops this field and audits nothing else — the findings
     #: interpolate the label, and `checked` carries the label.
     snapshots: dict[str, str] = field(default_factory=dict)
+    #: Lane → where its answer came from, for every lane answered **remotely** (0.9, RM430): the route
+    #: (`proxy`, `hf`), the release label that route states, the proxy's `served_from` and the Hub
+    #: revision. `None` when no lane was answered remotely, which is every lookup without a
+    #: `LookupClients.snapshots` holder; a lane answered from local disk is in `snapshots` instead.
+    routes: dict[str, RemoteRoute] | None = None
 
     @property
     def ambiguous(self) -> bool:
@@ -207,12 +215,21 @@ def lookup_variant(
     because hiding them would be a decision too.
 
     `frequencies=True` is opt-in because it costs a paced gnomAD round trip (one per six seconds).
+
+    **A lane with no local snapshot is asked remotely when `clients.snapshots` holds a
+    `remote.RemoteSnapshots`** (0.9, RM430), in the local snapshot's place and before live Ensembl
+    REST: the proxy, then Hugging Face, read by the same SQL the local reader runs. Ensembl is asked
+    by position only; ClinVar by rsID and by position, and for its clinical calls. Each lane answered
+    remotely says where in `routes`. Never under `offline=True`.
     """
     hint = VariantHint(rsid=rsid)
     owned = clients is None
     clients = clients or LookupClients()
+    # The remote step sits where the local snapshot sits (RM430), and only with a holder: `--offline`
+    # keeps zero egress at zero.
+    remote = None if offline else clients.snapshots
     try:
-        _lookup_from_cache(hint, rsid, chrom, start, ref, alts, ensembl_cache, clinvar_cache)
+        _lookup_from_cache(hint, rsid, chrom, start, ref, alts, ensembl_cache, clinvar_cache, remote)
         if not offline:
             # The live coordinate link, in `enrich()`'s own order: caches first, live Ensembl for what
             # they missed. Without it this surface was *silently weaker than the pass it advises on* —
@@ -229,7 +246,7 @@ def lookup_variant(
                 Finding(None, None, "info", "offline: rsID currency and frequencies were not checked")
             )
 
-        _lookup_clin_sig(hint, clinvar_cache)
+        _lookup_clin_sig(hint, clinvar_cache, remote)
         _lookup_pubmind(hint, pubmind_cache, (chrom, start, ref, alts))
         if hint.ambiguous and ambiguity:
             hint.findings.append(
@@ -279,25 +296,47 @@ def _lookup_from_cache(
     alts: str | None,
     ensembl_cache: Path | None,
     clinvar_cache: Path | None,
+    remote: RemoteSnapshots | None = None,
 ) -> None:
-    """The offline links: the Ensembl snapshot, then ClinVar, in `enrich()`'s own order.
+    """The snapshot links: the Ensembl snapshot, then ClinVar, in `enrich()`'s own order.
 
     Each reference gets **its own** lookup — the two are signature-identical but read different
-    tables, and pointing the Ensembl one at a ClinVar snapshot asks for columns that are not there."""
+    tables, and pointing the Ensembl one at a ClinVar snapshot asks for columns that are not there.
+
+    A lane with no local snapshot is asked through `remote` when a holder is given (RM430): the same
+    reader SQL over the rows the remote route answered, so the link reads alike on every route."""
     positions = [(chrom, start, ref, alts)] if chrom is not None and start is not None else []
     links = (
         (resolve_ensembl_reference(ensembl_cache), lookup_loci, "ensembl"),
         (resolve_clinvar_reference(clinvar_cache), clinvar_lookup_loci, "clinvar"),
     )
     for reference, lookup, label in links:
-        if reference is None:
+        if reference is None and remote is None:
             continue
         # A snapshot that is present but not the shape this link expects is a normal condition for an
         # advisory lookup (a half-built or older cache), so it becomes a finding rather than an
         # exception at the author. Nothing here is load-bearing enough to fail a question.
-        hint.snapshots[label] = str(reference)
         try:
-            by_rsid, by_position, warnings = lookup(reference, [rsid] if rsid else [], positions)
+            if reference is not None:
+                hint.snapshots[label] = str(reference)
+                by_rsid, by_position, warnings = lookup(reference, [rsid] if rsid else [], positions)
+            else:
+                answered = _remote_loci(hint, label, rsid, positions, remote)
+                if answered is None:
+                    continue
+                by_rsid, by_position, warnings = answered
+        except SnapshotRouteUnavailable as exc:
+            # Could not ask is not an absence (`@unreachable-not-absent`): no locus, and said so.
+            hint.findings.append(
+                Finding(
+                    None,
+                    None,
+                    "warning",
+                    f"{label}: the snapshot could not be asked remotely, so its answer is unchecked "
+                    f"rather than empty ({exc})",
+                )
+            )
+            continue
         except duckdb.Error as exc:
             # The label, not the path: the path is in `snapshots` for whoever wants it, and the prose
             # stays free of the server's directory layout (S93). duckdb's own first line may still
@@ -323,6 +362,66 @@ def _lookup_from_cache(
                 "info",
                 "no local snapshot found: nothing was looked up offline (see `just-dna-enricher "
                 "clinvar build` / the Ensembl cache)",
+            )
+        )
+
+
+#: The table each snapshot link asks a remote route for: its `data/` payload, named as the registry
+#: names it (`remote.table_name`).
+_REMOTE_TABLES = {"ensembl": "homo_sapiens", "clinvar": "clinvar"}
+
+
+def _remote_loci(
+    hint: VariantHint,
+    label: str,
+    rsid: str | None,
+    positions: list[tuple[str | None, int | None, str | None, str | None]],
+    remote: RemoteSnapshots,
+) -> tuple[dict[str, list[dict]], dict[tuple, list[str]], list[str]] | None:
+    """One link's answer from `remote`, through the link's own reader SQL; `None` when it asks nothing.
+
+    Raises `SnapshotRouteUnavailable` when no route could answer. Ensembl is asked by position only
+    (an rsID alone is never sent remotely), so an rsID-only question skips it, saying why.
+    """
+    chrom, start = (positions[0][0], positions[0][1]) if positions else (None, None)
+    position_key = {"chrom": [chrom], "start": [start]} if positions else None
+    if label == "ensembl":
+        if position_key is None:
+            if rsid:
+                hint.findings.append(
+                    Finding(
+                        None,
+                        None,
+                        "info",
+                        "ensembl: no local snapshot, and an rsID alone is never asked remotely (it needs "
+                        "chrom + start)",
+                    )
+                )
+            return None
+        answer = remote.lookup(label, _REMOTE_TABLES[label], position_key)
+        _record_route(hint, label, answer)
+        return resolver._loci_from_rows(answer.rows, [], positions)
+    asks = ([{"rsid": [rsid]}] if rsid else []) + ([position_key] if position_key else [])
+    if not asks:
+        return None
+    answers = [remote.lookup(label, _REMOTE_TABLES[label], keys) for keys in asks]
+    for answer in answers:
+        _record_route(hint, label, answer)
+    rows = [row for answer in answers for row in answer.rows]
+    first = answers[0]
+    searched = f"the ClinVar snapshot read over {first.route} (release {first.release or 'unstated'})"
+    return clinvar._loci_from_rows(rows, [rsid] if rsid else [], positions, searched)
+
+
+def _record_route(hint: VariantHint, label: str, answer: RemoteAnswer) -> None:
+    """Note where `label` was answered; a second route in the same lookup is said, never folded."""
+    route = answer.provenance()
+    hint.routes = hint.routes if hint.routes is not None else {}
+    known = hint.routes.setdefault(label, route)
+    if known != route:
+        hint.findings.append(
+            Finding(
+                None, None, "info", f"{label} answered over two routes in one lookup: {known} and {route}"
             )
         )
 
@@ -502,15 +601,21 @@ def _lookup_frequencies(hint: VariantHint, clients: LookupClients, alts: str | N
         hint.vrs_id = found[next(k for k, (_l, a) in asked.items() if a == answered[0])].get("vrs_id")
 
 
-def _lookup_clin_sig(hint: VariantHint, clinvar_cache: Path | None) -> None:
+def _lookup_clin_sig(
+    hint: VariantHint, clinvar_cache: Path | None, remote: RemoteSnapshots | None = None
+) -> None:
     """ClinVar's own call at each resolved allele — advisory in the strongest sense.
 
     Writing it would have the format adopt ClinVar's clinical opinion, and the charter forbids the
-    format arbitrating a clinical dispute (which is why `verify_clin_sig` warns in *both* modes)."""
+    format arbitrating a clinical dispute (which is why `verify_clin_sig` warns in *both* modes).
+
+    With no local ClinVar snapshot and a `remote` holder, the alleles' positions are asked remotely and
+    the same query runs over the rows that came back (RM430)."""
     reference = resolve_clinvar_reference(clinvar_cache)
-    if reference is None:
+    if reference is None and remote is None:
         return
-    hint.snapshots["clinvar"] = str(reference)
+    if reference is not None:
+        hint.snapshots["clinvar"] = str(reference)
     alleles = [
         (str(locus["chrom"]), int(locus["start"]), str(locus["ref"]), alt)
         for locus in hint.loci
@@ -521,7 +626,20 @@ def _lookup_clin_sig(hint: VariantHint, clinvar_cache: Path | None) -> None:
     if not alleles:
         return
     try:
-        found = lookup_clin_sig(reference, alleles)
+        if reference is not None:
+            found = lookup_clin_sig(reference, alleles)
+        else:
+            keys = {"chrom": [a[0] for a in alleles], "start": [a[1] for a in alleles]}
+            answer = remote.lookup("clinvar", _REMOTE_TABLES["clinvar"], keys)
+            _record_route(hint, "clinvar", answer)
+            found = clinvar._clin_sig_from_rows(answer.rows, alleles)
+    except SnapshotRouteUnavailable as exc:
+        hint.findings.append(
+            Finding(
+                None, "clin_sig", "warning", f"ClinVar could not be asked remotely, clin_sig unchecked: {exc}"
+            )
+        )
+        return
     except duckdb.Error as exc:
         hint.findings.append(
             Finding(
