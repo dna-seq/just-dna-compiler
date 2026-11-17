@@ -1,10 +1,10 @@
-**Where it stands** (2026-11-16). The current release is **0.8.7** (enricher only, on PyPI since 2026-11-15); 0.8.8 is cut. The next
+**Where it stands** (2026-11-17). The current release is **0.8.8** (enricher only, on PyPI since 2026-11-17). The next
 two minors are scoped small: 0.9 teaches the enricher to read reference data wherever it lives, and 0.10 is four small
 schema additions right after.
 
 **Headline results**
-- ⏳ 0.8.8, cut and waiting for the maintainer's publish (enricher only): a cache pull no longer keeps old ClinVar files
-  under a new release's label, and the caches already wrong are repaired by the next pull. Full suite 7,446 passed.
+- ✅ 0.8.8, released: a cache pull no longer keeps old ClinVar files under a new release's label, and the caches
+  already wrong are repaired by the next pull. Full suite 7,446 passed.
 - ✅ 0.8.7, released: the AlphaGenome licence notices now say what Google's terms say, and the rsID recovery no longer
   claims more than dbSNP records. Full suite 7,416 passed.
 - ✅ 0.8.6, released: a re-derivation that drops an rsID now says so; the upgrade guide says the Ensembl snapshot
@@ -22,6 +22,7 @@ schema additions right after.
   where an anonymous client also runs out of requests after a few large lookups.
 
 **Next**
-1. ⏳ 0.9 — every design decision is written under its item; the lead writes the build plan, branches and builds.
+1. ⏳ 0.9 — building on the `0.9` branch: three of six items in (RM443, RM412 and the groundwork), the rest as
+   the account's weekly limit allows.
 2. ❓ Three items you placed in 0.9 by name were parked by the small cut: parked, a 0.11, or 0.10 (desk #347).
 3. ❓ One question on the maintainer's desk: linking the project's memory to its new folder name.
