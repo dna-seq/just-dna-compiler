@@ -329,7 +329,7 @@ def test_a_block_write_with_no_record_writes_one_with_the_block(tmp_path: Path) 
 # ── 0.9 (RM430 decision 6): one parser for the record's content, which a remote reader shares ────────
 
 #: Old spellings, a ClinVar date with no `dataset`, a recorded `null` and a key the model does not
-#: type: every rule `read_release` applies, so the equality below compares the whole reading.
+#: type: every rule the record's reading applies.
 _EVERY_RULE = {
     "licence": "CC0-1.0",
     "rows": 12,
@@ -339,6 +339,17 @@ _EVERY_RULE = {
     "builder": "just_dna_enricher.clinvar_build",
 }
 
+#: The same record stated in the canonical spellings, independently of the parser under test.
+_EVERY_RULE_READ = SnapshotRelease(
+    license="CC0-1.0",
+    row_count=12,
+    clinvar_file_date="2026-11-01",
+    source_sha256="sha256:" + "ab" * 32,
+    built_at=None,
+    builder="just_dna_enricher.clinvar_build",
+    dataset="clinvar_2026-11-01",
+)
+
 
 @pytest.mark.parametrize("as_bytes", [True, False], ids=["bytes", "str"])
 def test_parse_release_reads_the_content_as_read_release_reads_the_file(
@@ -347,14 +358,24 @@ def test_parse_release_reads_the_content_as_read_release_reads_the_file(
     directory = _release_file(tmp_path / "snap", _EVERY_RULE)
     text = (directory / RELEASE_FILENAME).read_text(encoding="utf-8")
     parsed = parse_release(text.encode("utf-8") if as_bytes else text)
-    assert parsed == read_release(directory)
-    assert (parsed.license, parsed.row_count, parsed.dataset) == (
-        "CC0-1.0",
-        12,
-        clinvar_release_label("2026-11-01", _EVERY_RULE["source_sha256"]),
-    )
-    assert parsed.model_extra == {"builder": "just_dna_enricher.clinvar_build"}
-    assert "built_at" in parsed.model_fields_set
+    assert parsed == _EVERY_RULE_READ
+    assert read_release(directory) == _EVERY_RULE_READ
+    assert parsed.model_fields_set == _EVERY_RULE_READ.model_fields_set
+
+
+def test_a_record_json_loads_reads_stays_readable(tmp_path: Path) -> None:
+    """An unpaired surrogate escape: `json.loads` reads it, pydantic's JSON parser refuses it.
+
+    The record was read with `json.loads` before 0.9, so a file holding one was readable whole; the
+    shared parser keeps it so, rather than turning a readable snapshot into an unstated one.
+    """
+    content = '{"dataset": "x_1", "note": "\\ud800"}'
+    assert parse_release(content).dataset == "x_1"
+    directory = tmp_path / "snap"
+    directory.mkdir()
+    (directory / RELEASE_FILENAME).write_text(content, encoding="utf-8")
+    assert release_label(directory) == "x_1"
+    assert release_is_unreadable(directory) is False
 
 
 @pytest.mark.parametrize(

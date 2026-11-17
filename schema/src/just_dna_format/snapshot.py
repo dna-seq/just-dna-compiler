@@ -22,7 +22,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, TypeAdapter, ValidationError, model_validator
+from pydantic import BaseModel, ConfigDict, ValidationError, model_validator
 
 from just_dna_format.layout import atomic_write_text
 
@@ -200,35 +200,42 @@ class SnapshotRelease(BaseModel):
         return json.dumps(self.model_dump(mode="json", exclude_unset=True), indent=2, sort_keys=True) + "\n"
 
 
-#: `release.json`'s top level: a JSON object. Decoded through pydantic so that content which is not
-#: JSON, or not an object, raises the same `ValidationError` a mistyped key does.
-_RELEASE_OBJECT: TypeAdapter[dict[str, Any]] = TypeAdapter(dict[str, Any])
+def _decode(data: bytes | str) -> dict[str, Any]:
+    """`release.json`'s content as the JSON object it must be, or `ValidationError` saying why not.
+
+    Decoded by the standard library, as the record always was: bytes as UTF-8, then `json.loads`.
+    pydantic's own JSON parser is stricter (it refuses an unpaired surrogate escape that `json.loads`
+    reads), and a record readable before 0.9 must stay readable. The failure is raised as pydantic's
+    `json_invalid` / `dict_type` error so that every malformed input is one exception type.
+    """
+    try:
+        text = data.decode("utf-8") if isinstance(data, bytes) else data
+        payload = json.loads(text)
+    except ValueError as exc:  # UnicodeDecodeError and JSONDecodeError are both ValueErrors
+        raise ValidationError.from_exception_data(
+            "release.json", [{"type": "json_invalid", "loc": (), "input": data, "ctx": {"error": str(exc)}}]
+        ) from exc
+    if not isinstance(payload, dict):
+        raise ValidationError.from_exception_data(
+            "release.json", [{"type": "dict_type", "loc": (), "input": payload}]
+        )
+    return payload
 
 
 def parse_release(data: bytes | str) -> SnapshotRelease:
     """`release.json`'s content, as bytes or text, read into a `SnapshotRelease` (0.9, RM430).
 
-    The one parser of the record: `read_release` and `release_is_unreadable` read the file and hand
-    its bytes here, and a reader that fetched the record from a remote snapshot hands it the fetched
-    bytes. It takes no path and logs nothing, because the format tier reads no URL and only the caller
-    knows where the bytes came from. Old spellings are read exactly as `read_release` reads them.
+    The parser of the record's content: `read_release` and `release_is_unreadable` read the file and
+    parse its bytes the same way, and a reader that fetched the record from a remote snapshot hands
+    it the fetched bytes. It takes no path and logs nothing, because the format tier reads no URL and
+    only the caller knows where the bytes came from. Old spellings are read as `read_release` reads them.
 
     **Strict where `read_release` is lenient.** Content that is not JSON, is not a JSON object, or
     has a typed key holding the wrong kind of value raises `pydantic.ValidationError`, one type for
     all three. `read_release` keeps such a record minus the mistyped key; a caller of this function
     that wants the same leniency decides it for itself.
     """
-    return SnapshotRelease.model_validate(_RELEASE_OBJECT.validate_json(data))
-
-
-def _decoding_problem(exc: ValidationError) -> str | None:
-    """Why `exc` is a failure to decode the content as a JSON object, or `None` when the object was
-    read and only typed keys failed. A decoding error has no location; a key's error is located at it.
-    """
-    for error in exc.errors():
-        if not error["loc"]:
-            return "not a JSON object" if error["type"] == "dict_type" else error["msg"]
-    return None
+    return SnapshotRelease.model_validate(_decode(data))
 
 
 def read_release(reference: Path) -> SnapshotRelease | None:
@@ -236,8 +243,9 @@ def read_release(reference: Path) -> SnapshotRelease | None:
 
     `None` is the answer for both, as it was when this returned a dict: a caller must not be able to
     mistake "this snapshot does not say" for a release, so callers branch on `None`. Unreadable is a
-    file that does not parse, or one that is not a JSON object. The content is read by
-    `parse_release`; this function adds the path, the warning and the leniency below.
+    file that does not parse, or one that is not a JSON object. The content goes through
+    `parse_release`'s two steps, decoded once; this function adds the path, the warning and the
+    leniency below.
 
     **A typed key holding the wrong kind of value costs that key, never the record.** It is read as
     unstated and the warning names it; every other key, the label included, is still read. The
@@ -248,20 +256,21 @@ def read_release(reference: Path) -> SnapshotRelease | None:
     if not path.is_file():
         return None
     try:
-        data = path.read_bytes()
+        payload = _decode(path.read_bytes())
     except OSError as exc:
         logger.warning("Could not read %s (%s); treating the release as unstated.", path, exc)
         return None
-    try:
-        return parse_release(data)
     except ValidationError as exc:
-        problem = _decoding_problem(exc)
-        if problem is not None:
-            logger.warning("Could not read %s (%s); treating the release as unstated.", path, problem)
-            return None
-        bad = sorted({str(error["loc"][0]) for error in exc.errors()})
-    logger.warning("%s: %s do not fit the snapshot record; read as unstated.", path, ", ".join(bad))
-    canonical = _canonical(_RELEASE_OBJECT.validate_json(data))
+        error = exc.errors()[0]
+        problem = "not a JSON object" if error["type"] == "dict_type" else error["ctx"]["error"]
+        logger.warning("Could not read %s (%s); treating the release as unstated.", path, problem)
+        return None
+    canonical = _canonical(payload)
+    try:
+        return SnapshotRelease.model_validate(canonical)
+    except ValidationError as exc:
+        bad = sorted({str(error["loc"][0]) for error in exc.errors() if error["loc"]})
+        logger.warning("%s: %s do not fit the snapshot record; read as unstated.", path, ", ".join(bad))
     try:
         return SnapshotRelease.model_validate({k: v for k, v in canonical.items() if k not in bad})
     except ValidationError:
