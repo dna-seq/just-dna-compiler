@@ -71,7 +71,6 @@ from just_dna_enricher.clinvar_gkm import ClinVarGkmClient, ClinVarGkmError
 from just_dna_enricher.download import (
     SNAPSHOT_REPO_PREFIXES,
     SnapshotNotPublished,
-    _ensure_opentargets_snapshot,
     _FollowHub,
     ensure_alphagenome_avi_snapshot,
     ensure_civic_snapshot,
@@ -82,6 +81,7 @@ from just_dna_enricher.download import (
     ensure_cpic_snapshot,
     ensure_drug_labels_snapshot,
     ensure_mitomap_snapshot,
+    ensure_opentargets_snapshot,
     ensure_snapshot,
     ensure_strchive_snapshot,
     pulled_from_elsewhere,
@@ -1200,7 +1200,7 @@ CACHE_LANES: list[CacheLane] = [
         rebuild=_rebuild_opentargets,
         # RM408: published since 0.8.1's patch line, through `cache rebuild --publish` (the one route
         # `test_every_publishable_lane_can_actually_be_published` allows a lane with an adapter).
-        ensure=_ensure_opentargets_snapshot,
+        ensure=ensure_opentargets_snapshot,
         publish_repo=SNAPSHOT_REPO_IDS["opentargets"],
         # None, as for CIViC's CC0 lane: a CC0 mark gates no declared use, so there is nothing for
         # `cache rebuild` to check. The terms a module records are written by the pass, per table.

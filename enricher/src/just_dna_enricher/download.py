@@ -1504,18 +1504,16 @@ def ensure_clinvar_gkm_snapshot(
     )
 
 
-def _ensure_opentargets_snapshot(
+def ensure_opentargets_snapshot(
     opentargets_cache: Path | None = None, *, _follow_hub: _FollowHub | None = None
 ) -> Path:
     """Provision the trimmed Open Targets Platform snapshot from HuggingFace Hub (RM408).
 
     The release is CC0-marked, so a deployment pulls ~5.5 GB instead of downloading ~22 GB of
     Platform parquet to cut it. A pulled copy is the release its `release.json` names; the lane pins
-    one release, so currency is a new pin, never a re-pull.
-
-    **Private on `main`.** It is reached through `CACHE_LANES` (`cache pull`, `cache prepare`) and a
-    new public function is minor scope (RELEASE_CYCLE), so the next minor may give it its siblings'
-    public name.
+    one release, so currency is a new pin, never a re-pull. Public since 0.9 (RM412): the 0.8 line
+    carried it as `_ensure_opentargets_snapshot`, reached only through `CACHE_LANES`, because a new
+    public function was minor scope there.
     """
     cache_dir = Path(opentargets_cache) if opentargets_cache is not None else default_opentargets_cache_dir()
     return _provision_snapshot(

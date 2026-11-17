@@ -58,6 +58,9 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   load, so a call naming every lane leaves `os.environ` untouched. Named lanes are read before unnamed ones, so the
   answer does not depend on the order of `lanes`. A key naming no lane raises `ValueError`. Without `locations`
   the call, and `cache status`, answer as before.
+- **`download.ensure_opentargets_snapshot`** (RM412): the Open Targets lane's pull, public beside its siblings. The
+  0.8 line's `_ensure_opentargets_snapshot` is gone (a leading underscore carried no contract); `CACHE_LANES` and
+  `cache pull` reach the same function.
 
 ## 2026-11-16 — `v0.8.8`: enricher 0.8.8 (a patch, cut from `main`)
 

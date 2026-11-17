@@ -20,7 +20,7 @@ import os
 from pathlib import Path
 
 import pytest
-from just_dna_enricher import caches, locations, pharmvar
+from just_dna_enricher import caches, download, locations, pharmvar
 from just_dna_enricher.acmg import load_acmg_snapshot
 from just_dna_enricher.caches import (
     CACHE_LANES,
@@ -147,6 +147,21 @@ def test_an_absent_stage_states_its_reason_and_a_present_one_does_not() -> None:
         # the upload target and the download that follows it, and one without the other is a lane
         # that sends bytes nobody can fetch, or fetches bytes nobody sends.
         assert (lane.publish_repo is None) == (lane.ensure is None), lane.name
+
+
+def test_every_lanes_pull_is_a_public_function_of_download() -> None:
+    """A lane's `ensure` is the name a host calls to pull it, so none is private (RM412).
+
+    Open Targets was pulled through `download._ensure_opentargets_snapshot` for the 0.8 line, because a
+    new public function was minor scope on `main`; 0.9 gives it the name its siblings have. Walked, so
+    the next lane that ships with a private `ensure` fails here instead of in a host's import.
+    """
+    for lane in CACHE_LANES:
+        if lane.ensure is None:
+            continue
+        name = lane.ensure.__name__
+        assert not name.startswith("_"), f"{lane.name} is pulled through a private name, {name}"
+        assert getattr(download, name) is lane.ensure, f"{lane.name}'s ensure is not download.{name}"
 
 
 def test_every_lane_can_name_the_release_its_snapshot_holds(tmp_path: Path) -> None:
