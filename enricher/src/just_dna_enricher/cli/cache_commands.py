@@ -447,8 +447,8 @@ def cache_rebuild_(
         help=(
             "Download, build and upload nothing: say per lane what a run would do, the release this "
             "machine holds and, with --publish, the one published. A snapshot already built into "
-            "<out>/<lane> (a run without --publish) has its upload rehearsed. --rehearse-download "
-            "takes the download and the build too."
+            "<out>/<lane> (a run without --publish) has its upload rehearsed. The one exception is "
+            "--rehearse-download, which downloads and builds for real."
         ),
     ),
     rehearse_download: bool = typer.Option(
@@ -555,9 +555,7 @@ def _dry_run(
     """
     planned = 0
     for lane in lanes:
-        blocked, request = _rebuild_blocked(lane, request_for(lane))
-        if blocked is None:
-            blocked = _gate(lane.terms, request.declared_use, lane.name)
+        blocked, request = _predicted(lane, request_for(lane))
         if blocked is not None:
             typer.secho(
                 f"  {lane.name:13} {blocked.label:8} {blocked.detail}",
@@ -567,9 +565,7 @@ def _dry_run(
             continue
         planned += 1
         typer.echo(f"  {lane.name:13} would build {_build_plan(request)}")
-        held = lane.resolve()
-        here = (lane.release_label(held) or "a snapshot stating no release") if held is not None else "absent"
-        typer.echo(f"      this machine: {here}")
+        typer.echo(f"      this machine: {_held_release(lane)}")
         if not publish:
             continue
         if lane.publish_repo is None:
@@ -597,20 +593,24 @@ def _rehearse_download(
 
     The opt-in inverse of RM411, and the old dry run's behaviour asked for by name: each lane runs
     `rebuild_lane` exactly as a real run does, taking the source bytes and building into
-    `<out>/<lane>`, and the upload is then rehearsed with `rehearse_reference_snapshot` (the plan and
-    the orphan check, which read the repo and send nothing) where the real run would publish. Before a
-    lane runs, the line the dry run would print says what is about to be taken; a lane the dry run
-    predicts *not run*, *refused* or *skipped* prints only the real run's own line. The exit code is
-    the real run's: 1 when a lane failed to build.
+    `<out>/<lane>` (over whatever an earlier run left there, as the real run does), and the upload is
+    then rehearsed with `rehearse_reference_snapshot` (the plan and the orphan check, which read the
+    repo and send nothing) where the real run would publish. Before a lane runs it prints the dry run's
+    prediction (`rehearsing: …` and the release this machine holds), so the operator sees what is about
+    to be taken; a lane the dry run predicts *not run*, *refused* or *skipped* prints only the real
+    run's line. The prediction is the dry run's and no wider: an adapter that refuses on its own inputs
+    (ACMG with no workbook) is predicted to run and then prints *not run*.
+
+    The exit code is the real run's: 1 when a lane failed to build. An upload the rehearsal would refuse
+    prints `WOULD BE REFUSED` and does not move it, as a refused publish does not move the real run's.
     """
     outcomes: list[RebuildOutcome] = []
     for lane in lanes:
         request = request_for(lane)
-        predicted, resolved = _rebuild_blocked(lane, request)
-        if predicted is None:
-            predicted = _gate(lane.terms, resolved.declared_use, lane.name)
+        predicted, resolved = _predicted(lane, request)
         if predicted is None:
             typer.echo(f"  {lane.name:13} rehearsing: {_build_plan(resolved)}")
+            typer.echo(f"      this machine: {_held_release(lane)}")
         outcome = rebuild_lane(lane, request)
         outcomes.append(outcome)
         typer.secho(
@@ -635,10 +635,30 @@ def _rehearse_download(
     not_run = sum(o.built is None for o in outcomes)
     typer.echo(
         f"rehearsal: rebuilt {built}, failed {failed}, not run {not_run} of {len(outcomes)} lane(s) into {out}; "
-        "the downloads and builds were real, nothing was uploaded"
+        "each lane rebuilt was fetched or read and built for real, and nothing was uploaded"
     )
     if failed:
         raise typer.Exit(code=1)
+
+
+def _predicted(lane: CacheLane, request: RebuildRequest) -> tuple[RebuildOutcome | None, RebuildRequest]:
+    """The outcome a real run reaches before taking any bytes, or `None`, and the request it would build from.
+
+    `_rebuild_blocked` (no adapter, a derived lane's parents missing, an unpinnable pin) and then the
+    declared-use gate on `CacheLane.terms`, which is the object each gated adapter passes (RM411).
+    """
+    blocked, resolved = _rebuild_blocked(lane, request)
+    if blocked is None:
+        blocked = _gate(lane.terms, resolved.declared_use, lane.name)
+    return blocked, resolved
+
+
+def _held_release(lane: CacheLane) -> str:
+    """The release this machine's cache of `lane` states, `absent`, or that it states none."""
+    held = lane.resolve()
+    if held is None:
+        return "absent"
+    return lane.release_label(held) or "a snapshot stating no release"
 
 
 def _build_plan(request: RebuildRequest) -> str:

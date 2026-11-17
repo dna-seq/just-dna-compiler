@@ -2064,9 +2064,11 @@ probe that would ask it is parked in
 
 **`--dry-run --publish --rehearse-download` takes the bytes and sends none** (0.9, RM412): the opt-in inverse,
 and the old dry run's behaviour asked for by name. Each lane first prints the line the dry run would
-(`rehearsing: <release>, <origin>, into <out>/<lane>`), then downloads and builds for real exactly as a run
-without `--dry-run` does, into the same `<out>/<lane>`, and then rehearses the upload (the plan and the orphan
-check, `upload.rehearse_reference_snapshot`) where that run would publish. The exit code is the real run's.
+(`rehearsing: <release>, <origin>, into <out>/<lane>` and the release this machine holds), then downloads and
+builds for real exactly as a run without `--dry-run` does, into the same `<out>/<lane>`, and then rehearses the
+upload (the plan and the orphan check, `upload.rehearse_reference_snapshot`) where that run would publish. The
+exit code is the real run's: 1 for a failed build, and a `WOULD BE REFUSED` upload does not move it, as a refused
+publish does not move the real run's.
 Without both `--dry-run` and `--publish` the flag is refused before anything runs, with
 `cache_commands.REHEARSE_DOWNLOAD_REFUSAL` and the flags missing: without `--dry-run` the upload would be real,
 and without `--publish` there is no upload to rehearse.

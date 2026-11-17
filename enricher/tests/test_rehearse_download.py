@@ -19,6 +19,7 @@ from just_dna_enricher.caches import LANES_BY_NAME
 from just_dna_enricher.cli import app, cache_commands
 from just_dna_enricher.cli.cache_commands import REHEARSE_DOWNLOAD_REFUSAL
 from just_dna_enricher.locations import STRCHIVE_CATALOGUE_FILENAME
+from just_dna_enricher.upload import plan_reference_snapshot
 from just_dna_format.snapshot import release_label
 from typer.testing import CliRunner
 
@@ -33,13 +34,15 @@ class _Hub:
 
 
 class _Api:
-    """`HfApi` for the orphan check, and an upload that fails the test if it is ever reached."""
+    """`HfApi` for the orphan check (the repo holds `held`), and an upload that fails the test if reached."""
+
+    held: list[str] = []
 
     def __init__(self, token: str | None = None) -> None:
         self.token = token
 
     def list_repo_files(self, repo_id: str, repo_type: str | None = None, revision: str | None = None):
-        return []
+        return list(self.held)
 
     def create_repo(self, *args, **kwargs):
         raise AssertionError("a rehearsal created a repo")
@@ -52,10 +55,27 @@ class _Api:
 
 
 @pytest.fixture
-def fake_hub(monkeypatch: pytest.MonkeyPatch) -> None:
+def fake_hub(monkeypatch: pytest.MonkeyPatch) -> type[_Api]:
+    _Api.held = []
     monkeypatch.setattr(huggingface_hub, "HfFileSystem", lambda token=None: _Hub())
     monkeypatch.setattr(huggingface_hub, "HfApi", _Api)
     monkeypatch.setattr(huggingface_hub, "get_token", lambda: None)
+    return _Api
+
+
+def _strchive_from_the_slice(monkeypatch: pytest.MonkeyPatch, fetched: list[str]) -> None:
+    """STRchive's download, answered with the checked-in slice: the one download these tests let happen."""
+
+    def fake_download(dest: Path, url: str = strchive_build.DEFAULT_STRCHIVE_URL) -> tuple[Path, str]:
+        fetched.append(url)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(_SLICE, dest)
+        return dest, ""
+
+    monkeypatch.setattr(strchive_build, "download_catalogue", fake_download)
+
+
+_REHEARSE = ["--dry-run", "--publish", "--rehearse-download"]
 
 
 @pytest.mark.parametrize(
@@ -90,37 +110,18 @@ def test_the_flag_without_both_partners_is_refused_before_anything_runs(
 
 
 def test_the_rehearsal_downloads_and_builds_for_real_and_uploads_nothing(
-    fake_hub: None, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    fake_hub: type[_Api], no_ambient_caches: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """The inverse of RM411: the adapter's own download is taken, the snapshot is built into `<out>/<lane>`."""
     fetched: list[str] = []
-
-    def fake_download(dest: Path, url: str = strchive_build.DEFAULT_STRCHIVE_URL) -> tuple[Path, str]:
-        fetched.append(url)
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(_SLICE, dest)
-        return dest, ""
-
-    monkeypatch.setattr(strchive_build, "download_catalogue", fake_download)
+    _strchive_from_the_slice(monkeypatch, fetched)
     out = tmp_path / "caches"
     built = out / "strchive"
     repo = LANES_BY_NAME["strchive"].publish_repo
 
     result = CliRunner().invoke(
         app,
-        [
-            "cache",
-            "rebuild",
-            "--out",
-            str(out),
-            "--only",
-            "strchive",
-            "--pin",
-            "strchive=v2.0.0",
-            "--dry-run",
-            "--publish",
-            "--rehearse-download",
-        ],
+        ["cache", "rebuild", "--out", str(out), "--only", "strchive", "--pin", "strchive=v2.0.0", *_REHEARSE],
     )
 
     assert result.exit_code == 0, result.output
@@ -128,17 +129,54 @@ def test_the_rehearsal_downloads_and_builds_for_real_and_uploads_nothing(
     assert (built / STRCHIVE_CATALOGUE_FILENAME).is_file()
     label = release_label(built)
     assert label is not None
+    files = plan_reference_snapshot(built, repo, payload=STRCHIVE_CATALOGUE_FILENAME).files
     assert f"strchive      rehearsing: v2.0.0, downloading it, into {built}" in result.output
+    assert "this machine: absent" in result.output
     assert f"published at {repo}: nothing published" in result.output
     assert (
-        f"would upload 2 file(s) from the snapshot just built at {built} ({label}) to {repo}" in result.output
+        f"would upload {len(files)} file(s) from the snapshot just built at {built} ({label}) to {repo}"
+        in result.output
     )
     assert "rehearsal: rebuilt 1, failed 0, not run 0 of 1 lane(s)" in result.output
     assert "nothing was uploaded" in result.output
 
 
+def test_a_build_that_fails_exits_1_as_the_real_run_does_and_rehearses_no_upload(
+    fake_hub: type[_Api], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    def broken_download(dest: Path, url: str = strchive_build.DEFAULT_STRCHIVE_URL) -> tuple[Path, str]:
+        raise OSError("connection reset")
+
+    monkeypatch.setattr(strchive_build, "download_catalogue", broken_download)
+
+    result = CliRunner().invoke(
+        app, ["cache", "rebuild", "--out", str(tmp_path / "c"), "--only", "strchive", *_REHEARSE]
+    )
+
+    assert result.exit_code == 1, result.output
+    assert "connection reset" in result.output
+    assert "would upload" not in result.output
+    assert "rehearsal: rebuilt 0, failed 1, not run 0 of 1 lane(s)" in result.output
+
+
+def test_an_upload_the_publisher_would_refuse_is_named_after_the_real_build(
+    fake_hub: type[_Api], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A repo holding a sidecar the new snapshot does not carry: the orphan check refuses, and the rehearsal says so."""
+    _strchive_from_the_slice(monkeypatch, [])
+    fake_hub.held = ["STRchive-loci.json", "citations/stale.parquet", "release.json"]
+
+    result = CliRunner().invoke(
+        app, ["cache", "rebuild", "--out", str(tmp_path / "c"), "--only", "strchive", *_REHEARSE]
+    )
+
+    assert "strchive      built" in result.output
+    assert "WOULD BE REFUSED" in result.output
+    assert "would upload" not in result.output
+
+
 def test_a_local_source_is_named_as_the_origin_and_read_without_a_download(
-    fake_hub: None, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    fake_hub: type[_Api], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     def no_download(*args, **kwargs):
         raise AssertionError("a --source build downloaded")
@@ -157,9 +195,7 @@ def test_a_local_source_is_named_as_the_origin_and_read_without_a_download(
             "strchive",
             "--source",
             f"strchive={_SLICE}",
-            "--dry-run",
-            "--publish",
-            "--rehearse-download",
+            *_REHEARSE,
         ],
     )
 
@@ -169,7 +205,7 @@ def test_a_local_source_is_named_as_the_origin_and_read_without_a_download(
 
 
 def test_a_lane_that_cannot_run_is_reported_in_the_real_runs_words(
-    fake_hub: None, no_ambient_caches: Path, tmp_path: Path
+    fake_hub: type[_Api], no_ambient_caches: Path, tmp_path: Path
 ) -> None:
     """A derived lane with no parents on disk: the rehearsal says what the real run says, and builds nothing."""
     argv = ["cache", "rebuild", "--out", str(tmp_path / "c"), "--only", "mitomap_miss"]
@@ -178,12 +214,12 @@ def test_a_lane_that_cannot_run_is_reported_in_the_real_runs_words(
         result = CliRunner().invoke(app, [*argv, *extra])
         return next(line for line in result.output.splitlines() if line.lstrip().startswith("mitomap_miss"))
 
-    assert lane_line(["--dry-run", "--publish", "--rehearse-download"]) == lane_line([])
+    assert lane_line(_REHEARSE) == lane_line([])
     assert not (tmp_path / "c" / "mitomap_miss").exists()
 
 
 def test_the_dry_run_alone_still_takes_nothing(
-    fake_hub: None, no_ambient_caches: Path, tmp_path: Path
+    fake_hub: type[_Api], no_ambient_caches: Path, tmp_path: Path
 ) -> None:
     """The flag is opt-in: without it RM411's dry run is unchanged, and the strchive download is never asked."""
     out = tmp_path / "caches"
