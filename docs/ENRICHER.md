@@ -5851,7 +5851,13 @@ three or four times first. Since RM354:
   opens an `httpx` transport names its 410 (a function-style fetcher such as `clingen.fetch_curation_list`
   raises its lane's `*Retired` too; audit round 2). A client whose contract is a withheld
   value rather than an exception mixes in `net.Withholding`, keeps the withhold, and says `retired`
-  through its sticky `retired` message (`net.withheld_reason`).
+  through its sticky `retired` message (`net.withheld_reason`). **Sticky for the client, never for the run
+  (RM446):** a caller may reuse one client across runs (RM404's `LookupClients`), so every 410 is also
+  counted in `retired_met`. A run reads `net.retired_mark(client)` before it asks and records
+  `withheld_reason(client, since=mark)`, so an earlier run's 410 never tells this run's timeout to upgrade.
+  `enrich`'s live-Ensembl warning and `literature`'s `crossref_unanswered` read it so. The client is never
+  reset, since a caller's client is not the run's to alter. A host's own client with no counter reads as
+  before.
 - **What a 404 means stayed per client**, and it is not the same everywhere:
 
 | client | a 404 is | so |

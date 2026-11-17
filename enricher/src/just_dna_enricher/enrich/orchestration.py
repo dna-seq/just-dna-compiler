@@ -121,7 +121,7 @@ from just_dna_enricher.locations import (
     resolve_ensembl_reference,
     resolve_pubmind_reference,
 )
-from just_dna_enricher.net import could_not_ask_reason
+from just_dna_enricher.net import RETIRED, could_not_ask_reason, retired_mark, withheld_reason
 from just_dna_enricher.placement import (
     _DBSNP_WITNESS,
     CLINVAR_GKM_WITNESS,
@@ -1005,6 +1005,8 @@ def _run_enrichment(
 
     # ── live Ensembl link (REST), for cache misses, unless offline ─────────────────────────────
     ensembl_link: object | None = None
+    # How many 410s a caller's resolver had met before this run asked (RM446): its `retired` outlives runs.
+    ensembl_mark: int | None = None
     # The data release live REST answered from, asked once and only when it answered (RM373). Read by
     # `EnsemblResolver` only: a host may inject a resolver that cannot say, and that one records none.
     rest_release: str | None = None
@@ -1023,6 +1025,7 @@ def _run_enrichment(
             owned = resolver is None
             client = resolver or EnsemblResolver()
             ensembl_link = client
+            ensembl_mark = retired_mark(client)
             rest_answered = False
             try:
                 # RM401: many rsIDs per request where the resolver can (ours, `_BatchResolver`), each
@@ -2317,8 +2320,9 @@ def _run_enrichment(
         answered_calls=answered_calls,
     )
 
-    if unreachable_rsids and getattr(ensembl_link, "retired", None):
-        # A 410 is not an outage (RM361): a re-run asks a route the source no longer serves.
+    if unreachable_rsids and withheld_reason(ensembl_link, since=ensembl_mark) == RETIRED:
+        # A 410 is not an outage (RM361): a re-run asks a route the source no longer serves. Only a 410 this
+        # run met says so; a reused resolver's earlier one does not make this run's timeout a retirement (RM446).
         logger.warning(
             "%d rsID(s) could not be asked of live Ensembl because it retired the route (%s): %s. "
             "Upgrade just-dna-enricher; re-running will not answer them.",

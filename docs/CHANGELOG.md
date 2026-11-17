@@ -41,6 +41,18 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md). The `0.8` branch merged into `main` at the 0.8.0 cut (2026-11-05).
 
+## 2026-11-17 — RM446: a reused client's earlier 410 no longer tells a later run's outage to upgrade (patch, on `main`)
+
+A withholding client (`EnsemblResolver`, `CrossrefClient`, the PMC clients, `Grch37Client`,
+`ClingenAlleleClient`) keeps the first 410 it met as `retired` for its life, and `enrich` and `literature` read that
+as the reason a run went unanswered. A caller that reuses one client across runs, which RM404's `LookupClients`
+makes the designed path, had run 1's 410 tell run 2's timeout that Ensembl retired the route and that a re-run would
+not help. Every 410 is now also counted in `Withholding.retired_met`. A run reads `net.retired_mark(client)` before
+it asks, and `net.withheld_reason(client, since=mark)` names `retired` only for a 410 met after that mark. `enrich`'s
+live-Ensembl warning and `LiteratureResult.crossref_unanswered` use it. The client's `retired` message is unchanged
+and never reset. A host's own client without the counter reads as before. Enricher only and additive: a new
+attribute, a new function and an optional argument.
+
 ## 2026-11-17 — RM447: a resolved allele refusal names Ensembl REST as the narrower surface when REST answered the row (patch, on `main`)
 
 Ensembl REST can list fewer alleles than the same release's VCF dump. Measured over every rsID the reference

@@ -90,6 +90,7 @@ from just_dna_enricher.net import (
     could_not_ask_reason,
     dedupe,
     raise_if_retired,
+    retired_mark,
     retired_message,
     retry_if_transient,
     withheld_reason,
@@ -1533,6 +1534,8 @@ def enrich_literature(
         epmc = europepmc or EuropePmcClient()
         owned_crossref = crossref is None
         crossref = crossref or CrossrefClient()
+        # A caller's client may carry an earlier run's 410; only one met from here on is this run's (RM446).
+        crossref_mark = retired_mark(crossref)
         # On the E-utilities gate, which outlives the esummary client above: one NCBI budget.
         owned_bioc = bioc is None
         bioc = bioc or PmcBiocClient(gate=client.gate)
@@ -1673,7 +1676,7 @@ def enrich_literature(
                     )
                     for key in sorted(doi_cited)
                 ]
-            result.crossref_unanswered = withheld_reason(crossref)
+            result.crossref_unanswered = withheld_reason(crossref, since=crossref_mark)
         finally:
             if owned_epmc:
                 epmc.close()

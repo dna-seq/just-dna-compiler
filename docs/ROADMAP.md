@@ -2341,7 +2341,7 @@ whose only case is one example row waits for a second case.
 
 ## RM446 — a withholding client's `retired` outlives the run that met the 410, so a later run's outage reads as a retired route
 
-**Severity** low · **Status** open — **a patch on `main`, `unattended` (about 30 minutes, triage builds)** · **Owner** enricher (`net.Withholding.note_retired`, `withheld_reason`, the live-Ensembl warning in `enrich/orchestration.py`) ·
+**Severity** low · **Status** open — **a patch, built on `main` 2026-11-17, uncut** · **Owner** enricher (`net.Withholding.note_retired`, `withheld_reason`, the live-Ensembl warning in `enrich/orchestration.py`) ·
 **Motivating case** the lead's RM404 build on `0.9` (`3e9b993c`), recorded by the pm under RM404 in `ROADMAP_0_9.md` (`ad49b85d`, 2026-11-16) · *related* RM361, RM404
 
 **What was seen.** `Withholding.retired` is set by the first 410 a client meets and never cleared (`note_retired` only
@@ -2374,7 +2374,19 @@ already), and trial rule 1 sends a pre-existing defect to triage's patch on `mai
 is additive; the test is the one above. Built before 0.9 merges so RM404's docstring can point at it; if it lands
 after, the merge carries it.
 
-**Residuals** none yet.
+**Built (triage, 2026-11-17).** The count shape. `Withholding` counts every 410 in `retired_met` beside the sticky
+`retired`, which is unchanged. `net.retired_mark(client)` reads the count, or `None` for a client without one.
+`net.withheld_reason(client, since=mark)` says `retired` only for a 410 met after the mark, and without a mark it reads
+as RM361 did. `enrich` takes the mark when it picks the live-Ensembl client and gates its warning on it.
+`literature` takes it when it picks the Crossref client and records `crossref_unanswered` with it. Nothing resets a
+caller's client. `test_a_reused_clients_410_is_not_a_later_runs.py` reuses one resolver across three `enrich` runs: a
+410, then only a failed request, then a 410 again. Run 2 gives the outage wording and runs 1 and 3 the retired one;
+on the code before the fix, run 2 said "retired the route". The same file walks the mark over a `CrossrefClient`
+and a host's client that counts nothing. ENRICHER.md (the client-contract section) and the CHANGELOG say it.
+
+**Residuals** won't fix — a 410 met on one route still names the reason for a run whose other unanswered requests
+failed otherwise: that is RM361's aggregate rule ("one retired endpoint means the run needs an upgrade"), within one
+run, and this item is about runs
 
 ## RM447 — Ensembl REST answers rs646776 without the A allele its own release 116 dump and dbSNP 157 carry, so an online fill and a snapshot fill disagree
 
