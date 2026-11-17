@@ -757,9 +757,10 @@ it was given**, in the bundle or as an argument. A field left unset is built and
 with no bundle, and never stored on the bundle (the run does not call `clients.ensure`). `sequences` is a
 `SequenceProxy`, and when given it is the **only** sequence source the run reads (S157): the
 reference-allele check, left-alignment, the hosting and placement reads, the VRS minter and the anchor
-base read by the live link's own `EnsemblResolver` all take it; a host's own resolver reads through what
-it holds. A local seqrepo (`uri="seqrepo+file://…"`, with `biocommons.seqrepo` installed by the host) is
-how a host reads locally with the network up. Under `offline=True` the passed proxy is not used, as an
+base read by the `EnsemblResolver` the run builds all take it. A resolver the caller gives is not altered
+and reads its anchor base through what it holds: an `EnsemblResolver` builds a default proxy for that
+read, and 0.9 has no public parameter to point it elsewhere. A local seqrepo (`uri="seqrepo+file://…"`,
+with `biocommons.seqrepo` installed by the host) is how a host reads locally with the network up. Under `offline=True` the passed proxy is not used, as an
 injected client is not (`@gated-source-caches`): the run warns once, in the words of
 `orchestration.OFFLINE_OUTRANKS_SEQUENCES`, and reads no sequence. The missing timeout beneath
 ga4gh's seqrepo REST proxy stays vrs-python's (RM407's residual); no proxy of ours wraps it.

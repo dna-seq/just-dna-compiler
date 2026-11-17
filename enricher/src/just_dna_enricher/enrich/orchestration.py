@@ -373,9 +373,12 @@ def enrich(
 
     `sequences` is the reference-sequence proxy, and when given it is the **only** sequence source the
     run reads (S157): the reference-allele check, left-alignment, the hosting and placement reads, the
-    VRS minter and the anchor base the live link's own resolver reads all take it, and none builds its
-    own. A `SequenceProxy` reading a local seqrepo (`uri="seqrepo+file://…"`, which needs
-    `biocommons.seqrepo` installed beside the enricher) is how a host reads locally with the network up.
+    VRS minter and the anchor base read by the `EnsemblResolver` the run builds all take it, and none
+    builds its own. A resolver the caller gives (`resolver=` or `clients.ensembl`) is not altered: it
+    reads an indel's anchor base through whatever it holds; an `EnsemblResolver` builds a default proxy
+    for that read, and 0.9 has no public parameter to point it elsewhere. A `SequenceProxy` reading a
+    local seqrepo (`uri="seqrepo+file://…"`, which needs `biocommons.seqrepo` installed beside the
+    enricher) is how a host reads locally with the network up.
     One proxy may be shared by parallel runs; its memo is locked. Under `offline=True` it is **not used**:
     offline outranks it as it outranks an injected client (`@gated-source-caches`), and the run warns
     once (`OFFLINE_OUTRANKS_SEQUENCES`) and reads no sequence, exactly as an offline run with none.
