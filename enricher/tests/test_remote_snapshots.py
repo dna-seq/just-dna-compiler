@@ -215,6 +215,31 @@ def test_hf_opens_only_the_chromosome_file_the_manifest_attests_for_ensembl(
     assert parquet == {"homo_sapiens-chr16.parquet"}
 
 
+def test_an_attested_chromosome_file_answers_only_for_its_chromosome(
+    httpfs, loopback_hub, ensembl_root: Path, tmp_path: Path
+) -> None:
+    """The scan of an attested file filters by position alone; the chromosome is checked on the rows."""
+    root = tmp_path / "mislabelled"
+    (root / "data").mkdir(parents=True)
+    con = duckdb.connect()
+    con.execute(
+        f"COPY (SELECT * FROM read_parquet('{ensembl_root}/data/*.parquet')) "
+        f"TO '{root / 'data' / 'homo_sapiens-chr16.parquet'}' (FORMAT parquet)"
+    )
+    con.close()
+    manifest = {
+        "release_id": ENSEMBL_RELEASE,
+        "files": [{"path": "data/homo_sapiens-chr16.parquet", "chrom": "16"}],
+    }
+    (root / "manifest.json").write_text(json.dumps(manifest))
+    loopback_hub.publish(SNAPSHOT_REPO_IDS["ensembl"], root, COMMIT_A)
+    in_the_file = _registry_rows(root, {"start": [5226773]})
+    assert {row["chrom"] for row in in_the_file} == {"11"}  # the file holds a row of another chromosome there
+    with RemoteSnapshots(hf_base_url=loopback_hub.base_url) as holder:
+        answer = holder.lookup("ensembl", "homo_sapiens", {"chrom": ["16"], "start": [5226773]})
+    assert answer.rows == []
+
+
 def test_an_ensembl_key_without_a_position_is_never_sent(loopback_hub, ensembl_root: Path) -> None:
     loopback_hub.publish(SNAPSHOT_REPO_IDS["ensembl"], ensembl_root, COMMIT_A)
     with RemoteSnapshots(hf_base_url=loopback_hub.base_url) as holder, pytest.raises(ValueError) as refused:

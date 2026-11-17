@@ -600,7 +600,16 @@ class RemoteSnapshots:
             )
         rows: list[dict[str, Any]] = []
         for request, group in asked:
-            rows.extend(self._hf_rows(lane, pin, group, request, schema, position))
+            if "chrom" in request and pin.chromosomes:
+                # The manifest attests these files hold this chromosome alone, so the scan filters by
+                # position only (reading no `chrom` column, half the requests) and the chromosome is
+                # checked on the rows that came back, so a file holding more cannot answer for it.
+                forms = {_bare_chrom(request["chrom"][0]), f"chr{_bare_chrom(request['chrom'][0])}"}
+                by_position = {k: v for k, v in request.items() if k != "chrom"}
+                found = self._hf_rows(lane, pin, group, by_position, schema, position)
+                rows.extend(row for row in found if str(row.get("chrom")) in forms)
+            else:
+                rows.extend(self._hf_rows(lane, pin, group, request, schema, position))
         return RemoteAnswer(rows=_stable(rows), route=ROUTE_HF, release=pin.release, revision=pin.revision)
 
     def _hf_rows(
