@@ -2895,7 +2895,9 @@ that saw them, through a private view of the proxy for that run, so the run asks
 down service once, and its warning's "this run" is true; the next run sharing the proxy asks again. Read
 directly, outside a run's view, the proxy asks again on every call. Its memo is bounded at 262,144 reads
 (`sequences._MEMO_SIZE`), the least recently used evicted first, because a shared proxy may live as long as
-the service. Needs sequence access, so `--offline` skips it:
+the service. An `EnsemblResolver` that builds its own anchor reader (no `_read_base` given) builds it once,
+lazily and under a lock of its own, so threads sharing one resolver wait for that build rather than each
+starting another. Needs sequence access, so `--offline` skips it:
 a check that cannot run is not a check that passed, and the run says so rather than implying success.
 
 ### The old assembly: rs-number recovery and a wrong-build diagnosis (`grch37.py`, RM48)

@@ -168,6 +168,9 @@ class _RunSequences(SequenceProxy):
         self._no_data_proxy = False
         self._unread: set[tuple[str, int, int]] = set()
 
+    def __repr__(self) -> str:
+        return f"_RunSequences({self._viewed!r})"
+
     def proxy(self):
         if self._no_data_proxy:
             return None

@@ -106,7 +106,8 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   are held by the run that saw it, through a private view of the proxy per run (`enrich`,
   `verify_reference_alleles`, the minter and the drafters), so a run asks each failed read once and a down
   service once, and a later run sharing the proxy asks again. Before, one run's failure lasted the proxy's life.
-  The memo is bounded at 262,144 reads, least recently used out first.
+  The memo is bounded at 262,144 reads, least recently used out first. `EnsemblResolver` builds its own anchor
+  reader once, lazily, under a lock of its own, so threads sharing one resolver no longer each build one.
 
 ## 2026-11-16 — `v0.8.8`: enricher 0.8.8 (a patch, cut from `main`)
 

@@ -198,17 +198,24 @@ class EnsemblResolver(Withholding):
     # because a host shares one resolver across threads and a stale reset would drop a fresh hold.
     _resume_at: float | None = None
     _hold_lock: threading.Lock = field(default_factory=threading.Lock, repr=False, compare=False)
+    # The anchor reader is built once, lazily, under its own lock (0.9, RM404): threads sharing one
+    # resolver that arrive while it is being built wait for that one rather than each building another.
+    _reader_lock: threading.Lock = field(default_factory=threading.Lock, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         if self.gate is None:
             self.gate = PacingGate(interval=self.settings.interval)
 
     def _base_reader(self) -> Callable[[str, int], str | None]:
-        if self._read_base is None:
-            # The resolver's own proxy, read through one view for the resolver's life: it holds the
-            # failures it sees, as before 0.9, where the proxy itself now holds only answers (RM404).
-            self._read_base = _grch38_base_reader(_held_by_one_run(SequenceProxy()))
-        return self._read_base
+        reader = self._read_base
+        if reader is not None:
+            return reader
+        with self._reader_lock:
+            if self._read_base is None:
+                # The resolver's own proxy, read through one view for the resolver's life: it holds the
+                # failures it sees, as before 0.9, where the proxy itself now holds only answers (RM404).
+                self._read_base = _grch38_base_reader(_held_by_one_run(SequenceProxy()))
+            return self._read_base
 
     def _http(self) -> httpx.Client:
         if self._client is None:

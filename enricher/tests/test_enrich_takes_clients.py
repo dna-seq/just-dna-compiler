@@ -458,6 +458,43 @@ def test_the_memo_bound_is_the_constant_its_docstring_states() -> None:
     assert f"{sequences._MEMO_SIZE:,}" in " ".join((SequenceProxy.__doc__ or "").split())
 
 
+def test_threads_sharing_one_resolver_build_its_base_reader_once(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The pm (2026-11-17): `EnsemblResolver._base_reader` is built under a lock, as the proxy's memo is.
+
+    A host shares one resolver across threads. Without the lock, every thread arriving while the first
+    was still building found no reader and built its own, each with a proxy of its own.
+    """
+    entered, release = threading.Event(), threading.Event()
+    built: list[SequenceProxy] = []
+
+    def slow_reader(sequences: SequenceProxy):
+        built.append(sequences)
+        entered.set()
+        release.wait(5)
+        return lambda _chrom, _pos: "A"
+
+    monkeypatch.setattr("just_dna_enricher.ensembl._grch38_base_reader", slow_reader)
+    resolver = EnsemblResolver()
+    readers: list[object] = []
+
+    def take() -> None:
+        readers.append(resolver._base_reader())
+
+    first = threading.Thread(target=take)
+    first.start()
+    assert entered.wait(5)
+    others = [threading.Thread(target=take) for _ in range(3)]
+    for thread in others:
+        thread.start()
+    for thread in others:
+        thread.join(0.3)
+    release.set()
+    for thread in (first, *others):
+        thread.join(5)
+    assert len(built) == 1
+    assert len(readers) == 4 and all(reader is readers[0] for reader in readers)
+
+
 # ── the public batch capability and its settings ────────────────────────────────────────────────
 
 
