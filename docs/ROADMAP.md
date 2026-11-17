@@ -2404,9 +2404,13 @@ run, and this item is about runs
   `ensembl-variation-2026_07_13-vep116.0`.
 
 So the example agrees with its pinned snapshot and with dbSNP, and nothing in it should move on this evidence.
-Ensembl has not re-curated the site between releases. Two surfaces of one release disagree, and REST is the narrower
-one. This is the case RM376 tested for `rs746071566` and ruled out ("the snapshot carries alleles REST does not: No").
-Here the answer is yes.
+This is the case RM376 tested for `rs746071566` and ruled out ("the snapshot carries alleles REST does not: No").
+Here the answer is yes. *Corrected after the measurement below:* the filing read this as two surfaces of one release
+disagreeing, with REST the narrower one. It is a dbSNP build gap inside one Ensembl release. REST's
+`/info/variation` names dbSNP 156, and so does the VEP cache line in the snapshot's header. The VCF dump the snapshot
+is built from (`2026_07_13`) declares dbSNP 157, and dbSNP's own record of rs646776 was last updated in build 157.
+So RM374's reading, "a row from dbSNP 156", was right about the row's age; what it missed is that REST serves that
+build at the current release, so a re-derivation through REST cannot move it.
 
 **Why it matters.** REST answers an rsID the snapshot holds only when the run has no snapshot: `enrich(download=False)`
 on a host without one, or a provisioning that failed and degraded to live. Such a run records `G,T`, and a run with
@@ -2418,7 +2422,7 @@ the message gives does not reach this cause.
 **Shape of a fix (the builder decides).** First measure: compare REST with the snapshot over the reference examples'
 rsIDs, which takes minutes, to learn whether rs646776 is one site or a class. One site may close as RM376 did, with the
 fact recorded in ENRICHER.md beside RM271's REST paragraph. For a class, the refusal's remedy should say when the row
-came from REST, so it can name the narrower surface instead of a stale release. The enricher reports, never repairs:
+came from REST, so it can name REST's older build instead of a stale release. The enricher reports, never repairs:
 no REST answer is widened from another source.
 
 **Class.** A patch: no schema, column or vocabulary moves (P3), nothing authored (P9). Severity low: one site is known,
@@ -2430,19 +2434,21 @@ did, with the fact in ENRICHER.md beside RM271's REST paragraph and the refusal 
 make it a class: the `--strict` refusal then says when the stored row came from REST and names the narrower surface
 instead of `--rederive`. Nothing is widened from another source either way.
 
-**Measured (triage, 2026-11-17, 04:40 UTC).** Every `rs<digits>` in `reference_examples/*/*.csv`, 467 rsIDs, was
+**Measured (triage, 2026-11-17, 04:25–04:29 UTC).** Every `rs<digits>` in `reference_examples/*/*.csv`, 467 rsIDs, was
 read in the same hour from the split snapshot on this machine (`ensembl-variation-2026_07_13-vep116.0`) and from
 Ensembl REST's batch route at release 116 (GRCh38 primary contigs). Each allele was compared with its shared prefix
 and suffix trimmed. REST answered 454 of the 467; the 13 it did not answer are `rs2494…` and `rs2533…` ids the
-snapshot carries. Of the 454, 58 differ. In 4 of them (`rs33991993`, `rs34083951`, `rs34515413`, `rs34933751`, all
+snapshot carries, new in dbSNP 157. Of the 454, 58 differ. In 4 of them (`rs33991993`, `rs34083951`, `rs34515413`, `rs34933751`, all
 HBB) the only difference is a placeholder, `N` in the snapshot and `R` or `Y` in REST, which RM271's predicate drops
-on both sides. That leaves **54 where the snapshot carries alleles REST omits, and none the reverse**: 61
+on both sides. That leaves **54 where the snapshot carries alleles REST lacks, and none the reverse**: 61
 single-base and 2 longer alleles, among them `rs646776` (`A`), `rs137852556` (`A` and `G`, at both the X and the Y
-PAR spellings), `rs112339338` and `rs149436418`. A class, so the refusal changes.
+PAR spellings), `rs112339338` and `rs149436418`. A class, so the refusal changes. The builds behind the two sides
+were read at 04:41 UTC: REST's `/info/variation/homo_sapiens` names dbSNP 156; the snapshot's `manifest.json` keeps
+the dump's header, `##source="dbSNP" … version="157"`, beside the VEP line's `dbSNP="156"`.
 
 **Built (triage, 2026-11-17).** `allele_checks._stale_reading` adds a reading for a row whose `source` is
-`ensembl-rest` (a private `_NARROWER_LINKS`): the row came from a live link whose allele list can be narrower than
-the same release's snapshot. The remedy is `enrich --rederive` on a host where the Ensembl snapshot is provisioned.
+`ensembl-rest` (a private `_LAGGING_LINKS`): the row came from a live link that can serve an older dbSNP build than the
+snapshot. The remedy is `enrich --rederive` on a host where the Ensembl snapshot is provisioned.
 One departure from the sizing, which said "instead of `--rederive`": `--rederive` stays, qualified, because with the
 snapshot present it is the remedy that reaches the row (the cache link answers first). Only a plain one, on a host
 without the snapshot, asks REST again. The release reading and its pinned phrases stay beside it. A cache-sourced or
@@ -2452,7 +2458,7 @@ is not reached. A test over a REST row and a cache row is in `test_rsid_placemen
 RM271), COMPILER.md (beside RM374) and the CHANGELOG say it.
 
 **Residuals** won't fix — the enricher widens no REST answer from the snapshot or dbSNP: it reports, never repairs ·
-won't fix — `ensembl-graphql` is not in `_NARROWER_LINKS`, because no run measured it and no row in the examples
+won't fix — `ensembl-graphql` is not in `_LAGGING_LINKS`, because no run measured it and no row in the examples
 records it
 
 # Not format scope

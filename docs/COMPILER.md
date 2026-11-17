@@ -231,9 +231,10 @@ enriched against now, because an enrich never re-asks a subject it has a row for
 row records (`ResolutionRow.source_release`) or says `release not recorded`, and gives `enrich --rederive`
 as the remedy. Which release is older is not decidable offline, so it is a reading, never a verdict, and it
 is given only where an external source answered the row (`authority` set): a hand-filled row came from no
-snapshot, and a reversed row keeps the authority and release of the row it came from (RM380). A row whose `source` is `ensembl-rest` gets a fourth reading beside it (RM447): it was answered by a live link whose
-allele list can be narrower than the same release's snapshot, and the remedy names a re-derivation where the
-snapshot is provisioned, since a plain `--rederive` without it asks REST again. The comparison is also made
+snapshot, and a reversed row keeps the authority and release of the row it came from (RM380). A row whose `source` is `ensembl-rest` gets a fourth reading beside it (RM447): it was answered by a live link that can
+serve an older dbSNP build than the snapshot (REST at Ensembl 116 serves dbSNP 156, the snapshot of the same release
+157), and the remedy names a re-derivation where the snapshot is provisioned, since a plain `--rederive` without it
+asks REST again. The comparison is also made
 against the **union** of every locus a key resolves to, never per-expanded-row, for the same reason.
 
 **"Exactly one of those rows can match" is a statement about matching, and a reader does more than

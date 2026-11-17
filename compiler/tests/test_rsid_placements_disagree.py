@@ -396,7 +396,7 @@ def test_the_message_names_each_answers_release_when_recorded() -> None:
 
 
 def _membership_case() -> tuple[list[VariantRow], dict[str, list[ResolutionRow]]]:
-    """The probe's `rs646776`: dbSNP 157 and the snapshot list A, the row it held (C>G,T, which REST answers, RM447) does not."""
+    """The probe's `rs646776`: dbSNP 157 lists A, the old release's row (C>G,T) does not."""
     variants = [VariantRow(rsid="rs646776", genotype="A/C", state="risk", conclusion="probe")]
     table = {"rs646776": [_row("rs646776", "rs646776", "1", 109275908, "C", "G,T", authority="ensembl")]}
     return variants, table
@@ -420,10 +420,11 @@ def test_a_resolved_allele_refusal_names_the_stale_reading_and_the_remedy() -> N
     assert "release not recorded" in error
 
 
-def test_a_row_from_a_narrower_live_link_names_that_reading_and_the_snapshot_remedy() -> None:
-    """RM447: Ensembl REST answers rs646776 `C/G/T` at the release whose VCF dump carries `A` too, and REST
-    answers a subject the snapshot holds only when the run had none, so the remedy is a re-derivation
-    where the snapshot is provisioned; the stale-release reading and its pinned phrases stay beside it."""
+def test_a_row_from_a_lagging_live_link_names_that_reading_and_the_snapshot_remedy() -> None:
+    """RM447: Ensembl REST at release 116 serves dbSNP 156 (rs646776 `C/G/T`) where the same release's VCF
+    dump, the snapshot, carries 157 (`A` too), and REST answers a subject the snapshot holds only when the
+    run had none, so the remedy is a re-derivation where the snapshot is provisioned; the stale-release
+    reading and its pinned phrases stay beside it."""
     variants, _ = _membership_case()
     rest = {
         "rs646776": [
@@ -433,7 +434,7 @@ def test_a_row_from_a_narrower_live_link_names_that_reading_and_the_snapshot_rem
         ]
     }
     (error,) = _check_allele_membership(variants, rest, strict=True)[0]
-    assert "live link (ensembl-rest)" in error and "narrower than the same release's snapshot" in error
+    assert "live link (ensembl-rest)" in error and "older dbSNP build than the snapshot" in error
     assert "Ensembl snapshot is provisioned" in error
     assert "earlier snapshot release" in error and "--rederive" in error and "release not recorded" in error
     cache = {
