@@ -381,12 +381,32 @@ class SnapshotManifestFile(BaseModel):
     sha256: str | None = None
 
 
+class SnapshotManifestGroup(BaseModel):
+    """One optional column group a split Ensembl release publishes under `groups/<name>/` (RM437).
+
+    Typed for what the provisioner acts on: the group's `licence`, the sentence the declared-use gate
+    reads its licensor from (`licensing.snapshot_group_terms`). `description`, `default` and
+    `per_transcript` are carried for a reader that names a group to its operator; the column list is
+    the builder's own and is dropped (`extra="ignore"`).
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    name: str | None = None
+    description: str | None = None
+    licence: str | None = None
+    default: bool | None = None
+    per_transcript: bool | None = None
+
+
 class SnapshotManifest(BaseModel):
     """prepare-annotations' `manifest.json`, the record its Ensembl release carries instead of `release.json`.
 
-    Typed for the four things a reader here acts on: which release (`release_id`), when it was cut,
-    the layout version, and the files it attests. The rest of the file (the VEP header, the column
-    groups, per-chromosome counts) is the builder's own and is not read here.
+    Typed for the five things a reader here acts on: which release (`release_id`), when it was cut,
+    the layout version, the files it attests, and since RM437 the optional column `groups` it publishes
+    beside the core (name → its record, licence included). The core is not a group: it is the `data/`
+    payload every pull takes, and the manifest's own `files` tag it `core`. The rest of the file (the
+    VEP header, the core columns, per-chromosome counts) is the builder's own and is not read here.
     """
 
     model_config = ConfigDict(extra="ignore")
@@ -394,11 +414,16 @@ class SnapshotManifest(BaseModel):
     release_id: str | None = None
     layout_version: int | None = None
     built_at: str | None = None
+    groups: dict[str, SnapshotManifestGroup] | None = None
     files: list[SnapshotManifestFile] | None = None
 
     def entry(self, relative: str) -> SnapshotManifestFile | None:
         """The attestation for `relative` (`data/<name>`), or `None` when the manifest names no such file."""
         return next((f for f in self.files or () if f.path == relative), None)
+
+    def group_files(self, group: str) -> list[SnapshotManifestFile]:
+        """Every file the manifest attests for `group`, in the manifest's order (RM437)."""
+        return [f for f in self.files or () if f.group == group]
 
 
 def read_snapshot_manifest(path: Path) -> SnapshotManifest | None:
@@ -445,8 +470,8 @@ class ManifestCoverage:
     `unattested`: payload files present that the manifest does not name, or names at another size,
     so another release's. `absent`: files the manifest attests under `data/` that are not there, so
     the snapshot is incomplete. Either one withholds the whole cache; neither is a guess about the
-    other. Files outside `data/` (prepare-annotations' `groups/*`) are the manifest's and not pulled,
-    so they are not counted as absent.
+    other. Files outside `data/` (prepare-annotations' `groups/*`) are pulled only when selected and
+    checked by `ensembl_group_dir` (RM437), so they are not counted as absent here.
     """
 
     unattested: tuple[str, ...]
@@ -546,6 +571,106 @@ def ensembl_release_label(reference: Path) -> str | None:
     manifest = read_snapshot_manifest(reference / SNAPSHOT_MANIFEST_FILENAME)
     label = (manifest.release_id or "").strip() if manifest is not None else ""
     return label or None
+
+
+# ── the split release's optional groups (RM437) ─────────────────────────────────────────────────
+
+#: The directory a split Ensembl snapshot's optional column groups sit in, one subdirectory per group,
+#: a sibling of `data/` (RM437). The enricher's name and not the format tier's: only this lane has
+#: groups, and only the provisioner and `ensembl_group_dir` spell it.
+ENSEMBL_GROUPS_DIRNAME = "groups"
+
+#: What a split manifest's `files` call the `data/` payload. Never a group name: the core is pulled
+#: always, and naming it as a group is refused with `CORE_IS_NOT_A_GROUP`.
+ENSEMBL_CORE_GROUP = "core"
+
+#: The refusal for `core` named as a group, pinned by a test (`@warning-text-is-api`).
+CORE_IS_NOT_A_GROUP = (
+    "`core` is not a group name: the core (data/) is always pulled, and a group selection names only the "
+    "optional groups beside it."
+)
+
+#: The pull-record key naming the groups a pull took (RM437): group name → `{"release_id", "files",
+#: "declared_use"}`. `release_id` is the manifest release the group's files were attested against, and
+#: is `null` while that group's pull is under way, so an interrupted one is never taken for current.
+#: `declared_use` is the declaration the group was admitted under, which a later pull of the lane reads
+#: when its own is `unstated` (`licensing.effective_declared_use`'s rule, applied to a cache). Every
+#: writer of the record carries this key over, because the selection is sticky: a later `ensure` of the
+#: lane re-pulls these groups when the core's release moves.
+PULL_RECORD_GROUPS_KEY = "groups"
+
+
+class EnsemblGroupReleaseError(FileNotFoundError):
+    """A split Ensembl snapshot's group is not attested to be the core's release, so it may not be read (RM437).
+
+    A group joins the core on `(chrom, row_idx)`, which holds within one `release_id` only, so a group
+    of another release (or of an unknown one) joins to the wrong variants silently. Raised by
+    `ensembl_group_dir`, which every reader of a group takes its path from. A `FileNotFoundError`, as
+    the lane's other could-not-use errors are: the usable group is not on disk.
+    """
+
+
+def pulled_groups(ensembl_cache: Path) -> dict[str, dict]:
+    """The groups `ensembl_cache`'s pull record names, by name (`PULL_RECORD_GROUPS_KEY`); `{}` with none.
+
+    A record that is absent, unreadable, or names no groups answers `{}`, and an entry that is not an
+    object is dropped: none of them states a group the pull took.
+    """
+    path = Path(ensembl_cache) / PULL_RECORD_FILENAME
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    groups = payload.get(PULL_RECORD_GROUPS_KEY) if isinstance(payload, dict) else None
+    if not isinstance(groups, dict):
+        return {}
+    return {
+        name: entry for name, entry in groups.items() if isinstance(name, str) and isinstance(entry, dict)
+    }
+
+
+def ensembl_group_dir(ensembl_cache: Path, group: str) -> Path:
+    """The directory of a split Ensembl snapshot's `group`, once its release is attested to be the core's (RM437).
+
+    **The path and the check are one call**, so no reader spells the layout and none reads a group
+    without the check. The core's release is its `manifest.json`'s `release_id`, the record that
+    attests the core's files; the group's is the one its pull recorded. Four refusals, each its own
+    sentence (`@answered-is-not-absent`), all `EnsemblGroupReleaseError`: the pull record names no such
+    group (absent, or placed by hand), the group's pull did not finish, the core states no release, and
+    the two releases differ. `core` itself raises `ValueError` (`CORE_IS_NOT_A_GROUP`).
+    """
+    if group == ENSEMBL_CORE_GROUP:
+        raise ValueError(CORE_IS_NOT_A_GROUP)
+    cache = Path(ensembl_cache)
+    directory = cache / ENSEMBL_GROUPS_DIRNAME / group
+    entry = pulled_groups(cache).get(group)
+    if entry is None:
+        raise EnsemblGroupReleaseError(
+            f"The {group} group at {directory} was not taken by a pull of this cache (its "
+            f"{PULL_RECORD_FILENAME} names no such group), so nothing says which release it is. Pull it "
+            f"with `just-dna-enricher cache pull --only ensembl --groups {group}`."
+        )
+    recorded = entry.get("release_id")
+    if not isinstance(recorded, str) or not recorded:
+        raise EnsemblGroupReleaseError(
+            f"The {group} group at {directory} is a pull that did not finish, so its files may be of two "
+            f"releases. Re-run `just-dna-enricher cache pull --only ensembl` to finish it."
+        )
+    manifest = read_snapshot_manifest(cache / SNAPSHOT_MANIFEST_FILENAME)
+    core = (manifest.release_id or "").strip() if manifest is not None else ""
+    if not core:
+        raise EnsemblGroupReleaseError(
+            f"The Ensembl cache at {cache} states no release in its {SNAPSHOT_MANIFEST_FILENAME}, so the "
+            f"{group} group (release {recorded}) cannot be matched to its core. Re-run "
+            f"`just-dna-enricher cache pull --only ensembl`."
+        )
+    if recorded != core:
+        raise EnsemblGroupReleaseError(
+            f"The {group} group at {directory} is release {recorded} and the core beside it is {core}: a "
+            f"group joins the core on (chrom, row_idx), which holds within one release only. Re-run "
+            f"`just-dna-enricher cache pull --only ensembl` to re-pull it."
+        )
+    return directory
 
 
 def load_env(override: bool = False) -> str | None:

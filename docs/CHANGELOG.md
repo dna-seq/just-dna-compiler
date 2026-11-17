@@ -58,6 +58,16 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   load, so a call naming every lane leaves `os.environ` untouched. Named lanes are read before unnamed ones, so the
   answer does not depend on the order of `lanes`. A key naming no lane raises `ValueError`. Without `locations`
   the call, and `cache status`, answer as before.
+- **The split Ensembl release's groups are pulled by the lane** (RM437, S150): `download.ensure_snapshot(groups=…,
+  declared_use=…)` pulls the named optional column groups into `groups/<name>/`, each file attested by the
+  manifest's sha256, and records each group's `release_id`, files and admitting declaration in the pull record.
+  The names come from the manifest's `groups` (now typed, `SnapshotManifestGroup`); `core` and an unknown name are
+  refused before any download. Each group is gated by its licensor's terms (`licensing.snapshot_group_terms`, one
+  constant per licensor: `ENSEMBL_TERMS`, the new `CADD_TERMS`), so CADD is refused under a commercial use and
+  skipped under an unstated one, and an unknown licensor is skipped quoting its licence. The selection is sticky:
+  every later `ensure_snapshot` re-pulls the recorded groups when the core's release moves. Readers take a group's
+  path from `locations.ensembl_group_dir`, which raises `EnsemblGroupReleaseError` unless the group's recorded
+  release is the core's.
 - **`download.ensure_opentargets_snapshot`** (RM412): the Open Targets lane's pull, public beside its siblings. The
   0.8 line's `_ensure_opentargets_snapshot` is gone (a leading underscore carried no contract); `CACHE_LANES` and
   `cache pull` reach the same function.

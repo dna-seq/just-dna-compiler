@@ -288,6 +288,28 @@ ENSEMBL_TERMS = SourceTerms(
     redistribution=True,
 )
 
+# CADD, which reaches this tier only as one of the split Ensembl snapshot's optional `groups/` (RM437):
+# prepare-annotations copies `CADD_PHRED`/`CADD_RAW` out of the VEP output into the `cadd` group, and
+# its manifest states that group's licence as "CADD: free for non-commercial use only". Read live from
+# cadd.gs.washington.edu on 2026-11-17: "CADD scores are freely available for all non-commercial
+# applications", a commercial application needs a licence from UW CoMotion, and the page is "All rights
+# reserved". No named licence exists, so `license` says whose terms they are rather than borrowing the
+# nearest CC code. `commercial_use=False` is the stated bar. Neither share-alike nor redistribution is
+# granted or refused in words, so both stay `None`.
+CADD_TERMS = SourceTerms(
+    source="cadd",
+    license="CADD terms of use (University of Washington)",
+    license_url="https://cadd.gs.washington.edu/",
+    attribution="CADD, University of Washington (https://cadd.gs.washington.edu)",
+    notice=(
+        "CADD scores are freely available for all non-commercial applications; a commercial application "
+        "needs a licence (UW CoMotion). All rights reserved; no grant of redistribution is stated."
+    ),
+    share_alike=None,
+    commercial_use=False,
+    redistribution=None,
+)
+
 
 # gnomAD, read from `browser/about/policies/terms.md` in broadinstitute/gnomad-browser on 2026-08-03:
 # "The primary data from the gnomAD exomes and genomes are available free of restrictions under the
@@ -982,6 +1004,7 @@ TERMS_BY_SOURCE: dict[str, SourceTerms] = {
         CLINVAR_GKM_TERMS,
         _DBSNP_TERMS,
         ENSEMBL_TERMS,
+        CADD_TERMS,
         GNOMAD_TERMS,
         GWAS_CATALOG_TERMS,
         PUBMIND_TERMS,
@@ -996,6 +1019,37 @@ TERMS_BY_SOURCE: dict[str, SourceTerms] = {
         OPENTARGETS_TERMS,
     )
 }
+
+
+#: The terms of each **licensor** a split Ensembl snapshot's group names, keyed by the text before the
+#: colon in that group's `licence` (RM437). prepare-annotations writes one sentence per group,
+#: "<licensor>: <what it allows> (<url>)", so the licensor is the part a constant can be keyed on and the
+#: rest is prose. One constant per licensor, never per group: seven groups share Ensembl's.
+SNAPSHOT_GROUP_TERMS_BY_LICENSOR: dict[str, SourceTerms] = {
+    "Ensembl data": ENSEMBL_TERMS,
+    "CADD": CADD_TERMS,
+}
+
+
+def snapshot_group_terms(group: str, licence: str | None) -> SourceTerms:
+    """The terms a split Ensembl snapshot's `group` is taken under, read off the manifest's `licence` (RM437).
+
+    The licensor is the text before the first colon; a licensor in `SNAPSHOT_GROUP_TERMS_BY_LICENSOR`
+    answers with its constant. Any other licensor, and a group stating no licence, is **unknown terms**
+    (`@no-named-licence`): every axis `None`, so `check_declared_use` skips the group whatever the
+    declaration, with a reason that quotes the licence the manifest states.
+    """
+    licensor = (licence or "").partition(":")[0].strip()
+    known = SNAPSHOT_GROUP_TERMS_BY_LICENSOR.get(licensor)
+    if known is not None:
+        return known
+    stated = (
+        f"the snapshot's manifest states the licence {licence.strip()!r} for the {group} group, and this "
+        f"tier holds no terms for its licensor {licensor!r}."
+        if (licence or "").strip()
+        else f"the snapshot's manifest states no licence for the {group} group."
+    )
+    return SourceTerms(source=f"ensembl group {group}", notice=stated)
 
 
 def resolution_authority(link: str | None) -> str | None:

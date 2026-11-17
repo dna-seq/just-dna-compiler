@@ -2228,7 +2228,7 @@ command carried no flag. **A module drafted before RM320 keeps its all-null `pub
 prepare-annotations published dbSNP 157 / VEP 116 on 2026-11-04 as a **separate** repo,
 `just-dna-seq/ensembl_variations_split` (tag `ensembl-variation-2026_07_13-vep116.0`): the same
 `data/homo_sapiens-chr*.parquet` names as the old repo, one row per ALT, left-aligned indels, `groups/*`
-sidecars outside `data/` (not pulled), and a `manifest.json` with the release id and every file's size
+sidecars outside `data/` (pulled only when selected, since 0.9: the next section), and a `manifest.json` with the release id and every file's size
 and sha256 in place of a `release.json`. Since the names did not change, three rules keep the two
 releases apart:
 
@@ -2257,6 +2257,49 @@ releases apart:
 - **The release has a label.** `cache status` prints the manifest's `release_id` for the lane
   (`CacheLane.release_label = ensembl_release_label`), and the `rsid_coordinate_agreement` record carries
   it as `release`.
+
+### The split release's groups, pulled on request (RM437, 0.9)
+
+The split repo moved every annotation value (consequence, clinical flags, frequencies, CADD) out of the
+core and into optional column groups under `groups/<name>/`, each joining the core on `(chrom, row_idx)`,
+which holds within one `release_id` only. So a group is pulled by the lane's own provisioner, never by a
+consumer's downloader into the lane's directory: that is the mixed-release shape the lane exists to
+prevent, and a stale group joins to the wrong variants silently.
+
+- **Selecting.** `download.ensure_snapshot(ensembl_cache=None, *, groups=(), declared_use="unstated")`.
+  The valid names are the manifest's own
+  `groups` (`locations.SnapshotManifest.groups`, name → `SnapshotManifestGroup`, licence included;
+  `SnapshotManifest.group_files(name)` lists what it attests for one). `core` is not a group
+  (`locations.ENSEMBL_CORE_GROUP`, refused with `CORE_IS_NOT_A_GROUP`), and an unknown name is refused
+  with the names the release does publish, both `ValueError` and before any download.
+- **Licences, per group.** `licensing.snapshot_group_terms(group, licence)` reads the licensor off the
+  manifest's `licence` (the text before the colon) and answers with its constant from
+  `SNAPSHOT_GROUP_TERMS_BY_LICENSOR`: `Ensembl data` is `ENSEMBL_TERMS` (unrestricted), `CADD` is
+  `CADD_TERMS` (no sale). Any other licensor is unknown terms. Each group goes through
+  `check_declared_use`, as a gated lane does in `cache pull`: `groups=["cadd"]` downloads under
+  `non_commercial`, raises `LicenseRefusal` under `commercial` before any byte moves (core included),
+  and is skipped under `unstated`; an unknown licensor is skipped under every use, the reason quoting the
+  licence. A group already current is not gated again: nothing is taken.
+- **Attested and recorded.** Each group file is renamed into place only if the manifest attests it by
+  size and sha256, as a core file is. The pull record gains `groups` (`locations.PULL_RECORD_GROUPS_KEY`):
+  per group, the `release_id` its files were attested against (`null` while its pull is under way), its
+  files, and the declaration it was admitted under. `locations.pulled_groups(cache)` reads it.
+- **The one path, with the check.** `locations.ensembl_group_dir(cache, group)` returns
+  `<cache>/groups/<group>` (`ENSEMBL_GROUPS_DIRNAME`) only when the group's recorded release is the
+  core's (`manifest.json`'s `release_id`), and otherwise raises `EnsemblGroupReleaseError`, with its own
+  sentence for each of four causes: not taken by a pull of this cache (absent, or placed by hand), a pull
+  that did not finish, a core stating no release, and two releases. A reader takes a group's path from
+  it and nowhere else.
+- **Sticky.** The record's selection is carried over by both of the core provisioner's record writes, and
+  every later `ensure_snapshot`, with or without `groups` (`cache pull`, `cache prepare`,
+  `enrich(download=True)`), brings each recorded group to the core's release when it moves; a group the
+  new release does not name a file for is removed only where this lane's earlier pull put it. A recorded
+  group is gated by the call's `declared_use` when that states one, else by its recorded declaration
+  (`effective_declared_use`'s rule, applied to a cache). A recorded group the caller did not name never
+  raises: skipped, refused or not fetched, it is logged, `cache pull` prints it, and it stays at its old
+  release, which `ensembl_group_dir` refuses. A warm cache whose groups are current reads no hub.
+  Removing a group is not in 0.9: deleting the lane's directory does it.
+- **Local only in 0.9.** Remote reads of a group wait for a caller who asks.
 
 ### Snapshot-first, live second, `--offline` first-only
 
@@ -5140,6 +5183,7 @@ absent from it has no recorded terms, which is a different state from having per
 | `clinpgx` | CC BY-SA 4.0 | ❌ | ✅ | ✅ | + a contractual bar on sale, on top of the CC grant |
 | `cpic` | CC BY-SA 4.0 | ❌ | ✅ | ✅ | `cpicpgx.org/license/` 302s to ClinPGx's policy |
 | `pharmvar` | CC BY-SA 4.0 | ❌ | ✅ | ✅ | research-use-only, and the key is **personal and non-transferable** |
+| `cadd` | CADD terms of use (University of Washington) | ❌ | ❓ | ❓ | reached only as the split Ensembl release's `cadd` group (RM437); "freely available for all non-commercial applications", a commercial one needs a UW licence |
 | `pubmind` | CC BY-NC-ND 4.0 | ❌ | — | ✅ | **NoDerivatives**: adapted material may not be shared, which is why the snapshot is never published (RM320) |
 | `alphagenome_atlas` | AlphaGenome Output Terms of Use | ❌ | — | ✅ | a **second name** for one service, because one `(source, layer)` key cannot carry two licence classes |
 | `mane` | — | ❓ | ❓ | ❓ | NCBI states a *policy* rather than a licence — nothing to refuse and nothing to permit |
@@ -5154,7 +5198,7 @@ either — so it is skipped in every `--use` column with a message saying which 
 is the house algebra landing on a licence: unknown never becomes permission, and it never becomes a
 refusal either.
 
-**Four of the nineteen are a floor rather than a total**, and that is a property of the source, not of
+**Four of these are a floor rather than a total**, and that is a property of the source, not of
 the constant: `mitomap` grants site-wide "unless otherwise noted", `pgs_catalog` is per score,
 `gwas_catalog` states one axis of three, and `alphagenome_avi`'s permissive *Output* terms sit behind
 an eligibility clause about the holder that no column models
@@ -6122,6 +6166,7 @@ caller and `except` order never matters. RM310 was the list shape failing: `cach
 | `download` | `SnapshotNotPublished` | — |
 | `pubmind` | `PubMindReferenceError` | — |
 | `resolver` | `EnsemblReferenceError` | — |
+| `locations` | `EnsemblGroupReleaseError` (RM437: a split Ensembl group not attested to be the core's release, raised by `ensembl_group_dir`) | — |
 
 **Drafting providers, and the licence gate**
 

@@ -86,8 +86,8 @@ _REAL_CACHE_BASE: Path = Path(
 _REAL_CACHE_ROOTS: tuple[Path, ...] = (_REAL_CACHE_BASE,) + tuple(
     Path(value).resolve() for lane in CACHE_LANES if (value := locations.env_value(lane.env_var))
 )
-#: The two bodies every `ensure_*` provisions through; `test_the_hub_is_fenced.py` asserts the set.
-_PROVISIONERS: tuple[str, ...] = ("_provision_snapshot", "_provision_root_file_snapshot")
+#: The bodies every `ensure_*` provisions through (the third pulls the Ensembl groups, RM437); `test_the_hub_is_fenced.py` asserts the set.
+_PROVISIONERS: tuple[str, ...] = ("_provision_snapshot", "_provision_root_file_snapshot", "_provision_groups")
 _REAL_HF_FILESYSTEM = huggingface_hub.HfFileSystem
 _REAL_HF_HUB_DOWNLOAD = huggingface_hub.hf_hub_download
 
