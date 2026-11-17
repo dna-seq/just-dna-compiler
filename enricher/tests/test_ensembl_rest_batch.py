@@ -25,10 +25,10 @@ import pytest
 from just_dna_enricher.enrich import enrich
 from just_dna_enricher.ensembl import (
     _REST_BATCH_CEILING,
-    _REST_BATCH_TIMEOUT,
+    BatchResolver,
     EnsemblResolver,
+    EnsemblSettings,
     _batch_records,
-    _BatchResolver,
     _RestBatchWitness,
 )
 from just_dna_enricher.net import RETRY_ATTEMPTS_ENV, PacingGate
@@ -92,8 +92,9 @@ class _Ensembl:
         return httpx.Response(200, json=record)
 
 
-def _resolver(server: _Ensembl) -> EnsemblResolver:
-    resolver = EnsemblResolver(gate=PacingGate(interval=0.0))
+def _resolver(server: _Ensembl, batch_size: int | None = None) -> EnsemblResolver:
+    settings = EnsemblSettings() if batch_size is None else EnsemblSettings(batch_size=batch_size)
+    resolver = EnsemblResolver(settings=settings, gate=PacingGate(interval=0.0))
     resolver._client = httpx.Client(transport=httpx.MockTransport(server))
     resolver._read_base = lambda _chrom, _pos: None
     return resolver
@@ -108,16 +109,10 @@ def _quiet(monkeypatch: pytest.MonkeyPatch) -> None:
 _ASKED = ["rs1801133", "rs8192284", "rs99999999999", "rs429358", "rs5", "rs6"]
 
 
-def _batch_size(monkeypatch: pytest.MonkeyPatch, size: int) -> None:
-    """The private constant the 0.8 patch line fixes at 20; 0.9 makes it a setting (RM404)."""
-    monkeypatch.setattr("just_dna_enricher.ensembl._REST_BATCH_SIZE", size)
-
-
-def test_a_batch_answers_each_rsid_as_its_get_would(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_a_batch_answers_each_rsid_as_its_get_would() -> None:
     batched_server, single_server = _Ensembl(), _Ensembl()
     batched = dict(_resolver(batched_server)._resolve_rsids_rest(_ASKED))
-    _batch_size(monkeypatch, 1)
-    single = dict(_resolver(single_server)._resolve_rsids_rest(_ASKED))
+    single = dict(_resolver(single_server, batch_size=1)._resolve_rsids_rest(_ASKED))
     assert batched == single
     assert batched["rs8192284"] == (
         [{"chrom": "1", "start": 154454494, "ref": "A", "alts": "C"}],
@@ -198,27 +193,27 @@ def test_a_transport_failure_is_could_not_ask_for_every_rsid() -> None:
     assert dict(resolver._resolve_rsids_rest(["rs1", "rs2"])) == {"rs1": (None, None), "rs2": (None, None)}
 
 
-def test_batches_are_cut_at_the_fixed_size_and_capped_at_ensembls_ceiling(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_batches_are_cut_at_the_settings_size_and_ensembls_ceiling_is_accepted() -> None:
+    """The default is 20; Ensembl's ceiling, 200, is a legal setting, and one above it is refused when the
+    settings are built (RM404, `test_enrich_takes_clients.py`), so nothing here is clamped."""
     server = _Ensembl()
     asked = [f"rs{n}" for n in range(1000, 1045)]
     dict(_resolver(server)._resolve_rsids_rest(asked))
     posts = [r for r in server.requests if r.startswith("POST")]
     assert posts == ["POST 20", "POST 20", "POST 5"]
     server = _Ensembl()
-    _batch_size(monkeypatch, 10_000)
-    dict(_resolver(server)._resolve_rsids_rest([f"rs{n}" for n in range(1000, 1250)]))
+    dict(
+        _resolver(server, batch_size=_REST_BATCH_CEILING)._resolve_rsids_rest(
+            [f"rs{n}" for n in range(1000, 1250)]
+        )
+    )
     assert [r for r in server.requests if r.startswith("POST")] == [f"POST {_REST_BATCH_CEILING}", "POST 50"]
 
 
-def test_the_next_batch_waits_until_every_answer_of_the_one_before_is_taken(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_the_next_batch_waits_until_every_answer_of_the_one_before_is_taken() -> None:
     """What lets the live link journal each answer before the next request (minute 29 recoverable)."""
     server = _Ensembl()
-    _batch_size(monkeypatch, 2)
-    answers = _resolver(server)._resolve_rsids_rest(["rs1801133", "rs429358", "rs2228145"])
+    answers = _resolver(server, batch_size=2)._resolve_rsids_rest(["rs1801133", "rs429358", "rs2228145"])
     next(answers)
     assert server.requests == ["POST 2"]
     next(answers)
@@ -227,9 +222,8 @@ def test_the_next_batch_waits_until_every_answer_of_the_one_before_is_taken(
     assert server.requests == ["POST 2", "POST 1"]
 
 
-def test_a_throttle_past_the_ceiling_holds_the_batches_after_it(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_a_throttle_past_the_ceiling_holds_the_batches_after_it() -> None:
     server = _Ensembl()
-    _batch_size(monkeypatch, 2)
 
     def throttled(request: httpx.Request) -> httpx.Response:
         if request.method == "POST" and not server.requests:
@@ -237,26 +231,31 @@ def test_a_throttle_past_the_ceiling_holds_the_batches_after_it(monkeypatch: pyt
             return httpx.Response(429, headers={"Retry-After": "3600"})
         return server(request)
 
-    resolver = EnsemblResolver(gate=PacingGate(interval=0.0))
+    resolver = EnsemblResolver(settings=EnsemblSettings(batch_size=2), gate=PacingGate(interval=0.0))
     resolver._client = httpx.Client(transport=httpx.MockTransport(throttled))
     answers = dict(resolver._resolve_rsids_rest(["rs1801133", "rs429358", "rs2228145"]))
     assert answers == dict.fromkeys(["rs1801133", "rs429358", "rs2228145"], (None, None))
     assert server.requests == ["POST throttled"]  # the second batch was never sent
 
 
-def test_the_resolver_has_both_batch_capabilities_and_a_post_timeout_of_its_own() -> None:
+@pytest.mark.parametrize("batch_timeout", [None, 300.0])
+def test_the_resolver_has_both_batch_capabilities_and_a_post_timeout_of_its_own(
+    batch_timeout: float | None,
+) -> None:
     resolver = EnsemblResolver()
-    assert isinstance(resolver, _BatchResolver) and isinstance(resolver, _RestBatchWitness)
+    assert isinstance(resolver, BatchResolver) and isinstance(resolver, _RestBatchWitness)
     seen: list[httpx.Timeout] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
         seen.append(httpx.Timeout(**request.extensions["timeout"]))
         return httpx.Response(200, json={})
 
-    resolver = EnsemblResolver(gate=PacingGate(interval=0.0))
+    settings = EnsemblSettings() if batch_timeout is None else EnsemblSettings(batch_timeout=batch_timeout)
+    resolver = EnsemblResolver(settings=settings, gate=PacingGate(interval=0.0))
     resolver._client = httpx.Client(transport=httpx.MockTransport(handler))
     next(resolver._resolve_rsids_rest(["rs1", "rs2"]))
-    assert seen[0].read == _REST_BATCH_TIMEOUT and seen[0].connect == resolver.settings.timeout
+    expected = 120.0 if batch_timeout is None else batch_timeout  # the 0.8 line's fixed 120 s is the default
+    assert seen[0].read == expected and seen[0].connect == resolver.settings.timeout
 
 
 _YAML = (

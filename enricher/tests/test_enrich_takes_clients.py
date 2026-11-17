@@ -1,0 +1,389 @@
+"""RM404: `enrich()` takes a caller's network clients (`clients=`) and sequence proxy (`sequences=`).
+
+A host running modules in parallel holds one paced bundle and one sequence proxy, and until 0.9 `enrich`
+built its own NCBI client and its own `SequenceProxy` per call, so neither could be shared: the registry
+ran its enrichments one at a time for it (S133), and a local seqrepo could not be handed in with the
+network up (S157). What these tests pin, each against the real run:
+
+* every client the bundle carries that `enrich` reads is the one asked, and none of them is closed by
+  `enrich` (the caller holds them); an explicit `resolver=`/`gnomad_client=`/`grch37_client=` wins over
+  the bundle's field; a field left unset is built and closed by `enrich`, never stored on the bundle;
+* a passed proxy is the only sequence source the run reads, the live link's anchor reads included;
+* under `offline=True` the passed proxy is not used, and the run says so once;
+* threads sharing one proxy each get the bases while its data proxy is still being built;
+* `EnsemblSettings.batch_size` above Ensembl's ceiling is refused at construction, never clamped.
+"""
+
+import logging
+import threading
+from collections.abc import Iterator, Sequence
+from pathlib import Path
+
+import httpx
+import pytest
+from just_dna_enricher.clients import LookupClients
+from just_dna_enricher.enrich import enrich
+from just_dna_enricher.enrich.orchestration import OFFLINE_OUTRANKS_SEQUENCES, _RecordedEutils
+from just_dna_enricher.ensembl import BatchResolver, EnsemblResolver, EnsemblSettings, RsidAnswer
+from just_dna_enricher.eutils import EutilsClient, EutilsSettings
+from just_dna_enricher.net import PacingGate
+from just_dna_enricher.sequences import SequenceProxy
+
+_YAML = (
+    "schema_version: '1.0'\nmodule:\n  name: demo\n  title: Demo\n  description: d\n  report_title: Demo\n"
+)
+#: rs1801133 is rsID-only, so the live link is asked about it; rs429358 authors both halves.
+_PLACED = {"rs1801133": ("1", 11796321, "G", "A")}
+
+
+def _spec(root: Path) -> Path:
+    spec = root / "spec"
+    spec.mkdir()
+    (spec / "module_spec.yaml").write_text(_YAML, encoding="utf-8")
+    (spec / "variants.csv").write_text(
+        "rsid,chrom,start,ref,genotype,state,conclusion\n"
+        "rs1801133,,,,A/G,risk,c\n"
+        "rs429358,19,44908684,T,C/T,risk,c\n",
+        encoding="utf-8",
+    )
+    (spec / "studies.csv").write_text("rsid,pmid\nrs1801133,9545397\n", encoding="utf-8")
+    return spec
+
+
+class _Resolver:
+    """A host's resolver: `resolve_rsid` alone. `places=False` answers "no locus", so gnomAD is asked."""
+
+    def __init__(self, places: bool = True) -> None:
+        self.places = places
+        self.asked: list[str] = []
+        self.closed = 0
+
+    def resolve_rsid(self, rsid: str) -> RsidAnswer:
+        self.asked.append(rsid)
+        if not self.places or rsid not in _PLACED:
+            return [], "ensembl-rest"
+        chrom, start, ref, alt = _PLACED[rsid]
+        return [{"chrom": chrom, "start": start, "ref": ref, "alts": alt}], "ensembl-rest"
+
+    def close(self) -> None:
+        self.closed += 1
+
+
+class _Gnomad:
+    """gnomAD's last-resort link, the shape `GnomadClient.resolve_rsids` has."""
+
+    unanswered: dict = {}
+
+    def __init__(self) -> None:
+        self.asked: list[str] = []
+        self.closed = 0
+
+    def resolve_rsids(self, rsids: list[str]) -> dict[str, list[dict]]:
+        self.asked.extend(rsids)
+        out: dict[str, list[dict]] = {}
+        for rsid in rsids:
+            if rsid in _PLACED:
+                chrom, start, ref, alt = _PLACED[rsid]
+                out[rsid] = [{"chrom": chrom, "start": start, "ref": ref, "alts": alt}]
+        return out
+
+    def close(self) -> None:
+        self.closed += 1
+
+
+class _Grch37:
+    """The GRCh37 service, asked only about a ref-mismatched row; it answers nothing, so rows are unchecked."""
+
+    def __init__(self) -> None:
+        self.asked: list[tuple[str, int, int]] = []
+        self.closed = 0
+
+    def reference_bases(self, chrom: str, start: int, end: int) -> str | None:
+        self.asked.append((chrom, start, end))
+        return None
+
+    def close(self) -> None:
+        self.closed += 1
+
+
+def _dbsnp_handler(asked: list[list[str]]):
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.host == "eutils.ncbi.nlm.nih.gov", f"asked {request.url}, not NCBI"
+        ids = request.url.params["id"].split(",")
+        asked.append(ids)
+        result: dict[str, object] = {"uids": ids}
+        for uid in ids:
+            result[uid] = {"uid": uid, "snp_id": int(uid)}
+        return httpx.Response(200, json={"result": result})
+
+    return handler
+
+
+class _CallerEutils(EutilsClient):
+    """A caller's NCBI client over a recorded transport, counting `close()`."""
+
+    closes: int = 0
+
+    def close(self) -> None:
+        self.closes += 1
+        super().close()
+
+
+def _caller_eutils(asked: list[list[str]]) -> _CallerEutils:
+    client = _CallerEutils(settings=EutilsSettings(email=None), gate=PacingGate(0.0))
+    client._client = httpx.Client(transport=httpx.MockTransport(_dbsnp_handler(asked)))
+    return client
+
+
+class _Bases(SequenceProxy):
+    """A proxy answering every read with one base, and counting each read; `proxy()` is a stand-in."""
+
+    def __init__(self, base: str = "A") -> None:
+        super().__init__()
+        self.base = base
+        self.reads = 0
+
+    def proxy(self):
+        self.reads += 1
+        return self
+
+    def subsequence(self, accession: str, start: int, end: int) -> str | None:
+        self.reads += 1
+        return self.base * (end - start)
+
+
+def _online(spec: Path, root: Path, **kwargs):
+    options = {
+        "ensembl_cache": root / "no-snapshot",
+        "clinvar_cache": root / "no-snapshot",
+        "download": False,
+        "use_gnomad": False,
+        "mint_vrs": False,
+        "verify_ref": False,
+        "verify_rsids": False,
+        "verify_clinsig": False,
+        "verify_datasets": False,
+    }
+    options.update(kwargs)
+    return enrich(spec, **options)
+
+
+# ── the bundle ──────────────────────────────────────────────────────────────────────────────────
+
+
+@pytest.mark.usefixtures("no_ambient_caches")
+def test_every_bundle_client_enrich_reads_is_the_one_asked_and_none_is_closed(tmp_path: Path) -> None:
+    """One run that really calls each of the four fields `enrich` reads: ensembl, gnomad, grch37, eutils."""
+    spec = _spec(tmp_path)
+    asked: list[list[str]] = []
+    clients = LookupClients(
+        ensembl=_Resolver(places=False), gnomad=_Gnomad(), grch37=_Grch37(), eutils=_caller_eutils(asked)
+    )
+    result = _online(
+        spec,
+        tmp_path,
+        clients=clients,
+        use_gnomad=True,
+        verify_rsids=True,
+        verify_ref=True,
+        sequences=_Bases("A"),  # every authored and resolved ref mismatches "A", so GRCh37 is asked
+    )
+    assert clients.ensembl.asked == ["rs1801133"]
+    assert clients.gnomad.asked == ["rs1801133"]
+    assert clients.grch37.asked  # the mismatched rows, under the diagnosis limit
+    assert sorted(uid for request in asked for uid in request) == ["1801133", "429358"]
+    assert {r.rsid: r.rsid_status for r in result.rows} == {"rs1801133": "live", "rs429358": "live"}
+    # The caller holds them: `enrich` closes none, and the NCBI client's transport is still open.
+    assert (clients.ensembl.closed, clients.gnomad.closed, clients.grch37.closed) == (0, 0, 0)
+    assert clients.eutils.closes == 0 and clients.eutils._client is not None
+
+
+@pytest.mark.usefixtures("no_ambient_caches")
+@pytest.mark.parametrize("field", ["ensembl", "gnomad", "grch37"])
+def test_an_explicit_client_wins_over_the_bundles_field(tmp_path: Path, field: str) -> None:
+    factory = {"ensembl": lambda: _Resolver(places=False), "gnomad": _Gnomad, "grch37": _Grch37}[field]
+    kwarg = {"ensembl": "resolver", "gnomad": "gnomad_client", "grch37": "grch37_client"}[field]
+    explicit, bundled = factory(), factory()
+    others = {"ensembl": _Resolver(places=False), "gnomad": _Gnomad(), "grch37": _Grch37()}
+    clients = LookupClients(**{**others, field: bundled})
+    _online(
+        _spec(tmp_path),
+        tmp_path,
+        clients=clients,
+        use_gnomad=True,
+        verify_ref=True,
+        sequences=_Bases("A"),
+        **{kwarg: explicit},
+    )
+    assert explicit.asked and not bundled.asked
+    assert (explicit.closed, bundled.closed) == (0, 0)
+
+
+@pytest.mark.usefixtures("no_ambient_caches")
+def test_an_unset_eutils_field_is_built_and_closed_by_enrich_and_never_stored_on_the_bundle(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The non-mutating reading: `enrich` does not call `clients.ensure`, so the bundle stays as passed."""
+    asked: list[list[str]] = []
+    built: list[_RecordedEutils] = []
+
+    class _Owned(_RecordedEutils):
+        closes: int = 0
+
+        def close(self) -> None:
+            self.closes += 1
+            super().close()
+
+    def dbsnp_client(inner: EutilsClient | None = None) -> _RecordedEutils:
+        assert inner is None, "an unset field must not reach the wrapper as a caller's client"
+        client = _Owned(settings=EutilsSettings(email=None), gate=PacingGate(0.0))
+        client._client = httpx.Client(transport=httpx.MockTransport(_dbsnp_handler(asked)))
+        built.append(client)
+        return client
+
+    monkeypatch.setattr("just_dna_enricher.enrich.orchestration._dbsnp_client", dbsnp_client)
+    clients = LookupClients(ensembl=_Resolver())
+    _online(_spec(tmp_path), tmp_path, clients=clients, verify_rsids=True)
+    assert clients.eutils is None
+    (owned,) = built
+    assert owned.closes == 1 and asked
+
+
+def test_the_wrapper_fetches_each_record_once_through_the_callers_client_and_never_closes_it() -> None:
+    asked: list[list[str]] = []
+    caller = _caller_eutils(asked)
+    wrapper = _RecordedEutils(inner=caller)
+    wrapper.esummary("snp", ["1", "2"])
+    wrapper.esummary("snp", ["2", "3"])
+    assert asked == [["1", "2"], ["3"]]
+    wrapper.close()
+    assert caller.closes == 0 and caller._client is not None
+
+
+# ── the sequence proxy ──────────────────────────────────────────────────────────────────────────
+
+
+@pytest.mark.usefixtures("no_ambient_caches")
+def test_the_live_link_enrich_builds_anchors_through_the_passed_proxy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The resolver `enrich` builds reads an indel's anchor base; with a proxy passed, through that one."""
+
+    def no_second_proxy(*_args, **_kwargs):
+        raise AssertionError("a second SequenceProxy was built")
+
+    class _Anchoring(EnsemblResolver):
+        def resolve_rsids_batched(self, rsids: Sequence[str]) -> Iterator[tuple[str, RsidAnswer]]:
+            for rsid in rsids:
+                self._base_reader()("1", 11796321)
+                yield rsid, (None, None)
+
+    monkeypatch.setattr("just_dna_enricher.ensembl.SequenceProxy", no_second_proxy)
+    monkeypatch.setattr("just_dna_enricher.enrich.orchestration.EnsemblResolver", _Anchoring)
+    passed = _Bases("G")
+    _online(_spec(tmp_path), tmp_path, sequences=passed)
+    assert passed.reads == 1
+
+
+@pytest.mark.usefixtures("no_ambient_caches")
+def test_offline_outranks_a_passed_proxy_which_is_not_read_and_the_run_says_so_once(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    bare_root, passed_root = tmp_path / "bare", tmp_path / "passed"
+    bare_root.mkdir()
+    passed_root.mkdir()
+    bare = _online(_spec(bare_root), bare_root, offline=True, verify_ref=True, mint_vrs=True)
+    passed = _Bases("A")
+    with caplog.at_level(logging.WARNING, logger="just_dna_enricher"):
+        result = _online(
+            _spec(passed_root), passed_root, offline=True, verify_ref=True, mint_vrs=True, sequences=passed
+        )
+    assert passed.reads == 0
+    assert [r.getMessage() for r in caplog.records].count(OFFLINE_OUTRANKS_SEQUENCES) == 1
+    assert OFFLINE_OUTRANKS_SEQUENCES == (
+        "enrich(offline=True) does not use the sequence proxy passed as `sequences`: offline outranks it, "
+        "as it outranks an injected client, so this run reads no reference sequence (RM404)."
+    )
+    assert [r.model_dump() for r in result.rows] == [r.model_dump() for r in bare.rows]
+    assert (passed_root / "spec" / "resolution.csv").read_bytes() == (
+        bare_root / "spec" / "resolution.csv"
+    ).read_bytes()
+
+
+def test_threads_sharing_one_proxy_all_get_the_bases_while_its_data_proxy_is_being_built(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Without a lock, a second reader sees the build in flight (`_tried`, no proxy yet), reads `None`,
+    and memoizes it: the base reads as unreadable for the rest of a run that shares the proxy."""
+    entered, release = threading.Event(), threading.Event()
+
+    class _DataProxy:
+        def get_sequence(self, identifier: str, start: int, end: int) -> str:
+            return "c" * (end - start)
+
+    def slow_build(_uri: str) -> _DataProxy:
+        entered.set()
+        release.wait(5)
+        return _DataProxy()
+
+    monkeypatch.setattr("just_dna_enricher.sequences.create_dataproxy", slow_build)
+    shared = SequenceProxy()
+    results: dict[int, str | None] = {}
+
+    def read(start: int) -> None:
+        results[start] = shared.subsequence("SQ.test", start, start + 1)
+
+    first = threading.Thread(target=read, args=(0,))
+    first.start()
+    assert entered.wait(5)
+    second = threading.Thread(target=read, args=(1,))
+    second.start()
+    second.join(0.3)
+    release.set()
+    first.join(5)
+    second.join(5)
+    assert results == {0: "C", 1: "C"}
+    assert shared.subsequence("SQ.test", 1, 2) == "C"  # and the memo holds the bases, not `None`
+
+
+# ── the public batch capability and its settings ────────────────────────────────────────────────
+
+
+def test_batch_size_above_ensembls_ceiling_is_refused_when_the_settings_are_built() -> None:
+    assert EnsemblSettings(batch_size=200).batch_size == 200
+    with pytest.raises(ValueError) as refused:
+        EnsemblSettings(batch_size=201)
+    assert str(refused.value) == (
+        "EnsemblSettings.batch_size=201 is above the 200 rsIDs Ensembl takes in one "
+        "POST /variation/:species; a batch size is never clamped, so pass 200 or fewer"
+    )
+
+
+def test_the_batch_capability_is_public_and_met_only_by_its_own_method_name() -> None:
+    """`runtime_checkable` matches by name, so the name must not be one a different contract already has:
+    gnomAD's `resolve_rsids` returns a dict, and a resolver carrying it is still asked one rsID at a time."""
+    assert isinstance(EnsemblResolver(), BatchResolver)
+    assert not isinstance(_Gnomad(), BatchResolver)
+    assert not isinstance(_Resolver(), BatchResolver)
+
+
+class _Batching(_Resolver):
+    """A host's resolver with the public batch capability."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.batches: list[list[str]] = []
+
+    def resolve_rsids_batched(self, rsids: Sequence[str]) -> Iterator[tuple[str, RsidAnswer]]:
+        self.batches.append(list(rsids))
+        for rsid in rsids:
+            yield rsid, self.resolve_rsid(rsid)
+
+
+@pytest.mark.usefixtures("no_ambient_caches")
+def test_a_host_resolver_with_the_public_capability_is_asked_in_a_batch(tmp_path: Path) -> None:
+    resolver = _Batching()
+    result = _online(_spec(tmp_path), tmp_path, resolver=resolver)
+    assert resolver.batches == [["rs1801133"]]
+    placed = {row.rsid: (row.chrom, row.start) for row in result.rows}
+    assert placed["rs1801133"] == ("1", 11796321)

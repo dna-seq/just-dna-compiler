@@ -547,7 +547,7 @@ per service, put a semaphore around your call site; the gate will not give you t
 | **ClinGen Allele Registry** (`reg.clinicalgenome.org/allele`) | `clingen_allele` → the identity-from-a-name procedure (0.7, RM153) | none published | `_REQUEST_INTERVAL=0.1` (courtesy) | none |
 | **Ensembl GRCh37 REST** (`grch37.rest.ensembl.org`) | `grch37.diagnose_wrong_build` (0.6), `hint recover` | Ensembl publishes **15 req/s** | `_REQUEST_INTERVAL=0.1` — keeps a whole panel inside it while still interactive | none |
 | **ClinVar release probe** | `currency.ClinVarReleaseClient` — one bounded read of the VCF's header (`HEADER_PROBE_BYTES`) per `--verify-datasets` run (0.7) | NCBI asks for no particular pacing on the FTP-over-HTTPS mirror | `CLINVAR_MIN_INTERVAL=0.5` — this tier paces every service it touches, and one probe per run is inside any budget | none |
-| **Ensembl REST** (`rest.ensembl.org`) | `ensembl` (the live link); until RM398 also the placement witness (0.8, RM267), for each snapshot indel no loaded witness holds. The link asks 20 rsIDs per `POST /variation/:species` since RM401 (`ensembl._REST_BATCH_SIZE`, fixed in the 0.8 patch line; 0.9 makes it a setting with RM404), with the POST's own read timeout (`_REST_BATCH_TIMEOUT`, 120 s), and one GET for an rsID a batch leaves out | **15 req/s** per IP, **~55 000 / rolling hour**; 429 + `Retry-After` / `X-RateLimit-*` | `_REQUEST_INTERVAL=0.1` (`EnsemblSettings.interval`), one `PacingGate` per resolver, waited once per attempt (since 2026-11-04); tenacity on transport, 5xx and 429, waiting at least the answer's `Retry-After` (`net.wait_retry_after`); one longer than `net.RETRY_AFTER_CEILING` (10 s) is not retried, and the resolver asks nothing until it passes | none |
+| **Ensembl REST** (`rest.ensembl.org`) | `ensembl` (the live link); until RM398 also the placement witness (0.8, RM267), for each snapshot indel no loaded witness holds. The link asks 20 rsIDs per `POST /variation/:species` since RM401 (`EnsemblSettings.batch_size` since 0.9, RM404; fixed in the 0.8 patch line; above Ensembl's ceiling of 200 it is refused), with the POST's own read timeout (`EnsemblSettings.batch_timeout`, 120 s), and one GET for an rsID a batch leaves out | **15 req/s** per IP, **~55 000 / rolling hour**; 429 + `Retry-After` / `X-RateLimit-*` | `_REQUEST_INTERVAL=0.1` (`EnsemblSettings.interval`), one `PacingGate` per resolver, waited once per attempt (since 2026-11-04); tenacity on transport, 5xx and 429, waiting at least the answer's `Retry-After` (`net.wait_retry_after`); one longer than `net.RETRY_AFTER_CEILING` (10 s) is not retried, and the resolver asks nothing until it passes | none |
 | **CPIC** (`api.cpicpgx.org`) | `cpic` / `pgx_draft` | unpublished | **no `PacingGate`** — coarse PostgREST GETs (gene-scoped), not per-allele loops | none |
 | **ClinPGx** | `clinpgx` / `clinpgx_draft` | n/a at runtime | **offline snapshot only** for the check/draft path — no live poll budget | none (live API retired → snapshot) |
 | **seqrepo REST** (`services.genomicmedlab.org`) | `sequences` / VRS indel mint | unpublished | **no `PacingGate`**; in-process memo of window reads, one window per indel mint (RM407) | none |
@@ -596,8 +596,14 @@ Org limits apply **per member**, not shared. Source of truth:
   matched by name, then by the one record whose `synonyms` name it, and an rsID still unmatched is asked
   by GET, whose 400 is the only "no record" (RM361). An omission is never a negative. A batch that
   fails, a POST 400 included, is could-not-ask for every rsID in it. A batch size of 1 is one GET per
-  rsID, as before. The batching is private in the 0.8 patch line, so only `EnsemblResolver` batches and an
-  injected resolver is asked one rsID at a time; 0.9 publishes the capability and the knobs with RM404.
+  rsID, as before. The batching was private in the 0.8 patch line; **0.9 publishes it (RM404)**: an
+  injected resolver that implements `ensembl.BatchResolver` (`runtime_checkable`, one method,
+  `resolve_rsids_batched(rsids)`, yielding `(rsid, RsidAnswer)` in the order asked) is asked in batches,
+  and one without it one rsID at a time. The method's name is the only thing `isinstance` checks, so it
+  is one no other contract here uses (`GnomadClient.resolve_rsids` answers a dict). The knobs are
+  `EnsemblSettings.batch_size` (default 20) and `batch_timeout` (default 120 s, the POST's read timeout);
+  a `batch_size` above Ensembl's ceiling of 200 raises `ValueError` when the settings are built, never
+  clamped. `_RestBatchWitness`, the witness's batch twin, stays private: nothing asks it since RM398.
 - **No response cache for the live clients.** NCBI / PharmVar / gnomAD GraphQL / Crossref / Europe PMC
   / OLS4 / HGNC / PGS Catalog / LitVar2 / the CIViC API / the ClinGen Allele Registry / GRCh37 Ensembl /
   the ClinVar release probe / live Ensembl are paced only. Persistence is the authored sidecars
@@ -738,8 +744,25 @@ enrich(spec_dir, *, mode="best_effort", offline=False, ensembl_cache=None,
        verify_ref=True, verify_clinsig=True, verify_rsids=True, verify_datasets=True,
        keep_par_twin=False, rederive=False, keep_staging=False, progress=None,
        resolver=None, gnomad_client=None, grch37_client=None,
-       release_probes=None) -> EnrichmentResult
+       release_probes=None, clients=None, sequences=None) -> EnrichmentResult
 ```
+
+**A host's clients and sequence proxy (0.9, RM404).** `clients` is a `LookupClients`, the bundle a host
+holds so every call through it shares one pace; the run reads four fields, `ensembl` (the live link),
+`gnomad` (the last link), `grch37` (the wrong-build diagnosis) and `eutils` (the dbSNP placement witness
+and the rsID merge check). An explicit `resolver=`, `gnomad_client=` or `grch37_client=` wins over the
+field. The NCBI client is wrapped in the run's own `_RecordedEutils`, so each `esummary` record is still
+fetched once per run (RM398); the wrapper is the run's and is closed by it. **The run closes no client
+it was given**, in the bundle or as an argument. A field left unset is built and closed by the run, as
+with no bundle, and never stored on the bundle (the run does not call `clients.ensure`). `sequences` is a
+`SequenceProxy`, and when given it is the **only** sequence source the run reads (S157): the
+reference-allele check, left-alignment, the hosting and placement reads, the VRS minter and the anchor
+base read by the live link's own `EnsemblResolver` all take it; a host's own resolver reads through what
+it holds. A local seqrepo (`uri="seqrepo+file://…"`, with `biocommons.seqrepo` installed by the host) is
+how a host reads locally with the network up. Under `offline=True` the passed proxy is not used, as an
+injected client is not (`@gated-source-caches`): the run warns once, in the words of
+`orchestration.OFFLINE_OUTRANKS_SEQUENCES`, and reads no sequence. The missing timeout beneath
+ga4gh's seqrepo REST proxy stays vrs-python's (RM407's residual); no proxy of ours wraps it.
 
 **`genome_build=None` means "read the module's declaration"** (`spec_genome_build`), not "assume
 GRCh38". It defaulted to the literal `"GRCh38"` and no caller ever passed anything else, which made every
@@ -2859,7 +2882,9 @@ evidence that something upstream is wrong and silence a problem the author needs
 Rows with no coordinate, and rows whose `ref` is not plain ACGT (a symbolic allele, RM5), are not
 checked — abstaining beats inventing a verdict. Reads are cached by `(accession, start, end)`, so a
 module asking about one locus repeatedly costs one round trip, and the same `SequenceProxy` is shared
-with indel minting so a run builds one proxy in total. Needs sequence access, so `--offline` skips it:
+with indel minting so a run builds one proxy in total (or none, when the caller passes one, RM404). Since
+0.9 its lazy build and its memo are under a lock, so parallel runs may share one proxy; the remote read
+is outside the lock, so a thread waits on another only for the dictionary. Needs sequence access, so `--offline` skips it:
 a check that cannot run is not a check that passed, and the run says so rather than implying success.
 
 ### The old assembly: rs-number recovery and a wrong-build diagnosis (`grch37.py`, RM48)

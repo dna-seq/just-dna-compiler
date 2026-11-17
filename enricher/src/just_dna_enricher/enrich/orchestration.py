@@ -36,6 +36,7 @@ from just_dna_format.vrs import normalize_chrom, par_partner, refget_accession
 from just_dna_enricher import clinvar
 from just_dna_enricher.civic_citations import check_evidence_status_currency, read_studies
 from just_dna_enricher.civic_refutation import RefutationFinding, compare_refutations
+from just_dna_enricher.clients import LookupClients
 from just_dna_enricher.clinical import (
     ClinSigComparison,
     ClinSigConflict,
@@ -95,9 +96,10 @@ from just_dna_enricher.enrich.subjects import (
 )
 from just_dna_enricher.enrich.verification_records import _verification_records
 from just_dna_enricher.ensembl import (
+    BatchResolver,
     EnsemblResolver,
     RsidResolver,
-    _BatchResolver,
+    _grch38_base_reader,
 )
 from just_dna_enricher.eutils import EutilsClient, EutilsError
 from just_dna_enricher.events import authored_event
@@ -160,6 +162,11 @@ REST_RETIRED_REASON = (
     "Ensembl REST answered HTTP 410 at least once in this run: it retired a route this enricher asks, "
     "so upgrade just-dna-enricher (the source's own words are in the run's log)"
 )
+#: The one warning a run gives when `offline=True` sets aside a proxy passed as `sequences` (RM404).
+OFFLINE_OUTRANKS_SEQUENCES = (
+    "enrich(offline=True) does not use the sequence proxy passed as `sequences`: offline outranks it, as it "
+    "outranks an injected client, so this run reads no reference sequence (RM404)."
+)
 #: The placement record's not-asked reason when the merge check, whose dbSNP record the witness reads, is off.
 _DBSNP_SWITCHED_OFF = (
     "the rsID merge check is switched off (verify_rsids=False), and the dbSNP witness reads that check's "
@@ -174,21 +181,30 @@ class _RecordedEutils(EutilsClient):
     The dbSNP witness reads the merge check's `esummary db=snp` records before the merge check runs, so
     both are served one fetch: the merge check is handed this client and asks only what the witness did
     not. Every uid asked is remembered, a missing one as `{}`, which `check_rsids` already reads as absent.
+
+    **`inner` is a caller's client (RM404)**, asked through its public `esummary`, so its pacing and its
+    transport are the ones used. The wrapper is the run's and the run closes it; `close` reaches only the
+    wrapper's own transport, never `inner`, which stays the caller's to close.
     """
 
+    inner: EutilsClient | None = None
     _recorded: dict[tuple[str, str], dict[str, Any]] = field(default_factory=dict, repr=False)
 
     def esummary(self, db: str, ids: list[str]) -> dict[str, dict[str, Any]]:
         wanted = [uid for uid in dict.fromkeys(ids) if (db, uid) not in self._recorded]
         if wanted:
-            fetched = super().esummary(db, wanted)
+            fetched = (self.inner.esummary if self.inner is not None else super().esummary)(db, wanted)
             self._recorded.update({(db, uid): fetched.get(uid, {}) for uid in wanted})
         return {uid: self._recorded[(db, uid)] for uid in ids}
 
 
-def _dbsnp_client() -> _RecordedEutils:
-    """The run's NCBI client for the dbSNP witness and the merge check; a test patches this (RM398)."""
-    return _RecordedEutils()
+def _dbsnp_client(inner: EutilsClient | None = None) -> _RecordedEutils:
+    """The run's NCBI client for the dbSNP witness and the merge check; a test patches this (RM398).
+
+    `inner` is the caller's `clients.eutils` when one was given (RM404), wrapped so each record is still
+    fetched once; with none the wrapper asks over its own transport, as before 0.9.
+    """
+    return _RecordedEutils(inner=inner)
 
 
 def _split_by_layer(behind: list[DatasetCurrency]) -> tuple[list[DatasetCurrency], list[DatasetCurrency]]:
@@ -255,6 +271,8 @@ def enrich(
     gnomad_client: Optional["GnomadClient"] = None,
     grch37_client: Grch37Client | None = None,
     release_probes: Mapping[str, ReleaseProbe] | None = None,
+    clients: LookupClients | None = None,
+    sequences: SequenceProxy | None = None,
 ) -> EnrichmentResult:
     """Resolve a spec's variants into `resolution.csv`. See the module docstring for the chain/modes.
 
@@ -343,8 +361,36 @@ def enrich(
     counter cannot promise (its total is not known until resolution finds the links). Exceptions from
     the callback are not swallowed; under the transaction that costs nothing, since the staged answers
     survive an abort exactly as they survive a kill.
+
+    **A host's clients and sequence proxy (0.9, RM404).** `clients` is the network-client bundle a host
+    holds (`LookupClients`), so a run is paced together with every other call through it. The run reads
+    four of its fields: `ensembl` (the live link), `gnomad` (the last link), `grch37` (the wrong-build
+    diagnosis) and `eutils` (the dbSNP placement witness and the rsID merge check, through one wrapper of
+    the run's own so each record is still fetched once). An explicit `resolver=`, `gnomad_client=` or
+    `grch37_client=` wins over the bundle's field. A field left unset is built by the run and closed by
+    it, as with no bundle, and is never stored on the bundle. **The run closes no client it was given**,
+    in `clients` or as an argument: the caller holds them, and closes them.
+
+    `sequences` is the reference-sequence proxy, and when given it is the **only** sequence source the
+    run reads (S157): the reference-allele check, left-alignment, the hosting and placement reads, the
+    VRS minter and the anchor base the live link's own resolver reads all take it, and none builds its
+    own. A `SequenceProxy` reading a local seqrepo (`uri="seqrepo+file://…"`, which needs
+    `biocommons.seqrepo` installed beside the enricher) is how a host reads locally with the network up.
+    One proxy may be shared by parallel runs; its memo is locked. Under `offline=True` it is **not used**:
+    offline outranks it as it outranks an injected client (`@gated-source-caches`), and the run warns
+    once (`OFFLINE_OUTRANKS_SEQUENCES`) and reads no sequence, exactly as an offline run with none.
     """
     spec_dir = Path(spec_dir)
+    # The bundle's fields fill only what no explicit argument gave; a caller's client is never closed,
+    # and the run still closes whatever it builds itself (`owned` below is "the run built it").
+    if clients is not None:
+        resolver = resolver if resolver is not None else clients.ensembl
+        gnomad_client = gnomad_client if gnomad_client is not None else clients.gnomad
+        grch37_client = grch37_client if grch37_client is not None else clients.grch37
+    eutils = clients.eutils if clients is not None else None
+    if offline and sequences is not None:
+        logger.warning(OFFLINE_OUTRANKS_SEQUENCES)
+        sequences = None
     # The lock spans the whole window — from the read of the recorded table to the commit — so it is
     # taken here and not inside the run. A `write=False` caller touches no file and takes none.
     with spec_lock(spec_dir, enabled=write, error=EnrichmentError):
@@ -375,6 +421,8 @@ def enrich(
             gnomad_client=gnomad_client,
             grch37_client=grch37_client,
             release_probes=release_probes,
+            eutils=eutils,
+            sequences=sequences,
         )
 
 
@@ -612,8 +660,13 @@ def _run_enrichment(
     gnomad_client: Optional["GnomadClient"],
     grch37_client: Grch37Client | None,
     release_probes: Mapping[str, ReleaseProbe] | None,
+    eutils: EutilsClient | None,
+    sequences: SequenceProxy | None,
 ) -> EnrichmentResult:
     """The run itself, with the advisory lock already held. Every argument is `enrich`'s; see it.
+
+    `eutils` is the bundle's `eutils` field and `sequences` the caller's proxy, already set aside by
+    `enrich` under `offline`.
 
     Split out rather than indented under a `with` so the chain below reads as one straight sequence of
     links and passes, which is how every comment in it is written.
@@ -786,8 +839,10 @@ def _run_enrichment(
 
     # One proxy, one read cache for the run: the hosting filter settles an undecided indel with it
     # (RM274), at each link's answer (RM382) and again in the assembly loop, and minting and the
-    # reference check reuse it after the table is assembled. Lazy, so nothing is read until asked.
-    sequences = SequenceProxy(offline=offline)
+    # reference check reuse it after the table is assembled. Lazy, so nothing is read until asked. A
+    # caller's proxy is that one (RM404, S157), and nothing below builds a second.
+    if sequences is None:
+        sequences = SequenceProxy(offline=offline)
     read_window = _grch38_window(sequences) if genome_build == "GRCh38" else None
     # One minter for the run too: the placement comparison below and the stamping after the table
     # both mint, and sharing it shares the proxy's read cache.
@@ -1021,16 +1076,18 @@ def _run_enrichment(
         )
         if missing:
             owned = resolver is None
-            client = resolver or EnsemblResolver()
+            # The resolver the run builds reads an indel's anchor base through the run's proxy (RM404),
+            # never one of its own; a caller's resolver reads through whatever it holds.
+            client = resolver or EnsemblResolver(_read_base=_grch38_base_reader(sequences))
             ensembl_link = client
             rest_answered = False
             try:
-                # RM401: many rsIDs per request where the resolver can (ours, `_BatchResolver`), each
-                # answer taken and journalled below before the next batch is asked; one at a time where
-                # it cannot (a host's resolver written before it).
+                # RM401: many rsIDs per request where the resolver can (`BatchResolver`, public since
+                # RM404), each answer taken and journalled below before the next batch is asked; one at a
+                # time where it cannot (a host's resolver written before it).
                 answers = (
-                    client._resolve_rsids(missing)
-                    if isinstance(client, _BatchResolver)
+                    client.resolve_rsids_batched(missing)
+                    if isinstance(client, BatchResolver)
                     else ((rsid, client.resolve_rsid(rsid)) for rsid in missing)
                 )
                 for rsid, (loci, src) in answers:
@@ -1132,7 +1189,8 @@ def _run_enrichment(
     )
     clinvar_gkm_ref = resolve_clinvar_gkm_reference(clinvar_gkm_cache) if genome_build == "GRCh38" else None
     # The dbSNP witness and the merge check share one client, so each rsID's record is fetched once (RM398).
-    dbsnp = _dbsnp_client() if verify_rsids and not offline else None
+    # It wraps a caller's `clients.eutils` when there is one (RM404); the wrapper is closed below, never it.
+    dbsnp = _dbsnp_client(eutils) if verify_rsids and not offline else None
     if genome_build != "GRCh38":
         placement = PlacementCheck(not_checked="unsupported")
     else:

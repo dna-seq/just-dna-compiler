@@ -33,6 +33,7 @@ one tier that has the sequence to do it with.
 """
 
 import logging
+import threading
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 
@@ -59,6 +60,14 @@ class SequenceProxy:
     once and only if actually needed** (a module of pure substitutions never touches the network for
     minting), and reads are **memoized** by `(accession, start, end)` — a module commonly asks about
     the same locus several times, and each miss is an HTTP round trip.
+
+    **One proxy may be shared across threads (0.9, RM404).** `enrich(sequences=)` takes a caller's
+    proxy, and the motivating host runs several `enrich()` calls at once through one. The lazy build and
+    the memo are bookkeeping under one lock; the remote read is not, so threads wait on each other only
+    for a dictionary, never for the network (`@shared-pacing-gate`). Without the build under it, a
+    second reader arriving while the first was still inside `create_dataproxy` saw a proxy tried and
+    absent, read `None`, and memoized it, so the base read as unreadable for the rest of the run. Two
+    threads missing the same key at once may each read it; both get the same bases.
     """
 
     uri: str = DEFAULT_SEQREPO_URI
@@ -66,6 +75,7 @@ class SequenceProxy:
     _proxy: object = None
     _tried: bool = False
     _cache: dict[tuple[str, int, int], str | None] = field(default_factory=dict)
+    _lock: threading.Lock = field(default_factory=threading.Lock, repr=False, compare=False)
 
     def proxy(self):
         """The underlying `ga4gh.vrs` data proxy, or `None` when offline or unreachable.
@@ -73,27 +83,31 @@ class SequenceProxy:
         `None` is a normal outcome, not an error: an offline run legitimately has no sequence access,
         and callers degrade (leave an id unminted, skip a check) rather than fail.
         """
-        if self.offline or self._tried and self._proxy is None:
+        if self.offline:
             return None
-        if self._proxy is None:
-            self._tried = True
-            try:
-                self._proxy = create_dataproxy(self.uri)
-            except Exception as exc:
-                logger.warning(
-                    "Could not reach the sequence service at %s (%s); sequence-dependent work "
-                    "(indel VRS ids, the reference-allele check) is skipped this run.",
-                    self.uri,
-                    exc,
-                )
+        with self._lock:
+            if self._tried and self._proxy is None:
                 return None
-        return self._proxy
+            if self._proxy is None:
+                self._tried = True
+                try:
+                    self._proxy = create_dataproxy(self.uri)
+                except Exception as exc:
+                    logger.warning(
+                        "Could not reach the sequence service at %s (%s); sequence-dependent work "
+                        "(indel VRS ids, the reference-allele check) is skipped this run.",
+                        self.uri,
+                        exc,
+                    )
+                    return None
+            return self._proxy
 
     def subsequence(self, accession: str, start: int, end: int) -> str | None:
         """Uppercased reference bases over the interbase interval `[start, end)`, or `None`."""
         key = (accession, start, end)
-        if key in self._cache:
-            return self._cache[key]
+        with self._lock:
+            if key in self._cache:
+                return self._cache[key]
         proxy = self.proxy()
         result: str | None = None
         if proxy is not None:
@@ -102,7 +116,8 @@ class SequenceProxy:
                 result = fetched.upper() if fetched else None
             except Exception as exc:
                 logger.warning("Sequence read failed for %s:[%d,%d) (%s)", accession, start, end, exc)
-        self._cache[key] = result
+        with self._lock:
+            self._cache[key] = result
         return result
 
 

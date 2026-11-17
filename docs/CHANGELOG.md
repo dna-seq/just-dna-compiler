@@ -77,6 +77,22 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   before anything runs (exit 2, `cache_commands.REHEARSE_DOWNLOAD_REFUSAL` plus the missing flags).
   Its help states the limit: the prediction is the dry run's, so an adapter that refuses on its own inputs (ACMG
   with no workbook, PharmVar with no key) reads `rehearsing:` and then `not run`.
+- **`enrich(..., clients=None, sequences=None)`** (RM404, S133, S157): a host hands the run its `LookupClients`
+  bundle and its `SequenceProxy`, so parallel runs share one pace and one reference. The run reads the bundle's
+  `ensembl`, `gnomad`, `grch37` and `eutils`; `resolver=`, `gnomad_client=` and `grch37_client=` still win over the
+  field. The NCBI client is wrapped in the run's own once-per-record wrapper (RM398), and **no client the caller
+  gave is closed by the run**; an unset field is built and closed by the run and never stored on the bundle. A
+  passed proxy is the only sequence source the run reads (the reference check, left-alignment, the minter and the
+  live link's anchor base). Under `offline=True` it is not used, and the run warns once
+  (`orchestration.OFFLINE_OUTRANKS_SEQUENCES`). With neither argument a run writes the same bytes as before.
+- **`ensembl.BatchResolver` and `ensembl.RsidAnswer`** (RM404, RM401's capability published): an injected resolver
+  with `resolve_rsids_batched(rsids)` is asked in batches. The 0.8 line's private `_BatchResolver`, its
+  `_resolve_rsids` and `_Answer` are gone; `_RestBatchWitness` stays private. **`EnsemblSettings.batch_size`**
+  (default 20) and **`batch_timeout`** (default 120 s) replace the fixed module constants, and a `batch_size` above
+  Ensembl's ceiling of 200 raises `ValueError` when the settings are built, where 0.8 clamped it silently.
+- **`SequenceProxy` may be shared across threads** (RM404): its lazy build and its memo are under a lock, the
+  remote read outside it. Before, a second reader arriving while the first built the data proxy read `None` and
+  memoized it.
 
 ## 2026-11-16 — `v0.8.8`: enricher 0.8.8 (a patch, cut from `main`)
 
