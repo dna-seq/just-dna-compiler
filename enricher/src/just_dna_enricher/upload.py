@@ -310,7 +310,8 @@ class ModuleNotPublishable(PublishRefused, FileNotFoundError):
 
 class SnapshotNotPublishable(PublishRefused, FileNotFoundError):
     """The snapshot directory has nothing built to publish (`plan_reference_snapshot`, RM368), or only
-    part of it: since 0.9 a `release.json` recording a dataset read below its total is refused as well
+    part of it: since 0.9 a `release.json` recording a dataset read below its total is refused as well,
+    and so is one present that does not parse or records a parts count that is not a whole number
     (RM412).
 
     Still a `FileNotFoundError` within 0.8, for the reason `ModuleNotPublishable` is.
@@ -1430,6 +1431,61 @@ class SnapshotPlan(BaseModel):
     )
 
 
+#: The `release.json` keys the publish gate reads as written rather than through the lenient read:
+#: the two that say whether a build is whole (RM412).
+_PART_COUNT_KEYS = ("parts_read", "parts_total")
+
+
+def _refuse_an_unreadable_record(snapshot_dir: Path) -> None:
+    """Refuse a snapshot whose `release.json` is present and cannot say whether the build is whole (RM412).
+
+    `read_release` reads a record that does not parse as no record, and a mistyped key as unstated, and
+    it coerces `"1"`, `12.0` and `true` into counts. Either way a record that cannot be read would pass
+    `_refuse_a_partial_build` as one that states nothing. Present-and-unreadable is the refusal, absent
+    is the unknown arm (`@an-absent-input-is-the-unknown-arm-and-a-malformed-one-is-the-refusal`), so
+    this reads the file as written, decoded as `read_release` decodes it (UTF-8, then `json.loads`), and
+    refuses a file that does not decode, one that is not a JSON object, and a `parts_read` or
+    `parts_total` that is present and is not a map of datasets to whole numbers, quoting each value.
+
+    Not refused here: no `release.json`, a record with neither key, and a `null` (the model's stated
+    unknown, for the whole map; for one dataset's count, undecided and left to the lenient read).
+    """
+    path = snapshot_dir / RELEASE_FILENAME
+    if not path.is_file():
+        return
+    try:
+        record = json.loads(path.read_bytes().decode("utf-8"))
+    except (OSError, ValueError) as exc:  # UnicodeDecodeError and JSONDecodeError are both ValueErrors
+        problem = str(exc)
+    else:
+        problem = None if isinstance(record, dict) else "not a JSON object"
+    if problem is not None:
+        raise SnapshotNotPublishable(
+            f"{path} cannot be read ({problem}), so nothing can say whether this snapshot was built whole. "
+            f"Rebuild the snapshot before publishing."
+        )
+    unreadable = []
+    for key in _PART_COUNT_KEYS:
+        counts = record.get(key)
+        if counts is None:
+            continue
+        if not isinstance(counts, dict):
+            unreadable.append(
+                f"{key} is {json.dumps(counts, ensure_ascii=False)}, not a map of datasets to part counts"
+            )
+            continue
+        unreadable.extend(
+            f"{key}[{json.dumps(name, ensure_ascii=False)}] is {json.dumps(count, ensure_ascii=False)}, not a whole number"
+            for name, count in sorted(counts.items())
+            if count is not None and (isinstance(count, bool) or not isinstance(count, int))
+        )
+    if unreadable:
+        raise SnapshotNotPublishable(
+            f"{path} records {'; '.join(unreadable)}, so nothing can say whether this snapshot was built "
+            f"whole. Rebuild the snapshot before publishing."
+        )
+
+
 def _refuse_a_partial_build(snapshot_dir: Path) -> None:
     """Refuse a snapshot whose `release.json` records a dataset read short of its total (RM412).
 
@@ -1477,8 +1533,11 @@ def plan_reference_snapshot(
     A `payload` snapshot is refused when the file is missing, exactly as a parquet one is when
     `data/` is empty — the refusal is the same claim either way, that there is nothing built here to
     publish. So is a partial build (`_refuse_a_partial_build`, 0.9): its bytes are there, the whole
-    of them is not.
+    of them is not. And so, first, is a `release.json` present that cannot say whether the build is
+    whole (`_refuse_an_unreadable_record`, 0.9): one that does not parse, or a parts count that is not
+    a whole number.
     """
+    _refuse_an_unreadable_record(snapshot_dir)
     _refuse_a_partial_build(snapshot_dir)
     resolved_repo = repo_id or DEFAULT_CLINVAR_REPO_ID
     if payload is not None:

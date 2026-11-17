@@ -173,3 +173,40 @@ def test_a_partial_build_already_at_the_lane_is_rehearsed_as_refused(
         f"{total['l2g']} parts read" in said
     )
     assert "would upload" not in said
+
+
+@pytest.mark.parametrize(
+    ("raw", "said_after_the_path"),
+    [
+        (b"{", "cannot be read ("),
+        (
+            json.dumps({"dataset": "opentargets_26.09", "parts_read": "1"}).encode(),
+            'records parts_read is "1"',
+        ),
+    ],
+    ids=["unparsable", "miscounted"],
+)
+def test_an_unreadable_record_already_at_the_lane_is_rehearsed_as_refused(
+    raw: bytes,
+    said_after_the_path: str,
+    monkeypatch: pytest.MonkeyPatch,
+    no_ambient_caches: Path,
+    tmp_path: Path,
+) -> None:
+    """The rebuild's rehearsal plans through the same gate: a record that cannot say whether the build is whole (RM412)."""
+    _install(monkeypatch, _Hub({}))
+    out = tmp_path / "caches"
+    built = out / "opentargets"
+    (built / "data").mkdir(parents=True)
+    pl.DataFrame({"study_locus_id": ["x"]}).write_parquet(built / "data" / "l2g.parquet")
+    (built / RELEASE_FILENAME).write_bytes(raw)
+
+    result = CliRunner().invoke(
+        app, ["cache", "rebuild", "--out", str(out), "--only", "opentargets", "--publish", "--dry-run"]
+    )
+
+    assert result.exit_code == 0, result.output
+    said = " ".join(result.output.split())
+    assert f"WOULD BE REFUSED: {built / RELEASE_FILENAME} {said_after_the_path}" in said
+    assert "Rebuild the snapshot before publishing." in said
+    assert "would upload" not in said

@@ -3072,6 +3072,13 @@ both numbers (`l2g 1 of 12 parts`). Every snapshot publish and its rehearsal pla
 refusal reaches the per-lane `X publish` commands, `cache rebuild --publish` and the rebuild dry run's rehearsal
 of a snapshot already at `<out>/<lane>` alike, before the repo is read or created. A record that states neither
 count, only one, or a dataset in one and not the other cannot say, and is not refused by this check.
+**A record present and unreadable refuses too**, at the same point and first: a `release.json` that does not
+parse or is not a JSON object (the message quotes the parser's complaint), and a `parts_read` or `parts_total`
+that is present and is not a map of datasets to whole numbers (`parts_read is "1"`, `parts_read["l2g"] is 1.5`,
+each value quoted). The gate reads the file as written, because the lenient `read_release` reads an
+unparsable record as no record and a mistyped map as unstated, and coerces a count of `"1"`, `12.0` or `true`.
+Absent is the unknown arm and present-and-unreadable the refusal, so no `release.json`, no counts, or a `null`
+count is not refused by this check.
 `cache rebuild` itself never builds a partial snapshot: its adapter takes no `--parts`, and `--source` takes a
 file, never the Open Targets parts directory, so the dry run's rehearsal of a build left at `<out>/opentargets`
 is the one rebuild route that meets one. `opentargets publish` and `clinvar-gkm publish` also warn, refusing

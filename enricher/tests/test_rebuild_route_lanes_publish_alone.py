@@ -16,7 +16,7 @@ import pytest
 from just_dna_enricher.caches import LANES_BY_NAME
 from just_dna_enricher.cli import app
 from just_dna_enricher.locations import RELEASE_FILENAME
-from just_dna_enricher.upload import plan_reference_snapshot
+from just_dna_enricher.upload import SnapshotNotPublishable, plan_reference_snapshot
 from typer.testing import CliRunner
 
 #: The CLI group that carries each lane's standalone publish.
@@ -243,3 +243,235 @@ def test_an_unlabelled_partial_build_is_warned_about_first_and_then_refused(
     assert result.exit_code == 1, result.output
     said = " ".join(result.output.split())
     assert said.index(_UNLABELLED) < said.index("WOULD BE REFUSED")
+
+
+# ── an unreadable record is refused, an absent one is not (RM412's second follow-up) ──────────────────
+
+
+def _with_release_bytes(root: Path, lane: str, raw: bytes) -> Path:
+    """`_built`, with `release.json` replaced by `raw`, byte for byte."""
+    snapshot = _built(root, lane)
+    (snapshot / RELEASE_FILENAME).write_bytes(raw)
+    return snapshot
+
+
+def _decode_problem(raw: bytes) -> str:
+    """What the standard library says is wrong with `raw` as JSON: the error the refusal must quote."""
+    try:
+        json.loads(raw.decode("utf-8"))
+    except ValueError as exc:
+        return str(exc)
+    raise AssertionError(f"{raw!r} parses")
+
+
+def _unreadable_refusal(snapshot: Path, problem: str) -> str:
+    return (
+        f"{snapshot / RELEASE_FILENAME} cannot be read ({problem}), so nothing can say whether this snapshot "
+        f"was built whole. Rebuild the snapshot before publishing."
+    )
+
+
+def _miscounted_refusal(snapshot: Path, items: list[str]) -> str:
+    return (
+        f"{snapshot / RELEASE_FILENAME} records {'; '.join(items)}, so nothing can say whether this snapshot "
+        f"was built whole. Rebuild the snapshot before publishing."
+    )
+
+
+#: Bytes that are not a JSON document at all: truncated, not JSON, not UTF-8.
+_UNPARSABLE = {
+    "truncated": b'{"dataset": "fixture", "parts_read": {"l2g": 1',
+    "not-json": b"dataset=fixture\n",
+    "empty": b"",
+    "not-utf8": b'{"dataset": "\xff"}',
+}
+
+
+def _assert_refused_in_both_runs(lane: str, snapshot: Path, expected: str) -> None:
+    """Refused in the rehearsal and in the real run, and the real run never reached `create_repo`."""
+    runner = CliRunner()
+    rehearsed = runner.invoke(app, [_GROUPS[lane], "publish", str(snapshot), "--dry-run"])
+    real = runner.invoke(app, [_GROUPS[lane], "publish", str(snapshot)])
+
+    assert rehearsed.exit_code == 1, rehearsed.output
+    assert f"WOULD BE REFUSED: {expected}" in " ".join(rehearsed.output.split())
+    # The fake hub's `create_repo` raises: a refusal that came after it would surface as that error.
+    assert isinstance(real.exception, SystemExit), real.exception
+    assert real.exit_code == 1, real.output
+    assert f"PUBLISH FAILED: {expected}" in " ".join(real.output.split())
+
+
+@pytest.mark.parametrize("lane", sorted(_GROUPS))
+@pytest.mark.parametrize("raw", list(_UNPARSABLE.values()), ids=list(_UNPARSABLE))
+def test_a_release_record_that_does_not_parse_is_refused_before_the_repo_is_touched(
+    lane: str, raw: bytes, fake_hub: type[_Api], tmp_path: Path
+) -> None:
+    """Present and unreadable is the refusal: the record that would say whether the build is whole says nothing."""
+    snapshot = _with_release_bytes(tmp_path, lane, raw)
+
+    _assert_refused_in_both_runs(lane, snapshot, _unreadable_refusal(snapshot, _decode_problem(raw)))
+
+
+@pytest.mark.parametrize("lane", sorted(_GROUPS))
+@pytest.mark.parametrize("document", [[], ["fixture"], "fixture", 3, None], ids=repr)
+def test_a_release_record_that_is_not_a_json_object_is_refused(
+    lane: str, document: object, fake_hub: type[_Api], tmp_path: Path
+) -> None:
+    snapshot = _with_release_bytes(tmp_path, lane, json.dumps(document).encode())
+
+    _assert_refused_in_both_runs(lane, snapshot, _unreadable_refusal(snapshot, "not a JSON object"))
+
+
+#: A count present and not a whole number, and what the refusal says about it. A parts map that is not
+#: a map at all is the same claim one level up.
+_MISCOUNTED = {
+    "read-is-a-string": (
+        {"parts_read": "1", "parts_total": {"l2g": 12}},
+        ['parts_read is "1", not a map of datasets to part counts'],
+    ),
+    "total-is-a-number": (
+        {"parts_read": {"l2g": 1}, "parts_total": 12},
+        ["parts_total is 12, not a map of datasets to part counts"],
+    ),
+    "total-is-a-list": (
+        {"parts_read": {"l2g": 1}, "parts_total": [12]},
+        ["parts_total is [12], not a map of datasets to part counts"],
+    ),
+    "count-is-a-string": (
+        {"parts_read": {"l2g": "1"}, "parts_total": {"l2g": 12}},
+        ['parts_read["l2g"] is "1", not a whole number'],
+    ),
+    "count-is-a-fraction": (
+        {"parts_read": {"l2g": 1.5}, "parts_total": {"l2g": 12}},
+        ['parts_read["l2g"] is 1.5, not a whole number'],
+    ),
+    "count-is-a-float": (
+        {"parts_read": {"l2g": 12}, "parts_total": {"l2g": 12.0}},
+        ['parts_total["l2g"] is 12.0, not a whole number'],
+    ),
+    "count-is-a-boolean": (
+        {"parts_read": {"l2g": True}, "parts_total": {"l2g": 1}},
+        ['parts_read["l2g"] is true, not a whole number'],
+    ),
+    "count-is-a-map": (
+        {"parts_read": {"l2g": {"n": 1}}, "parts_total": {"l2g": 1}},
+        ['parts_read["l2g"] is {"n": 1}, not a whole number'],
+    ),
+    "a-name-outside-ascii": (
+        {"parts_read": {"étude": "1"}, "parts_total": {"étude": 1}},
+        ['parts_read["étude"] is "1", not a whole number'],
+    ),
+    "several": (
+        {"parts_read": {"study": "1", "l2g": "1"}, "parts_total": {"l2g": 1.0, "study": 1}},
+        [
+            'parts_read["l2g"] is "1", not a whole number',
+            'parts_read["study"] is "1", not a whole number',
+            'parts_total["l2g"] is 1.0, not a whole number',
+        ],
+    ),
+}
+
+
+@pytest.mark.parametrize("lane", sorted(_GROUPS))
+@pytest.mark.parametrize("case", list(_MISCOUNTED.values()), ids=list(_MISCOUNTED))
+def test_a_parts_count_present_and_not_a_whole_number_is_refused_quoting_it(
+    lane: str, case: tuple[dict, list[str]], fake_hub: type[_Api], tmp_path: Path
+) -> None:
+    """`"1"` and `12.0` are coerced into counts by the lenient read, and `true` into 1; the gate reads them as written."""
+    release, items = case
+    snapshot = _with_release(tmp_path, lane, {"dataset": f"{lane}_fixture", **release})
+
+    _assert_refused_in_both_runs(lane, snapshot, _miscounted_refusal(snapshot, items))
+
+
+@pytest.mark.parametrize(
+    "release",
+    [
+        {"dataset": "fixture", "parts_read": None, "parts_total": None},
+        {"dataset": "fixture", "parts_read": {"l2g": 12}, "parts_total": {"l2g": 12}, "row_count": "7"},
+    ],
+    ids=["stated-unknown", "an-unrelated-key-miscounted"],
+)
+def test_a_stated_unknown_and_other_keys_are_not_this_checks_refusal(
+    release: dict, fake_hub: type[_Api], tmp_path: Path
+) -> None:
+    """A recorded `null` map is the model's stated unknown, and the gate reads only the parts counts strictly."""
+    snapshot = _with_release(tmp_path, "opentargets", release)
+
+    result = CliRunner().invoke(app, ["opentargets", "publish", str(snapshot), "--dry-run"])
+
+    assert result.exit_code == 0, result.output
+    assert "would upload" in result.output
+    assert "Rebuild the snapshot before publishing" not in result.output
+
+
+def test_a_null_count_for_one_dataset_is_not_read_as_unreadable(fake_hub: type[_Api], tmp_path: Path) -> None:
+    """Undecided, so only this check's silence is pinned, never whether the snapshot publishes.
+
+    The decision names a count "present but not a number", and whether a per-dataset `null` is one was
+    not decided; whatever a later decision makes of it, this gate does not refuse it today.
+    """
+    snapshot = _with_release(
+        tmp_path,
+        "opentargets",
+        {"dataset": "fixture", "parts_read": {"l2g": None}, "parts_total": {"l2g": 12}},
+    )
+
+    result = CliRunner().invoke(app, ["opentargets", "publish", str(snapshot), "--dry-run"])
+
+    assert "Rebuild the snapshot before publishing" not in result.output
+    assert "not a whole number" not in result.output
+
+
+def test_a_snapshot_with_no_release_record_is_not_refused_by_this_check(
+    fake_hub: type[_Api], tmp_path: Path
+) -> None:
+    snapshot = _built(tmp_path, "opentargets")
+    (snapshot / RELEASE_FILENAME).unlink()
+
+    result = CliRunner().invoke(app, ["opentargets", "publish", str(snapshot), "--dry-run"])
+
+    assert result.exit_code == 0, result.output
+    assert "would upload" in result.output
+
+
+@pytest.mark.parametrize("payload", [None, "STRchive-loci.json"])
+def test_the_planner_itself_refuses_so_every_snapshot_publish_inherits_it(
+    payload: str | None, tmp_path: Path
+) -> None:
+    """`plan_reference_snapshot`, with and without a root payload: the check runs before either branch."""
+    snapshot = _with_release_bytes(tmp_path, "opentargets", b"{")
+    if payload is not None:
+        (snapshot / payload).write_text("[]", encoding="utf-8")
+    miscounted = _with_release(tmp_path / "other", "opentargets", {"parts_read": "1"})
+    if payload is not None:
+        (miscounted / payload).write_text("[]", encoding="utf-8")
+
+    with pytest.raises(SnapshotNotPublishable) as unreadable:
+        plan_reference_snapshot(snapshot, "o/r", payload=payload)
+    with pytest.raises(SnapshotNotPublishable) as counted:
+        plan_reference_snapshot(miscounted, "o/r", payload=payload)
+
+    assert str(unreadable.value) == _unreadable_refusal(snapshot, _decode_problem(b"{"))
+    assert str(counted.value) == _miscounted_refusal(
+        miscounted, ['parts_read is "1", not a map of datasets to part counts']
+    )
+
+
+def test_the_four_refusals_say_four_different_things(tmp_path: Path) -> None:
+    """Unparsable, not an object, miscounted and partial are four instructions; no two messages may coincide."""
+    snapshots = {
+        "unparsable": _with_release_bytes(tmp_path / "a", "opentargets", b"{"),
+        "not-an-object": _with_release_bytes(tmp_path / "b", "opentargets", b"[]"),
+        "miscounted": _with_release(tmp_path / "c", "opentargets", {"parts_read": {"l2g": "1"}}),
+        "partial": _with_release(
+            tmp_path / "d", "opentargets", {"parts_read": _PARTS_READ, "parts_total": _PARTS_TOTAL}
+        ),
+    }
+    said = {}
+    for name, snapshot in snapshots.items():
+        with pytest.raises(SnapshotNotPublishable) as refused:
+            plan_reference_snapshot(snapshot, "o/r")
+        said[name] = str(refused.value).replace(str(snapshot), "<dir>")
+
+    assert len(set(said.values())) == len(said), said
