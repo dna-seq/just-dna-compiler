@@ -7,7 +7,7 @@ The liaison's working state, rewritten to the present before each reset.
 **Ledgers:** `docs/UPSTREAM_GA4GH_VRS.md`, `docs/UPSTREAM_POLARS.md`, `docs/UPSTREAM_DUCKDB.md`, `docs/UPSTREAM_ENSEMBL.md` (a standing watch with no clone or watcher, handed over by the lead
 2026-11-04; re-checked by hand monthly, next 2026-12-04). Read marks:
 ga4gh.vrs 2.3.3 (pre-releases read through 2.4.0-a6), polars `py-2.1.0`, duckdb `2.0.0`. Installed (`uv.lock`):
-2.3.3, 2.1.0, 1.5.5. `mkdocs.yml` `not_in_nav` carries `UPSTREAM_*.md`.
+2.3.3, 2.1.0, 1.5.6 (since the 2026-11-17 bump). `mkdocs.yml` `not_in_nav` carries `UPSTREAM_*.md`.
 `docs/UPSTREAM_DATA_SOURCES.md` (since 2026-11-07, the maintainer's ask): one row per cache lane, available /
 built / published; measured by hand that day, re-measured weekly. Behind then: clinvar, constraint (pinned
 4.1, source at 4.1.2), civic, strchive, likely mitomap. Since 2026-11-09 all are published current; the shared
@@ -57,7 +57,10 @@ held at 1.5.5 for RM344; typer 0.29 dropped `Parameter.type`, so `scripts/gen_cl
 One test red on main before and after, the fence test's `huggingface_hub` case: hub fetches its agent-harness
 registry from the global endpoint and the test passes only within a day of a real hub call. Fix on
 `liaison/hf-hub-2.4` (343c559c); the lead took its six lines to main as 11f86d74 (2026-11-10).
-Lesson: before blaming a moved package, run the failing test on the old lock.
+Lesson: before blaming a moved package, run the failing test on the old lock. **Second bump 2026-11-17** (830962e9): eleven moves, duckdb
+1.5.5 -> 1.5.6 (held on 1.x for RM344), suite 7446 green, no new warning. Re-measured the same run: data sources (clinvar
+and mitomap behind their sources, sent to the lead), the GWAS probe (unchanged), the VCF PRs (unchanged). The
+duckdb-python tag watcher went (finals only, as the index); polars' stays (its rc tags). Next bump: Tuesday 2026-11-24.
 
 **GWAS Catalog REST v2** (`docs/UPSTREAM_GWAS_CATALOG.md`, since 2026-11-11, after RM428): a live service, no
 package or clone; its release channel is the news page (read through the 2026-08-19 post). A weekly probe of the page

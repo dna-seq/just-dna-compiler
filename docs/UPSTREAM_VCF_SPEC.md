@@ -22,7 +22,8 @@ goes to triage, which does.
 - **4.6: none.** No `VCFv4.6*` file on any branch, and no open pull request drafts one (2026-11-12).
 - **Open pull requests touching VCF** (2026-11-12): #874 (a 4.5 test file for `Number=P` with `PSL`/`PSO`/`PSQ`,
   updated 2026-10-20), #853 (a gVCF example fix), #283 (a strict SAM/VCF draft, updated 2026-07-08), and two from
-  2022 (#527, #430). Re-listed with the weekly bump; one that merges reaches the watcher.
+  2022 (#527, #430). Re-listed with the weekly bump; one that merges reaches the watcher. **Re-listed 2026-11-17:** the same five open,
+  none updated since 2026-10-20, no 4.6 file on any branch, `master` still at `510c107`.
 
 ## What we point at
 
