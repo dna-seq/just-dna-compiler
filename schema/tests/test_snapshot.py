@@ -26,11 +26,13 @@ from just_dna_format.snapshot import (
     begin_snapshot_write,
     clinvar_release_label,
     holds_snapshot_payload,
+    parse_release,
     read_release,
     release_is_unreadable,
     release_label,
     write_release,
 )
+from pydantic import ValidationError
 
 
 def _release_file(directory: Path, payload: object) -> Path:
@@ -322,3 +324,59 @@ def test_a_block_write_with_no_record_writes_one_with_the_block(tmp_path: Path) 
     assert json.loads((directory / RELEASE_FILENAME).read_text(encoding="utf-8")) == {
         "citations": {"row_count": 2}
     }
+
+
+# ── 0.9 (RM430 decision 6): one parser for the record's content, which a remote reader shares ────────
+
+#: Old spellings, a ClinVar date with no `dataset`, a recorded `null` and a key the model does not
+#: type: every rule `read_release` applies, so the equality below compares the whole reading.
+_EVERY_RULE = {
+    "licence": "CC0-1.0",
+    "rows": 12,
+    "clinvar_file_date": "2026-11-01",
+    "source_sha256": "sha256:" + "ab" * 32,
+    "built_at": None,
+    "builder": "just_dna_enricher.clinvar_build",
+}
+
+
+@pytest.mark.parametrize("as_bytes", [True, False], ids=["bytes", "str"])
+def test_parse_release_reads_the_content_as_read_release_reads_the_file(
+    tmp_path: Path, as_bytes: bool
+) -> None:
+    directory = _release_file(tmp_path / "snap", _EVERY_RULE)
+    text = (directory / RELEASE_FILENAME).read_text(encoding="utf-8")
+    parsed = parse_release(text.encode("utf-8") if as_bytes else text)
+    assert parsed == read_release(directory)
+    assert (parsed.license, parsed.row_count, parsed.dataset) == (
+        "CC0-1.0",
+        12,
+        clinvar_release_label("2026-11-01", _EVERY_RULE["source_sha256"]),
+    )
+    assert parsed.model_extra == {"builder": "just_dna_enricher.clinvar_build"}
+    assert "built_at" in parsed.model_fields_set
+
+
+@pytest.mark.parametrize(
+    "content",
+    [b"{not json", b"", b"\xff", '{"dataset": ', b"[1]", b'"dataset"', b'{"row_count": "many"}'],
+    ids=["not_json", "empty", "not_utf8", "truncated_text", "a_list", "a_string", "a_mistyped_key"],
+)
+def test_parse_release_raises_on_malformed_content_and_logs_nothing(
+    content: bytes | str, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Strict where `read_release` is lenient: a mistyped key raises here and costs only that key there."""
+    with caplog.at_level("DEBUG"), pytest.raises(ValidationError):
+        parse_release(content)
+    assert caplog.records == []
+
+
+def test_read_release_keeps_its_leniency_over_the_shared_parser(tmp_path: Path) -> None:
+    """The content `parse_release` refuses for one mistyped key still reads from disk minus that key."""
+    directory = _release_file(tmp_path / "snap", {"dataset": "x_1", "row_count": "many", "licence": "MIT"})
+    with pytest.raises(ValidationError):
+        parse_release((directory / RELEASE_FILENAME).read_bytes())
+    release = read_release(directory)
+    assert release is not None
+    assert (release.dataset, release.row_count, release.license) == ("x_1", None, "MIT")
+    assert release_is_unreadable(directory) is True

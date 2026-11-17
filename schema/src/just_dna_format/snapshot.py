@@ -22,7 +22,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, ValidationError, model_validator
+from pydantic import BaseModel, ConfigDict, TypeAdapter, ValidationError, model_validator
 
 from just_dna_format.layout import atomic_write_text
 
@@ -200,15 +200,35 @@ class SnapshotRelease(BaseModel):
         return json.dumps(self.model_dump(mode="json", exclude_unset=True), indent=2, sort_keys=True) + "\n"
 
 
-def _load(path: Path) -> tuple[dict | None, str | None]:
-    """The parsed JSON object at `path`, or `None` and why it is not one."""
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError) as exc:
-        return None, str(exc)
-    if not isinstance(payload, dict):
-        return None, "not a JSON object"
-    return payload, None
+#: `release.json`'s top level: a JSON object. Decoded through pydantic so that content which is not
+#: JSON, or not an object, raises the same `ValidationError` a mistyped key does.
+_RELEASE_OBJECT: TypeAdapter[dict[str, Any]] = TypeAdapter(dict[str, Any])
+
+
+def parse_release(data: bytes | str) -> SnapshotRelease:
+    """`release.json`'s content, as bytes or text, read into a `SnapshotRelease` (0.9, RM430).
+
+    The one parser of the record: `read_release` and `release_is_unreadable` read the file and hand
+    its bytes here, and a reader that fetched the record from a remote snapshot hands it the fetched
+    bytes. It takes no path and logs nothing, because the format tier reads no URL and only the caller
+    knows where the bytes came from. Old spellings are read exactly as `read_release` reads them.
+
+    **Strict where `read_release` is lenient.** Content that is not JSON, is not a JSON object, or
+    has a typed key holding the wrong kind of value raises `pydantic.ValidationError`, one type for
+    all three. `read_release` keeps such a record minus the mistyped key; a caller of this function
+    that wants the same leniency decides it for itself.
+    """
+    return SnapshotRelease.model_validate(_RELEASE_OBJECT.validate_json(data))
+
+
+def _decoding_problem(exc: ValidationError) -> str | None:
+    """Why `exc` is a failure to decode the content as a JSON object, or `None` when the object was
+    read and only typed keys failed. A decoding error has no location; a key's error is located at it.
+    """
+    for error in exc.errors():
+        if not error["loc"]:
+            return "not a JSON object" if error["type"] == "dict_type" else error["msg"]
+    return None
 
 
 def read_release(reference: Path) -> SnapshotRelease | None:
@@ -216,7 +236,8 @@ def read_release(reference: Path) -> SnapshotRelease | None:
 
     `None` is the answer for both, as it was when this returned a dict: a caller must not be able to
     mistake "this snapshot does not say" for a release, so callers branch on `None`. Unreadable is a
-    file that does not parse, or one that is not a JSON object.
+    file that does not parse, or one that is not a JSON object. The content is read by
+    `parse_release`; this function adds the path, the warning and the leniency below.
 
     **A typed key holding the wrong kind of value costs that key, never the record.** It is read as
     unstated and the warning names it; every other key, the label included, is still read. The
@@ -226,16 +247,21 @@ def read_release(reference: Path) -> SnapshotRelease | None:
     path = Path(reference) / RELEASE_FILENAME
     if not path.is_file():
         return None
-    payload, problem = _load(path)
-    if payload is None:
-        logger.warning("Could not read %s (%s); treating the release as unstated.", path, problem)
-        return None
-    canonical = _canonical(payload)
     try:
-        return SnapshotRelease.model_validate(canonical)
+        data = path.read_bytes()
+    except OSError as exc:
+        logger.warning("Could not read %s (%s); treating the release as unstated.", path, exc)
+        return None
+    try:
+        return parse_release(data)
     except ValidationError as exc:
-        bad = sorted({str(error["loc"][0]) for error in exc.errors() if error["loc"]})
-        logger.warning("%s: %s do not fit the snapshot record; read as unstated.", path, ", ".join(bad))
+        problem = _decoding_problem(exc)
+        if problem is not None:
+            logger.warning("Could not read %s (%s); treating the release as unstated.", path, problem)
+            return None
+        bad = sorted({str(error["loc"][0]) for error in exc.errors()})
+    logger.warning("%s: %s do not fit the snapshot record; read as unstated.", path, ", ".join(bad))
+    canonical = _canonical(_RELEASE_OBJECT.validate_json(data))
     try:
         return SnapshotRelease.model_validate({k: v for k, v in canonical.items() if k not in bad})
     except ValidationError:
@@ -254,12 +280,9 @@ def release_is_unreadable(reference: Path) -> bool:
     path = Path(reference) / RELEASE_FILENAME
     if not path.is_file():
         return False
-    payload, _ = _load(path)
-    if payload is None:
-        return True
     try:
-        SnapshotRelease.model_validate(payload)
-    except ValidationError:
+        parse_release(path.read_bytes())
+    except (OSError, ValidationError):
         return True
     return False
 

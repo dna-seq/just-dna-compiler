@@ -47,6 +47,10 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   a leaf that imports only the client types it bundles, so `enrich` can import the bundle at module level, which it
   could not while the bundle lived in `lookup`. `lookup.LookupClients` and `lookup.CLIENT_FIELDS` still import, as
   the same objects.
+- **`just_dna_format.snapshot.parse_release(data)`** (RM430, decision 6): `release.json`'s bytes or text read into a
+  `SnapshotRelease`, old spellings included, for a reader that fetched the record. `read_release` and
+  `release_is_unreadable` read through it. It takes no path, logs nothing, and raises `pydantic.ValidationError` on
+  malformed content, including one mistyped key, which `read_release` still drops alone.
 
 ## 2026-11-16 — `v0.8.8`: enricher 0.8.8 (a patch, cut from `main`)
 
