@@ -2341,7 +2341,7 @@ whose only case is one example row waits for a second case.
 
 ## RM446 — a withholding client's `retired` outlives the run that met the 410, so a later run's outage reads as a retired route
 
-**Severity** low · **Status** open — **a patch; the pm sizes** · **Owner** enricher (`net.Withholding.note_retired`, `withheld_reason`, the live-Ensembl warning in `enrich/orchestration.py`) ·
+**Severity** low · **Status** open — **a patch on `main`, `unattended` (about 30 minutes, triage builds)** · **Owner** enricher (`net.Withholding.note_retired`, `withheld_reason`, the live-Ensembl warning in `enrich/orchestration.py`) ·
 **Motivating case** the lead's RM404 build on `0.9` (`3e9b993c`), recorded by the pm under RM404 in `ROADMAP_0_9.md` (`ad49b85d`, 2026-11-16) · *related* RM361, RM404
 
 **What was seen.** `Withholding.retired` is set by the first 410 a client meets and never cleared (`note_retired` only
@@ -2369,11 +2369,16 @@ timeout, and run 2 must give the outage wording. The same holds for the Crossref
 `retired` is additive. Severity low: the wording misleads a reader about whether to re-run, and no answer is recorded
 wrongly in a module table. No consumer has reported it.
 
+**Sized (the pm, 2026-11-17).** A patch on `main`, not 0.9: the defect predates 0.9 (a reused `resolver=` met it
+already), and trial rule 1 sends a pre-existing defect to triage's patch on `main`. Either capture the builder picks
+is additive; the test is the one above. Built before 0.9 merges so RM404's docstring can point at it; if it lands
+after, the merge carries it.
+
 **Residuals** none yet.
 
 ## RM447 — Ensembl REST answers rs646776 without the A allele its own release 116 dump and dbSNP 157 carry, so an online fill and a snapshot fill disagree
 
-**Severity** low · **Status** open — **a patch, possibly no code change (as RM376); the pm sizes** · **Owner** enricher (the REST leg, `ensembl._rest_rsid` / `_loci_from_rest`) ·
+**Severity** low · **Status** open — **a patch on `main`, `unattended`: the measurement first (about 15 minutes, triage), then a fix of about 30 minutes only for a class** · **Owner** enricher (the REST leg, `ensembl._rest_rsid` / `_loci_from_rest`) ·
 **Motivating case** the lead's RM404 online run on `0.9` (`3e9b993c`), recorded by the pm under RM404 in `ROADMAP_0_9.md` (`ad49b85d`, 2026-11-16) · *related* RM374, RM376, RM271
 
 **Both sides, read 2026-11-17 04:15 UTC.**
@@ -2406,6 +2411,12 @@ no REST answer is widened from another source.
 
 **Class.** A patch: no schema, column or vocabulary moves (P3), nothing authored (P9). Severity low: one site is known,
 and the failure is a refusal that names its rsID, never a silent wrong value. No consumer has reported it.
+
+**Sized (the pm, 2026-11-17).** A patch on `main`. The measurement is the first step and decides the rest: REST
+against the snapshot over every rsID the reference examples carry, both read the same hour. One site closes as RM376
+did, with the fact in ENRICHER.md beside RM271's REST paragraph and the refusal message unchanged. Two or more sites
+make it a class: the `--strict` refusal then says when the stored row came from REST and names the narrower surface
+instead of `--rederive`. Nothing is widened from another source either way.
 
 **Residuals** none yet.
 
