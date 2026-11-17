@@ -3076,11 +3076,12 @@ version and is not an alias of `builder_version`; it rides in extra.
 
 **`read_release(dir) -> SnapshotRelease | None`** answers `None` for an absent file and for an
 unreadable one (does not parse, is not an object, or a typed key holds the wrong kind of value), with a
-warning for the second. **`parse_release(data) -> SnapshotRelease`** (0.9, RM430) is the parser
-under it: it takes the record's bytes or text, never a path, so a reader that fetched `release.json`
-from a remote snapshot reads the same old spellings. It is strict where `read_release` is lenient: content
-that is not JSON, not an object, or has a mistyped key raises `pydantic.ValidationError`, and it logs
-nothing. **`write_release(dir, release)`** writes the record: atomic, sorted keys, newline-terminated.
+warning for the second. **`parse_release(data) -> SnapshotRelease`** (0.9, RM430) reads the
+content with the same decoder and model: it takes the record's bytes or text, never a path, so a
+reader that fetched `release.json` from a remote snapshot reads the same old spellings. It is strict
+where `read_release` is lenient: content that is not JSON, not an object, or has a mistyped key raises
+`pydantic.ValidationError`, and it logs nothing. **`write_release(dir, release)`** writes the record:
+atomic, sorted keys, newline-terminated.
 
 **A builder never calls it; it opens a write (RM369).** The order is **withdraw the record, move the
 bytes, describe them**. `begin_snapshot_write(dir)` removes `release.json` and returns a `SnapshotWrite`
