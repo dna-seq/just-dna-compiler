@@ -11,11 +11,10 @@ import polars as pl
 import pytest
 from just_dna_compiler.hints import REDUNDANCY_BEARING
 from just_dna_enricher import lookup as lookup_module
+from just_dna_enricher.clients import CLIENT_FIELDS, LookupClients
 from just_dna_enricher.eutils import NO_SUMMARY
 from just_dna_enricher.literature import CrossrefWork
 from just_dna_enricher.lookup import (
-    CLIENT_FIELDS,
-    LookupClients,
     as_report_rows,
     lookup_citation,
     lookup_variant,

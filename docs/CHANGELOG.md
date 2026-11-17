@@ -41,6 +41,13 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md). The `0.8` branch merged into `main` at the 0.8.0 cut (2026-11-05).
 
+## 2026-11-17 — 0.9 (unreleased, on the `0.9` branch)
+
+- **`LookupClients` and `CLIENT_FIELDS` live in `just_dna_enricher.clients`** (RM404, preparatory). The new module is
+  a leaf that imports only the client types it bundles, so `enrich` can import the bundle at module level, which it
+  could not while the bundle lived in `lookup`. `lookup.LookupClients` and `lookup.CLIENT_FIELDS` still import, as
+  the same objects.
+
 ## 2026-11-16 — `v0.8.8`: enricher 0.8.8 (a patch, cut from `main`)
 
 Only the enricher changed source since `v0.8.7` (`download.py`), so it alone moves; format and compiler stay 0.8.6 and

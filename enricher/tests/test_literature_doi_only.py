@@ -22,6 +22,7 @@ from pathlib import Path
 
 import httpx
 import pytest
+from just_dna_enricher.clients import LookupClients
 from just_dna_enricher.eutils import EutilsClient, EutilsSettings
 from just_dna_enricher.literature import (
     CrossrefClient,
@@ -31,7 +32,7 @@ from just_dna_enricher.literature import (
     LiteratureUnavailable,
     enrich_literature,
 )
-from just_dna_enricher.lookup import LookupClients, lookup_citation
+from just_dna_enricher.lookup import lookup_citation
 from just_dna_enricher.net import PacingGate
 from just_dna_format import verification as verification_module
 from just_dna_format.layout import VERIFICATION_JSON

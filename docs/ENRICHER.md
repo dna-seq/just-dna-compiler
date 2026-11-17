@@ -462,6 +462,7 @@ core was ported, not depended on, dropping `fastmcp`/`eliot`). In the workspace:
 | `mitomap_draft` | RM171: the rated misses → `variants.csv` + `studies.csv`. Only the rated ones; the photocopies and `VUS*` are each refused for their own stated reason | `mitomap_miss`, compiler `draft` |
 | `clinvar_build` | `[dev]`: VCF → snapshot parquet; `var_citations.txt` → `citations/` (+ its own `release.json` block) | `polars`, `httpx` |
 | `lookup` | authoring lookups — rsID validity/loci, ref/alts + populations, which paper a PMID names. **Writes nothing** | every client above, compiler `hints` |
+| `clients` | **0.9**: `LookupClients`, the network-client bundle a session holds, and its derived `CLIENT_FIELDS`. A leaf that imports only the client types it names, so `enrich` can import the bundle at module level; `lookup` re-exports both names | the clients it bundles |
 | `pharmvar` | star-allele definitions + function (`Api-Key` header, 2 rps) | `httpx`, `tenacity` |
 | `cpic` | allele function, diplotype→phenotype, defining variants (PostgREST) | `httpx`, `tenacity` |
 | `cpic_notation` | CPIC's `DEL<bases>`/`INS<bases>`/`UNIT(n)` → a VCF-anchored, left-normalized REF/ALT (RM253); never reads on its own, the caller passes the reference reader | `sequences` |
