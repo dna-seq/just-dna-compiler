@@ -507,6 +507,13 @@ once is a cleanup with no wrong answer behind it: a residual of this entry, no i
 read at the bundle's pick point, before the run asks, or RM446 is lost in exactly the reused-client case RM404 makes
 normal. RM446's three-run test is the check.
 
+**After the follow-up round (e5448597), placed (the pm, 2026-11-17).** Accepted as built: an empty read past a
+contig's end is not remembered, so each run asks it again; a proxy read outside a run remembers no failure; the memo
+holds at most 262,144 entries, stated in its docstring. Two findings left for later: a stock `EnsemblResolver` has no
+public way to take a proxy, a residual of this entry until a caller asks (reading 1 above); the per-run failure
+wrap is a rule each reader must remember with nothing guarding it, and its private helper is imported by five
+modules: an AST guard and a non-private name, one patch on `main` after 0.9 merges, triage files it.
+
 ## RM412 — a dry run cannot rehearse the download, and the 0.8 line's private names wait for their public ones
 
 **In 0.9's scope, the pm (2026-11-16)**: [desk #326](https://github.com/winternewt/desk/issues/326), the smaller-minors cut, applied on its default under the rule that only a real fork goes to the maintainer. **Which parts:** half 2 whole (the 0.8 line's private names made public), and from half 1 the `--rehearse-download` flag the maintainer named. Half 1's per-lane probe of the source's newest release without its payload (a new `CacheLane` field) is **parked**: **Unparks when** an operator reports a rebuild that downloaded a source only to learn nothing had changed, or a scope the maintainer highlights touches it, or the roadmap is empty. The status line below predates this.
@@ -567,6 +574,9 @@ newest release unasked; RM413's gates still read that release off the liaison's 
      the publish gate is where a wrong kind is refused. RM430's `parse_release` keeps that reader's leniency.
   6. **`_PART_COUNT_KEYS`, a hand-kept pair beside the model:** derived from the model in class (c)'s patch after 0.9
      merges; no wrong answer today.
+  7. **`parts_read` above `parts_total` still publishes as whole (e5448597):** left for 0.10, with the gate's public
+     predicate beside `SnapshotRelease` placed there above. It is a record that contradicts itself, not a short read,
+     so nothing is lost by publishing it in 0.9.
 
 **Decided for 0.9 (the pm, 2026-11-16):** `ensure_opentargets_snapshot` public beside its siblings (the private
 name goes: a leading underscore carries no contract);
