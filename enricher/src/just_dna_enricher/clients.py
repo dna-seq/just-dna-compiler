@@ -35,6 +35,10 @@ class LookupClients:
     filling six fields and leaving `pmc_idconv` unset had unpaced egress on one leg and nothing at
     the call site to say which. The distinction is gone rather than documented.
 
+    **`enrich(clients=…)` reads four fields and fills none (0.9, RM404).** It reads `ensembl`, `gnomad`,
+    `grch37` and `eutils`; a field left unset is built for that run and closed by it, as with no bundle,
+    and is never stored here, so the lazy path above is `lookup`'s, not `enrich`'s.
+
     **A bundle a `lookup_*` call builds for itself is that call's to close.** Hold one yourself for a
     session; pass none for a one-shot question and the call closes what it opened.
 

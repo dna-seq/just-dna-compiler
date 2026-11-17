@@ -755,7 +755,8 @@ field. The NCBI client is wrapped in the run's own `_RecordedEutils`, so each `e
 fetched once per run (RM398); the wrapper is the run's and is closed by it. **The run closes no client
 it was given**, in the bundle or as an argument. A field left unset is built and closed by the run, as
 with no bundle, and never stored on the bundle (the run does not call `clients.ensure`). `sequences` is a
-`SequenceProxy`, and when given it is the **only** sequence source the run reads (S157): the
+`SequenceProxy`, and when given it is the **only** GRCh38 sequence source the run reads (S157; the
+wrong-build diagnosis reads GRCh37 through `grch37`): the
 reference-allele check, left-alignment, the hosting and placement reads, the VRS minter and the anchor
 base read by the `EnsemblResolver` the run builds all take it. A resolver the caller gives is not altered
 and reads its anchor base through what it holds: an `EnsemblResolver` builds a default proxy for that

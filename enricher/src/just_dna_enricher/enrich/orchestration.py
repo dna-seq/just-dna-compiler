@@ -371,10 +371,11 @@ def enrich(
     it, as with no bundle, and is never stored on the bundle. **The run closes no client it was given**,
     in `clients` or as an argument: the caller holds them, and closes them.
 
-    `sequences` is the reference-sequence proxy, and when given it is the **only** sequence source the
-    run reads (S157): the reference-allele check, left-alignment, the hosting and placement reads, the
-    VRS minter and the anchor base read by the `EnsemblResolver` the run builds all take it, and none
-    builds its own. A resolver the caller gives (`resolver=` or `clients.ensembl`) is not altered: it
+    `sequences` is the reference-sequence proxy, and when given it is the **only** GRCh38 sequence source
+    the run reads (S157; the wrong-build diagnosis reads GRCh37 through `grch37_client`): the
+    reference-allele check, left-alignment, the hosting and placement reads, the VRS minter and the
+    anchor base read by the `EnsemblResolver` the run builds all take it, and none builds its own. A
+    resolver the caller gives (`resolver=` or `clients.ensembl`) is not altered: it
     reads an indel's anchor base through whatever it holds; an `EnsemblResolver` builds a default proxy
     for that read, and 0.9 has no public parameter to point it elsewhere. A `SequenceProxy` reading a
     local seqrepo (`uri="seqrepo+file://…"`, which needs `biocommons.seqrepo` installed beside the
@@ -844,6 +845,7 @@ def _run_enrichment(
     # (RM274), at each link's answer (RM382) and again in the assembly loop, and minting and the
     # reference check reuse it after the table is assembled. Lazy, so nothing is read until asked. A
     # caller's proxy is that one (RM404, S157), and nothing below builds a second.
+    caller_sequences = sequences is not None
     if sequences is None:
         sequences = SequenceProxy(offline=offline)
     read_window = _grch38_window(sequences) if genome_build == "GRCh38" else None
@@ -1079,9 +1081,14 @@ def _run_enrichment(
         )
         if missing:
             owned = resolver is None
-            # The resolver the run builds reads an indel's anchor base through the run's proxy (RM404),
-            # never one of its own; a caller's resolver reads through whatever it holds.
-            client = resolver or EnsemblResolver(_read_base=_grch38_base_reader(sequences))
+            # With a caller's proxy, the resolver the run builds reads an indel's anchor base through it
+            # (RM404); with none, it builds its own as before 0.9. A caller's resolver is never altered.
+            if resolver is not None:
+                client = resolver
+            elif caller_sequences:
+                client = EnsemblResolver(_read_base=_grch38_base_reader(sequences))
+            else:
+                client = EnsemblResolver()
             ensembl_link = client
             rest_answered = False
             try:

@@ -82,8 +82,9 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   `ensembl`, `gnomad`, `grch37` and `eutils`; `resolver=`, `gnomad_client=` and `grch37_client=` still win over the
   field. The NCBI client is wrapped in the run's own once-per-record wrapper (RM398), and **no client the caller
   gave is closed by the run**; an unset field is built and closed by the run and never stored on the bundle. A
-  passed proxy is the only sequence source the run reads (the reference check, left-alignment, the minter and the
-  live link's anchor base). Under `offline=True` it is not used, and the run warns once
+  passed proxy is the only GRCh38 reference source the run reads (the reference check, left-alignment, the minter
+  and the anchor base of the resolver the run builds; a resolver the caller gives keeps its own, and the
+  wrong-build diagnosis reads GRCh37 through `grch37`). Under `offline=True` it is not used, and the run warns once
   (`orchestration.OFFLINE_OUTRANKS_SEQUENCES`). With neither argument a run writes the same bytes as before.
 - **`ensembl.BatchResolver` and `ensembl.RsidAnswer`** (RM404, RM401's capability published): an injected resolver
   with `resolve_rsids_batched(rsids)` is asked in batches. The 0.8 line's private `_BatchResolver`, its
