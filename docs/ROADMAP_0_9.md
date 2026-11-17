@@ -403,6 +403,25 @@ core only, to keep the current source for the group values until 0.9, and why a 
   0.9: deleting the lane's directory does it.
 - **Fact noted:** the `groups` directory name lives in the enricher.
 
+**The builder's readings, placed (the pm, 2026-11-17).** RM437 landed on `0.9` at 1c22388c.
+
+1. **Confirmed: a re-pull is gated by the call's stated use, else the use recorded when the group was admitted.**
+   Otherwise `enrich(download=True)`, which takes no use, could never re-pull CADD, and the release guard would then
+   refuse every read of it after the core moved. The declaration is the operator's, about this cache. One addition:
+   a re-pull under a recorded use says so in its log line, naming the use and when it was declared, so an operator
+   whose use changed sees which declaration admitted the new release.
+2. **Confirmed:** `--groups` without `--only ensembl` is refused; loosening it later is additive.
+3. **Confirmed: the six refusals of `ensembl_group_dir`**, each with its own sentence, the last two (an attested
+   file missing or the wrong size, and a parquet the manifest does not name) included: a reader of the directory
+   would otherwise read a stray file as the group's.
+4. **Confirmed:** an unknown name is checked against the hub's manifest; no group beside a core that is not a
+   finished, attested pull; a current group is not gated again; a named group's failure raises only after every
+   group was tried.
+
+Left as residuals: a group's currency is checked by size at read time and by sha256 only during a pull, as the
+core's is; the pull record is rewritten without a lock, as the core's is, so concurrent pulls into one cache are
+the core's question first (`@flock-not-a-lockfile`), and triage checks it on `main`.
+
 **Residuals** none yet.
 
 ## RM404 — `enrich()` builds its own NCBI client and sequence proxy, so a host cannot pace them with the rest
