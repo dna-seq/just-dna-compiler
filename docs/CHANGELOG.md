@@ -41,6 +41,19 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md). The `0.8` branch merged into `main` at the 0.8.0 cut (2026-11-05).
 
+## 2026-11-17 — RM447: a resolved allele refusal names Ensembl REST as the narrower surface when REST answered the row (patch, on `main`)
+
+Ensembl REST can list fewer alleles than the same release's VCF dump. Measured over every rsID the reference
+examples name, at release 116 on 2026-11-17: of the 454 rsIDs both answered, 54 carry alleles in the snapshot that
+REST omits, and none go the other way. `rs646776` is one: REST answers `C/G/T`, while the dump and dbSNP 157 carry
+`C>A,G,T`. REST answers a subject the snapshot holds only when a run has no snapshot, so such a run records the
+narrower set, and `--strict` refuses a correct genotype on it. `genotype_allele_not_at_locus` and
+`effect_allele_not_at_locus` on a row whose `source` is `ensembl-rest` now say the row came from a live link whose
+allele list can be narrower than the snapshot, and give the remedy that reaches it: `enrich --rederive` on a host
+where the Ensembl snapshot is provisioned. The phrases `earlier snapshot release`, `release not recorded` and
+`--rederive` stay in the text. Rows answered by any other link read as before. Compiler only; no column, code or
+vocabulary moves.
+
 ## 2026-11-16 — `v0.8.8`: enricher 0.8.8 (a patch, cut from `main`)
 
 Only the enricher changed source since `v0.8.7` (`download.py`), so it alone moves; format and compiler stay 0.8.6 and

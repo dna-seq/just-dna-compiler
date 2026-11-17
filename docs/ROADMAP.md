@@ -2378,7 +2378,7 @@ after, the merge carries it.
 
 ## RM447 — Ensembl REST answers rs646776 without the A allele its own release 116 dump and dbSNP 157 carry, so an online fill and a snapshot fill disagree
 
-**Severity** low · **Status** open — **a patch on `main`, `unattended`: the measurement first (about 15 minutes, triage), then a fix of about 30 minutes only for a class** · **Owner** enricher (the REST leg, `ensembl._rest_rsid` / `_loci_from_rest`) ·
+**Severity** low · **Status** open — **a patch, built on `main` 2026-11-17, uncut (measured a class)** · **Owner** enricher (the REST leg, `ensembl._rest_rsid` / `_loci_from_rest`); the fix is the compiler's message (`allele_checks._stale_reading`) ·
 **Motivating case** the lead's RM404 online run on `0.9` (`3e9b993c`), recorded by the pm under RM404 in `ROADMAP_0_9.md` (`ad49b85d`, 2026-11-16) · *related* RM374, RM376, RM271
 
 **Both sides, read 2026-11-17 04:15 UTC.**
@@ -2418,7 +2418,30 @@ did, with the fact in ENRICHER.md beside RM271's REST paragraph and the refusal 
 make it a class: the `--strict` refusal then says when the stored row came from REST and names the narrower surface
 instead of `--rederive`. Nothing is widened from another source either way.
 
-**Residuals** none yet.
+**Measured (triage, 2026-11-17, 04:40 UTC).** Every `rs<digits>` in `reference_examples/*/*.csv`, 467 rsIDs, was
+read in the same hour from the split snapshot on this machine (`ensembl-variation-2026_07_13-vep116.0`) and from
+Ensembl REST's batch route at release 116 (GRCh38 primary contigs). Each allele was compared with its shared prefix
+and suffix trimmed. REST answered 454 of the 467; the 13 it did not answer are `rs2494…` and `rs2533…` ids the
+snapshot carries. Of the 454, 58 differ. In 4 of them (`rs33991993`, `rs34083951`, `rs34515413`, `rs34933751`, all
+HBB) the only difference is a placeholder, `N` in the snapshot and `R` or `Y` in REST, which RM271's predicate drops
+on both sides. That leaves **54 where the snapshot carries alleles REST omits, and none the reverse**: 61
+single-base and 2 longer alleles, among them `rs646776` (`A`), `rs137852556` (`A` and `G`, at both the X and the Y
+PAR spellings), `rs112339338` and `rs149436418`. A class, so the refusal changes.
+
+**Built (triage, 2026-11-17).** `allele_checks._stale_reading` adds a reading for a row whose `source` is
+`ensembl-rest` (a private `_NARROWER_LINKS`): the row came from a live link whose allele list can be narrower than
+the same release's snapshot. The remedy is `enrich --rederive` on a host where the Ensembl snapshot is provisioned.
+One departure from the sizing, which said "instead of `--rederive`": `--rederive` stays, qualified, because with the
+snapshot present it is the remedy that reaches the row (the cache link answers first). Only a plain one, on a host
+without the snapshot, asks REST again. The release reading and its pinned phrases stay beside it. A cache-sourced or
+unsourced row reads as before, and a hand-filled one still gets no reading. The compiler reads a member of
+`ResolutionRow.source`, a vocabulary the schema documents, only to word a remedy. It maps no link to a source, so P2
+is not reached. A test over a REST row and a cache row is in `test_rsid_placements_disagree.py`. ENRICHER.md (beside
+RM271), COMPILER.md (beside RM374) and the CHANGELOG say it.
+
+**Residuals** won't fix — the enricher widens no REST answer from the snapshot or dbSNP: it reports, never repairs ·
+won't fix — `ensembl-graphql` is not in `_NARROWER_LINKS`, because no run measured it and no row in the examples
+records it
 
 # Not format scope
 

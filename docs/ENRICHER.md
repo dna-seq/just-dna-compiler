@@ -1632,6 +1632,15 @@ alt, `<.>`, IUPAC placeholders (`<R>`, `<Y>`), `N` runs and N-masked chrY refs. 
 with no alt left is withheld. REST with nothing left answers the ordinary `[]` (it is permanent, so no
 re-run helps), and the snapshot names such rsIDs in one warning instead of `rsid_unresolved`.
 
+**REST can list fewer alleles than the same release's dump (RM447, 2026-11-17).** At release 116, 54 of the 454
+reference-example rsIDs that REST and the split snapshot both answered carry alleles in the snapshot that REST
+omits, and none go the other way. The snapshot and dbSNP 157 agree: `rs646776` is `C>A,G,T` in both and `C/G/T` in
+REST. The enricher widens no REST answer from another source. REST answers a subject the snapshot holds only when the
+run has no snapshot (`download=False` on a host without one, or a provisioning that failed), so a row with
+`source=ensembl-rest` may hold the narrower set. The compiler's allele refusal says so for such a row, and the remedy
+is a re-derivation where the snapshot is provisioned. RM376 found no such gap for `rs746071566`; it is a property of
+some sites, not of every one.
+
 **`checked` carries labels only, and `snapshots` is where a path lives (S93, RM205).** The set used to
 be mixed — `ensembl-rest` for the live leg beside an absolute path for a snapshot, and the
 unreadable-snapshot finding interpolated the same path — so a host serving `lookup_variant` over HTTP

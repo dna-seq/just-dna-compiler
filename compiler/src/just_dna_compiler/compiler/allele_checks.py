@@ -300,14 +300,27 @@ def _check_allele_membership(
     return route(ladders, strict=strict)
 
 
+# The links that answer from a live API whose allele list can be narrower than the same release's bulk
+# snapshot (RM447: Ensembl REST at release 116 omitted alleles the VCF dump carries at 54 of the 454
+# reference-example rsIDs both answered, and never the reverse). A `ResolutionRow.source` member, the
+# link that answered, which the schema documents; read only to word the remedy, never to judge.
+_NARROWER_LINKS: frozenset[str] = frozenset({"ensembl-rest"})
+
+
 def _stale_reading(rows: list[ResolutionRow]) -> str:
-    """The third reading of a resolved allele mismatch: the row predates the snapshot (RM374).
+    """The third reading of a resolved allele mismatch: the row predates the snapshot (RM374), or came
+    from a live link narrower than it (RM447).
 
     An enrich never re-asks a subject it already has a row for, so a row written against an earlier
-    release keeps that release's allele set after the snapshot moved — the 0.8 migration probe's
-    `rs646776`, whose `C>G,T` row from dbSNP 156 refused a correct `A/C` that dbSNP 157 lists. Which
-    release is *older* is not decidable offline, so this names what the rows record and the remedy,
-    never a verdict. Empty where no external source answered the rows (`authority` empty).
+    release keeps that release's allele set after the snapshot moved. Which release is *older* is not
+    decidable offline, so this names what the rows record and the remedy, never a verdict. Empty where
+    no external source answered the rows (`authority` empty).
+
+    The 0.8 migration probe's `rs646776` (`C>G,T` refusing a correct `A/C`) was read as that, but its
+    row came from Ensembl REST, which lists `C/G/T` at the same release whose VCF dump and dbSNP 157
+    carry `A` too. REST answers a subject the snapshot holds only when the run had no snapshot, so for a
+    row recording such a link the remedy is a re-derivation where the snapshot is provisioned; a plain
+    `--rederive` on the same host asks REST again and writes the same row.
     """
     if not any(row.authority for row in rows):
         # No external source answered (authored, manual): no snapshot, so no stale reading. A reversed row
@@ -315,6 +328,14 @@ def _stale_reading(rows: list[ResolutionRow]) -> str:
         return ""
     releases = sorted({release for row in rows if (release := row_release(row))})
     recorded = f"the row records release {', '.join(releases)}" if releases else "release not recorded"
+    narrower = sorted({row.source for row in rows if row.source in _NARROWER_LINKS})
+    if narrower:
+        return (
+            f". Or the row was answered by a live link ({', '.join(narrower)}), whose allele list can be "
+            f"narrower than the same release's snapshot, or against an earlier snapshot release than the "
+            f"one the module is enriched against now ({recorded}): `just-dna-enricher enrich <spec-dir> "
+            f"--rederive` on a host where the Ensembl snapshot is provisioned re-asks it of the snapshot first"
+        )
     return (
         f". Or the row was resolved against an earlier snapshot release than the one the module is "
         f"enriched against now ({recorded}): `just-dna-enricher enrich <spec-dir> --rederive` re-asks it"
