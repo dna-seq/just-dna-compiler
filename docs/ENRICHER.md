@@ -759,8 +759,11 @@ with no bundle, and never stored on the bundle (the run does not call `clients.e
 wrong-build diagnosis reads GRCh37 through `grch37`): the
 reference-allele check, left-alignment, the hosting and placement reads, the VRS minter and the anchor
 base read by the `EnsemblResolver` the run builds all take it. A resolver the caller gives is not altered
-and reads its anchor base through what it holds: an `EnsemblResolver` builds a default proxy for that
-read, and 0.9 has no public parameter to point it elsewhere. A local seqrepo (`uri="seqrepo+file://…"`,
+and reads its anchor base through what it holds, so a caller who passes both a resolver and a proxy, and
+wants the resolver's reads to go through that proxy, gives the proxy to the resolver itself; a stock
+`EnsemblResolver` builds a default proxy for that read, and 0.9 has no public parameter to point it
+elsewhere. The run reads the proxy through a view of its own, so a failure it sees is held for the run and
+never stored on the caller's proxy. A local seqrepo (`uri="seqrepo+file://…"`,
 with `biocommons.seqrepo` installed by the host) is how a host reads locally with the network up. Under `offline=True` the passed proxy is not used, as an
 injected client is not (`@gated-source-caches`): the run warns once, in the words of
 `orchestration.OFFLINE_OUTRANKS_SEQUENCES`, and reads no sequence. The missing timeout beneath
@@ -2886,7 +2889,13 @@ checked — abstaining beats inventing a verdict. Reads are cached by `(accessio
 module asking about one locus repeatedly costs one round trip, and the same `SequenceProxy` is shared
 with indel minting so a run builds one proxy in total (or none, when the caller passes one, RM404). Since
 0.9 its lazy build and its memo are under a lock, so parallel runs may share one proxy; the remote read
-is outside the lock, so a thread waits on another only for the dictionary. Needs sequence access, so `--offline` skips it:
+is outside the lock, so a thread waits on another only for the dictionary. **The proxy memoizes answers
+only** (0.9, RM404): a failed build, a read that raised and a read that came back empty are held by the run
+that saw them, through a private view of the proxy for that run, so the run asks a failed read once and a
+down service once, and its warning's "this run" is true; the next run sharing the proxy asks again. Read
+directly, outside a run's view, the proxy asks again on every call. Its memo is bounded at 262,144 reads
+(`sequences._MEMO_SIZE`), the least recently used evicted first, because a shared proxy may live as long as
+the service. Needs sequence access, so `--offline` skips it:
 a check that cannot run is not a check that passed, and the run says so rather than implying success.
 
 ### The old assembly: rs-number recovery and a wrong-build diagnosis (`grch37.py`, RM48)

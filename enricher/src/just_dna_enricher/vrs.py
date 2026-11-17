@@ -64,7 +64,7 @@ from just_dna_format.vrs import (
     vrs_spec_release,
 )
 
-from just_dna_enricher.sequences import DEFAULT_SEQREPO_URI, SequenceProxy
+from just_dna_enricher.sequences import DEFAULT_SEQREPO_URI, SequenceProxy, _held_by_one_run
 
 logger = logging.getLogger(__name__)
 
@@ -296,8 +296,10 @@ class VrsMinter:
     _metadata: dict[str, dict] = field(default_factory=dict, repr=False)
 
     def __post_init__(self) -> None:
-        if self.sequences is None:
-            self.sequences = SequenceProxy(uri=self.seqrepo_uri, offline=self.offline)
+        # A minter is one run: it holds the failures it sees, and the proxy it reads holds only answers.
+        self.sequences = _held_by_one_run(
+            self.sequences or SequenceProxy(uri=self.seqrepo_uri, offline=self.offline)
+        )
 
     def _data_proxy(self):
         """The underlying data proxy, or `None` when offline or unreachable (a normal outcome —

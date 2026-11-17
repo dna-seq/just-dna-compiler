@@ -18,7 +18,7 @@ from just_dna_enricher.identifiers import verification_records as identifier_rec
 from just_dna_enricher.licensing import sidecar_path
 from just_dna_enricher.net import could_not_ask_reason
 from just_dna_enricher.pgx_draft import draft_gene
-from just_dna_enricher.sequences import SequenceProxy
+from just_dna_enricher.sequences import SequenceProxy, _held_by_one_run
 from just_dna_enricher.verification import record_verification, skipped
 from just_dna_enricher.vrs import MintResult
 
@@ -88,7 +88,7 @@ def draft_(
     total_added = 0
     # One reference reader for the whole run, so a locus read for one gene is not read again for the next
     # and an unreachable service is found once (RM253).
-    sequences = SequenceProxy(offline=offline)
+    sequences = _held_by_one_run(SequenceProxy(offline=offline))
     for name in gene:
         try:
             result = draft_gene(

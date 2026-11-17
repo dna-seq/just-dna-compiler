@@ -143,6 +143,7 @@ from just_dna_enricher.sequences import (
     SequenceProxy,
     SpellingCheck,
     SpellingVerdict,
+    _held_by_one_run,
     _indel_payloads,
     _spelled,
     normalize_locus,
@@ -375,12 +376,17 @@ def enrich(
     the run reads (S157; the wrong-build diagnosis reads GRCh37 through `grch37_client`): the
     reference-allele check, left-alignment, the hosting and placement reads, the VRS minter and the
     anchor base read by the `EnsemblResolver` the run builds all take it, and none builds its own. A
-    resolver the caller gives (`resolver=` or `clients.ensembl`) is not altered: it
-    reads an indel's anchor base through whatever it holds; an `EnsemblResolver` builds a default proxy
-    for that read, and 0.9 has no public parameter to point it elsewhere. A `SequenceProxy` reading a
+    resolver the caller gives (`resolver=` or `clients.ensembl`) is not altered: `enrich` never reaches
+    into a caller's resolver, which reads an indel's anchor base through whatever it holds. So a caller
+    passing both its own resolver and a proxy, who wants the resolver's reads to go through that proxy,
+    gives the resolver the proxy itself; a stock `EnsemblResolver` builds a default proxy for that read,
+    and 0.9 has no public parameter to point it elsewhere. A `SequenceProxy` reading a
     local seqrepo (`uri="seqrepo+file://…"`, which needs `biocommons.seqrepo` installed beside the
     enricher) is how a host reads locally with the network up.
-    One proxy may be shared by parallel runs; its memo is locked. Under `offline=True` it is **not used**:
+    One proxy may be shared by parallel runs; its memo is locked, and holds answers only: the run reads
+    the proxy through a view of its own, which holds the failures the run sees (a failed build, a read
+    that raised or came back empty), so the next run sharing the proxy asks again. Under `offline=True`
+    it is **not used**:
     offline outranks it as it outranks an injected client (`@gated-source-caches`), and the run warns
     once (`OFFLINE_OUTRANKS_SEQUENCES`) and reads no sequence, exactly as an offline run with none.
     """
@@ -848,6 +854,9 @@ def _run_enrichment(
     caller_sequences = sequences is not None
     if sequences is None:
         sequences = SequenceProxy(offline=offline)
+    # Read through this run's view: the proxy's answers, and this run's failures, which a caller's proxy
+    # shared by the next run never carries (RM404).
+    sequences = _held_by_one_run(sequences)
     read_window = _grch38_window(sequences) if genome_build == "GRCh38" else None
     # One minter for the run too: the placement comparison below and the stamping after the table
     # both mint, and sharing it shares the proxy's read cache.

@@ -11,6 +11,7 @@ network up (S157). What these tests pin, each against the real run:
 * a passed proxy is the only sequence source the run reads, the live link's anchor reads included;
 * under `offline=True` the passed proxy is not used, and the run says so once;
 * threads sharing one proxy each get the bases while its data proxy is still being built;
+* a shared proxy memoizes answers only: a failure is held by the run that saw it, and its memo is bounded;
 * `EnsemblSettings.batch_size` above Ensembl's ceiling or below 1, and a `batch_timeout` of zero or less, are
   refused at construction, never clamped.
 """
@@ -28,7 +29,8 @@ from just_dna_enricher.enrich.orchestration import OFFLINE_OUTRANKS_SEQUENCES, _
 from just_dna_enricher.ensembl import BatchResolver, EnsemblResolver, EnsemblSettings, RsidAnswer
 from just_dna_enricher.eutils import EutilsClient, EutilsSettings
 from just_dna_enricher.net import PacingGate
-from just_dna_enricher.sequences import SequenceProxy
+from just_dna_enricher.sequences import SequenceProxy, verify_reference_alleles
+from just_dna_format.resolution import ResolutionRow
 
 _YAML = (
     "schema_version: '1.0'\nmodule:\n  name: demo\n  title: Demo\n  description: d\n  report_title: Demo\n"
@@ -314,8 +316,8 @@ def test_offline_outranks_a_passed_proxy_which_is_not_read_and_the_run_says_so_o
 def test_threads_sharing_one_proxy_all_get_the_bases_while_its_data_proxy_is_being_built(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Without a lock, a second reader sees the build in flight (`_tried`, no proxy yet), reads `None`,
-    and memoizes it: the base reads as unreadable for the rest of a run that shares the proxy."""
+    """Without the build under the lock, a second reader saw the build in flight (tried, no proxy yet) and
+    read `None`: the base read as unreadable for the rest of a run that shares the proxy."""
     entered, release = threading.Event(), threading.Event()
 
     class _DataProxy:
@@ -345,6 +347,115 @@ def test_threads_sharing_one_proxy_all_get_the_bases_while_its_data_proxy_is_bei
     second.join(5)
     assert results == {0: "C", 1: "C"}
     assert shared.subsequence("SQ.test", 1, 2) == "C"  # and the memo holds the bases, not `None`
+
+
+class _Backend:
+    """`create_dataproxy` and the data proxy it builds, failing in one of three ways until `fails` is cleared.
+
+    `build` raises in `create_dataproxy`; `raise` and `empty` build, then raise in `get_sequence` or answer
+    `""`. Every build attempt and every read is recorded, so a test sees what each run asked.
+    """
+
+    def __init__(self, fails: str | None) -> None:
+        self.fails = fails
+        self.builds = 0
+        self.reads: list[tuple[str, int, int]] = []
+
+    def create_dataproxy(self, _uri: str) -> "_Backend":
+        self.builds += 1
+        if self.fails == "build":
+            raise ConnectionError("seqrepo is down")
+        return self
+
+    def get_sequence(self, identifier: str, start: int, end: int) -> str:
+        self.reads.append((identifier, start, end))
+        if self.fails == "raise":
+            raise ConnectionError("read timed out")
+        return "" if self.fails == "empty" else "t" * (end - start)
+
+
+@pytest.mark.usefixtures("no_ambient_caches")
+@pytest.mark.parametrize("fails", ["build", "raise", "empty"])
+def test_a_shared_proxy_carries_no_failure_into_the_next_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fails: str
+) -> None:
+    """The pm (2026-11-17): a shared proxy memoizes answers only, and the run that saw a failure holds it.
+
+    Before, a failed build (`_tried`) or a failed read (a memoized `None`) lasted the proxy's life, so a
+    host's second run read the base as unreadable without asking, and its warning's "this run" was false.
+    """
+    backend = _Backend(fails)
+    monkeypatch.setattr("just_dna_enricher.sequences.create_dataproxy", backend.create_dataproxy)
+    shared = SequenceProxy()
+    first_root, second_root = tmp_path / "first", tmp_path / "second"
+    first_root.mkdir()
+    second_root.mkdir()
+    # A mismatched ref asks GRCh37 for the wrong-build diagnosis, so it gets a stub as well.
+    hosts = {"resolver": _Resolver(), "grch37_client": _Grch37(), "verify_ref": True}
+
+    _online(_spec(first_root), first_root, **hosts, sequences=shared)
+    first = (backend.builds, list(backend.reads))
+    assert first[0] == 1, "the first run asked the service"
+    if fails != "build":
+        # Within the run a failed read is held: each interval is asked once, however often it is read.
+        assert first[1] and len(first[1]) == len(set(first[1]))
+
+    backend.fails = None
+    _online(_spec(second_root), second_root, **hosts, sequences=shared)
+    asked_again = backend.reads[len(first[1]) :]
+    assert asked_again, "the second run asked again rather than reading the first run's failure"
+    if fails != "build":
+        # What the first run failed on, asked again; a window that answers spares the base read beside it.
+        assert set(asked_again) <= set(first[1])
+    # And now the answers are held for the proxy's life: a third reader asks nothing.
+    seen = len(backend.reads)
+    for identifier, start, end in asked_again:
+        assert shared.subsequence(identifier.removeprefix("ga4gh:"), start, end) == "T" * (end - start)
+    assert len(backend.reads) == seen
+
+
+@pytest.mark.parametrize("fails", ["build", "raise", "empty"])
+def test_one_run_asks_a_failed_read_once(monkeypatch: pytest.MonkeyPatch, fails: str) -> None:
+    """The run holds its failures, so a down service costs one attempt per run, not one per read."""
+    backend = _Backend(fails)
+    monkeypatch.setattr("just_dna_enricher.sequences.create_dataproxy", backend.create_dataproxy)
+    rows = [
+        ResolutionRow(variant_key=f"k{n}", chrom="19", start=44908684, ref="T", alts="C") for n in range(3)
+    ]
+    shared = SequenceProxy()
+    verify_reference_alleles(rows, sequences=shared)
+    first = list(backend.reads)
+    assert backend.builds == 1
+    # Three rows on one locus: each interval the check reads is asked once, whatever came back.
+    assert len(first) == len(set(first)) and (fails == "build") == (not first)
+    verify_reference_alleles(rows, sequences=shared)  # a second run asks again, once
+    assert backend.builds == (2 if fails == "build" else 1)
+    assert backend.reads == first + first
+
+
+def test_the_memo_is_bounded_and_evicts_the_least_recently_used(monkeypatch: pytest.MonkeyPatch) -> None:
+    backend = _Backend(None)
+    monkeypatch.setattr("just_dna_enricher.sequences.create_dataproxy", backend.create_dataproxy)
+    monkeypatch.setattr("just_dna_enricher.sequences._MEMO_SIZE", 2)
+    proxy = SequenceProxy()
+
+    def read(start: int) -> None:
+        assert proxy.subsequence("SQ.test", start, start + 1) == "T"
+
+    for start in (0, 1, 0, 2):  # 0 is read again before 2 arrives, so 1 is the least recently used
+        read(start)
+    assert [start for _, start, _ in backend.reads] == [0, 1, 2]
+    read(0)
+    read(2)
+    assert [start for _, start, _ in backend.reads] == [0, 1, 2], "0 and 2 are still held"
+    read(1)
+    assert [start for _, start, _ in backend.reads] == [0, 1, 2, 1], "1 was evicted, so it is asked again"
+
+
+def test_the_memo_bound_is_the_constant_its_docstring_states() -> None:
+    from just_dna_enricher import sequences
+
+    assert f"{sequences._MEMO_SIZE:,}" in " ".join((SequenceProxy.__doc__ or "").split())
 
 
 # ── the public batch capability and its settings ────────────────────────────────────────────────

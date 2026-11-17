@@ -52,7 +52,7 @@ from just_dna_enricher.drafting import DRAFT_PROVIDERS, licence_commit, record_d
 from just_dna_enricher.drafting import identity_refused_by_model as scaffold_identity_refused
 from just_dna_enricher.licensing import CIVIC_TERMS, CLINGEN_ALLELE_REGISTRY_TERMS
 from just_dna_enricher.locations import resolve_civic_reference
-from just_dna_enricher.sequences import SequenceProxy, _left_align
+from just_dna_enricher.sequences import SequenceProxy, _held_by_one_run, _left_align
 from just_dna_enricher.verification import examples
 
 #: This provider's registry entry — `match_on`, table and kind, held once (RM228).
@@ -505,7 +505,7 @@ def draft_panel_from_civic(
     # The anchor reader, built once per run so its cache is shared. `SequenceProxy` degrades to
     # `None` offline and on an unreachable service, which is what makes `anchor_base_unreadable` a
     # real outcome rather than a crash.
-    sequences = SequenceProxy(offline=offline)
+    sequences = _held_by_one_run(SequenceProxy(offline=offline))
 
     def read_base(chrom: str, pos: int) -> str | None:
         """One GRCh38 reference base at a 1-based position, or `None`."""

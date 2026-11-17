@@ -102,7 +102,11 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   and a `batch_timeout` that is not above 0; each refusal is pinned word for word.
 - **`SequenceProxy` may be shared across threads** (RM404): its lazy build and its memo are under a lock, the
   remote read outside it. Before, a second reader arriving while the first built the data proxy read `None` and
-  memoized it.
+  memoized it. **It memoizes answers only**: a failed build, a read that raised and a read that came back empty
+  are held by the run that saw it, through a private view of the proxy per run (`enrich`,
+  `verify_reference_alleles`, the minter and the drafters), so a run asks each failed read once and a down
+  service once, and a later run sharing the proxy asks again. Before, one run's failure lasted the proxy's life.
+  The memo is bounded at 262,144 reads, least recently used out first.
 
 ## 2026-11-16 — `v0.8.8`: enricher 0.8.8 (a patch, cut from `main`)
 
