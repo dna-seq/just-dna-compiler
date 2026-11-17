@@ -2040,6 +2040,7 @@ just-dna-enricher cache rebuild --use non-commercial              # → data/cac
 just-dna-enricher cache rebuild --only strchive --only mane --pin mane=1.5
 just-dna-enricher cache rebuild --only acmg --source acmg=./acmg_sf_v3.3.xlsx
 just-dna-enricher cache rebuild --publish --dry-run               # the plan: reads, takes nothing
+just-dna-enricher cache rebuild --only clinvar_gkm --publish --dry-run --rehearse-download  # downloads and builds, uploads nothing
 scripts/rebuild-caches.sh data/caches                             # the driver, all lanes
 just-dna-enricher cache rebuild --out /srv/just-dna/caches-$(date +%F)   # a deployment's own path
 ```
@@ -2057,9 +2058,18 @@ caches) and into which directory; *not run*, *refused* or *skipped* in the real 
 release this machine's cache holds; and with `--publish`, the release the lane's repo states, or *nothing
 published*, or *could not ask*. The upload's own checks need the built bytes, so a lane already built into
 `<out>/<lane>` by a run without `--publish` has its upload rehearsed against that snapshot. The source's own
-newest release is not asked: the liaison's `docs/UPSTREAM_DATA_SOURCES.md` keeps it by hand, and
-[RM412](ROADMAP_0_9.md#rm412--a-dry-run-cannot-rehearse-the-download-and-the-08-lines-private-names-wait-for-their-public-ones)
-is the opt-in download rehearsal.
+newest release is not asked: the liaison's `docs/UPSTREAM_DATA_SOURCES.md` keeps it by hand, and the per-lane
+probe that would ask it is parked in
+[RM412](ROADMAP_0_9.md#rm412--a-dry-run-cannot-rehearse-the-download-and-the-08-lines-private-names-wait-for-their-public-ones).
+
+**`--dry-run --publish --rehearse-download` takes the bytes and sends none** (0.9, RM412): the opt-in inverse,
+and the old dry run's behaviour asked for by name. Each lane first prints the line the dry run would
+(`rehearsing: <release>, <origin>, into <out>/<lane>`), then downloads and builds for real exactly as a run
+without `--dry-run` does, into the same `<out>/<lane>`, and then rehearses the upload (the plan and the orphan
+check, `upload.rehearse_reference_snapshot`) where that run would publish. The exit code is the real run's.
+Without both `--dry-run` and `--publish` the flag is refused before anything runs, with
+`cache_commands.REHEARSE_DOWNLOAD_REFUSAL` and the flags missing: without `--dry-run` the upload would be real,
+and without `--publish` there is no upload to rehearse.
 
 Three things about it are worth reading before a deployment runs it nightly.
 

@@ -65,6 +65,10 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   without a rebuild, through the call `cache rebuild --publish` makes. Each takes `--repo`, `--message` and a
   `--dry-run` that rehearses (the plan and the orphan check), as its siblings do. Both lanes published only through
   `cache rebuild` in the 0.8 line.
+- **`cache rebuild --dry-run --publish --rehearse-download`** (RM412): downloads and builds each lane for real into
+  `<out>/<lane>`, as a run without `--dry-run` does, then rehearses the upload instead of sending it; the inverse of
+  RM411's dry run, which takes nothing and is unchanged. Without both `--dry-run` and `--publish` the flag is refused
+  before anything runs (exit 2, `cache_commands.REHEARSE_DOWNLOAD_REFUSAL` plus the missing flags).
 
 ## 2026-11-16 — `v0.8.8`: enricher 0.8.8 (a patch, cut from `main`)
 
