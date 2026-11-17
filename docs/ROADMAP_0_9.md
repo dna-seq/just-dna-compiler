@@ -208,6 +208,11 @@ these win.
   request" applies to position keys only; gene and rsID keys are batched by value alone. Only Ensembl's
   per-chromosome file names are attested, so only Ensembl opens a chromosome's file; every other lane reads its
   glob.
+- **`parse_release` (the lead's wave-0 departure, decided 2026-11-17).** The same bytes give the same answer on
+  every route: the public `parse_release` is as lenient as `read_release` (a mistyped key is dropped with a warning,
+  an unparsable record is `None`), and `read_release` calls it. The strict form that keeps the reason for
+  `release_is_unreadable` stays private. Otherwise a remote read would refuse a `release.json` the local read
+  accepts, and the two routes would disagree about the label they exist to report. Built in wave 2.
 - **The error (D).** Every remote route raises one new type, `remote.SnapshotRouteUnavailable`, could-not-ask,
   carrying the lane, the route and the cause. The holder translates duckdb's HTTP exception and `httpx`'s errors
   into it. `lookup.py` catches it before its `duckdb.Error` handlers, and an AST guard holds that order
