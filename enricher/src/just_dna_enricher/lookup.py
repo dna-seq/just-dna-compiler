@@ -34,6 +34,7 @@ import duckdb
 from just_dna_compiler.hints import Alteration, Finding
 from just_dna_format.vrs import normalize_chrom
 
+# Re-exported so `lookup.LookupClients` and `lookup.CLIENT_FIELDS` stay importable (P3); the home is `clients`.
 from just_dna_enricher.clients import CLIENT_FIELDS as CLIENT_FIELDS
 from just_dna_enricher.clients import LookupClients as LookupClients
 from just_dna_enricher.clinvar import lookup_clin_sig

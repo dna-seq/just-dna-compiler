@@ -32,7 +32,13 @@ _LEAF_FIRST = (
     _FORBIDDEN
     + """
 import sys
+import just_dna_enricher.ensembl, just_dna_enricher.eutils, just_dna_enricher.gnomad
+import just_dna_enricher.grch37, just_dna_enricher.identifiers, just_dna_enricher.literature
+before = set(sys.modules)
 from just_dna_enricher.clients import CLIENT_FIELDS, LookupClients
+# The leaf adds itself and nothing else to what its client types already load.
+added = sorted(m for m in set(sys.modules) - before if m.startswith("just_dna_enricher"))
+assert added == ["just_dna_enricher.clients"], added
 assert forbidden(sys.modules) == [], forbidden(sys.modules)
 import just_dna_enricher.enrich.orchestration
 from just_dna_enricher.clients import LookupClients as again
@@ -55,7 +61,7 @@ print("ok", ",".join(CLIENT_FIELDS))
 def test_the_leaf_imports_alone_and_beside_orchestration(script: str) -> None:
     run = subprocess.run([sys.executable, "-c", script], capture_output=True, text=True)
     assert run.returncode == 0, run.stderr[-2000:]
-    head, fields = run.stdout.split()
+    head, fields = run.stdout.strip().splitlines()[-1].split(" ")
     assert head == "ok"
     assert tuple(fields.split(",")) == clients.CLIENT_FIELDS
 
