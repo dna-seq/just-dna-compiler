@@ -28,7 +28,7 @@ from just_dna_format.snapshot import CLINVAR_DATASET_PREFIX as CLINVAR_DATASET_P
 from just_dna_format.snapshot import clinvar_release_label, read_release, release_label
 
 from just_dna_enricher.locations import CITATIONS_DIRNAME
-from just_dna_enricher.resolver import _lookup_rsid_candidates, probe_table, rows_connection
+from just_dna_enricher.resolver import _lookup_rsid_candidates, _rows_connection, probe_table
 from just_dna_enricher.sequences import per_alt_loci
 
 logger = logging.getLogger(__name__)
@@ -117,7 +117,7 @@ def _lookup_loci(
 
 
 #: What a miss says was searched when the local snapshot was (`_lookup_positions_by_rsid`).
-INJECTED_SNAPSHOT = "the injected ClinVar snapshot"
+_INJECTED_SNAPSHOT = "the injected ClinVar snapshot"
 
 
 def _loci_over(
@@ -125,7 +125,7 @@ def _loci_over(
     rsids: list[str],
     positions: list[tuple[str | None, int | None, str | None, str | None]],
     candidate_loci: dict[tuple, dict[str, list[LocusSpelling]]] | None = None,
-    searched: str = INJECTED_SNAPSHOT,
+    searched: str = _INJECTED_SNAPSHOT,
 ) -> tuple[dict[str, list[dict]], dict[tuple, list[str]], list[str]]:
     """The ClinVar loci queries over a connection exposing `clinvar`: the one copy (RM430)."""
     warnings: list[str] = []
@@ -137,7 +137,7 @@ def _loci_over(
 
 
 #: The ClinVar snapshot's columns the loci and clinical readers read, typed for a remote answer's rows.
-CLINVAR_READ_COLUMNS: tuple[tuple[str, str], ...] = (
+_CLINVAR_READ_COLUMNS: tuple[tuple[str, str], ...] = (
     ("chrom", "VARCHAR"),
     ("start", "BIGINT"),
     ("ref", "VARCHAR"),
@@ -159,7 +159,7 @@ def _loci_from_rows(
     searched: str,
 ) -> tuple[dict[str, list[dict]], dict[tuple, list[str]], list[str]]:
     """`lookup_loci`'s answer over a remote answer's rows; a miss names `searched` (RM430)."""
-    con = rows_connection("clinvar", CLINVAR_READ_COLUMNS, rows)
+    con = _rows_connection("clinvar", _CLINVAR_READ_COLUMNS, rows)
     try:
         return _loci_over(con, rsids, positions, searched=searched)
     finally:
@@ -172,7 +172,7 @@ def _clin_sig_from_rows(
     """`lookup_clin_sig`'s answer over a remote answer's rows (RM430)."""
     if not alleles:
         return {}
-    con = rows_connection("clinvar", CLINVAR_READ_COLUMNS, rows)
+    con = _rows_connection("clinvar", _CLINVAR_READ_COLUMNS, rows)
     try:
         return _clin_sig_over(con, alleles)
     finally:
@@ -239,7 +239,7 @@ def _clin_sig_over(
 
 
 def _lookup_positions_by_rsid(
-    con: duckdb.DuckDBPyConnection, rsids: list[str], warnings: list[str], searched: str = INJECTED_SNAPSHOT
+    con: duckdb.DuckDBPyConnection, rsids: list[str], warnings: list[str], searched: str = _INJECTED_SNAPSHOT
 ) -> dict[str, list[dict]]:
     """Batch lookup: rsid -> [{chrom, start, ref, alts}, ...] (all loci, deterministically ordered).
 

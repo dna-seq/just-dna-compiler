@@ -633,8 +633,11 @@ class RemoteSnapshots:
         params: list[Any] = [[self._file_url(pin, f) for f in files]]
         for column, values in request.items():
             if column == "start":
-                clauses.append(f'"{position}" IN ({", ".join("?" for _ in values)})')
-                params.extend(int(v) for v in values)
+                # Integer literals, never bound parameters: a bound integer against the file's own
+                # integer type (Ensembl's is UINTEGER) prunes no row group, and one Ensembl position then
+                # read the whole chromosome file (66 requests and 65 MB measured on chr19, against 3 and
+                # 5.4 MB with literals). `int()` is what makes a literal safe to render.
+                clauses.append(f'"{position}" IN ({", ".join(str(int(v)) for v in values)})')
                 continue
             asked = (
                 [form for v in values for form in _chrom_forms(v)]
@@ -811,14 +814,19 @@ class RemoteSnapshots:
                 "duckdb's httpfs extension is not installed here; install it ahead of time "
                 "(`python -c \"import duckdb; duckdb.connect().install_extension('httpfs')\"`)",
             ) from exc
-        connection.execute("SET http_retries = 0")
-        connection.execute("SET enable_http_metadata_cache = true")
-        connection.execute("SET parquet_metadata_cache = true")
-        if self._hf_token:
-            secret = self._hf_token.replace("'", "''")
-            connection.execute(
-                f"CREATE SECRET hub (TYPE http, BEARER_TOKEN '{secret}', SCOPE '{self.hf_base_url}')"
-            )
+        try:
+            connection.execute("SET http_retries = 0")
+            connection.execute("SET enable_http_metadata_cache = true")
+            connection.execute("SET parquet_metadata_cache = true")
+            if self._hf_token:
+                secret = self._hf_token.replace("'", "''")
+                scope = self.hf_base_url.replace("'", "''")
+                connection.execute(f"CREATE SECRET hub (TYPE http, BEARER_TOKEN '{secret}', SCOPE '{scope}')")
+        except duckdb.Error as exc:
+            connection.close()
+            raise SnapshotRouteUnavailable(
+                lane, ROUTE_HF, f"the duckdb connection could not be configured ({type(exc).__name__})"
+            ) from exc
         return connection
 
 

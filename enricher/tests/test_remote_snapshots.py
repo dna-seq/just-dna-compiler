@@ -265,6 +265,49 @@ def test_a_chromosome_is_grouped_as_normalize_chrom_spells_it() -> None:
     assert keys.positions == {"1": [5], "MT": [7]}
 
 
+def test_a_position_prunes_row_groups_rather_than_reading_the_chromosome(
+    httpfs, loopback_hub, tmp_path: Path
+) -> None:
+    """One position reads the footer and the row group holding it, however many row groups the file has.
+
+    Bound integer parameters prune nothing in duckdb (measured: the whole chr19 file, 65 MB, for one
+    position), so the holder renders positions as literals; this file has many row groups.
+    """
+    root = tmp_path / "many"
+    (root / "data").mkdir(parents=True)
+    target = root / "data" / "homo_sapiens-chr16.parquet"
+    con = duckdb.connect()
+    con.execute(
+        "COPY (SELECT '16' AS chrom, (range * 10 + 1)::UINTEGER AS start, 'A' AS ref, 'G' AS alt, "
+        "'rs' || range AS id FROM range(40000)) "
+        f"TO '{target}' (FORMAT parquet, ROW_GROUP_SIZE 1000)"
+    )
+    groups = con.execute(f"SELECT count(DISTINCT row_group_id) FROM parquet_metadata('{target}')").fetchone()[
+        0
+    ]
+    con.close()
+    manifest = {"release_id": ENSEMBL_RELEASE, "files": [{"path": f"data/{target.name}", "chrom": "16"}]}
+    (root / "manifest.json").write_text(json.dumps(manifest))
+    loopback_hub.publish(SNAPSHOT_REPO_IDS["ensembl"], root, COMMIT_A)
+    with RemoteSnapshots(hf_base_url=loopback_hub.base_url) as holder:
+        answer = holder.lookup("ensembl", "homo_sapiens", {"chrom": ["16"], "start": [123451]})
+    assert [row["id"] for row in answer.rows] == ["rs12345"]
+    ranged = [r for m, p, r in loopback_hub.requests if m == "GET" and r and p.endswith(".parquet")]
+    assert groups >= 10 and len(ranged) <= 4, (groups, ranged)
+
+
+def test_a_hub_token_reaches_the_hub_and_nowhere_else(
+    httpfs, loopback_hub, clinvar_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Sent on the API reads and on duckdb's file reads alike, when the Hub is the one the token is for."""
+    monkeypatch.setenv("HF_TOKEN", "hf_loopback_token")
+    monkeypatch.setattr(remote, "HF_BASE_URL", loopback_hub.base_url)
+    loopback_hub.publish(SNAPSHOT_REPO_IDS["clinvar"], clinvar_root, COMMIT_A)
+    with RemoteSnapshots() as holder:
+        assert holder.lookup("clinvar", "clinvar", {"rsid": ["rs334"]}).rows
+    assert loopback_hub.authorization and set(loopback_hub.authorization) == {"Bearer hf_loopback_token"}
+
+
 def test_an_ensembl_key_without_a_position_is_never_sent(loopback_hub, ensembl_root: Path) -> None:
     loopback_hub.publish(SNAPSHOT_REPO_IDS["ensembl"], ensembl_root, COMMIT_A)
     with RemoteSnapshots(hf_base_url=loopback_hub.base_url) as holder, pytest.raises(ValueError) as refused:

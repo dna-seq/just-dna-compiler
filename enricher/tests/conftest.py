@@ -905,6 +905,8 @@ class LoopbackHub:
         self.repos: dict[str, dict[str, Path]] = {}
         self.main: dict[str, str] = {}
         self.requests: list[tuple[str, str, str | None]] = []
+        #: The `Authorization` header of every request, in order (`None` where none was sent).
+        self.authorization: list[str | None] = []
         self.bytes_sent = 0
         self.fail: dict[str, int] = {}
         self._lock = threading.Lock()
@@ -960,6 +962,7 @@ class LoopbackHub:
         path = handler.path.split("?", 1)[0]
         with self._lock:
             self.requests.append((handler.command, path, handler.headers.get("Range")))
+            self.authorization.append(handler.headers.get("Authorization"))
         failing = next((status for fragment, status in self.fail.items() if fragment in path), None)
         if failing is not None:
             self._send(

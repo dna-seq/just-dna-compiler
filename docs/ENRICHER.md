@@ -2402,7 +2402,9 @@ with RemoteSnapshots(declared_use="non_commercial") as snapshots:      # proxy f
   the table's files. Chromosomes are grouped as `normalize_chrom` spells them (`chrM` is `MT`). The connection loads
   `httpfs` with auto-install off, so **the extension must be installed ahead of time**
   (`python -c "import duckdb; duckdb.connect().install_extension('httpfs')"`); missing, it is
-  could-not-ask naming that command, before any Hub request is spent. No retry inside a call (`http_retries = 0`); a 429 is could-not-ask
+  could-not-ask naming that command, before any Hub request is spent. A position is rendered as an integer literal:
+  bound integer parameters prune no row group in duckdb, so one Ensembl position read its whole chromosome
+  file that way (65 MB on chr19, against about 5 MB). No retry inside a call (`http_retries = 0`); a 429 is could-not-ask
   naming the Hub's quota window (3,000 requests per 5 minutes per IP, anonymous).
 - **Where an answer came from.** `RemoteAnswer(rows, route, release, served_from, revision)`;
   `answer.provenance()` is the same without the rows, a `RemoteRoute`. One release per route per holder:

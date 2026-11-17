@@ -377,7 +377,7 @@ def _loci_over(
 
 
 #: The Ensembl snapshot's columns the readers read, and how a remote answer's rows are typed for them.
-ENSEMBL_READ_COLUMNS: tuple[tuple[str, str], ...] = (
+_ENSEMBL_READ_COLUMNS: tuple[tuple[str, str], ...] = (
     ("chrom", "VARCHAR"),
     ("start", "BIGINT"),
     ("ref", "VARCHAR"),
@@ -386,7 +386,7 @@ ENSEMBL_READ_COLUMNS: tuple[tuple[str, str], ...] = (
 )
 
 
-def rows_connection(
+def _rows_connection(
     name: str, columns: Sequence[tuple[str, str]], rows: Sequence[Mapping[str, object]]
 ) -> duckdb.DuckDBPyConnection:
     """An in-memory connection holding `rows` as table `name` with `columns`, for a reader's SQL (RM430).
@@ -405,7 +405,7 @@ def _loci_from_rows(
     positions: list[tuple[str | None, int | None, str | None, str | None]],
 ) -> tuple[dict[str, list[dict]], dict[tuple, list[str]], list[str]]:
     """`lookup_loci`'s answer over a remote answer's rows rather than a snapshot directory (RM430)."""
-    con = rows_connection("ensembl_variations", ENSEMBL_READ_COLUMNS, rows)
+    con = _rows_connection("ensembl_variations", _ENSEMBL_READ_COLUMNS, rows)
     try:
         return _loci_over(con, rsids, positions)
     finally:
