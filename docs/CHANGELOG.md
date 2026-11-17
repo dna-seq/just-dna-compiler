@@ -71,9 +71,9 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   numbers, before the repo is read. A record without those counts is not refused. A `release.json` present and
   unreadable is refused at the same point: one that does not parse or is not a JSON object, and a `parts_read` or
   `parts_total` that is not a map of datasets to whole numbers (`"1"`, `1.5`, `12.0`, `true`), each quoted.
-  An absent record, absent counts and a `null` count are not refused by this check. `opentargets publish` and
-  `clinvar-gkm publish` also warn on a snapshot with no release label, as `mitomap publish` and `strchive publish`
-  do.
+  An absent record, absent counts and a `null` map are not refused by this check; a per-dataset `null` is undecided
+  and not refused either. `opentargets publish` and `clinvar-gkm publish` also warn on a snapshot with no release
+  label, as `mitomap publish` and `strchive publish` do.
 - **`cache rebuild --dry-run --publish --rehearse-download`** (RM412): downloads and builds each lane for real into
   `<out>/<lane>`, as a run without `--dry-run` does, then rehearses the upload instead of sending it; the inverse of
   RM411's dry run, which takes nothing and is unchanged. Without both `--dry-run` and `--publish` the flag is refused

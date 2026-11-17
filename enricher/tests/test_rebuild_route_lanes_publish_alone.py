@@ -8,6 +8,7 @@ hub is faked, so a command that reached for the network fails the test.
 """
 
 import json
+import os
 from pathlib import Path
 
 import huggingface_hub
@@ -310,6 +311,25 @@ def test_a_release_record_that_does_not_parse_is_refused_before_the_repo_is_touc
     snapshot = _with_release_bytes(tmp_path, lane, raw)
 
     _assert_refused_in_both_runs(lane, snapshot, _unreadable_refusal(snapshot, _decode_problem(raw)))
+
+
+def test_a_release_record_that_cannot_be_read_off_the_disk_is_refused(
+    fake_hub: type[_Api], tmp_path: Path
+) -> None:
+    """Present and unreadable on disk is the same refusal: the record is there and says nothing."""
+    snapshot = _built(tmp_path, "opentargets")
+    record = snapshot / RELEASE_FILENAME
+    record.chmod(0)
+    try:
+        if os.access(record, os.R_OK):
+            pytest.skip("this user, or this filesystem, reads a file whatever its mode")
+        with pytest.raises(OSError) as denied:
+            record.read_bytes()
+        _assert_refused_in_both_runs(
+            "opentargets", snapshot, _unreadable_refusal(snapshot, str(denied.value))
+        )
+    finally:
+        record.chmod(0o644)
 
 
 @pytest.mark.parametrize("lane", sorted(_GROUPS))

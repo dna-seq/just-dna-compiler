@@ -3078,7 +3078,8 @@ that is present and is not a map of datasets to whole numbers (`parts_read is "1
 each value quoted). The gate reads the file as written, because the lenient `read_release` reads an
 unparsable record as no record and a mistyped map as unstated, and coerces a count of `"1"`, `12.0` or `true`.
 Absent is the unknown arm and present-and-unreadable the refusal, so no `release.json`, no counts, or a `null`
-count is not refused by this check.
+in place of a whole map (the model's stated unknown) is not refused by this check. A `null` for one dataset's count
+was left undecided, and is not refused by it either.
 `cache rebuild` itself never builds a partial snapshot: its adapter takes no `--parts`, and `--source` takes a
 file, never the Open Targets parts directory, so the dry run's rehearsal of a build left at `<out>/opentargets`
 is the one rebuild route that meets one. `opentargets publish` and `clinvar-gkm publish` also warn, refusing
