@@ -55,8 +55,10 @@ _ACGT = frozenset("ACGT")
 
 #: How many reads one `SequenceProxy` remembers, least recently used first out (0.9, RM404). A proxy a
 #: host shares may live as long as the service, so its memo is bounded; this is large enough that one
-#: run's re-reads still hit (a ClinVar-scale table of about 58,000 rows is read a few times per row),
-#: and an entry is mostly a single base, so the bound is tens of megabytes at most.
+#: run's re-reads still hit (a ClinVar-scale table of about 58,000 rows is read a few times per row).
+#: It counts entries, not bytes: most are a single base or a ref's width, but an indel's mint window is
+#: about 2 kb (`vrs._MINT_WINDOW` each side) and a left-alignment read 1 kb, so a memo filled with indel
+#: windows alone would hold about half a gigabyte.
 _MEMO_SIZE = 262_144
 
 
