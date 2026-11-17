@@ -208,6 +208,11 @@ these win.
   request" applies to position keys only; gene and rsID keys are batched by value alone. Only Ensembl's
   per-chromosome file names are attested, so only Ensembl opens a chromosome's file; every other lane reads its
   glob.
+- **`parse_release` (the lead's wave-0 departure, decided 2026-11-17).** The same bytes give the same answer on
+  every route: the public `parse_release` is as lenient as `read_release` (a mistyped key is dropped with a warning,
+  an unparsable record is `None`), and `read_release` calls it. The strict form that keeps the reason for
+  `release_is_unreadable` stays private. Otherwise a remote read would refuse a `release.json` the local read
+  accepts, and the two routes would disagree about the label they exist to report. Built in wave 2.
 - **The error (D).** Every remote route raises one new type, `remote.SnapshotRouteUnavailable`, could-not-ask,
   carrying the lane, the route and the cause. The holder translates duckdb's HTTP exception and `httpx`'s errors
   into it. `lookup.py` catches it before its `duckdb.Error` handlers, and an AST guard holds that order
@@ -599,6 +604,20 @@ package that moves: a per-table "newest enricher version whose derivation could 
 offline from the installed enricher. A record in `just_dna_format` would force a format release for every enricher
 patch, the opposite of the small patches the maintainer asked for. The release records in the format stay about
 compiled output. It rides with RM441 and RM399, one design, in the minor desk #326 places them in (0.10 as proposed).
+
+**The builder's readings, placed (the pm, 2026-11-17).**
+
+- **Exit code:** a rehearsal that predicts a refused upload exits 0, as `cache rebuild --publish` does; kept. The
+  per-lane commands' different exit is class (c) below.
+- **(a) and (b) are part of this item, not new items:** a command 0.9 adds is not done while it can publish a
+  `--parts`-limited test build to the public repository, or publish an unlabelled snapshot without the warning its
+  siblings give. Both new publish commands refuse a snapshot whose `release.json` records `parts_read` below
+  `parts_total`, and warn on a missing label as mitomap's and STRchive's do. If the rebuild path can publish a
+  partial build too, the same refusal goes there.
+- **(c), the near-identical `X publish` commands:** not 0.9 (trial rule 1). An internal refactor with no public
+  surface, so a patch on `main` after 0.9 merges; triage files it.
+- **(d), a rehearsal predicts only as wide as the dry run:** a residual, said in the flag's help text and stated
+  at closure.
 
 **Residuals** none yet.
 
