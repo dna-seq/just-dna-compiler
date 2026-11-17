@@ -1199,7 +1199,9 @@ CACHE_LANES: list[CacheLane] = [
         default_dir=default_opentargets_cache_dir,
         rebuild=_rebuild_opentargets,
         # RM408: published since 0.8.1's patch line, through `cache rebuild --publish` (the one route
-        # `test_every_publishable_lane_can_actually_be_published` allows a lane with an adapter).
+        # `test_every_publishable_lane_can_actually_be_published` allows a lane with an adapter). Since
+        # 0.9 `opentargets publish` sends a snapshot already built (RM412); `publish_command` stays
+        # unset, because that field names the route for a lane the rebuild loop cannot reach.
         ensure=ensure_opentargets_snapshot,
         publish_repo=SNAPSHOT_REPO_IDS["opentargets"],
         # None, as for CIViC's CC0 lane: a CC0 mark gates no declared use, so there is nothing for
@@ -1254,6 +1256,8 @@ CACHE_LANES: list[CacheLane] = [
         rebuild=_rebuild_clinvar_gkm,
         ensure=ensure_clinvar_gkm_snapshot,
         publish_repo=DEFAULT_CLINVAR_GKM_REPO_ID,
+        # `clinvar-gkm publish` (0.9, RM412) sends a snapshot already built; `publish_command` stays
+        # unset for Open Targets' reason above.
         # `terms=None` although `CLINVAR_GKM_TERMS` exists, for MITOMAP's reason: this field is the
         # declared-use gate, and CC0 over public-domain ClinVar refuses no declaration.
         terms=None,

@@ -16,12 +16,13 @@ from just_dna_enricher.clinvar_gkm import (
 )
 from just_dna_enricher.clinvar_gkm_build import build_snapshot, download_and_build
 from just_dna_enricher.locations import repro_out, resolve_clinvar_gkm_reference
+from just_dna_enricher.upload import DEFAULT_CLINVAR_GKM_REPO_ID
 
 clinvar_gkm_app = typer.Typer(
     add_completion=False,
     help=(
         "ClinGen's ClinVar-GKM, cut to its indels: an offline witness for where an indel sits. CC0, "
-        "so a deployment may publish it (`cache rebuild --only clinvar_gkm --publish`)."
+        "so a deployment may publish it (`clinvar-gkm publish`, or `cache rebuild --only clinvar_gkm --publish`)."
     ),
     no_args_is_help=True,
 )
@@ -156,3 +157,53 @@ def clinvar_gkm_lookup_(
             f"{row.rsid or '-'}  ({row.state_type})"
         )
     typer.echo(f"ids minted under VRS {witness.vrs_version} (declared, not measured)")
+
+
+@clinvar_gkm_app.command("publish")
+def clinvar_gkm_publish_(
+    snapshot_dir: Path = typer.Argument(
+        ...,
+        exists=True,
+        file_okay=False,
+        help="Built snapshot directory (data/*.parquet, LICENSE.txt and release.json), as `clinvar-gkm build` writes it.",
+    ),
+    repo: str = typer.Option(
+        DEFAULT_CLINVAR_GKM_REPO_ID,
+        "--repo",
+        help="Target HuggingFace dataset repo (owner/name).",
+    ),
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="Show what would be uploaded. Reads the repo's file list; uploads nothing.",
+    ),
+    commit_message: str | None = typer.Option(None, "--message", "-m", help="Commit message."),
+) -> None:
+    """Create-or-update the dataset repo and upload a ClinVar-GKM snapshot already built (publisher/dev).
+
+    CC0 over ClinGen's transformation of public-domain ClinVar, so the snapshot may be published. Until
+    0.9 the lane published only through `cache rebuild --only clinvar_gkm --publish`, which downloads
+    and builds first (RM412); this sends a snapshot you already hold, such as one `clinvar-gkm build
+    --allele … --variation … --manifest …` cut from local files, through the same publisher call.
+    """
+    from just_dna_enricher.upload import (
+        PublishRefused,
+        publish_reference_snapshot,
+        rehearse_reference_snapshot,
+    )
+
+    try:
+        if dry_run:
+            plan = rehearse_reference_snapshot(snapshot_dir, repo)
+            typer.echo(f"would upload {len(plan.files)} file(s) to {plan.repo_id}: {plan.files}")
+            return
+        plan = publish_reference_snapshot(snapshot_dir, repo, commit_message=commit_message)
+    except (PublishRefused, PermissionError, ImportError) as exc:
+        typer.secho(
+            f"{'WOULD BE REFUSED' if dry_run else 'PUBLISH FAILED'}: {exc}", fg=typer.colors.RED, err=True
+        )
+        raise typer.Exit(code=1) from exc
+    typer.secho(
+        f"published: {snapshot_dir} → {plan.repo_id} ({len(plan.files)} files)",
+        fg=typer.colors.GREEN,
+    )

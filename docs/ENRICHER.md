@@ -1711,8 +1711,8 @@ service* below). Pre-provisioning is therefore a deployment step, not an optimiz
 | **MITOMAP** ✅ | `mitomap/` | `$JUST_DNA_MITOMAP_CACHE` | `ensure_mitomap_snapshot` | `just-dna-seq/mitomap` — CC BY 3.0, repo not created yet | curated mtDNA variants, both `mmutation` and `rtmutation` (RM171) |
 | **MITOMAP miss** ⛓ | `mitomap_miss/` | `$JUST_DNA_MITOMAP_MISS_CACHE` | **none — derived** | **not published, deliberately** | what MITOMAP publishes and the ClinVar cache does not (`draft-panel --source mitomap-miss`) |
 | **AlphaGenome AVI** 🔑 | `alphagenome_avi/` | `$JUST_DNA_ALPHAGENOME_AVI_CACHE` | `ensure_alphagenome_avi_snapshot` | `just-dna-seq/alphagenome_avi` — Permissive Use (RM195), repo not created yet | variant-impact scores for 8.8 B SNVs, `Int32`×10⁵ plus a 466 KB knot table (`alphagenome build --input`, RM191/RM198) |
-| **ClinVar-GKM** ✅ | `clinvar_gkm/` | `$JUST_DNA_CLINVAR_GKM_CACHE` | `ensure_clinvar_gkm_snapshot` | `just-dna-seq/clinvar_gkm` — CC0 (ClinGen's transformation), repo not created yet | the GRCh38 indels of ClinVar-GKM with VRS id, VCF spelling, ClinVar variation and rsID: a **placement witness** a check names (RM305; `clinvar-gkm build`, `currency`, `lookup`) |
-| **Open Targets** ✅ | `opentargets/` | `$JUST_DNA_OPENTARGETS_CACHE` | `ensure_opentargets_snapshot` (public since 0.9, RM412; `_ensure_opentargets_snapshot` in the 0.8 line) | `just-dna-seq/opentargets` — CC0-marked, published by `cache rebuild --only opentargets --publish`, repo not created yet | Platform 26.09 trimmed: GWAS credible sets and members, L2G, GWAS × molecular-QTL coloc, per-transcript consequences (`opentargets enrich`, RM333) |
+| **ClinVar-GKM** ✅ | `clinvar_gkm/` | `$JUST_DNA_CLINVAR_GKM_CACHE` | `ensure_clinvar_gkm_snapshot` | `just-dna-seq/clinvar_gkm` — CC0 (ClinGen's transformation), repo not created yet | the GRCh38 indels of ClinVar-GKM with VRS id, VCF spelling, ClinVar variation and rsID: a **placement witness** a check names (RM305; `clinvar-gkm build`, `currency`, `lookup`, and since 0.9 `publish` for a snapshot already built, RM412) |
+| **Open Targets** ✅ | `opentargets/` | `$JUST_DNA_OPENTARGETS_CACHE` | `ensure_opentargets_snapshot` (public since 0.9, RM412; `_ensure_opentargets_snapshot` in the 0.8 line) | `just-dna-seq/opentargets` — CC0-marked, published by `cache rebuild --only opentargets --publish` or, for a snapshot already built, `opentargets publish` (0.9, RM412), repo not created yet | Platform 26.09 trimmed: GWAS credible sets and members, L2G, GWAS × molecular-QTL coloc, per-transcript consequences (`opentargets enrich`, RM333) |
 
 🔒 = licence-gated (`commercial_use=False`). ❓ = terms **unestablished** (`commercial_use=None`), which
 is a different state and not a weaker one: unknown is not permissive. ⛓ = **derived**: this lane has
@@ -6125,6 +6125,8 @@ just-dna-enricher clinvar build --vcf clinvar.vcf.gz            # VCF → snapsh
 just-dna-enricher clinvar build --download                      # fetch the NCBI VCF first, then build
 just-dna-enricher clinvar publish data/repro/clinvar --dry-run  # rehearse the reference-snapshot upload
 just-dna-enricher clinvar publish data/repro/clinvar            # create-or-update datasets/just-dna-seq/clinvar
+just-dna-enricher clinvar-gkm publish data/repro/clinvar_gkm --dry-run  # a built snapshot of a rebuild-route lane (0.9)
+just-dna-enricher opentargets publish data/repro/opentargets --dry-run  # likewise; without --dry-run it uploads
 ```
 
 `enrich` takes the mode and cache flags (`--strict/--best-effort`, `--offline`, `--ensembl-cache`,

@@ -7,7 +7,7 @@ import typer
 
 from just_dna_enricher.cli._shared import _use
 from just_dna_enricher.licensing import sidecar_path
-from just_dna_enricher.locations import repro_out
+from just_dna_enricher.locations import SNAPSHOT_REPO_IDS, repro_out
 from just_dna_enricher.opentargets import OWNED_TABLES, OpenTargetsError, enrich_opentargets, summarise
 from just_dna_enricher.opentargets_build import (
     DEFAULT_OPENTARGETS_BASE_URL,
@@ -155,4 +155,53 @@ def opentargets_enrich_(
     typer.echo(
         "posterior on gwas_effects.csv: "
         + ", ".join(f"{name.replace('_', ' ')} {n}" for name, n in summary["posterior"].items())
+    )
+
+
+@opentargets_app.command("publish")
+def opentargets_publish_(
+    snapshot_dir: Path = typer.Argument(
+        ...,
+        exists=True,
+        file_okay=False,
+        help="Built snapshot directory (data/*.parquet + release.json), as `opentargets build` writes it.",
+    ),
+    repo: str = typer.Option(
+        SNAPSHOT_REPO_IDS["opentargets"],
+        "--repo",
+        help="Target HuggingFace dataset repo (owner/name).",
+    ),
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="Show what would be uploaded. Reads the repo's file list; uploads nothing.",
+    ),
+    commit_message: str | None = typer.Option(None, "--message", "-m", help="Commit message."),
+) -> None:
+    """Create-or-update the dataset repo and upload an Open Targets snapshot already built (publisher/dev).
+
+    The release is CC0-marked, so the snapshot may be published. Until 0.9 the lane published only
+    through `cache rebuild --only opentargets --publish`, which downloads and builds first (RM412); this
+    sends a snapshot you already hold, through the same publisher call that route makes.
+    """
+    from just_dna_enricher.upload import (
+        PublishRefused,
+        publish_reference_snapshot,
+        rehearse_reference_snapshot,
+    )
+
+    try:
+        if dry_run:
+            plan = rehearse_reference_snapshot(snapshot_dir, repo)
+            typer.echo(f"would upload {len(plan.files)} file(s) to {plan.repo_id}: {plan.files}")
+            return
+        plan = publish_reference_snapshot(snapshot_dir, repo, commit_message=commit_message)
+    except (PublishRefused, PermissionError, ImportError) as exc:
+        typer.secho(
+            f"{'WOULD BE REFUSED' if dry_run else 'PUBLISH FAILED'}: {exc}", fg=typer.colors.RED, err=True
+        )
+        raise typer.Exit(code=1) from exc
+    typer.secho(
+        f"published: {snapshot_dir} → {plan.repo_id} ({len(plan.files)} files)",
+        fg=typer.colors.GREEN,
     )

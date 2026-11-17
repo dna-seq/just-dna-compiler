@@ -61,6 +61,10 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 - **`download.ensure_opentargets_snapshot`** (RM412): the Open Targets lane's pull, public beside its siblings. The
   0.8 line's `_ensure_opentargets_snapshot` is gone (a leading underscore carried no contract); `CACHE_LANES` and
   `cache pull` reach the same function.
+- **`opentargets publish` and `clinvar-gkm publish`** (RM412): a snapshot already built, sent to the lane's repo
+  without a rebuild, through the call `cache rebuild --publish` makes. Each takes `--repo`, `--message` and a
+  `--dry-run` that rehearses (the plan and the orphan check), as its siblings do. Both lanes published only through
+  `cache rebuild` in the 0.8 line.
 
 ## 2026-11-16 — `v0.8.8`: enricher 0.8.8 (a patch, cut from `main`)
 
