@@ -1456,7 +1456,7 @@ def _refuse_a_partial_build(snapshot_dir: Path) -> None:
         raise SnapshotNotPublishable(
             f"{snapshot_dir} is a partial build: its {RELEASE_FILENAME} records {', '.join(short)} read, so "
             f"whoever pulls it would take a row missing from a part nobody read for an answer. Publish a "
-            f"whole build (one made without --parts)."
+            f"whole build (for Open Targets, one `opentargets build` made without --parts)."
         )
 
 

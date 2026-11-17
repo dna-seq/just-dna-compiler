@@ -134,8 +134,8 @@ def _partial_refusal(snapshot: Path, read: dict[str, int], total: dict[str, int]
     )
     return (
         f"{snapshot} is a partial build: its {RELEASE_FILENAME} records {short} read, so whoever pulls it "
-        f"would take a row missing from a part nobody read for an answer. Publish a whole build (one made "
-        f"without --parts)."
+        f"would take a row missing from a part nobody read for an answer. Publish a whole build (for Open "
+        f"Targets, one `opentargets build` made without --parts)."
     )
 
 
