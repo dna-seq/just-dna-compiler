@@ -47,11 +47,12 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   a leaf that imports only the client types it bundles, so `enrich` can import the bundle at module level, which it
   could not while the bundle lived in `lookup`. `lookup.LookupClients` and `lookup.CLIENT_FIELDS` still import, as
   the same objects.
-- **`just_dna_format.snapshot.parse_release(data)`** (RM430, decision 6): `release.json`'s bytes or text read into a
-  `SnapshotRelease`, old spellings included, for a reader that fetched the record. `read_release` and
-  `release_is_unreadable` share its decoder and model. It takes no path, logs nothing, and raises
-  `pydantic.ValidationError` on malformed content, including one mistyped key, which `read_release` still drops
-  alone.
+- **`just_dna_format.snapshot.parse_release(data, *, source="release.json")`** (RM430, decision 6 and the pm's
+  2026-11-17 answer): `release.json`'s bytes or text read into a `SnapshotRelease`, old spellings included, for a
+  reader that fetched the record. `read_release` calls it with the file's bytes, so the same bytes give the same
+  answer locally and remotely: content that is not JSON or not an object is `None` with a warning, and a mistyped
+  key is dropped with a warning naming it. `source` names the bytes' origin in those warnings. It takes no path.
+  `release_is_unreadable` keeps a private strict reading.
 - **`caches.lane_status(lanes=None, locations=None)`** (RM443, S154): a host that hands each lane's resolver the
   path it configured passes the same mapping, `{lane name: path or None}`. A named lane is resolved with that path
   and without loading `.env`, and reports it as `looked_in`; `None` is the lane's own ladder, still without the

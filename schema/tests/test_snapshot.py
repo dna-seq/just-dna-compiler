@@ -32,7 +32,6 @@ from just_dna_format.snapshot import (
     release_label,
     write_release,
 )
-from pydantic import ValidationError
 
 
 def _release_file(directory: Path, payload: object) -> Path:
@@ -380,24 +379,46 @@ def test_a_record_json_loads_reads_stays_readable(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize(
     "content",
-    [b"{not json", b"", b"\xff", '{"dataset": ', b"[1]", b'"dataset"', b'{"row_count": "many"}'],
-    ids=["not_json", "empty", "not_utf8", "truncated_text", "a_list", "a_string", "a_mistyped_key"],
+    [b"{not json", b"", b"\xff", '{"dataset": ', b"[1]", b'"dataset"'],
+    ids=["not_json", "empty", "not_utf8", "truncated_text", "a_list", "a_string"],
 )
-def test_parse_release_raises_on_malformed_content_and_logs_nothing(
+def test_parse_release_answers_none_for_an_unreadable_record_and_warns_naming_the_source(
     content: bytes | str, caplog: pytest.LogCaptureFixture
 ) -> None:
-    """Strict where `read_release` is lenient: a mistyped key raises here and costs only that key there."""
-    with caplog.at_level("DEBUG"), pytest.raises(ValidationError):
-        parse_release(content)
-    assert caplog.records == []
+    """Lenient as `read_release` is (RM430, 2026-11-17): the same bytes give the same answer on every route."""
+    with caplog.at_level("WARNING"):
+        assert parse_release(content, source="hf://example/release.json") is None
+    assert [r.levelname for r in caplog.records] == ["WARNING"]
+    assert "Could not read hf://example/release.json (" in caplog.records[0].getMessage()
+    assert "treating the release as unstated" in caplog.records[0].getMessage()
 
 
-def test_read_release_keeps_its_leniency_over_the_shared_parser(tmp_path: Path) -> None:
-    """The content `parse_release` refuses for one mistyped key still reads from disk minus that key."""
+def test_parse_release_drops_a_mistyped_key_with_a_warning_as_read_release_does(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A mistyped key costs that key, on the fetched bytes exactly as on the file."""
     directory = _release_file(tmp_path / "snap", {"dataset": "x_1", "row_count": "many", "licence": "MIT"})
-    with pytest.raises(ValidationError):
-        parse_release((directory / RELEASE_FILENAME).read_bytes())
-    release = read_release(directory)
-    assert release is not None
-    assert (release.dataset, release.row_count, release.license) == ("x_1", None, "MIT")
+    content = (directory / RELEASE_FILENAME).read_bytes()
+    with caplog.at_level("WARNING"):
+        parsed = parse_release(content)
+    assert parsed is not None
+    assert (parsed.dataset, parsed.row_count, parsed.license) == ("x_1", None, "MIT")
+    assert parsed == read_release(directory)
+    assert [r.getMessage() for r in caplog.records][0] == (
+        f"{RELEASE_FILENAME}: row_count do not fit the snapshot record; read as unstated."
+    )
     assert release_is_unreadable(directory) is True
+
+
+def test_read_release_warns_with_the_path_through_the_shared_parser(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """`read_release` hands its path to `parse_release`, so its warnings still name the file."""
+    directory = _release_file(tmp_path / "snap", {"dataset": "x_1", "row_count": "many"})
+    with caplog.at_level("WARNING"):
+        assert read_release(directory).dataset == "x_1"
+    path = directory / RELEASE_FILENAME
+    assert (
+        caplog.records[0].getMessage()
+        == f"{path}: row_count do not fit the snapshot record; read as unstated."
+    )
