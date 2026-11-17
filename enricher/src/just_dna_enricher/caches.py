@@ -350,6 +350,15 @@ class CacheLane:
 # `--vcf` for a file you already have, and a rebuild pass by definition does not have one.
 
 
+def _ensure_declaration(lane: CacheLane, declared_use: str) -> dict[str, str]:
+    """The declaration a lane's `ensure` takes beyond the hub intent: the Ensembl lane's alone (RM437).
+
+    Its recorded groups are re-pulled under the run's `--use` when that states one, else under the one
+    each was admitted with; no other lane's `ensure` takes a declaration.
+    """
+    return {"declared_use": declared_use} if lane.name == "ensembl" else {}
+
+
 def _gate(terms: SourceTerms | None, declared_use: str, lane: str) -> RebuildOutcome | None:
     """The declared-use gate, run before any bytes are taken. `None` means proceed.
 
@@ -1630,7 +1639,7 @@ def _present_or_completed(lane: CacheLane, existing: Path, request: RebuildReque
     before = _payload_names(existing)
     follow = _FollowHub(lane.release_label)
     try:
-        path = lane.ensure(_follow_hub=follow)
+        path = lane.ensure(_follow_hub=follow, **_ensure_declaration(lane, request.declared_use))
     except Exception as exc:
         if follow.outcome == "refreshed":
             # The re-pull had begun: its `release.json` is withdrawn and some files may be the new
@@ -1709,7 +1718,9 @@ def prepare_lane(lane: CacheLane, request: RebuildRequest) -> PrepareOutcome:
                 return PrepareOutcome(lane.name, None, "none", f"skipped: {reason}")
         try:
             # The provisioning command's intent (RM420); an absent cache is pulled whole either way.
-            path = lane.ensure(_follow_hub=_FollowHub(lane.release_label))
+            path = lane.ensure(
+                _follow_hub=_FollowHub(lane.release_label), **_ensure_declaration(lane, request.declared_use)
+            )
         except Exception as exc:
             # Not an error here either, and for a sharper reason than in `cache pull`: this command's
             # job is to leave the machine with a usable cache, and a repo nobody has created yet is a

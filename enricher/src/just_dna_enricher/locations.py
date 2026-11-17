@@ -634,10 +634,11 @@ def ensembl_group_dir(ensembl_cache: Path, group: str) -> Path:
 
     **The path and the check are one call**, so no reader spells the layout and none reads a group
     without the check. The core's release is its `manifest.json`'s `release_id`, the record that
-    attests the core's files; the group's is the one its pull recorded. Four refusals, each its own
+    attests the core's files; the group's is the one its pull recorded. Five refusals, each its own
     sentence (`@answered-is-not-absent`), all `EnsemblGroupReleaseError`: the pull record names no such
-    group (absent, or placed by hand), the group's pull did not finish, the core states no release, and
-    the two releases differ. `core` itself raises `ValueError` (`CORE_IS_NOT_A_GROUP`).
+    group (absent, or placed by hand), the group's pull did not finish, the core states no release, the
+    two releases differ, and the directory is not the files the manifest attests for the group (one
+    missing or of another size, or a parquet it does not name), compared by size as the core is read. `core` itself raises `ValueError` (`CORE_IS_NOT_A_GROUP`).
     """
     if group == ENSEMBL_CORE_GROUP:
         raise ValueError(CORE_IS_NOT_A_GROUP)
@@ -669,6 +670,30 @@ def ensembl_group_dir(ensembl_cache: Path, group: str) -> Path:
             f"The {group} group at {directory} is release {recorded} and the core beside it is {core}: a "
             f"group joins the core on (chrom, row_idx), which holds within one release only. Re-run "
             f"`just-dna-enricher cache pull --only ensembl` to re-pull it."
+        )
+    # The directory as the manifest attests it, both directions and by size (a `stat`, as
+    # `manifest_coverage` reads the core): a file missing or of another size, or a parquet the manifest
+    # does not name for this group, is not attested to be this release, and the group is withheld whole.
+    attested = {f.path: f.size for f in manifest.group_files(group)} if manifest is not None else {}
+    present = (
+        sorted(f"{ENSEMBL_GROUPS_DIRNAME}/{group}/{p.name}" for p in directory.glob("*.parquet"))
+        if directory.is_dir()
+        else []
+    )
+    disowned = [
+        relative
+        for relative in sorted(set(attested) | set(present))
+        if relative not in attested
+        or attested[relative] is None
+        or not (cache / relative).is_file()
+        or (cache / relative).stat().st_size != attested[relative]
+    ]
+    if disowned:
+        raise EnsemblGroupReleaseError(
+            f"The {group} group at {directory} is recorded as release {core}, but {len(disowned)} file(s) "
+            f"there are not the ones its {SNAPSHOT_MANIFEST_FILENAME} attests ({_named(tuple(disowned))}): "
+            f"missing, of another size, or not named for the group. Re-run `just-dna-enricher cache pull "
+            f"--only ensembl` to re-pull it."
         )
     return directory
 

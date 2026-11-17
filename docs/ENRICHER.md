@@ -2272,7 +2272,9 @@ prevent, and a stale group joins to the wrong variants silently.
   `groups` (`locations.SnapshotManifest.groups`, name → `SnapshotManifestGroup`, licence included;
   `SnapshotManifest.group_files(name)` lists what it attests for one). `core` is not a group
   (`locations.ENSEMBL_CORE_GROUP`, refused with `CORE_IS_NOT_A_GROUP`), and an unknown name is refused
-  with the names the release does publish, both `ValueError` and before any download. `cache pull` refuses
+  with the names the release does publish, both `ValueError` and before any download (a name the cache's
+  manifest lacks is checked against the hub's, which may publish a newer release that adds it). `cache
+  pull` refuses
   `core` and a `--groups` beside any lane other than `ensembl` (`cache_commands.GROUPS_NEED_ENSEMBL_ONLY`;
   with no `--only` the selection is every lane, so it needs `--only ensembl`) before any lane runs. `cache
   pull` has no `--dry-run`.
@@ -2290,18 +2292,22 @@ prevent, and a stale group joins to the wrong variants silently.
   files, and the declaration it was admitted under. `locations.pulled_groups(cache)` reads it.
 - **The one path, with the check.** `locations.ensembl_group_dir(cache, group)` returns
   `<cache>/groups/<group>` (`ENSEMBL_GROUPS_DIRNAME`) only when the group's recorded release is the
-  core's (`manifest.json`'s `release_id`), and otherwise raises `EnsemblGroupReleaseError`, with its own
-  sentence for each of four causes: not taken by a pull of this cache (absent, or placed by hand), a pull
-  that did not finish, a core stating no release, and two releases. A reader takes a group's path from
-  it and nowhere else.
+  core's (`manifest.json`'s `release_id`) and the directory holds exactly the files the manifest attests
+  for the group, at their sizes (a `stat`, as the core is read). Otherwise it raises
+  `EnsemblGroupReleaseError`, with its own sentence for each of five causes: not taken by a pull of this
+  cache (absent, or placed by hand), a pull that did not finish, a core stating no release, two releases,
+  and a file missing, of another size, or not named for the group. A reader takes a group's path from it
+  and nowhere else.
 - **Sticky.** The record's selection is carried over by both of the core provisioner's record writes, and
   every later `ensure_snapshot`, with or without `groups` (`cache pull`, `cache prepare`,
   `enrich(download=True)`), brings each recorded group to the core's release when it moves; a group the
   new release does not name a file for is removed only where this lane's earlier pull put it. A recorded
   group is gated by the call's `declared_use` when that states one, else by its recorded declaration
-  (`effective_declared_use`'s rule, applied to a cache). A recorded group the caller did not name never
-  raises: skipped, refused or not fetched, it is logged, `cache pull` prints it, and it stays at its old
-  release, which `ensembl_group_dir` refuses. A warm cache whose groups are current reads no hub.
+  (`effective_declared_use`'s rule, applied to a cache); `cache pull` and `cache prepare` pass their
+  `--use`. A recorded group the caller did not name never raises, whatever went wrong: it is logged,
+  `cache pull` prints it, and it stays at its old release, which `ensembl_group_dir` refuses. A named
+  group's failure raises once every group has been tried. No group is pulled beside a core that is not a
+  finished pull its manifest attests whole. A warm cache whose groups are current reads no hub.
   Removing a group is not in 0.9: deleting the lane's directory does it.
 - **Local only in 0.9.** Remote reads of a group wait for a caller who asks.
 

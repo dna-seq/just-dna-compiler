@@ -29,6 +29,7 @@ import polars as pl
 import pytest
 from just_dna_enricher import caches
 from just_dna_enricher import download as dl
+from just_dna_enricher.caches import LANES_BY_NAME
 from just_dna_enricher.cli import app as enricher_app
 from just_dna_enricher.cli import cache_commands
 from just_dna_enricher.cli.cache_commands import GROUPS_NEED_ENSEMBL_ONLY
@@ -142,9 +143,12 @@ class _Hub:
         self.failing = failing or {}
         self.listed: list[str] = []
         self.fetched: list[str] = []
+        self.listing_down = False
 
     def ls(self, prefix: str, detail: bool = True):
         self.listed.append(prefix)
+        if self.listing_down:
+            raise ConnectionError("the listing timed out")
         directory = prefix.removeprefix(f"{_ROOT}/").rstrip("/")
         names = [k for k in self.files if k.rsplit("/", 1)[0] == directory and "/" in k]
         if not names:
@@ -471,6 +475,107 @@ def test_a_sticky_group_that_cannot_be_fetched_does_not_sink_the_core(install_hu
         dl.EnsemblReferenceError, match="could not be fetched .ConnectionError: reset by peer"
     ):
         dl.ensure_snapshot(cache, groups=["consequence"])
+
+
+def test_an_interrupted_re_pull_still_removes_the_earlier_releases_files(install_hub, tmp_path: Path) -> None:
+    """The record keeps naming the old release's files while the new pull is under way, so a resume finds them."""
+    cache = tmp_path / "ensembl"
+    install_hub(_published(0, _OLD))
+    dl.ensure_snapshot(cache, groups=["cadd"], declared_use="non_commercial")
+    new = _published(1, _NEW, cadd_chroms=("21",))
+    install_hub(new, failing={"groups/cadd/homo_sapiens-chr21.parquet": ConnectionError("reset by peer")})
+    dl.ensure_snapshot(cache, _follow_hub=dl._FollowHub(ensembl_release_label))  # the group's pull breaks
+    assert (cache / "groups/cadd/homo_sapiens-chrMT.parquet").exists()
+
+    install_hub(new)
+    dl.ensure_snapshot(cache)
+
+    assert sorted(p.name for p in ensembl_group_dir(cache, "cadd").glob("*.parquet")) == [
+        "homo_sapiens-chr21.parquet"
+    ]
+    assert pulled_groups(cache)["cadd"]["files"] == ["groups/cadd/homo_sapiens-chr21.parquet"]
+
+
+def test_a_group_directory_the_manifest_does_not_attest_is_withheld_whole(
+    install_hub, tmp_path: Path
+) -> None:
+    cache = tmp_path / "ensembl"
+    published = _published(0, _OLD)
+    install_hub(published)
+    dl.ensure_snapshot(cache, groups=["consequence"])
+    stray = cache / "groups/consequence/homo_sapiens-chr1.parquet"
+    stray.write_bytes(published["groups/consequence/homo_sapiens-chr21.parquet"])
+    with pytest.raises(EnsemblGroupReleaseError) as caught:
+        ensembl_group_dir(cache, "consequence")
+    assert "1 file(s) there are not the ones its manifest.json attests" in str(caught.value)
+    assert "groups/consequence/homo_sapiens-chr1.parquet" in str(caught.value)
+    stray.unlink()
+    (cache / "groups/consequence/homo_sapiens-chrMT.parquet").unlink()
+    with pytest.raises(EnsemblGroupReleaseError, match="homo_sapiens-chrMT.parquet"):
+        ensembl_group_dir(cache, "consequence")
+
+
+def test_a_group_the_cache_release_lacks_is_checked_against_the_hubs(install_hub, tmp_path: Path) -> None:
+    """A newer published release may add a group; the refusal is only the cache's when the hub cannot say."""
+    cache = tmp_path / "ensembl"
+    files = dict(_release(0))
+    old: dict[str, bytes | str] = dict(files)
+    old[SNAPSHOT_MANIFEST_FILENAME] = _manifest(files, _OLD, groups={"cadd": _CADD_LICENCE})
+    install_hub(old)
+    dl.ensure_snapshot(cache)
+    install_hub(_published(1, _NEW))  # publishes `consequence` too
+
+    follow = dl._FollowHub(ensembl_release_label)
+    dl.ensure_snapshot(cache, groups=["consequence"], _follow_hub=follow)
+
+    assert follow.groups == {"consequence": "pulled"}
+    assert ensembl_group_dir(cache, "consequence").is_dir()
+
+
+def test_a_named_groups_failure_leaves_the_other_groups_pulled_and_reported(
+    install_hub, tmp_path: Path
+) -> None:
+    cache = tmp_path / "ensembl"
+    install_hub(_published(0, _OLD))
+    dl.ensure_snapshot(cache, groups=["cadd", "consequence"], declared_use="non_commercial")
+    install_hub(
+        _published(1, _NEW),
+        failing={"groups/consequence/homo_sapiens-chr21.parquet": ConnectionError("reset by peer")},
+    )
+    follow = dl._FollowHub(ensembl_release_label)
+    with pytest.raises(dl.EnsemblReferenceError, match="reset by peer"):
+        dl.ensure_snapshot(cache, groups=["consequence"], _follow_hub=follow)
+    assert follow.groups["cadd"] == "pulled"
+    assert follow.groups["consequence"].startswith("FAILED — ")
+    assert ensembl_group_dir(cache, "cadd").is_dir()
+
+
+def test_no_group_is_pulled_beside_a_core_nothing_attests_is_finished(install_hub, tmp_path: Path) -> None:
+    cache = tmp_path / "ensembl"
+    install_hub(_published(0, _OLD))
+    dl.ensure_snapshot(cache)
+    (cache / PULL_RECORD_FILENAME).unlink()  # pulled before the record, say
+    hub = install_hub(_published(0, _OLD))
+    hub.listing_down = True  # the core is served as it is, unverified
+    with pytest.raises(
+        dl.EnsemblReferenceError, match="is not a finished pull its manifest.json attests whole"
+    ):
+        dl.ensure_snapshot(cache, groups=["consequence"])
+    assert not (cache / "groups").exists()
+
+
+def test_cache_prepare_re_pulls_a_recorded_group_under_its_own_declaration(install_hub, base: Path) -> None:
+    """`cache prepare --use commercial` may not take CADD under the research use recorded beside it."""
+    cache = base / "ensembl_variations"
+    install_hub(_published(0, _OLD))
+    dl.ensure_snapshot(cache, groups=["cadd", "consequence"], declared_use="non_commercial")
+    install_hub(_published(1, _NEW))
+
+    caches.prepare_caches([LANES_BY_NAME["ensembl"]], declared_use="commercial")
+
+    assert ensembl_group_dir(cache, "consequence").is_dir()
+    with pytest.raises(EnsemblGroupReleaseError, match=f"is release {_OLD} and the core beside it is {_NEW}"):
+        ensembl_group_dir(cache, "cadd")
 
 
 # ── `cache pull --groups` ───────────────────────────────────────────────────────────────────────

@@ -29,7 +29,7 @@ from just_dna_format.layout import atomic_write_text
 from just_dna_format.vocab import VALID_DECLARED_USE, check_vocab
 
 from just_dna_enricher.clinvar import ClinVarReferenceError
-from just_dna_enricher.licensing import LicenseRefusal, check_declared_use, snapshot_group_terms
+from just_dna_enricher.licensing import check_declared_use, snapshot_group_terms
 from just_dna_enricher.locations import (
     ALPHAGENOME_KNOTS_FILENAME,
     CORE_IS_NOT_A_GROUP,
@@ -1416,15 +1416,28 @@ def _effective_group_use(declared_use: str, entry: dict | None) -> str:
     return recorded if isinstance(recorded, str) and recorded in VALID_DECLARED_USE else "unstated"
 
 
-def _selection_manifest(cache_dir: Path) -> SnapshotManifest:
+def _selection_manifest(cache_dir: Path, named: tuple[str, ...]) -> SnapshotManifest:
     """The manifest a group selection is checked against before any download: the cache's, else the hub's.
 
-    The hub's is staged in a scratch directory and never placed: the core's pull places it, with the
-    data it describes. Could-not-ask raises the lane's error, since no name can be checked without it.
+    The cache's answers when it publishes every name asked for. Otherwise the hub's is read, since the
+    release it publishes may be newer than the cache's and add a group; it is staged in a scratch
+    directory and never placed, because the core's pull places it with the data it describes. When the
+    hub cannot be read and the cache has a manifest, the cache's answers (its refusal names its groups);
+    with neither, could-not-ask raises the lane's error, since no name can be checked.
     """
     local = read_snapshot_manifest(cache_dir / SNAPSHOT_MANIFEST_FILENAME)
-    if local is not None:
+    if local is not None and all(group in (local.groups or {}) for group in named):
         return local
+    try:
+        return _hub_manifest()
+    except EnsemblReferenceError:
+        if local is not None:
+            return local
+        raise
+
+
+def _hub_manifest() -> SnapshotManifest:
+    """The split repo's `manifest.json` as the hub publishes it now, staged in a scratch directory."""
     repo_root = SNAPSHOT_REPO_PREFIXES["ensembl"].rsplit("/", 1)[0]
     fs = _hub_filesystem()
     if fs is None:
@@ -1467,7 +1480,7 @@ def _admit_named_groups(cache_dir: Path, named: tuple[str, ...], declared_use: s
     A skip is not decided here: `_provision_groups` decides it against the manifest the core's pull
     leaves, and logs it once.
     """
-    manifest = _selection_manifest(cache_dir)
+    manifest = _selection_manifest(cache_dir, named)
     records = [_known_group(manifest, group) for group in named]
     recorded = pulled_groups(cache_dir)
     for group, record in zip(named, records, strict=True):
@@ -1541,11 +1554,12 @@ def _pull_one_group(
     if reason is not None:
         logger.warning("Ensembl group %s: skipped — %s", group, reason)
         return f"skipped — {reason}"
-    if _pull_record(cache_dir) is None:
+    coverage = manifest_coverage(cache_dir)
+    if snapshot_record_missing(cache_dir) != [] or coverage is None or not coverage.whole:
         raise EnsemblReferenceError(
-            f"the Ensembl cache at {cache_dir} carries no pull record, so its core's completeness is unknown "
-            f"and the {group} group is not pulled beside it; run `cache pull --only ensembl` where the hub "
-            f"can be read"
+            f"the Ensembl cache at {cache_dir} is not a finished pull its {SNAPSHOT_MANIFEST_FILENAME} "
+            f"attests whole, so the {group} group is not pulled beside it; run `cache pull --only ensembl` "
+            f"where the hub can be read"
         )
     fs = _hub_filesystem()
     if fs is None:
@@ -1558,7 +1572,9 @@ def _pull_one_group(
         if isinstance(p, str) and p not in paths and p.startswith(f"{ENSEMBL_GROUPS_DIRNAME}/{group}/")
     ]
     # Recorded as under way before the first byte moves, so an interrupted pull is never read as current.
-    _record_group(cache_dir, group, {"release_id": None, "files": paths, "declared_use": use})
+    # The earlier release's files stay named beside the new ones until they are removed, or a resumed
+    # pull would no longer know they were this lane's to remove.
+    _record_group(cache_dir, group, {"release_id": None, "files": [*paths, *stale], "declared_use": use})
     logger.info("Pulling the Ensembl %s group (%d file(s)) for %s ...", group, len(entries), release)
     for e in entries:
         local = cache_dir / e.path
@@ -1600,20 +1616,25 @@ def _provision_groups(
     """Bring every named and every recorded group to the core's release, after the core's pull (RM437).
 
     Reads the manifest the core's pull left in place, so a group is always attested against the release
-    the core now is. A named group's failure raises; a recorded group the caller did not name is logged
-    and left as it was, so `ensembl_group_dir` refuses it until a pull succeeds.
+    the core now is. A named group's failure raises, once every group has been tried; a recorded group the
+    caller did not name is logged and left as it was, whatever went wrong, so `ensembl_group_dir` refuses
+    it until a pull succeeds.
     """
     recorded = pulled_groups(cache_dir)
     wanted = [*named, *(group for group in recorded if group not in named)]
     if not wanted:
         return
     manifest = read_snapshot_manifest(cache_dir / SNAPSHOT_MANIFEST_FILENAME)
+    first_failure: Exception | None = None
     for group in wanted:
         try:
             outcome = _pull_one_group(cache_dir, group, manifest, declared_use, recorded.get(group))
-        except (EnsemblReferenceError, LicenseRefusal, ValueError) as exc:
+        except Exception as exc:  # a group's failure may not take the others', or the core's, away
             if group in named:
-                raise
+                if _follow_hub is not None:
+                    _follow_hub.groups[group] = f"FAILED — {exc}"
+                first_failure = first_failure or exc
+                continue
             logger.warning(
                 "Ensembl cache at %s: the %s group, selected by an earlier pull, was not re-pulled (%s); it "
                 "is refused to readers until a pull succeeds.",
@@ -1624,6 +1645,8 @@ def _provision_groups(
             outcome = f"not re-pulled — {exc}"
         if _follow_hub is not None:
             _follow_hub.groups[group] = outcome
+    if first_failure is not None:
+        raise first_failure
 
 
 def ensure_clinvar_snapshot(

@@ -28,15 +28,9 @@ from just_dna_enricher.caches import (
     rebuild_lane,
 )
 from just_dna_enricher.cli._shared import _use
-from just_dna_enricher.download import SnapshotNotPublished, _FollowHub
+from just_dna_enricher.download import SnapshotNotPublished, _FollowHub, _named_groups
 from just_dna_enricher.licensing import LicenseRefusal, check_declared_use
-from just_dna_enricher.locations import (
-    CACHES_DIRNAME,
-    CORE_IS_NOT_A_GROUP,
-    ENSEMBL_CORE_GROUP,
-    RELEASE_FILENAME,
-    STRCHIVE_CATALOGUE_FILENAME,
-)
+from just_dna_enricher.locations import CACHES_DIRNAME, RELEASE_FILENAME, STRCHIVE_CATALOGUE_FILENAME
 
 #: Why `cache rebuild --rehearse-download` is refused without `--dry-run` and `--publish` (RM412). Pinned
 #: by a test, because a refusal's reason is what the operator acts on (`@warning-text-is-api`). The
@@ -214,9 +208,10 @@ def cache_pull_(
     """
     declared = _use(use)
     wanted, lanes = _selected(only)
-    named_groups = [name.strip() for item in groups for name in item.split(",") if name.strip()]
-    if ENSEMBL_CORE_GROUP in named_groups:
-        raise typer.BadParameter(CORE_IS_NOT_A_GROUP, param_hint="--groups")
+    try:
+        named_groups = list(_named_groups([name for item in groups for name in item.split(",")]))
+    except ValueError as exc:  # `core`, refused by the provisioner's own rule before anything runs
+        raise typer.BadParameter(str(exc), param_hint="--groups") from exc
     if named_groups and wanted != {"ensembl"}:
         raise typer.BadParameter(GROUPS_NEED_ENSEMBL_ONLY, param_hint="--groups")
     failures = 0
