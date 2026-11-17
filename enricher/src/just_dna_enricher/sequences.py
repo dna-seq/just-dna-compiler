@@ -81,7 +81,7 @@ class SequenceProxy:
     are not stored: a proxy that outlives a run would otherwise carry one run's outage into every later
     one. The failure is held by the run that saw it, through a view of the proxy for that run
     (`_held_by_one_run`): `enrich`, `verify_reference_alleles`, the minter and the drafters each read
-    through one, so a run asks a failed read once and a down service once, and the next run asks again.
+    through one, so a run asks a failed read once and a failed build once, and the next run asks again.
     Read directly, outside any such view, this object asks again on every call. **The memo is bounded**
     at 262,144 reads (`_MEMO_SIZE`), the least recently used evicted first.
     """
@@ -147,12 +147,19 @@ class _RunSequences(SequenceProxy):
 
     Every read goes through the viewed proxy's public `proxy()` and `subsequence()`, so its memo, its
     lock and any subclass's own reads are the ones used. What the view adds is the run's memory of what
-    failed: a key whose read came back `None` is not asked again by this run, and a `proxy()` that came
-    back `None` is not asked again either. For a stock `SequenceProxy`, whose reads go through that data
-    proxy, a run that found none (offline, or the service unreachable) reads nothing more, so a down
-    service costs one build attempt per run. A subclass that reads its own way is held per key only,
-    since its `proxy()` says nothing about whether its reads can answer.
+    failed: a key whose read came back `None` is not asked again by this run. For a stock
+    `SequenceProxy`, whose reads go through its data proxy, a run that found none (offline, or
+    `create_dataproxy` raised) asks for it no more and reads nothing more, so a failed build costs one
+    attempt per run. (A REST seqrepo's data proxy is built without touching the network, so a service
+    that is down is met read by read, once per distinct interval.) A subclass that reads its own way is
+    held per key only, since its `proxy()` says nothing about whether its reads can answer, and its
+    `proxy()` is asked again each time.
+
+    Compared by identity, never by the dataclass fields it inherits and does not use.
     """
+
+    __eq__ = object.__eq__
+    __hash__ = object.__hash__
 
     def __init__(self, viewed: SequenceProxy) -> None:
         # Read with defaults: a caller's stand-in need not have run `SequenceProxy.__init__`.
@@ -175,7 +182,7 @@ class _RunSequences(SequenceProxy):
         if self._no_data_proxy:
             return None
         built = self._viewed.proxy()
-        self._no_data_proxy = built is None
+        self._no_data_proxy = built is None and self._stock
         return built
 
     def subsequence(self, accession: str, start: int, end: int) -> str | None:

@@ -2892,7 +2892,8 @@ with indel minting so a run builds one proxy in total (or none, when the caller 
 is outside the lock, so a thread waits on another only for the dictionary. **The proxy memoizes answers
 only** (0.9, RM404): a failed build, a read that raised and a read that came back empty are held by the run
 that saw them, through a private view of the proxy for that run, so the run asks a failed read once and a
-down service once, and its warning's "this run" is true; the next run sharing the proxy asks again. Read
+failed build once, and its warning's "this run" is true (a REST seqrepo's data proxy is built without the
+network, so a service that is down is met once per distinct interval); the next run sharing the proxy asks again. Read
 directly, outside a run's view, the proxy asks again on every call. Its memo is bounded at 262,144 reads
 (`sequences._MEMO_SIZE`), the least recently used evicted first, because a shared proxy may live as long as
 the service. An `EnsemblResolver` that builds its own anchor reader (no `_read_base` given) builds it once,

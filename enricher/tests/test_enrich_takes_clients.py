@@ -29,7 +29,12 @@ from just_dna_enricher.enrich.orchestration import OFFLINE_OUTRANKS_SEQUENCES, _
 from just_dna_enricher.ensembl import BatchResolver, EnsemblResolver, EnsemblSettings, RsidAnswer
 from just_dna_enricher.eutils import EutilsClient, EutilsSettings
 from just_dna_enricher.net import PacingGate
-from just_dna_enricher.sequences import SequenceProxy, verify_reference_alleles
+from just_dna_enricher.sequences import (
+    _MEMO_SIZE,
+    SequenceProxy,
+    _held_by_one_run,
+    verify_reference_alleles,
+)
 from just_dna_format.resolution import ResolutionRow
 
 _YAML = (
@@ -433,6 +438,36 @@ def test_one_run_asks_a_failed_read_once(monkeypatch: pytest.MonkeyPatch, fails:
     assert backend.reads == first + first
 
 
+def test_a_resolvers_own_proxy_holds_no_failure_either(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A host may share one resolver across runs, so its own proxy is read directly: answers only."""
+    backend = _Backend("raise")
+    monkeypatch.setattr("just_dna_enricher.sequences.create_dataproxy", backend.create_dataproxy)
+    resolver = EnsemblResolver()
+    assert resolver._base_reader()("1", 11796321) is None
+    backend.fails = None
+    assert resolver._base_reader()("1", 11796321) == "T"
+    assert len(backend.reads) == 2
+
+
+def test_a_run_asks_a_subclass_proxy_again_after_it_answered_none() -> None:
+    """A subclass reads its own way, so a `None` from its `proxy()` is not held for the run."""
+
+    class _Flaky(SequenceProxy):
+        def __init__(self) -> None:
+            super().__init__()
+            self.calls = 0
+
+        def proxy(self):
+            self.calls += 1
+            return None if self.calls == 1 else self
+
+    flaky = _Flaky()
+    view = _held_by_one_run(flaky)
+    assert view.proxy() is None
+    assert view.proxy() is flaky
+    assert view != _held_by_one_run(flaky), "two views are two runs, never equal by inherited fields"
+
+
 def test_the_memo_is_bounded_and_evicts_the_least_recently_used(monkeypatch: pytest.MonkeyPatch) -> None:
     backend = _Backend(None)
     monkeypatch.setattr("just_dna_enricher.sequences.create_dataproxy", backend.create_dataproxy)
@@ -453,9 +488,7 @@ def test_the_memo_is_bounded_and_evicts_the_least_recently_used(monkeypatch: pyt
 
 
 def test_the_memo_bound_is_the_constant_its_docstring_states() -> None:
-    from just_dna_enricher import sequences
-
-    assert f"{sequences._MEMO_SIZE:,}" in " ".join((SequenceProxy.__doc__ or "").split())
+    assert f"{_MEMO_SIZE:,}" in " ".join((SequenceProxy.__doc__ or "").split())
 
 
 def test_threads_sharing_one_resolver_build_its_base_reader_once(monkeypatch: pytest.MonkeyPatch) -> None:

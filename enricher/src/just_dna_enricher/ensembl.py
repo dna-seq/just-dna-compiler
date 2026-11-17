@@ -40,7 +40,7 @@ from just_dna_enricher.net import (
     retry_if_transient_within,
     wait_retry_after,
 )
-from just_dna_enricher.sequences import SequenceProxy, _held_by_one_run, per_alt_loci
+from just_dna_enricher.sequences import SequenceProxy, per_alt_loci
 
 logger = logging.getLogger(__name__)
 
@@ -212,9 +212,9 @@ class EnsemblResolver(Withholding):
             return reader
         with self._reader_lock:
             if self._read_base is None:
-                # The resolver's own proxy, read through one view for the resolver's life: it holds the
-                # failures it sees, as before 0.9, where the proxy itself now holds only answers (RM404).
-                self._read_base = _grch38_base_reader(_held_by_one_run(SequenceProxy()))
+                # The resolver's own proxy, read directly: a resolver is not a run and a host may share
+                # one across runs, so it holds answers only and a failed read is asked again (RM404).
+                self._read_base = _grch38_base_reader(SequenceProxy())
             return self._read_base
 
     def _http(self) -> httpx.Client:
