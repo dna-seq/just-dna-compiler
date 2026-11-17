@@ -41,7 +41,7 @@ import logging
 import os
 import pathlib
 import shutil
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -1443,10 +1443,11 @@ class LaneStatus:
     — `absent` wants `cache pull` or the lane's build command, `occupied` wants the directory moved
     aside or `cache prune`.
 
-    `looked_in` is the directory the verdict is about: the lane's `env_var` if set, else its default
-    directory. `prepare`'s own refusal is about the **default** directory specifically, so an override
-    pointing at a junk directory reads `occupied` here while `prepare` would build into an empty
-    default that the override then hides — say which directory, and the operator can see it.
+    `looked_in` is the directory the verdict is about: the path a caller handed `lane_status` in
+    `locations`, else the lane's `env_var` if set, else its default directory. `prepare`'s own refusal
+    is about the **default** directory specifically, so an override pointing at a junk directory reads
+    `occupied` here while `prepare` would build into an empty default that the override then hides —
+    say which directory, and the operator can see it.
 
     `release` is what the snapshot names, `None` when it does not say; `release_unreadable` is the
     present-and-unreadable case, a `release.json` that exists and does not parse, which is a
@@ -1491,30 +1492,68 @@ def provisioning_closure(lane: CacheLane) -> list[CacheLane]:
     return [member for member in CACHE_LANES if member.name in wanted]
 
 
-def lane_status(lanes: list[CacheLane] | None = None) -> list[LaneStatus]:
+def lane_status(
+    lanes: list[CacheLane] | None = None, locations: Mapping[str, Path | None] | None = None
+) -> list[LaneStatus]:
     """Where every lane stands, read-only — nothing is downloaded and nothing is written.
 
     The registry's status half, beside its provisioning half (`prepare_caches`). It existed only as
     the loop inside `cache status` until a consumer serving the same answer over HTTP wrote the loop a
     second time (S91), which is two projections of one registry — the shape RM176 exists to end. In
-    registry order, one entry per lane, so a renderer that iterates it renders the whole registry.
+    the order of `lanes` (registry order by default), one entry per lane, so a renderer that iterates
+    it renders the whole registry.
+
+    `locations` is for a host that configures lane paths in its own settings and hands each to the
+    lane's resolver rather than exporting it (S154, RM443). A lane named there is resolved with that
+    path and `load_dotenv_file=False`, and `looked_in` is the path as given; `None` for a named lane
+    is its default ladder (its variable if the process exports one, else the default directory) read
+    without loading `.env`. So a call that names every lane writes nothing into `os.environ`. A lane
+    not named keeps the reading of a call without `locations`: its resolver loads the nearest `.env`.
+    Named lanes are read before any lane that is not, so no named lane reads a variable this call's
+    own `.env` loads exported, whatever the order of `lanes`. What the process exported before the
+    call, by any earlier `.env` load included, is the environment a `None` lane reads. A key that
+    names no lane in `lanes` or the registry raises `ValueError` before anything is read.
     """
-    out: list[LaneStatus] = []
-    for lane in CACHE_LANES if lanes is None else lanes:
-        path = lane.resolve()
-        # `resolve()` has loaded `.env` by now, so the override is read the way the resolver read it.
-        override = os.getenv(lane.env_var)
-        looked_in = Path(override).expanduser() if override else lane.default_dir()
-        if path is not None:
-            release = lane.release_label(path)
-            unreadable = release is None and release_is_unreadable(path)
-            out.append(
-                LaneStatus(lane, "present", looked_in, path, release, unreadable, snapshot_bytes(path))
-            )
-            continue
-        occupied = looked_in.is_file() or (looked_in.is_dir() and any(looked_in.iterdir()))
-        out.append(LaneStatus(lane, "occupied" if occupied else "absent", looked_in))
-    return out
+    walked = CACHE_LANES if lanes is None else lanes
+    given = {} if locations is None else dict(locations)
+    known = {lane.name for lane in walked} | set(LANES_BY_NAME)
+    unknown = sorted(set(given) - known)
+    if unknown:
+        listed = ", ".join(dict.fromkeys([*(lane.name for lane in walked), *LANES_BY_NAME]))
+        raise ValueError(f"lane_status: `locations` names no known lane: {unknown}. Known: {listed}")
+    # Named lanes first: none of them may read a variable an unnamed lane's `.env` load just exported.
+    order = [i for i, lane in enumerate(walked) if lane.name in given]
+    order += [i for i, lane in enumerate(walked) if lane.name not in given]
+    out: dict[int, LaneStatus] = {}
+    for index in order:
+        lane = walked[index]
+        if lane.name in given:
+            value = given[lane.name]
+            path = lane.resolve(value, load_dotenv_file=False)
+            # Falsy as the resolver reads it (`explicit or $env_var`): `None` or `""` is the ladder.
+            looked_in = Path(value) if value else _ladder_dir(lane, load_dotenv_file=False)
+        else:
+            path = lane.resolve()
+            # `resolve()` has loaded `.env` by now, so the override is read the way the resolver read it.
+            looked_in = _ladder_dir(lane, load_dotenv_file=True)
+        out[index] = _lane_verdict(lane, path, looked_in)
+    return [out[index] for index in range(len(walked))]
+
+
+def _ladder_dir(lane: CacheLane, *, load_dotenv_file: bool) -> Path:
+    """The directory a lane's ladder names: its variable if the process exports one, else its default."""
+    override = os.getenv(lane.env_var)
+    return Path(override).expanduser() if override else lane.default_dir(load_dotenv_file=load_dotenv_file)
+
+
+def _lane_verdict(lane: CacheLane, path: Path | None, looked_in: Path) -> LaneStatus:
+    """One lane's `LaneStatus` from what its resolver returned and the directory it looked in."""
+    if path is not None:
+        release = lane.release_label(path)
+        unreadable = release is None and release_is_unreadable(path)
+        return LaneStatus(lane, "present", looked_in, path, release, unreadable, snapshot_bytes(path))
+    occupied = looked_in.is_file() or (looked_in.is_dir() and any(looked_in.iterdir()))
+    return LaneStatus(lane, "occupied" if occupied else "absent", looked_in)
 
 
 @dataclass(frozen=True)

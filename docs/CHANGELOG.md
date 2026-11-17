@@ -52,6 +52,12 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   `release_is_unreadable` share its decoder and model. It takes no path, logs nothing, and raises
   `pydantic.ValidationError` on malformed content, including one mistyped key, which `read_release` still drops
   alone.
+- **`caches.lane_status(lanes=None, locations=None)`** (RM443, S154): a host that hands each lane's resolver the
+  path it configured passes the same mapping, `{lane name: path or None}`. A named lane is resolved with that path
+  and without loading `.env`, and reports it as `looked_in`; `None` is the lane's own ladder, still without the
+  load, so a call naming every lane leaves `os.environ` untouched. Named lanes are read before unnamed ones, so the
+  answer does not depend on the order of `lanes`. A key naming no lane raises `ValueError`. Without `locations`
+  the call, and `cache status`, answer as before.
 
 ## 2026-11-16 — `v0.8.8`: enricher 0.8.8 (a patch, cut from `main`)
 

@@ -16,6 +16,7 @@ the resolver family in `locations`.
 import dataclasses
 import inspect
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -25,6 +26,7 @@ from just_dna_enricher.caches import (
     CACHE_LANES,
     LANE_STATES,
     LANES_BY_NAME,
+    LaneStatus,
     RebuildOutcome,
     RebuildRequest,
     lane_status,
@@ -1069,6 +1071,194 @@ def test_a_present_lane_reports_its_release_or_that_the_release_is_unreadable(
     result = CliRunner().invoke(app, ["cache", "status"])
     line = next(ln for ln in result.output.splitlines() if ln.strip().startswith(broken.name))
     assert "present" in line and "(unreadable release.json)" in line
+
+
+# ── S154 / RM443: a host hands `lane_status` the paths it configured ──────────────────────────────
+
+
+def _plant_snapshot(directory: Path, dataset: str) -> Path:
+    """A parquet lane's snapshot as the resolvers judge one: a payload under `data/` and a release."""
+    (directory / "data").mkdir(parents=True)
+    (directory / "data" / "probe.parquet").write_bytes(b"PAR1" * 10)
+    (directory / locations.RELEASE_FILENAME).write_text(json.dumps({"dataset": dataset}), encoding="utf-8")
+    return directory
+
+
+def _isolated_dotenv(tmp_path: Path, monkeypatch, lines: dict[str, str]) -> Path:
+    """A `.env` in a fresh working directory, so `load_env` finds this one and no developer's.
+
+    `load_dotenv` writes `os.environ` behind monkeypatch's back, so every name the file sets is first
+    set and then deleted through monkeypatch: its teardown then removes whatever the load wrote.
+    """
+    cwd = tmp_path / "cwd"
+    cwd.mkdir()
+    (cwd / ".env").write_text("".join(f"{k}={v}\n" for k, v in lines.items()), encoding="utf-8")
+    for name in lines:
+        monkeypatch.setenv(name, "set-by-the-test")
+        monkeypatch.delenv(name)
+    monkeypatch.chdir(cwd)
+    return cwd
+
+
+def test_lane_status_without_locations_answers_as_it_did(
+    tmp_path: Path, monkeypatch, no_ambient_caches: Path
+) -> None:
+    """RM443 adds a parameter; the call without it answers exactly as before, on a base holding all
+    three states and one override that lives only in `.env`.
+
+    Expected values come from the fixture's layout, never from a call: one lane present at its
+    default directory, one occupied through its variable, one present through a variable only the
+    `.env` names (the path a refactor that stops loading `.env` silently breaks), the rest absent
+    where the fixture points them."""
+    base = tmp_path / "base"
+    monkeypatch.setenv(locations.CACHE_BASE_VAR, str(base))
+    at_default, occupied, from_dotenv = (LANES_BY_NAME[name] for name in ("clinvar", "cpic", "mane"))
+    monkeypatch.delenv(at_default.env_var)
+    _plant_snapshot(base / at_default.subdir, "probe_default")
+    junk = tmp_path / "junk"
+    junk.mkdir()
+    (junk / "leftover.part").write_bytes(b"\x00")
+    monkeypatch.setenv(occupied.env_var, str(junk))
+    dotenv_dir = _plant_snapshot(tmp_path / "from-dotenv", "probe_dotenv")
+    _isolated_dotenv(tmp_path, monkeypatch, {from_dotenv.env_var: str(dotenv_dir)})
+
+    expected = []
+    for lane in CACHE_LANES:
+        if lane is at_default:
+            where = base / lane.subdir
+            expected.append(
+                LaneStatus(lane, "present", where, where, "probe_default", False, snapshot_bytes(where))
+            )
+        elif lane is occupied:
+            expected.append(LaneStatus(lane, "occupied", junk))
+        elif lane is from_dotenv:
+            expected.append(
+                LaneStatus(
+                    lane, "present", dotenv_dir, dotenv_dir, "probe_dotenv", False, snapshot_bytes(dotenv_dir)
+                )
+            )
+        else:
+            expected.append(LaneStatus(lane, "absent", no_ambient_caches))
+    assert lane_status() == expected
+    assert lane_status(None, None) == lane_status(locations={}) == expected
+
+
+def test_a_lane_named_in_locations_is_resolved_from_that_path(
+    tmp_path: Path, no_ambient_caches: Path
+) -> None:
+    """S154: a host that configures each lane's path itself asks about those paths, not the environment.
+
+    Walked over the registry, so every lane's resolver is shown to take the path and the flag: each
+    is handed a non-empty directory holding no snapshot and reads `occupied` *there*, while its
+    variable points at a place that holds nothing."""
+    given = {}
+    for lane in CACHE_LANES:
+        junk = tmp_path / "given" / lane.name
+        junk.mkdir(parents=True)
+        (junk / "leftover.part").write_bytes(b"\x00")
+        given[lane.name] = junk
+    statuses = lane_status(locations=given)
+    assert [status.lane for status in statuses] == CACHE_LANES
+    assert [(status.state, status.looked_in) for status in statuses] == [
+        ("occupied", given[lane.name]) for lane in CACHE_LANES
+    ]
+
+
+def test_a_lane_named_in_locations_reports_its_snapshot_and_the_rest_keep_the_environment(
+    tmp_path: Path, monkeypatch, no_ambient_caches: Path
+) -> None:
+    """One lane by path, one by its variable, the rest by the environment's nowhere."""
+    by_path, by_variable = LANES_BY_NAME["clinvar"], LANES_BY_NAME["cpic"]
+    configured = _plant_snapshot(tmp_path / "configured", "probe_configured")
+    exported = _plant_snapshot(tmp_path / "exported", "probe_exported")
+    monkeypatch.setenv(by_variable.env_var, str(exported))
+    missing = tmp_path / "never-made"
+    by_name = {s.lane.name: s for s in lane_status(locations={by_path.name: configured, "mane": missing})}
+    assert by_name[by_path.name] == LaneStatus(
+        by_path, "present", configured, configured, "probe_configured", False, snapshot_bytes(configured)
+    )
+    assert (by_name[by_variable.name].state, by_name[by_variable.name].path) == ("present", exported)
+    assert by_name["mane"] == LaneStatus(LANES_BY_NAME["mane"], "absent", missing)
+    rest = set(by_name) - {by_path.name, by_variable.name, "mane"}
+    assert {(by_name[name].state, by_name[name].looked_in) for name in rest} == {
+        ("absent", no_ambient_caches)
+    }
+
+
+def test_a_lane_named_with_none_climbs_its_default_ladder(
+    tmp_path: Path, monkeypatch, no_ambient_caches: Path
+) -> None:
+    """`None` is the lane's own ladder: its variable if the process exports one, else the default."""
+    lane = LANES_BY_NAME["clinvar"]
+    exported = _plant_snapshot(tmp_path / "exported", "probe_exported")
+    monkeypatch.setenv(lane.env_var, str(exported))
+    (status,) = lane_status([lane], locations={lane.name: None})
+    assert (status.state, status.looked_in, status.path) == ("present", exported, exported)
+
+    base = tmp_path / "base"
+    monkeypatch.setenv(locations.CACHE_BASE_VAR, str(base))
+    monkeypatch.delenv(lane.env_var)
+    default = _plant_snapshot(base / lane.subdir, "probe_default")
+    (status,) = lane_status([lane], locations={lane.name: None})
+    assert (status.state, status.looked_in, status.path) == ("present", default, default)
+    # An empty string, as a host's unset setting may arrive, is the ladder too: the resolver reads
+    # `explicit or $env_var`, and `looked_in` names the directory it then searched, never `.`.
+    assert lane_status([lane], locations={lane.name: ""}) == [status]
+
+
+def test_a_status_call_naming_every_lane_writes_nothing_into_the_environment(
+    tmp_path: Path, monkeypatch, no_ambient_caches: Path
+) -> None:
+    """The second effect S154 named: a bare resolve exports the whole nearest `.env` (RM301's
+    `load_env`). A host that names its lanes configures nothing through the environment, so the call
+    must not write it, for a lane given a path or given `None` alike."""
+    named_none = LANES_BY_NAME["cpic"]
+    _isolated_dotenv(
+        tmp_path,
+        monkeypatch,
+        {"RM443_SENTINEL": "from-the-dotenv", named_none.env_var: str(tmp_path / "from-dotenv")},
+    )
+    given: dict[str, Path | None] = {lane.name: tmp_path / "given" / lane.name for lane in CACHE_LANES}
+    given[named_none.name] = None
+    before = dict(os.environ)
+    lane_status(locations=given)
+    assert dict(os.environ) == before
+
+
+@pytest.mark.parametrize("named_first", [True, False], ids=["named-first", "named-last"])
+def test_a_lane_named_with_none_does_not_read_what_another_lanes_resolve_loaded(
+    named_first: bool, tmp_path: Path, monkeypatch, no_ambient_caches: Path
+) -> None:
+    """The order trap. A lane not named still loads `.env` as it always did; a lane named with `None`
+    reads the process environment without loading it. Walked one at a time, the named lane after an
+    unnamed one would read a variable that lane's load had just exported, and before it would not:
+    one lane's answer would depend on registry order. Each order runs in a fresh process state."""
+    unnamed, named = LANES_BY_NAME["clinvar"], LANES_BY_NAME["cpic"]
+    base = tmp_path / "base"
+    monkeypatch.setenv(locations.CACHE_BASE_VAR, str(base))
+    only_in_dotenv = _plant_snapshot(tmp_path / "only-in-dotenv", "probe_dotenv")
+    _isolated_dotenv(tmp_path, monkeypatch, {named.env_var: str(only_in_dotenv)})
+    lanes = [named, unnamed] if named_first else [unnamed, named]
+    statuses = lane_status(lanes, locations={named.name: None})
+    assert [s.lane for s in statuses] == lanes
+    by_name = {s.lane.name: s for s in statuses}
+    assert by_name[named.name] == LaneStatus(named, "absent", base / named.subdir)
+
+
+def test_an_unknown_lane_in_locations_is_refused_before_any_lane_is_read(
+    tmp_path: Path, monkeypatch, no_ambient_caches: Path
+) -> None:
+    """A misspelt key would otherwise leave its lane on the environment reading, the report RM443
+    exists to correct, with nothing to say so. Refused before the first resolve: no `.env` is loaded."""
+    _isolated_dotenv(tmp_path, monkeypatch, {"RM443_SENTINEL": "from-the-dotenv"})
+    before = dict(os.environ)
+    with pytest.raises(ValueError) as refused:
+        lane_status(locations={"clinvar": None, "clinvr": tmp_path, "acmg_sf": None})
+    known = ", ".join(lane.name for lane in CACHE_LANES)
+    assert str(refused.value) == (
+        f"lane_status: `locations` names no known lane: ['acmg_sf', 'clinvr']. Known: {known}"
+    )
+    assert dict(os.environ) == before
 
 
 # ── S97 / RM229: a lane declares its size, a present one measures it, a derived one prices its parents

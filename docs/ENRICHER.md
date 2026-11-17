@@ -1667,9 +1667,18 @@ three-valued: `present`, `absent`, and **`occupied`** — the place the lane loo
 and holds no snapshot (a build that failed after its downloads, a payload deleted beside its
 `release.json`, a stray `.part`, a foreign parquet). That third state used to print as `absent`,
 which sends an operator to run a pull that `prepare` is going to refuse, since provisioning never
-deletes. `looked_in` says which directory the verdict is about (the lane's `env_var` if set, else the
-default), `release` is what the snapshot names, and `release_unreadable` is the present-and-unreadable
-`release.json` — a provenance failure, not a data failure.
+deletes. `looked_in` says which directory the verdict is about (the path given in `locations`, else
+the lane's `env_var` if set, else the default), `release` is what the snapshot names, and
+`release_unreadable` is the present-and-unreadable `release.json` — a provenance failure, not a data
+failure.
+**A host that configures lane paths itself passes them (S154, RM443):** `lane_status(lanes=None,
+locations={name: path_or_None})`. A named lane is resolved with that path and `load_dotenv_file=False`
+and reports it as `looked_in`; `None` is the lane's own ladder (its variable if exported, else the
+default) read without loading `.env`, so a call naming every lane writes nothing into `os.environ`.
+Unnamed lanes read as before. Named lanes are read first, so none of them sees a variable an unnamed
+lane's `.env` load exported in the same call, in any order of `lanes`; what the process exported
+earlier, an earlier load included, is still read. A key naming no lane raises `ValueError` before
+anything is read.
 **A lane declares its size and a present one measures it (S97, RM229).** `CacheLane.approx_mb` is an
 order of magnitude in whole megabytes, measured on a provisioned box on 2026-09-11 and rounded up (`1`
 means *at most a megabyte*; Ensembl is ~15 000, the AVI lane ~30 000), so a first-run offer can decide
