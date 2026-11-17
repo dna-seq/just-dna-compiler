@@ -49,6 +49,7 @@ from just_dna_enricher.locations import (
     SnapshotManifest,
     SnapshotManifestFile,
     SnapshotManifestGroup,
+    _unnamed_group_files,
     default_alphagenome_avi_cache_dir,
     default_civic_cache_dir,
     default_clinpgx_cache_dir,
@@ -1548,7 +1549,8 @@ def _pull_one_group(
         for e in entries
     )
     if entry is not None and entry.get("release_id") == release and whole:
-        return "current"  # nothing is taken, so nothing is gated (`@acquisition-gate-is-not-a-read-gate`)
+        # Nothing is taken, so nothing is gated (`@acquisition-gate-is-not-a-read-gate`).
+        return _with_strays(cache_dir, group, manifest, "current")
     use = _effective_group_use(declared_use, entry)
     reason = check_declared_use(snapshot_group_terms(group, record.licence), use)
     if reason is not None:
@@ -1607,7 +1609,25 @@ def _pull_one_group(
             "Removed %s: an earlier release's %s file the release %s does not name.", relative, group, release
         )
     _record_group(cache_dir, group, {"release_id": release, "files": paths, "declared_use": use})
-    return "pulled"
+    return _with_strays(cache_dir, group, manifest, "pulled")
+
+
+def _with_strays(cache_dir: Path, group: str, manifest: SnapshotManifest, outcome: str) -> str:
+    """`outcome`, or, when the group's directory holds parquet the manifest does not name, the outcome with them.
+
+    No pull removes a file it did not put there, and `ensembl_group_dir` refuses the group while one is
+    there, so the pull may not report the group as plainly current or pulled.
+    """
+    unnamed = _unnamed_group_files(cache_dir, group, manifest)
+    if not unnamed:
+        return outcome
+    note = (
+        f"{outcome}, but {cache_dir / ENSEMBL_GROUPS_DIRNAME / group} holds {len(unnamed)} parquet file(s) the "
+        f"manifest does not name for the group ({', '.join(unnamed[:5])}{', …' if len(unnamed) > 5 else ''}); "
+        f"readers refuse the group until they are moved aside"
+    )
+    logger.warning("Ensembl group %s: %s", group, note)
+    return note
 
 
 def _provision_groups(

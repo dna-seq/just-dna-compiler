@@ -507,12 +507,22 @@ def test_a_group_directory_the_manifest_does_not_attest_is_withheld_whole(
     stray.write_bytes(published["groups/consequence/homo_sapiens-chr21.parquet"])
     with pytest.raises(EnsemblGroupReleaseError) as caught:
         ensembl_group_dir(cache, "consequence")
-    assert "1 file(s) there are not the ones its manifest.json attests" in str(caught.value)
-    assert "groups/consequence/homo_sapiens-chr1.parquet" in str(caught.value)
+    assert "holds 1 parquet file(s) its manifest.json does not name for the group" in str(caught.value)
+    assert "groups/consequence/homo_sapiens-chr1.parquet" in str(caught.value) and "move them aside" in str(
+        caught.value
+    )
+    # The pull does not call that directory current: it is no pull's to clean, and the reader refuses it.
+    follow = dl._FollowHub(ensembl_release_label)
+    dl.ensure_snapshot(cache, _follow_hub=follow)
+    assert follow.groups["consequence"].startswith("current, but ")
+    assert "readers refuse the group until they are moved aside" in follow.groups["consequence"]
+    assert stray.exists()
     stray.unlink()
     (cache / "groups/consequence/homo_sapiens-chrMT.parquet").unlink()
-    with pytest.raises(EnsemblGroupReleaseError, match="homo_sapiens-chrMT.parquet"):
+    with pytest.raises(EnsemblGroupReleaseError) as caught:
         ensembl_group_dir(cache, "consequence")
+    assert "1 file(s) its manifest.json attests are missing there or of another size" in str(caught.value)
+    assert "homo_sapiens-chrMT.parquet" in str(caught.value)
 
 
 def test_a_group_the_cache_release_lacks_is_checked_against_the_hubs(install_hub, tmp_path: Path) -> None:
@@ -634,6 +644,20 @@ def test_a_plain_cache_pull_reports_the_recorded_groups_it_re_pulled(
     assert result.exit_code == 0, cli_text(result)
     assert "ensembl group cadd: pulled" in cli_text(result)
     assert ensembl_group_dir(base / "ensembl_variations", "cadd").is_dir()
+
+
+def test_cache_pull_reports_every_group_when_a_named_one_fails(install_hub, base: Path, cli_text) -> None:
+    install_hub(_published(0, _OLD))
+    assert _pull("--groups", "cadd,consequence", "--use", "non-commercial").exit_code == 0
+    install_hub(
+        _published(1, _NEW),
+        failing={"groups/consequence/homo_sapiens-chr21.parquet": ConnectionError("reset by peer")},
+    )
+    result = _pull("--groups", "consequence")
+    assert result.exit_code == 1, cli_text(result)
+    assert "ensembl: FAILED — " in cli_text(result)
+    assert "ensembl group consequence: FAILED — " in cli_text(result)
+    assert "ensembl group cadd: pulled" in cli_text(result)
 
 
 @pytest.mark.parametrize(

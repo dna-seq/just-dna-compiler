@@ -162,6 +162,17 @@ def cache_status_() -> None:
         typer.secho(f"  {lane.name:13} present  {status.path}  {label}  {size}", fg=typer.colors.GREEN)
 
 
+def _echo_groups(lane: str, follow: _FollowHub) -> None:
+    """One line per group the lane's `ensure` looked at (RM437), on the success path and the failure paths alike."""
+    for group, outcome in follow.groups.items():
+        plain = outcome in ("pulled", "current")
+        typer.secho(
+            f"  {lane} group {group}: {outcome}",
+            fg=typer.colors.GREEN if plain else typer.colors.YELLOW,
+            err=not plain,
+        )
+
+
 @cache_app.command("pull")
 def cache_pull_(
     only: list[str] = typer.Option(
@@ -243,6 +254,7 @@ def cache_pull_(
             path = lane.ensure(_follow_hub=follow, **extra)
         except LicenseRefusal as exc:
             typer.secho(f"  {lane.name}: REFUSED — {exc}", fg=typer.colors.RED, err=True)
+            _echo_groups(lane.name, follow)
             failures += 1
             continue
         except SnapshotNotPublished as exc:
@@ -255,6 +267,8 @@ def cache_pull_(
             continue
         except Exception as exc:
             typer.secho(f"  {lane.name}: FAILED — {exc}", fg=typer.colors.RED, err=True)
+            # A named group's failure is raised after every group was tried: the others' outcomes too.
+            _echo_groups(lane.name, follow)
             failures += 1
             continue
         # Both labels, when the hub's release and the cache's were compared and the answer is news
@@ -265,12 +279,7 @@ def cache_pull_(
             f"  {lane.name}: {path}" + (f" — {note}" if note else ""),
             fg=typer.colors.GREEN if quiet else typer.colors.YELLOW,
         )
-        for group, outcome in follow.groups.items():
-            typer.secho(
-                f"  {lane.name} group {group}: {outcome}",
-                fg=typer.colors.GREEN if outcome in ("pulled", "current") else typer.colors.YELLOW,
-                err=outcome not in ("pulled", "current"),
-            )
+        _echo_groups(lane.name, follow)
         on_disk.append(lane.name)
     if failures:
         raise typer.Exit(code=1)

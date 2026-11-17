@@ -2294,10 +2294,12 @@ prevent, and a stale group joins to the wrong variants silently.
   `<cache>/groups/<group>` (`ENSEMBL_GROUPS_DIRNAME`) only when the group's recorded release is the
   core's (`manifest.json`'s `release_id`) and the directory holds exactly the files the manifest attests
   for the group, at their sizes (a `stat`, as the core is read). Otherwise it raises
-  `EnsemblGroupReleaseError`, with its own sentence for each of five causes: not taken by a pull of this
+  `EnsemblGroupReleaseError`, with its own sentence for each of six causes: not taken by a pull of this
   cache (absent, or placed by hand), a pull that did not finish, a core stating no release, two releases,
-  and a file missing, of another size, or not named for the group. A reader takes a group's path from it
-  and nowhere else.
+  an attested file missing or of another size (re-pull it), and a parquet the manifest does not name for
+  the group (move it aside: no pull removes a file it did not put there, and a pull over such a directory
+  reports the group as `current, but …` rather than plainly current). A reader takes a group's path from
+  it and nowhere else.
 - **Sticky.** The record's selection is carried over by both of the core provisioner's record writes, and
   every later `ensure_snapshot`, with or without `groups` (`cache pull`, `cache prepare`,
   `enrich(download=True)`), brings each recorded group to the core's release when it moves; a group the
