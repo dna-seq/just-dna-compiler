@@ -11,6 +11,7 @@ environment) and runs whenever a cache dir exists — even if its data is empty/
 resolution tests skip if the cache has no queryable rs-id rows.
 """
 
+import re
 from pathlib import Path
 
 import pytest
@@ -35,15 +36,24 @@ def sample_variant(reference: Path) -> dict:
     try:
         con = _connect(reference)
         row = con.execute(
-            "SELECT id, chrom, start, ref FROM ensembl_variations "
-            "WHERE id LIKE 'rs%' AND ref IS NOT NULL LIMIT 1"
+            "SELECT id, chrom, start, ref, alt FROM ensembl_variations "
+            "WHERE id LIKE 'rs%' AND ref IS NOT NULL AND alt IS NOT NULL LIMIT 1"
         ).fetchone()
         con.close()
     except Exception as exc:  # empty db + corrupt/absent parquet in a dev cache
         pytest.skip(f"Ensembl cache located but not queryable: {exc}")
     if not row:
         pytest.skip("Ensembl cache has no rs-id rows to sample")
-    return {"rsid": row[0], "chrom": str(row[1]), "start": int(row[2]), "ref": str(row[3])}
+    # The genotype a position-only row carries must sit on the sampled record: since RM438 a back-fill
+    # names only the rsIDs whose alleles host it, so a fixed `A/G` failed on a `T>A` sample.
+    alt = re.split(r"[,|]", str(row[4]))[0]
+    return {
+        "rsid": row[0],
+        "chrom": str(row[1]),
+        "start": int(row[2]),
+        "ref": str(row[3]),
+        "genotype": "/".join(sorted((str(row[3]), alt))),  # unphased alleles are written sorted
+    }
 
 
 def test_reference_resolves_from_env(reference: Path) -> None:
@@ -64,7 +74,7 @@ def test_position_resolves_to_rsid(reference: Path, sample_variant: dict) -> Non
         chrom=sample_variant["chrom"],
         start=sample_variant["start"],
         ref=sample_variant["ref"],
-        genotype="A/G",
+        genotype=sample_variant["genotype"],
         weight=0.0,
         state="neutral",
         conclusion="t",

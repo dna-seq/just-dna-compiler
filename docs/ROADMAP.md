@@ -2339,6 +2339,128 @@ whose only case is one example row waits for a second case.
 
 **Residuals** none yet.
 
+## RM446 — a withholding client's `retired` outlives the run that met the 410, so a later run's outage reads as a retired route
+
+**Severity** low · **Status** open — **a patch, built on `main` 2026-11-17, uncut** · **Owner** enricher (`net.Withholding.note_retired`, `withheld_reason`, the live-Ensembl warning in `enrich/orchestration.py`) ·
+**Motivating case** the lead's RM404 build on `0.9` (`3e9b993c`), recorded by the pm under RM404 in `ROADMAP_0_9.md` (`ad49b85d`, 2026-11-16) · *related* RM361, RM404
+
+**What was seen.** `Withholding.retired` is set by the first 410 a client meets and never cleared (`note_retired` only
+sets it when it is `None`). `enrich` reads it per run: when some rsIDs went unanswered and the Ensembl client's
+`retired` is set, the warning says Ensembl "retired the route" and that "re-running will not answer them"; otherwise it
+says the request failed and a re-run may answer. `literature` records `crossref_unanswered = withheld_reason(crossref)`
+the same way. A client reused across runs carries run 1's 410 into run 2, so a run in which no request met a 410 (a
+timeout, a 5xx after the retries, a `Retry-After` hold) is told to upgrade, and told a re-run will not help.
+
+**Why it is a question and not only a bug.** RM361 chose the stickiness on purpose. The docstring says a retired route
+is "a fact about the source rather than about one request", so it holds "for the client's life". That premise holds
+for one route met twice. It does not hold for another route of the same client (`EnsemblResolver` meets a 410 at two
+sites, the single-rsID GET and the batch POST), or for a 410 the source stops serving. And it reads "the client's
+life" as "one run". Before RM404 a host could reuse a client only by injecting a `resolver=`. RM404 makes a
+`LookupClients` bundle, reused across runs, the designed path for every client, so the wrong case becomes the normal
+one for a long-lived host.
+
+**Shape of a fix (the builder decides).** The reason must come from what this run met, and RM404's first reading says
+`enrich` never alters a caller-given client. So no clearing at the start of a run. Something `enrich` can compare
+before and after it asks is enough: a count of the 410s met (new, additive), or the reason that `note_retired`'s
+`True` returns, captured per call. The test reuses one client across two runs. Run 1 meets a 410 and run 2 meets only a
+timeout, and run 2 must give the outage wording. The same holds for the Crossref record.
+
+**Class.** A patch: no schema, column or vocabulary moves (P3), nothing authored (P9); a client attribute added beside
+`retired` is additive. Severity low: the wording misleads a reader about whether to re-run, and no answer is recorded
+wrongly in a module table. No consumer has reported it.
+
+**Sized (the pm, 2026-11-17).** A patch on `main`, not 0.9: the defect predates 0.9 (a reused `resolver=` met it
+already), and trial rule 1 sends a pre-existing defect to triage's patch on `main`. Either capture the builder picks
+is additive; the test is the one above. Built before 0.9 merges so RM404's docstring can point at it; if it lands
+after, the merge carries it.
+
+**Built (triage, 2026-11-17).** The count shape. `Withholding` counts every 410 in `retired_met` beside the sticky
+`retired`, which is unchanged. `net.retired_mark(client)` reads the count, or `None` for a client without one.
+`net.withheld_reason(client, since=mark)` says `retired` only for a 410 met after the mark, and without a mark it reads
+as RM361 did. `enrich` takes the mark when it picks the live-Ensembl client and gates its warning on it.
+`literature` takes it when it picks the Crossref client and records `crossref_unanswered` with it. Nothing resets a
+caller's client. `test_a_reused_clients_410_is_not_a_later_runs.py` reuses one resolver across three `enrich` runs: a
+410, then only a failed request, then a 410 again. Run 2 gives the outage wording and runs 1 and 3 the retired one;
+on the code before the fix, run 2 said "retired the route". The same file walks the mark over a `CrossrefClient`
+and a host's client that counts nothing. ENRICHER.md (the client-contract section) and the CHANGELOG say it.
+
+**Residuals** won't fix — a 410 met on one route still names the reason for a run whose other unanswered requests
+failed otherwise: that is RM361's aggregate rule ("one retired endpoint means the run needs an upgrade"), within one
+run, and this item is about runs
+
+## RM447 — Ensembl REST answers rs646776 without the A allele its own release 116 dump and dbSNP 157 carry, so an online fill and a snapshot fill disagree
+
+**Severity** low · **Status** open — **a patch, built on `main` 2026-11-17, uncut (measured a class)** · **Owner** enricher (the REST leg, `ensembl._rest_rsid` / `_loci_from_rest`); the fix is the compiler's message (`allele_checks._stale_reading`) ·
+**Motivating case** the lead's RM404 online run on `0.9` (`3e9b993c`), recorded by the pm under RM404 in `ROADMAP_0_9.md` (`ad49b85d`, 2026-11-16) · *related* RM374, RM376, RM271
+
+**Both sides, read 2026-11-17 04:15 UTC.**
+
+- Ensembl REST (`/variation/human/rs646776`; `/info/data` says release 116) answers `1:109275908`, `allele_string`
+  `C/G/T`.
+- The Ensembl snapshot on this machine (`ensembl_variations`, `homo_sapiens-chr1.parquet`, the same release's VCF
+  dump) holds three rows at `1:109275908`: `C>A`, `C>G` and `C>T`.
+- dbSNP (`/variation/v0/refsnp/646776`, the top-level GRCh38 placement) carries `C>A`, `C>G` and `C>T`.
+- `reference_examples/longevity_studies/resolution.csv` records `C` with `A,G,T` and three VRS ids, `source=cache`,
+  `ensembl-variation-2026_07_13-vep116.0`.
+
+So the example agrees with its pinned snapshot and with dbSNP, and nothing in it should move on this evidence.
+This is the case RM376 tested for `rs746071566` and ruled out ("the snapshot carries alleles REST does not: No").
+Here the answer is yes. *Corrected after the measurement below:* the filing read this as two surfaces of one release
+disagreeing, with REST the narrower one. It is a dbSNP build gap inside one Ensembl release. REST's
+`/info/variation` names dbSNP 156, and so does the VEP cache line in the snapshot's header. The VCF dump the snapshot
+is built from (`2026_07_13`) declares dbSNP 157, and dbSNP's own record of rs646776 was last updated in build 157.
+So RM374's reading, "a row from dbSNP 156", was right about the row's age; what it missed is that REST serves that
+build at the current release, so a re-derivation through REST cannot move it.
+
+**Why it matters.** REST answers an rsID the snapshot holds only when the run has no snapshot: `enrich(download=False)`
+on a host without one, or a provisioning that failed and degraded to live. Such a run records `G,T`, and a run with
+the snapshot records `A,G,T`. The module and the Ensembl release are the same in both. A correct `A/C` genotype is then
+refused under `--strict` after the first run only. RM374's probe met exactly this refusal. RM374 made the message name
+the stale reading and point at `--rederive`, but here a re-derivation on the same host writes `G,T` again. The remedy
+the message gives does not reach this cause.
+
+**Shape of a fix (the builder decides).** First measure: compare REST with the snapshot over the reference examples'
+rsIDs, which takes minutes, to learn whether rs646776 is one site or a class. One site may close as RM376 did, with the
+fact recorded in ENRICHER.md beside RM271's REST paragraph. For a class, the refusal's remedy should say when the row
+came from REST, so it can name REST's older build instead of a stale release. The enricher reports, never repairs:
+no REST answer is widened from another source.
+
+**Class.** A patch: no schema, column or vocabulary moves (P3), nothing authored (P9). Severity low: one site is known,
+and the failure is a refusal that names its rsID, never a silent wrong value. No consumer has reported it.
+
+**Sized (the pm, 2026-11-17).** A patch on `main`. The measurement is the first step and decides the rest: REST
+against the snapshot over every rsID the reference examples carry, both read the same hour. One site closes as RM376
+did, with the fact in ENRICHER.md beside RM271's REST paragraph and the refusal message unchanged. Two or more sites
+make it a class: the `--strict` refusal then says when the stored row came from REST and names the narrower surface
+instead of `--rederive`. Nothing is widened from another source either way.
+
+**Measured (triage, 2026-11-17, 04:25–04:29 UTC).** Every `rs<digits>` in `reference_examples/*/*.csv`, 467 rsIDs, was
+read in the same hour from the split snapshot on this machine (`ensembl-variation-2026_07_13-vep116.0`) and from
+Ensembl REST's batch route at release 116 (GRCh38 primary contigs). Each allele was compared with its shared prefix
+and suffix trimmed. REST answered 454 of the 467; the 13 it did not answer are `rs2494…` and `rs2533…` ids the
+snapshot carries, new in dbSNP 157. Of the 454, 58 differ. In 4 of them (`rs33991993`, `rs34083951`, `rs34515413`, `rs34933751`, all
+HBB) the only difference is a placeholder, `N` in the snapshot and `R` or `Y` in REST, which RM271's predicate drops
+on both sides. That leaves **54 where the snapshot carries alleles REST lacks, and none the reverse**: 61
+single-base and 2 longer alleles, among them `rs646776` (`A`), `rs137852556` (`A` and `G`, at both the X and the Y
+PAR spellings), `rs112339338` and `rs149436418`. A class, so the refusal changes. The builds behind the two sides
+were read at 04:41 UTC: REST's `/info/variation/homo_sapiens` names dbSNP 156; the snapshot's `manifest.json` keeps
+the dump's header, `##source="dbSNP" … version="157"`, beside the VEP line's `dbSNP="156"`.
+
+**Built (triage, 2026-11-17).** `allele_checks._stale_reading` adds a reading for a row whose `source` is
+`ensembl-rest` (a private `_LAGGING_LINKS`): the row came from a live link that can serve an older dbSNP build than the
+snapshot. The remedy is `enrich --rederive` on a host where the Ensembl snapshot is provisioned.
+One departure from the sizing, which said "instead of `--rederive`": `--rederive` stays, qualified, because with the
+snapshot present it is the remedy that reaches the row (the cache link answers first). Only a plain one, on a host
+without the snapshot, asks REST again. The release reading and its pinned phrases stay beside it. A cache-sourced or
+unsourced row reads as before, and a hand-filled one still gets no reading. The compiler reads a member of
+`ResolutionRow.source`, a vocabulary the schema documents, only to word a remedy. It maps no link to a source, so P2
+is not reached. A test over a REST row and a cache row is in `test_rsid_placements_disagree.py`. ENRICHER.md (beside
+RM271), COMPILER.md (beside RM374) and the CHANGELOG say it.
+
+**Residuals** won't fix — the enricher widens no REST answer from the snapshot or dbSNP: it reports, never repairs ·
+won't fix — `ensembl-graphql` is not in `_LAGGING_LINKS`, because no run measured it and no row in the examples
+records it
+
 # Not format scope
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.

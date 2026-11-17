@@ -1661,6 +1661,17 @@ alt, `<.>`, IUPAC placeholders (`<R>`, `<Y>`), `N` runs and N-masked chrY refs. 
 with no alt left is withheld. REST with nothing left answers the ordinary `[]` (it is permanent, so no
 re-run helps), and the snapshot names such rsIDs in one warning instead of `rsid_unresolved`.
 
+**REST serves an older dbSNP build than the snapshot of the same release (RM447, 2026-11-17).** At Ensembl 116,
+REST's `/info/variation` names dbSNP 156, and so does the VEP cache line in the split snapshot's header, while the
+VCF dump the snapshot is built from (`2026_07_13`) declares `##source="dbSNP" … version="157"`. So 54 of the 454
+reference-example rsIDs that both answered carry alleles in the snapshot that REST lacks, and none go the other way.
+`rs646776` is `C>A,G,T` in the snapshot and in dbSNP 157, and `C/G/T` in REST. The 13 rsIDs only the snapshot has
+are ids new in 157. The enricher widens no REST answer from another source. REST answers a subject the snapshot holds
+only when the run has no snapshot (`download=False` on a host without one, or a provisioning that failed), so a row
+with `source=ensembl-rest` may hold the older set. The compiler's allele refusal says so for such a row, and the
+remedy is a re-derivation where the snapshot is provisioned. RM376 found no gap for `rs746071566`, whose alleles did
+not change between the builds.
+
 **`checked` carries labels only, and `snapshots` is where a path lives (S93, RM205).** The set used to
 be mixed — `ensembl-rest` for the live leg beside an absolute path for a snapshot, and the
 unreadable-snapshot finding interpolated the same path — so a host serving `lookup_variant` over HTTP
@@ -5929,7 +5940,13 @@ three or four times first. Since RM354:
   opens an `httpx` transport names its 410 (a function-style fetcher such as `clingen.fetch_curation_list`
   raises its lane's `*Retired` too; audit round 2). A client whose contract is a withheld
   value rather than an exception mixes in `net.Withholding`, keeps the withhold, and says `retired`
-  through its sticky `retired` message (`net.withheld_reason`).
+  through its sticky `retired` message (`net.withheld_reason`). **Sticky for the client, never for the run
+  (RM446):** a caller may reuse one client across runs (RM404's `LookupClients`), so every 410 is also
+  counted in `retired_met`. A run reads `net.retired_mark(client)` before it asks and records
+  `withheld_reason(client, since=mark)`, so an earlier run's 410 never tells this run's timeout to upgrade.
+  `enrich`'s live-Ensembl warning and `literature`'s `crossref_unanswered` read it so. The client is never
+  reset, since a caller's client is not the run's to alter. A host's own client with no counter reads as
+  before.
 - **What a 404 means stayed per client**, and it is not the same everywhere:
 
 | client | a 404 is | so |

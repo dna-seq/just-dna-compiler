@@ -467,23 +467,48 @@ class Withholding:
     `retired_message` of the first 410 the client met, `None` until then. Sticky for the client's
     life, because a retired route is a fact about the source rather than about one request; a caller
     recording why a question went unanswered reads it with `withheld_reason`.
+
+    A run, though, is not the client's life: a caller may reuse one client across runs (RM404's
+    `LookupClients`), and run 1's 410 must not tell run 2's timeout to upgrade (RM446). So every 410 is
+    also counted in `retired_met`, which a run reads before it asks (`retired_mark`) and compares after
+    (`withheld_reason(client, since=mark)`); the client itself is never reset, since a caller's client is
+    not the run's to alter.
     """
 
     retired: str | None = None
+    retired_met: int = 0
 
     def note_retired(self, source: str, failure: BaseException | httpx.Response) -> bool:
         """Record a 410 from `failure` (an exception or a response); `True` when it was one."""
         response = failure.response if isinstance(failure, httpx.HTTPStatusError) else failure
         if not isinstance(response, httpx.Response) or response.status_code != GONE:
             return False
+        self.retired_met += 1
         if self.retired is None:
             self.retired = retired_message(source, response)
             logger.warning("%s", self.retired)
         return True
 
 
-def withheld_reason(withholder: object) -> str:
-    """`retired` when a withholding client met a 410, else `unreachable` (RM361)."""
+def retired_mark(withholder: object) -> int | None:
+    """How many 410s `withholder` has met so far, read before a run asks (RM446).
+
+    `None` for a client that does not count them (a host's own, written before the counter), which
+    `withheld_reason` then reads as RM361 did: `retired` for the client's life.
+    """
+    met = getattr(withholder, "retired_met", None)
+    return met if isinstance(met, int) else None
+
+
+def withheld_reason(withholder: object, since: int | None = None) -> str:
+    """`retired` when a withholding client met a 410, else `unreachable` (RM361).
+
+    With `since`, the mark `retired_mark` read before this run asked, only a 410 met after it counts
+    (RM446): a reused client's earlier 410 says nothing about why this run went unanswered.
+    """
+    met = retired_mark(withholder)
+    if since is not None and met is not None:
+        return RETIRED if met > since else UNREACHABLE
     return RETIRED if getattr(withholder, "retired", None) else UNREACHABLE
 
 

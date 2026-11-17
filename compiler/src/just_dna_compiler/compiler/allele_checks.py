@@ -300,14 +300,29 @@ def _check_allele_membership(
     return route(ladders, strict=strict)
 
 
+# The links that answer from a live API that can serve an older dbSNP build than the snapshot (RM447:
+# Ensembl REST at release 116 serves dbSNP 156, while that release's VCF dump, the snapshot, carries
+# dbSNP 157, so 54 of the 454 reference-example rsIDs both answered lack alleles in REST that the snapshot
+# has, and none the reverse). A `ResolutionRow.source` member, the link that answered, which the schema
+# documents; read only to word the remedy, never to judge.
+_LAGGING_LINKS: frozenset[str] = frozenset({"ensembl-rest"})
+
+
 def _stale_reading(rows: list[ResolutionRow]) -> str:
-    """The third reading of a resolved allele mismatch: the row predates the snapshot (RM374).
+    """The third reading of a resolved allele mismatch: the row predates the snapshot (RM374), including
+    a row a live link answered from an older dbSNP build than the snapshot's (RM447).
 
     An enrich never re-asks a subject it already has a row for, so a row written against an earlier
     release keeps that release's allele set after the snapshot moved — the 0.8 migration probe's
     `rs646776`, whose `C>G,T` row from dbSNP 156 refused a correct `A/C` that dbSNP 157 lists. Which
     release is *older* is not decidable offline, so this names what the rows record and the remedy,
     never a verdict. Empty where no external source answered the rows (`authority` empty).
+
+    A row answered by Ensembl REST is stale that way from the day it is written: REST at release 116
+    serves dbSNP 156 where the snapshot of the same release carries 157. REST answers a subject the
+    snapshot holds only when the run had no snapshot, so for such a row the remedy is a re-derivation
+    where the snapshot is provisioned; a plain `--rederive` without one asks REST again and writes the
+    same row.
     """
     if not any(row.authority for row in rows):
         # No external source answered (authored, manual): no snapshot, so no stale reading. A reversed row
@@ -315,6 +330,14 @@ def _stale_reading(rows: list[ResolutionRow]) -> str:
         return ""
     releases = sorted({release for row in rows if (release := row_release(row))})
     recorded = f"the row records release {', '.join(releases)}" if releases else "release not recorded"
+    lagging = sorted({row.source for row in rows if row.source in _LAGGING_LINKS})
+    if lagging:
+        return (
+            f". Or the row was answered by a live link ({', '.join(lagging)}), which can serve an older "
+            f"dbSNP build than the snapshot, or against an earlier snapshot release than the one the "
+            f"module is enriched against now ({recorded}): `just-dna-enricher enrich <spec-dir> --rederive` "
+            f"on a host where the Ensembl snapshot is provisioned re-asks it of the snapshot first"
+        )
     return (
         f". Or the row was resolved against an earlier snapshot release than the one the module is "
         f"enriched against now ({recorded}): `just-dna-enricher enrich <spec-dir> --rederive` re-asks it"

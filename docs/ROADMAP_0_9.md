@@ -502,6 +502,11 @@ and live Ensembl answering rs646776 as G,T where `reference_examples/longevity_s
 patches on `main` (the second checks both sides before either moves). `_RecordedEutils` being client and wrapper at
 once is a cleanup with no wrong answer behind it: a residual of this entry, no item.
 
+**For the merge of `main` into `0.9` (the pm, 2026-11-17).** RM446 landed on `main` (6318392d): a run reads
+`net.retired_mark(client)` where `enrich` picks its Ensembl client, a site RM404 rewrote on `0.9`. The merge keeps that
+read at the bundle's pick point, before the run asks, or RM446 is lost in exactly the reused-client case RM404 makes
+normal. RM446's three-run test is the check.
+
 ## RM412 — a dry run cannot rehearse the download, and the 0.8 line's private names wait for their public ones
 
 **In 0.9's scope, the pm (2026-11-16)**: [desk #326](https://github.com/winternewt/desk/issues/326), the smaller-minors cut, applied on its default under the rule that only a real fork goes to the maintainer. **Which parts:** half 2 whole (the 0.8 line's private names made public), and from half 1 the `--rehearse-download` flag the maintainer named. Half 1's per-lane probe of the source's newest release without its payload (a new `CacheLane` field) is **parked**: **Unparks when** an operator reports a rebuild that downloaded a source only to learn nothing had changed, or a scope the maintainer highlights touches it, or the roadmap is empty. The status line below predates this.

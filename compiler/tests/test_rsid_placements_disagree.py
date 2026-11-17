@@ -420,6 +420,32 @@ def test_a_resolved_allele_refusal_names_the_stale_reading_and_the_remedy() -> N
     assert "release not recorded" in error
 
 
+def test_a_row_from_a_lagging_live_link_names_that_reading_and_the_snapshot_remedy() -> None:
+    """RM447: Ensembl REST at release 116 serves dbSNP 156 (rs646776 `C/G/T`) where the same release's VCF
+    dump, the snapshot, carries 157 (`A` too), and REST answers a subject the snapshot holds only when the
+    run had none, so the remedy is a re-derivation where the snapshot is provisioned; the stale-release
+    reading and its pinned phrases stay beside it."""
+    variants, _ = _membership_case()
+    rest = {
+        "rs646776": [
+            _row(
+                "rs646776", "rs646776", "1", 109275908, "C", "G,T", source="ensembl-rest", authority="ensembl"
+            )
+        ]
+    }
+    (error,) = _check_allele_membership(variants, rest, strict=True)[0]
+    assert "live link (ensembl-rest)" in error and "older dbSNP build than the snapshot" in error
+    assert "Ensembl snapshot is provisioned" in error
+    assert "earlier snapshot release" in error and "--rederive" in error and "release not recorded" in error
+    cache = {
+        "rs646776": [
+            _row("rs646776", "rs646776", "1", 109275908, "C", "G,T", source="cache", authority="ensembl")
+        ]
+    }
+    (error,) = _check_allele_membership(variants, cache, strict=True)[0]
+    assert "live link" not in error and "earlier snapshot release" in error
+
+
 @pytest.mark.skipif(not _HAS_RELEASE, reason="ResolutionRow.source_release (RM373) is not on this branch")
 def test_a_resolved_allele_refusal_names_the_rows_release() -> None:
     variants, _ = _membership_case()

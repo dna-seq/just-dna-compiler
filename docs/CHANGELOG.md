@@ -110,6 +110,31 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   The memo is bounded at 262,144 reads, least recently used out first. `EnsemblResolver` builds its own anchor
   reader once, lazily, under a lock of its own, so threads sharing one resolver no longer each build one.
 
+## 2026-11-17 — RM446: a reused client's earlier 410 no longer tells a later run's outage to upgrade (patch, on `main`)
+
+A withholding client (`EnsemblResolver`, `CrossrefClient`, the PMC clients, `Grch37Client`,
+`ClingenAlleleClient`) keeps the first 410 it met as `retired` for its life, and `enrich` and `literature` read that
+as the reason a run went unanswered. A caller that reuses one client across runs, which RM404's `LookupClients`
+makes the designed path, had run 1's 410 tell run 2's timeout that Ensembl retired the route and that a re-run would
+not help. Every 410 is now also counted in `Withholding.retired_met`. A run reads `net.retired_mark(client)` before
+it asks, and `net.withheld_reason(client, since=mark)` names `retired` only for a 410 met after that mark. `enrich`'s
+live-Ensembl warning and `LiteratureResult.crossref_unanswered` use it. The client's `retired` message is unchanged
+and never reset. A host's own client without the counter reads as before. Enricher only and additive: a new
+attribute, a new function and an optional argument.
+
+## 2026-11-17 — RM447: a resolved allele refusal names Ensembl REST's older dbSNP build when REST answered the row (patch, on `main`)
+
+At Ensembl 116, REST serves dbSNP 156, while the same release's VCF dump, which the snapshot is built from, carries
+dbSNP 157. Measured over every rsID the reference examples name on 2026-11-17: of the 454 rsIDs both answered, 54
+carry alleles in the snapshot that REST lacks, and none go the other way. `rs646776` is one: REST answers `C/G/T`,
+while the snapshot and dbSNP 157 carry `C>A,G,T`. REST answers a subject the snapshot holds only when a run has no
+snapshot, so such a run records the older set, and `--strict` refuses a correct genotype on it.
+`genotype_allele_not_at_locus` and `effect_allele_not_at_locus` on a row whose `source` is `ensembl-rest` now say
+the row came from a live link that can serve an older dbSNP build than the snapshot, and give the remedy that
+reaches it: `enrich --rederive` on a host where the Ensembl snapshot is provisioned. The phrases
+`earlier snapshot release`, `release not recorded` and `--rederive` stay in the text. Rows answered by any other
+link read as before. Compiler only; no column, code or vocabulary moves.
+
 ## 2026-11-16 — `v0.8.8`: enricher 0.8.8 (a patch, cut from `main`)
 
 Only the enricher changed source since `v0.8.7` (`download.py`), so it alone moves; format and compiler stay 0.8.6 and
