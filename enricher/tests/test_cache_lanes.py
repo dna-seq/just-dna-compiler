@@ -1143,6 +1143,25 @@ def test_lane_status_without_locations_answers_as_it_did(
     assert lane_status(None, None) == lane_status(locations={}) == expected
 
 
+def test_a_hand_built_lane_without_locations_is_read_as_before(tmp_path: Path, monkeypatch) -> None:
+    """A caller's own `CacheLane` whose callables take no flag still reads through `lane_status` unnamed.
+
+    Before RM443 the unnamed path called `resolve()` and `default_dir()` bare, and lanes built that way
+    exist (the `prepare` tests here build several); passing either a keyword would raise `TypeError`."""
+    junk = tmp_path / "hand-built"
+    junk.mkdir()
+    (junk / "leftover.part").write_bytes(b"\x00")
+    monkeypatch.delenv("RM443_HAND_BUILT_CACHE", raising=False)
+    lane = dataclasses.replace(
+        LANES_BY_NAME["cpic"],
+        name="hand_built",
+        env_var="RM443_HAND_BUILT_CACHE",
+        resolve=lambda: None,
+        default_dir=lambda: junk,
+    )
+    assert lane_status([lane]) == [LaneStatus(lane, "occupied", junk)]
+
+
 def test_a_lane_named_in_locations_is_resolved_from_that_path(
     tmp_path: Path, no_ambient_caches: Path
 ) -> None:

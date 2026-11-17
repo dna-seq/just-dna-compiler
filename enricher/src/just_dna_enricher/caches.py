@@ -1531,19 +1531,25 @@ def lane_status(
             value = given[lane.name]
             path = lane.resolve(value, load_dotenv_file=False)
             # Falsy as the resolver reads it (`explicit or $env_var`): `None` or `""` is the ladder.
-            looked_in = Path(value) if value else _ladder_dir(lane, load_dotenv_file=False)
+            looked_in = Path(value) if value else _ladder_dir(lane, named=True)
         else:
             path = lane.resolve()
             # `resolve()` has loaded `.env` by now, so the override is read the way the resolver read it.
-            looked_in = _ladder_dir(lane, load_dotenv_file=True)
+            looked_in = _ladder_dir(lane, named=False)
         out[index] = _lane_verdict(lane, path, looked_in)
     return [out[index] for index in range(len(walked))]
 
 
-def _ladder_dir(lane: CacheLane, *, load_dotenv_file: bool) -> Path:
-    """The directory a lane's ladder names: its variable if the process exports one, else its default."""
+def _ladder_dir(lane: CacheLane, *, named: bool) -> Path:
+    """The directory a lane's ladder names: its variable if the process exports one, else its default.
+
+    An unnamed lane's `default_dir` is called bare, as before RM443, so a caller's own lane whose
+    callables take no flag still reads; a named one is passed `load_dotenv_file=False`.
+    """
     override = os.getenv(lane.env_var)
-    return Path(override).expanduser() if override else lane.default_dir(load_dotenv_file=load_dotenv_file)
+    if override:
+        return Path(override).expanduser()
+    return lane.default_dir(load_dotenv_file=False) if named else lane.default_dir()
 
 
 def _lane_verdict(lane: CacheLane, path: Path | None, looked_in: Path) -> LaneStatus:
