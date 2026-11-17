@@ -118,7 +118,8 @@ def test_every_authored_genotype_in_the_corpus_splits_to_what_its_separators_say
     The independent expectation is the count of separators the cell carries, which is the one thing a
     reader can see without knowing this function: an `n`-separator cell names `n + 1` alleles.
     """
-    rows = list(csv.DictReader((REFERENCE_EXAMPLES / spec_dir / "variants.csv").open()))
+    with (REFERENCE_EXAMPLES / spec_dir / "variants.csv").open(newline="") as handle:
+        rows = list(csv.DictReader(handle))
     assert rows, f"{spec_dir} carries no variant rows"
     for row in rows:
         cell = row["genotype"]

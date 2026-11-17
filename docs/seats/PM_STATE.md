@@ -22,7 +22,7 @@ schema additions right after.
   where an anonymous client also runs out of requests after a few large lookups.
 
 **Next**
-1. ⏳ 0.9 — building on the `0.9` branch: three of six items in (RM443, RM412 and the groundwork), the rest as
-   the account's weekly limit allows.
+1. ⏳ 0.9 — building on the `0.9` branch: four of six items in (RM443, RM412, RM404 and the groundwork); RM437
+   next, the rest as the account's weekly limit allows.
 2. ❓ Three items you placed in 0.9 by name were parked by the small cut: parked, a 0.11, or 0.10 (desk #347).
 3. ❓ One question on the maintainer's desk: linking the project's memory to its new folder name.

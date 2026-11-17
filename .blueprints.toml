@@ -79,17 +79,14 @@ cmd = "sh kit:bin/py.sh kit:classes/desk/watch-answers.py just-dna-compiler liai
 
 # The upstreams' clones, one line each in the liaison state file (docs/seats/LIAISON.md). vrs-python's trunk
 # is quiet (17 commits in 30 days), so it is watched as is. polars (126 a week) and duckdb-python (211 in 30
-# days) are watched for tags only (kit v0.1.119, #246): one wake per release, a patch tagged on a version
-# branch included (duckdb-python's v1.5.6 is on v1.5-variegata). polars also tags its Rust crates (rs-*),
+# days) were watched for tags only (kit v0.1.119, #246): one wake per release, a patch tagged on a version
+# branch included (duckdb-python's v1.5.6 is on v1.5-variegata); duckdb-python's went on 2026-11-17 (below). polars also tags its Rust crates (rs-*),
 # which the packages do not install, so only its Python releases (py-*) are said.
 [seat.liaison.watch.ga4gh-vrs]
 cmd = "sh kit:classes/liaison/watch-upstream.sh ga4gh-vrs"
 
 [seat.liaison.watch.polars]
 cmd = "sh kit:classes/liaison/watch-upstream.sh polars --tags --tag-pattern '^py-'"
-
-[seat.liaison.watch.duckdb-python]
-cmd = "sh kit:classes/liaison/watch-upstream.sh duckdb-python --tags"
 
 # The VCF specification (samtools/hts-specs), the format a module's coordinates and fields point at and a
 # consumer reads (the maintainer, 2026-11-12, relayed by the pm). Its master is quiet (5 commits a year,
@@ -102,7 +99,9 @@ cmd = "sh kit:classes/liaison/watch-upstream.sh vcf-spec --every 86400"
 # kit v0.1.195): ga4gh.vrs, polars and duckdb (docs/UPSTREAM_GA4GH_VRS.md, _POLARS.md, _DUCKDB.md). `--upstream` keeps
 # this repo's [on_publish] sweep off their releases; `--final` says final releases only, since duckdb publishes a .devN
 # build to the index almost daily (kit #470). vrs-python's pre-release work reaches the trunk watcher above. The polars
-# and duckdb tag watchers are judged against this one at the next weekly bump.
+# and duckdb tag watchers were judged against this one at the 2026-11-17 bump: duckdb-python tags only its final
+# releases, the same ones the index carries, so its tag watcher went (its clone stays, a reading aid); polars also tags
+# its release candidates (py-2.0.0-rc.1 came five weeks before 2.0.0), which `--final` drops, so its tag watcher stays.
 # polars-bio is no dependency of ours but of our consumers just-dna-lite and just-vcf: its polars cap decides
 # when they can take the polars our lock moves to (the person, 2026-11-16: "polars-bio is a key dep").
 [seat.liaison.watch.upstream-index]

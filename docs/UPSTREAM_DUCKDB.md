@@ -10,7 +10,7 @@ liaison rather than writing in this file. What pip installs is built from <https
 
 - **Read mark: `2.0.0`** (2026-11-04): duckdb-python's notes for `v1.5.6` (a pointer to the engine's) and
   `v2.0.0`, and the engine's changelogs for `v1.5.6` and `v2.0.0`, read entry by entry.
-- **Installed:** `1.5.5` (`uv.lock`). Pin: `duckdb>=1.1.0` in `enricher/pyproject.toml` (core). **No upper
+- **Installed:** `1.5.6` (`uv.lock`, the 2026-11-17 bump, 830962e9; held on 1.x until RM344 lands, though `--upgrade` picks 2.0.0). Pin: `duckdb>=1.1.0` in `enricher/pyproject.toml` (core). **No upper
   bound.**
 
 ## What we use of it

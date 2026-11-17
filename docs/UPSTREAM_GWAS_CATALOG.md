@@ -15,7 +15,7 @@ nothing for days before a consumer noticed.
   no public repository under the name it once had (`EBISPOT/goci` resolves to nothing).
 - **Data release: `2026-10-29`** (Ensembl 116, dbSNP 156, EFO v3.95.0), from
   <https://www.ebi.ac.uk/gwas/api/search/stats>, which `GwasClient.release` reads (RM373).
-- **Probe: 2026-11-11 00:26 UTC.** See "The weekly probe" below.
+- **Probe: 2026-11-17 03:50 UTC** (before: 2026-11-11 00:26 UTC); news re-read the same hour, newest post still 2026-08-19. See "The weekly probe" below.
 
 ## What we use of it
 
@@ -34,13 +34,13 @@ nothing for days before a consumer noticed.
 
 Run with the dependency bump (`docs/seats/LIAISON.md`); the script is three `curl` calls and changes nothing.
 
-| Question | 2026-11-11 |
-| --- | --- |
-| `associations?rs_id=rs1421085&size=500` | 200 |
-| `…&size=501` | 400 (the ceiling is 500, as RM428 measured on 2026-11-10) |
-| no `size` | 200, `page.size` 20, 223 associations |
-| legacy `/singleNucleotidePolymorphisms/rs1421085/associations` | 410 |
-| `/api/search/stats` `date` | `2026-10-29` |
+| Question | 2026-11-11 | 2026-11-17 |
+| --- | --- | --- |
+| `associations?rs_id=rs1421085&size=500` | 200 | 200 |
+| `…&size=501` | 400 (the ceiling is 500, as RM428 measured on 2026-11-10) | 400 |
+| no `size` | 200, `page.size` 20, 223 associations | 200, 20, 223 |
+| legacy `/singleNucleotidePolymorphisms/rs1421085/associations` | 410 | 410 |
+| `/api/search/stats` `date` | `2026-10-29` | `2026-10-29` |
 
 A ceiling below 500, a different default page, or a legacy path answering anything but 410 goes to the lead the
 same day.

@@ -39,6 +39,10 @@ The lead's working state, rewritten to the present before each reset. Last rewri
 
 ## In flight
 
+- Lanes behind source (liaison, 2026-11-17): clinvar_2026-11-15 and mitomap_2026-11-09+2026-11-03 built into
+  `data/caches/rebuild-2026-11-17/`, upload rehearsed (27 and 5 files). `blocked: the person` — the classifier refused
+  `<lane> publish` (kit #529); the two commands are with the person. After the publish: `cache pull` here, then
+  `mitomap miss` (mitomap_miss follows its parents).
 - 0.8.8 released 2026-11-17: enricher 0.8.8 on PyPI (02:17Z), tag `v0.8.8` on 655f1ebc, GitHub release, README and
   CLAUDE.md name it.
 - `main` pushed 2026-11-04 by the pm at the person's word (…150d916), the lead's commits included. Auto-mode rule

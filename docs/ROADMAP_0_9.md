@@ -473,6 +473,35 @@ liaison files it upstream, and no proxy of ours wraps it.
    use across parallel `enrich()` calls is the motivating case.
 6. `batch_size` above the 200 ceiling is refused when the settings are built, never clamped silently.
 
+**The builder's readings, placed (the pm, 2026-11-17).** RM404 landed on `0.9` at 3e9b993c.
+
+1. **Confirmed: a caller's resolver is never altered.** Its indel anchor read goes through its own proxy, not the
+   passed `sequences`, because no public seam reaches its private read and `enrich` does not reach into a caller's
+   object. Answer 4's "no other proxy" holds for the resolver `enrich` builds. The docstring of `sequences` says so: a
+   caller who passes both a resolver and a proxy gives the resolver the proxy itself.
+2. **Confirmed: a field left unset is built, used and closed by the run**, and never written back onto the caller's
+   bundle. The cost, one pacing gate per run for an unset Ensembl, gnomAD or GRCh37 client, is today's; a caller who
+   wants one shared gate passes the client.
+3. **Flipped: `batch_size` below 1 and a `batch_timeout` of zero or less are refused when the settings are built**,
+   as answer 6 refuses a size above 200. Answer 6's "never clamped silently" covers both ends.
+4. **Confirmed: the public method is `BatchResolver.resolve_rsids_batched`.** A `runtime_checkable` protocol matches
+   by name, and `GnomadClient.resolve_rsids` already has another shape.
+
+**The three 0.9-introduced findings are part of RM404** (the trial rule: a defect in an item's own build is part of
+that item), and are fixed before RM404 counts as in:
+
+- **A shared proxy never carries a failure from one run into the next.** It memoizes answers only; a failed read is
+  held by the run that saw it, so the warning's "this run" is true. Shared use across parallel runs is answer 5's
+  motivating case, which is exactly where the life-long memo silently skips.
+- **The proxy's memo is bounded** (least recently used, the size stated in its docstring), since a shared proxy may
+  live as long as a service.
+- **`EnsemblResolver._base_reader` is built under a lock**, as answer 5 locks the proxy's memo.
+
+**Pre-existing, not 0.9's:** `retired` sticking on a resolver reused across runs (`note_retired` is never cleared)
+and live Ensembl answering rs646776 as G,T where `reference_examples/longevity_studies` records A,G,T go to triage as
+patches on `main` (the second checks both sides before either moves). `_RecordedEutils` being client and wrapper at
+once is a cleanup with no wrong answer behind it: a residual of this entry, no item.
+
 ## RM412 — a dry run cannot rehearse the download, and the 0.8 line's private names wait for their public ones
 
 **In 0.9's scope, the pm (2026-11-16)**: [desk #326](https://github.com/winternewt/desk/issues/326), the smaller-minors cut, applied on its default under the rule that only a real fork goes to the maintainer. **Which parts:** half 2 whole (the 0.8 line's private names made public), and from half 1 the `--rehearse-download` flag the maintainer named. Half 1's per-lane probe of the source's newest release without its payload (a new `CacheLane` field) is **parked**: **Unparks when** an operator reports a rebuild that downloaded a source only to learn nothing had changed, or a scope the maintainer highlights touches it, or the roadmap is empty. The status line below predates this.
