@@ -170,6 +170,9 @@ def test_an_upload_the_publisher_would_refuse_is_named_after_the_real_build(
         app, ["cache", "rebuild", "--out", str(tmp_path / "c"), "--only", "strchive", *_REHEARSE]
     )
 
+    # Exit 0, as the real run's refused publish leaves it: the exit code counts builds only (RM412's
+    # rehearsal is the real run with the upload rehearsed, so it does not grow a second exit rule).
+    assert result.exit_code == 0, result.output
     assert "strchive      built" in result.output
     assert "WOULD BE REFUSED" in result.output
     assert "would upload" not in result.output
