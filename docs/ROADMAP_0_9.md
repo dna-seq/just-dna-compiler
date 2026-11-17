@@ -605,6 +605,20 @@ offline from the installed enricher. A record in `just_dna_format` would force a
 patch, the opposite of the small patches the maintainer asked for. The release records in the format stay about
 compiled output. It rides with RM441 and RM399, one design, in the minor desk #326 places them in (0.10 as proposed).
 
+**The builder's readings, placed (the pm, 2026-11-17).**
+
+- **Exit code:** a rehearsal that predicts a refused upload exits 0, as `cache rebuild --publish` does; kept. The
+  per-lane commands' different exit is class (c) below.
+- **(a) and (b) are part of this item, not new items:** a command 0.9 adds is not done while it can publish a
+  `--parts`-limited test build to the public repository, or publish an unlabelled snapshot without the warning its
+  siblings give. Both new publish commands refuse a snapshot whose `release.json` records `parts_read` below
+  `parts_total`, and warn on a missing label as mitomap's and STRchive's do. If the rebuild path can publish a
+  partial build too, the same refusal goes there.
+- **(c), the near-identical `X publish` commands:** not 0.9 (trial rule 1). An internal refactor with no public
+  surface, so a patch on `main` after 0.9 merges; triage files it.
+- **(d), a rehearsal predicts only as wide as the dry run:** a residual, said in the flag's help text and stated
+  at closure.
+
 **Residuals** none yet.
 
 ## RM435 — a study row has no direction of its own, so a study that prints its allele and direction but no size puts the direction in free text
