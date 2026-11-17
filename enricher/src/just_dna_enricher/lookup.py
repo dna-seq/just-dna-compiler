@@ -398,19 +398,32 @@ def _remote_loci(
                     )
                 )
             return None
-        answer = remote.lookup(label, _REMOTE_TABLES[label], position_key)
+        answer = _ask_remote(remote, label, position_key)
         _record_route(hint, label, answer)
         return resolver._loci_from_rows(answer.rows, [], positions)
     asks = ([{"rsid": [rsid]}] if rsid else []) + ([position_key] if position_key else [])
     if not asks:
         return None
-    answers = [remote.lookup(label, _REMOTE_TABLES[label], keys) for keys in asks]
+    answers = [_ask_remote(remote, label, keys) for keys in asks]
     for answer in answers:
         _record_route(hint, label, answer)
     rows = [row for answer in answers for row in answer.rows]
     first = answers[0]
     searched = f"the ClinVar snapshot read over {first.route} (release {first.release or 'unstated'})"
     return clinvar._loci_from_rows(rows, [rsid] if rsid else [], positions, searched)
+
+
+def _ask_remote(remote: RemoteSnapshots, label: str, keys: dict[str, list]) -> RemoteAnswer:
+    """`remote.lookup` for a link's table. A request a route refuses as wrong is unchecked here too.
+
+    `ValueError` is the holder's word for a request no route would answer (a table the repo no longer
+    names, a closed holder); for an advisory lookup that is an unanswered question, never a traceback,
+    so it arrives as the one could-not-ask type, naming no route.
+    """
+    try:
+        return remote.lookup(label, _REMOTE_TABLES[label], keys)
+    except ValueError as exc:
+        raise SnapshotRouteUnavailable(label, None, f"the request was refused as wrong: {exc}") from exc
 
 
 def _record_route(hint: VariantHint, label: str, answer: RemoteAnswer) -> None:
@@ -630,7 +643,7 @@ def _lookup_clin_sig(
             found = lookup_clin_sig(reference, alleles)
         else:
             keys = {"chrom": [a[0] for a in alleles], "start": [a[1] for a in alleles]}
-            answer = remote.lookup("clinvar", _REMOTE_TABLES["clinvar"], keys)
+            answer = _ask_remote(remote, "clinvar", keys)
             _record_route(hint, "clinvar", answer)
             found = clinvar._clin_sig_from_rows(answer.rows, alleles)
     except SnapshotRouteUnavailable as exc:

@@ -59,6 +59,7 @@ from just_dna_format.snapshot import (
     SNAPSHOT_MANIFEST_FILENAME,
     parse_release,
 )
+from just_dna_format.vrs import normalize_chrom
 from pydantic import ValidationError
 
 from just_dna_enricher.caches import LANES_BY_NAME
@@ -245,7 +246,15 @@ def table_name(path: str) -> str:
 
 
 def _bare_chrom(value: object) -> str:
-    return str(value).removeprefix("chr")
+    """A chromosome as `normalize_chrom` spells it (`chrM` → `MT`), so keys and attestations group alike."""
+    return normalize_chrom(str(value))
+
+
+def _chrom_forms(value: object) -> tuple[str, ...]:
+    """Every spelling a stored `chrom` cell may use for `value`: bare and `chr`-prefixed, `MT` and `M`."""
+    bare = _bare_chrom(value)
+    names = (bare, "M") if bare == "MT" else (bare,)
+    return tuple(form for name in names for form in (name, f"chr{name}"))
 
 
 def _stable(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -376,8 +385,9 @@ class RemoteSnapshots:
     URL (`HF_BASE_URL` unless given); a Hub token (`HF_TOKEN`, else `huggingface_hub.get_token()`) is
     sent only to `HF_BASE_URL`, never to another host.
 
-    Thread-safe: a pin and a connection are made under the lock, and every query runs on its own cursor
-    of the lane's connection. Each connection lives as long as the holder.
+    Thread-safe: a lane's pin and connection are made once, under that lane's own lock (so a slow first
+    read of one lane holds up no other), and every query runs on its own cursor of the lane's
+    connection. Each connection lives as long as the holder. Close it when no query is running.
     """
 
     def __init__(
@@ -396,6 +406,7 @@ class RemoteSnapshots:
         self.hf_base_url = (hf_base_url or HF_BASE_URL).rstrip("/")
         self._lock = threading.Lock()
         self._pins: dict[str, _Pin] = {}
+        self._pin_locks: dict[str, threading.Lock] = {}
         self._closed = False
         self._proxy: httpx.Client | None = None
         if self.proxy_url is not None:
@@ -575,20 +586,17 @@ class RemoteSnapshots:
     def _ask_hf(self, lane: str, table: str, wanted: _Keys) -> RemoteAnswer:
         pin = self._pinned(lane)
         files = pin.table_files(lane, table)
-        groups: list[tuple[dict[str, list[Any]], tuple[str, ...]]] = []
+        #: (request, the files it reads, whether the manifest attests them as that chromosome's alone)
+        groups: list[tuple[dict[str, list[Any]], tuple[str, ...], bool]] = []
         for request in _requests(wanted):
-            if "chrom" in request and pin.chromosomes:
-                # Only a manifest attests which file holds a chromosome, so only such a lane opens one file.
-                attested = set(pin.chromosomes.get(request["chrom"][0], ()))
-                groups.append((request, tuple(f for f in files if f in attested)))
-            else:
-                groups.append((request, files))
-        asked = [(request, group) for request, group in groups if group]
-        if not asked:
-            # No attested file holds any chromosome asked: the release has no rows there.
-            return RemoteAnswer(rows=[], route=ROUTE_HF, release=pin.release, revision=pin.revision)
+            attested = pin.chromosomes.get(request["chrom"][0], ()) if "chrom" in request else ()
+            own = tuple(f for f in files if f in set(attested))
+            # Only a manifest attests which file holds a chromosome, so only such a lane opens one file.
+            # A chromosome it attests no file for is read over the whole table: never an empty answer
+            # the table was not asked for (`@unreachable-not-absent`).
+            groups.append((request, own, True) if own else (request, files, False))
         # The schema is read off a file the lookup opens anyway, so a chromosome's lookup reads no other.
-        schema = self._schema(lane, pin, table, asked[0][1][0])
+        schema = self._schema(lane, pin, table, groups[0][1][0])
         position = next((c for c in POSITION_COLUMNS if c in schema), None)
         named = set(wanted.plain) | ({"chrom"} if wanted.positions is not None else set())
         missing = sorted(c for c in named if c not in schema)
@@ -599,12 +607,12 @@ class RemoteSnapshots:
                 f"{lane}/{table} has no column {', '.join(missing)} at {pin.repo}@{pin.revision}"
             )
         rows: list[dict[str, Any]] = []
-        for request, group in asked:
-            if "chrom" in request and pin.chromosomes:
+        for request, group, attested_alone in groups:
+            if attested_alone:
                 # The manifest attests these files hold this chromosome alone, so the scan filters by
                 # position only (reading no `chrom` column, half the requests) and the chromosome is
                 # checked on the rows that came back, so a file holding more cannot answer for it.
-                forms = {_bare_chrom(request["chrom"][0]), f"chr{_bare_chrom(request['chrom'][0])}"}
+                forms = set(_chrom_forms(request["chrom"][0]))
                 by_position = {k: v for k, v in request.items() if k != "chrom"}
                 found = self._hf_rows(lane, pin, group, by_position, schema, position)
                 rows.extend(row for row in found if str(row.get("chrom")) in forms)
@@ -629,7 +637,7 @@ class RemoteSnapshots:
                 params.extend(int(v) for v in values)
                 continue
             asked = (
-                [form for v in values for form in (_bare_chrom(v), f"chr{_bare_chrom(v)}")]
+                [form for v in values for form in _chrom_forms(v)]
                 if column == "chrom"
                 else [str(v) for v in values]
             )
@@ -679,8 +687,20 @@ class RemoteSnapshots:
             if self._closed:
                 raise ValueError("this RemoteSnapshots is closed; open a new one")
             pin = self._pins.get(lane)
-            if pin is None:
-                pin = self._pin(lane)
+            if pin is not None:
+                return pin
+            pinning = self._pin_locks.setdefault(lane, threading.Lock())
+        # The lane's own lock, so one lane's slow first read does not hold up another lane's queries.
+        with pinning:
+            with self._lock:
+                pin = self._pins.get(lane)
+            if pin is not None:
+                return pin
+            pin = self._pin(lane)
+            with self._lock:
+                if self._closed:
+                    pin.connection.close()
+                    raise ValueError("this RemoteSnapshots is closed; open a new one")
                 self._pins[lane] = pin
             return pin
 
@@ -693,6 +713,15 @@ class RemoteSnapshots:
 
     def _pin(self, lane: str) -> _Pin:
         repo = SNAPSHOT_REPO_IDS[lane]
+        # The extension first: a box without it spends no Hub quota finding that out.
+        connection = self._connect(lane)
+        try:
+            return self._read_pin(lane, repo, connection)
+        except BaseException:
+            connection.close()
+            raise
+
+    def _read_pin(self, lane: str, repo: str, connection: duckdb.DuckDBPyConnection) -> _Pin:
         response = self._hub_get(
             lane, remote_url(self.hf_base_url, "api/datasets", repo, "revision", HF_PINNED_BRANCH)
         )
@@ -732,7 +761,6 @@ class RemoteSnapshots:
                     ):
                         by_chrom.setdefault(_bare_chrom(entry.chrom), []).append(entry.path)
                 chromosomes = {chrom: tuple(paths) for chrom, paths in by_chrom.items()}
-        connection = self._connect(lane)
         logger.info("%s: pinned %s at revision %s, release %s", lane, repo, revision, release)
         return _Pin(repo, revision, files, release, chromosomes, connection)
 

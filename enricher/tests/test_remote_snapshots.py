@@ -240,6 +240,31 @@ def test_an_attested_chromosome_file_answers_only_for_its_chromosome(
     assert answer.rows == []
 
 
+def test_a_chromosome_the_manifest_attests_no_file_for_reads_the_whole_table(
+    httpfs, loopback_hub, ensembl_root: Path, tmp_path: Path
+) -> None:
+    """Never an empty answer for a table nobody read: an unattested contig falls back to every file."""
+    root = tmp_path / "partial"
+    (root / "data").mkdir(parents=True)
+    for parquet in (ensembl_root / "data").glob("*.parquet"):
+        (root / "data" / parquet.name).write_bytes(parquet.read_bytes())
+    manifest = json.loads((ensembl_root / "manifest.json").read_text())
+    manifest["files"] = [f for f in manifest["files"] if f["chrom"] != "X"]
+    (root / "manifest.json").write_text(json.dumps(manifest))
+    loopback_hub.publish(SNAPSHOT_REPO_IDS["ensembl"], root, COMMIT_A)
+    expected = _registry_rows(ensembl_root, {"chrom": ["X"], "start": [634689]})
+    with RemoteSnapshots(hf_base_url=loopback_hub.base_url) as holder:
+        answer = holder.lookup("ensembl", "homo_sapiens", {"chrom": ["chrX"], "start": [634689]})
+    assert answer.rows and answer.rows == remote._stable(expected)
+
+
+def test_a_chromosome_is_grouped_as_normalize_chrom_spells_it() -> None:
+    assert remote._chrom_forms("chrM") == ("MT", "chrMT", "M", "chrM")
+    assert remote._chrom_forms("x") == ("X", "chrX")
+    keys = remote._read_keys(REMOTE_LANES["clinvar"], {"chrom": ["chr1", "1", "M"], "start": [5, 5, 7]})
+    assert keys.positions == {"1": [5], "MT": [7]}
+
+
 def test_an_ensembl_key_without_a_position_is_never_sent(loopback_hub, ensembl_root: Path) -> None:
     loopback_hub.publish(SNAPSHOT_REPO_IDS["ensembl"], ensembl_root, COMMIT_A)
     with RemoteSnapshots(hf_base_url=loopback_hub.base_url) as holder, pytest.raises(ValueError) as refused:
@@ -343,6 +368,7 @@ def test_every_hub_leg_is_could_not_ask(
     assert failed.value.route == "hf" and failed.value.lane == "clinvar"
     if stage == "httpfs_missing":
         assert "httpfs extension is not installed here" in str(failed.value)
+        assert loopback_hub.requests == []  # the extension is checked before any Hub quota is spent
 
 
 def test_an_unknown_table_or_column_is_a_wrong_request(httpfs, loopback_hub, clinvar_root: Path) -> None:
@@ -747,6 +773,24 @@ def test_a_remote_snapshot_that_could_not_be_asked_is_unchecked_never_empty(
     assert {f.message.split(":", 1)[0] for f in unchecked} == {"ensembl", "clinvar"}
     assert all(f.level == "warning" and "unchecked rather than empty" in f.message for f in unchecked)
     assert hint.routes is None and hint.rsid_candidates == []
+
+
+def test_a_request_a_route_refuses_is_unchecked_in_a_lookup_not_a_traceback(
+    httpfs, no_ambient_caches, loopback_hub, tmp_path: Path
+) -> None:
+    """A repo whose payload no longer has the table the link asks for: a finding, as a local fault is."""
+    root = tmp_path / "renamed"
+    (root / "data").mkdir(parents=True)
+    pl.DataFrame({"chrom": ["16"], "start": [1], "id": ["rs1"]}).write_parquet(
+        root / "data" / "variants.parquet"
+    )
+    loopback_hub.publish(SNAPSHOT_REPO_IDS["ensembl"], root, COMMIT_A)
+    loopback_hub.publish(SNAPSHOT_REPO_IDS["clinvar"], root, COMMIT_A)
+    with RemoteSnapshots(hf_base_url=loopback_hub.base_url) as holder:
+        hint, _ensembl = _ask(tmp_path, holder, chrom="16", start=23635706)
+    refused = [f for f in hint.findings if "refused as wrong" in f.message]
+    assert {f.message.split(":", 1)[0] for f in refused} == {"ensembl", "clinvar"}
+    assert all(f.level == "warning" and "has no table" in f.message for f in refused)
 
 
 #: The two `try` blocks in `lookup.py` that read a snapshot locally or remotely, by enclosing function.

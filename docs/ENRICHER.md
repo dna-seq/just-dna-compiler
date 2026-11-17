@@ -2396,11 +2396,13 @@ with RemoteSnapshots(declared_use="non_commercial") as snapshots:      # proxy f
   the commit and its files, reads `release.json` at that commit through `parse_release` (Ensembl:
   `manifest.json`'s `release_id`, by `SnapshotManifest`), and opens one duckdb connection for the lane;
   every later read of the lane reads `{hub}/datasets/{repo}/resolve/{commit}/{path}` on its own cursor of
-  that connection. A position key opens only the files the manifest attests for that chromosome, which
-  only Ensembl's manifest states; every other lane reads its table's files. The connection loads
+  that connection, and one lane's first read holds up no other lane. A position key opens only the files
+  the manifest attests for that chromosome (scanned by position, the chromosome checked on the rows),
+  which only Ensembl's manifest states; a chromosome it attests no file for, and every other lane, reads
+  the table's files. Chromosomes are grouped as `normalize_chrom` spells them (`chrM` is `MT`). The connection loads
   `httpfs` with auto-install off, so **the extension must be installed ahead of time**
   (`python -c "import duckdb; duckdb.connect().install_extension('httpfs')"`); missing, it is
-  could-not-ask naming that command. No retry inside a call (`http_retries = 0`); a 429 is could-not-ask
+  could-not-ask naming that command, before any Hub request is spent. No retry inside a call (`http_retries = 0`); a 429 is could-not-ask
   naming the Hub's quota window (3,000 requests per 5 minutes per IP, anonymous).
 - **Where an answer came from.** `RemoteAnswer(rows, route, release, served_from, revision)`;
   `answer.provenance()` is the same without the rows, a `RemoteRoute`. One release per route per holder:
@@ -2425,7 +2427,8 @@ with RemoteSnapshots(declared_use="non_commercial") as snapshots:      # proxy f
   each lane answered remotely to its `RemoteRoute`, and stays `None` when none was; a lane answered over
   two routes in one lookup keeps the first and says both in an `info` finding. A route that could not be
   asked is a `warning` finding (`…could not be asked remotely, so its answer is unchecked rather than
-  empty`), never an empty answer, and a remote miss names what was searched (`rsN: not in the ClinVar
+  empty`), never an empty answer; so is a request a route refuses as wrong (a table the repo no longer
+  names, a closed holder), which `lookup` raises as `ValueError` and a lookup reports, and a remote miss names what was searched (`rsN: not in the ClinVar
   snapshot read over hf (release …)`).
 - **`remote_url(base, *parts)`** builds every URL a holder asks; the root `conftest.py` wraps it, so a
   test that would hand duckdb a host other than this machine is refused and recorded like a socket reach.
