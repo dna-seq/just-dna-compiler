@@ -2339,6 +2339,76 @@ whose only case is one example row waits for a second case.
 
 **Residuals** none yet.
 
+## RM446 — a withholding client's `retired` outlives the run that met the 410, so a later run's outage reads as a retired route
+
+**Severity** low · **Status** open — **a patch; the pm sizes** · **Owner** enricher (`net.Withholding.note_retired`, `withheld_reason`, the live-Ensembl warning in `enrich/orchestration.py`) ·
+**Motivating case** the lead's RM404 build on `0.9` (`3e9b993c`), recorded by the pm under RM404 in `ROADMAP_0_9.md` (`ad49b85d`, 2026-11-16) · *related* RM361, RM404
+
+**What was seen.** `Withholding.retired` is set by the first 410 a client meets and never cleared (`note_retired` only
+sets it when it is `None`). `enrich` reads it per run: when some rsIDs went unanswered and the Ensembl client's
+`retired` is set, the warning says Ensembl "retired the route" and that "re-running will not answer them"; otherwise it
+says the request failed and a re-run may answer. `literature` records `crossref_unanswered = withheld_reason(crossref)`
+the same way. A client reused across runs carries run 1's 410 into run 2, so a run in which no request met a 410 (a
+timeout, a 5xx after the retries, a `Retry-After` hold) is told to upgrade, and told a re-run will not help.
+
+**Why it is a question and not only a bug.** RM361 chose the stickiness on purpose. The docstring says a retired route
+is "a fact about the source rather than about one request", so it holds "for the client's life". That premise holds
+for one route met twice. It does not hold for another route of the same client (`EnsemblResolver` meets a 410 at two
+sites, the single-rsID GET and the batch POST), or for a 410 the source stops serving. And it reads "the client's
+life" as "one run". Before RM404 a host could reuse a client only by injecting a `resolver=`. RM404 makes a
+`LookupClients` bundle, reused across runs, the designed path for every client, so the wrong case becomes the normal
+one for a long-lived host.
+
+**Shape of a fix (the builder decides).** The reason must come from what this run met, and RM404's first reading says
+`enrich` never alters a caller-given client. So no clearing at the start of a run. Something `enrich` can compare
+before and after it asks is enough: a count of the 410s met (new, additive), or the reason that `note_retired`'s
+`True` returns, captured per call. The test reuses one client across two runs. Run 1 meets a 410 and run 2 meets only a
+timeout, and run 2 must give the outage wording. The same holds for the Crossref record.
+
+**Class.** A patch: no schema, column or vocabulary moves (P3), nothing authored (P9); a client attribute added beside
+`retired` is additive. Severity low: the wording misleads a reader about whether to re-run, and no answer is recorded
+wrongly in a module table. No consumer has reported it.
+
+**Residuals** none yet.
+
+## RM447 — Ensembl REST answers rs646776 without the A allele its own release 116 dump and dbSNP 157 carry, so an online fill and a snapshot fill disagree
+
+**Severity** low · **Status** open — **a patch, possibly no code change (as RM376); the pm sizes** · **Owner** enricher (the REST leg, `ensembl._rest_rsid` / `_loci_from_rest`) ·
+**Motivating case** the lead's RM404 online run on `0.9` (`3e9b993c`), recorded by the pm under RM404 in `ROADMAP_0_9.md` (`ad49b85d`, 2026-11-16) · *related* RM374, RM376, RM271
+
+**Both sides, read 2026-11-17 04:15 UTC.**
+
+- Ensembl REST (`/variation/human/rs646776`; `/info/data` says release 116) answers `1:109275908`, `allele_string`
+  `C/G/T`.
+- The Ensembl snapshot on this machine (`ensembl_variations`, `homo_sapiens-chr1.parquet`, the same release's VCF
+  dump) holds three rows at `1:109275908`: `C>A`, `C>G` and `C>T`.
+- dbSNP (`/variation/v0/refsnp/646776`, the top-level GRCh38 placement) carries `C>A`, `C>G` and `C>T`.
+- `reference_examples/longevity_studies/resolution.csv` records `C` with `A,G,T` and three VRS ids, `source=cache`,
+  `ensembl-variation-2026_07_13-vep116.0`.
+
+So the example agrees with its pinned snapshot and with dbSNP, and nothing in it should move on this evidence.
+Ensembl has not re-curated the site between releases. Two surfaces of one release disagree, and REST is the narrower
+one. This is the case RM376 tested for `rs746071566` and ruled out ("the snapshot carries alleles REST does not: No").
+Here the answer is yes.
+
+**Why it matters.** REST answers an rsID the snapshot holds only when the run has no snapshot: `enrich(download=False)`
+on a host without one, or a provisioning that failed and degraded to live. Such a run records `G,T`, and a run with
+the snapshot records `A,G,T`. The module and the Ensembl release are the same in both. A correct `A/C` genotype is then
+refused under `--strict` after the first run only. RM374's probe met exactly this refusal. RM374 made the message name
+the stale reading and point at `--rederive`, but here a re-derivation on the same host writes `G,T` again. The remedy
+the message gives does not reach this cause.
+
+**Shape of a fix (the builder decides).** First measure: compare REST with the snapshot over the reference examples'
+rsIDs, which takes minutes, to learn whether rs646776 is one site or a class. One site may close as RM376 did, with the
+fact recorded in ENRICHER.md beside RM271's REST paragraph. For a class, the refusal's remedy should say when the row
+came from REST, so it can name the narrower surface instead of a stale release. The enricher reports, never repairs:
+no REST answer is widened from another source.
+
+**Class.** A patch: no schema, column or vocabulary moves (P3), nothing authored (P9). Severity low: one site is known,
+and the failure is a refusal that names its rsID, never a silent wrong value. No consumer has reported it.
+
+**Residuals** none yet.
+
 # Not format scope
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.
