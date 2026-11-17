@@ -496,6 +496,28 @@ newest release unasked; RM413's gates still read that release off the liaison's 
    for a snapshot already built (both lanes publish only through a rebuild today), and RM401's and RM403's names,
    which RM404 already plans to expose.
 
+**The builder's readings, placed (the pm, 2026-11-17).**
+
+- **Exit code:** a rehearsal that predicts a refused upload exits 0, as `cache rebuild --publish` does; kept. The
+  per-lane commands' different exit is class (c) below.
+- **(a) and (b) are part of this item, not new items:** a command 0.9 adds is not done while it can publish a
+  `--parts`-limited test build to the public repository, or publish an unlabelled snapshot without the warning its
+  siblings give. Both new publish commands refuse a snapshot whose `release.json` records `parts_read` below
+  `parts_total`, and warn on a missing label as mitomap's and STRchive's do. If the rebuild path can publish a
+  partial build too, the same refusal goes there.
+- **(c), the near-identical `X publish` commands:** not 0.9 (trial rule 1). An internal refactor with no public
+  surface, so a patch on `main` after 0.9 merges; triage files it.
+- **(d), a rehearsal predicts only as wide as the dry run:** a residual, said in the flag's help text and stated
+  at closure.
+- **Follow-up (the pm, 2026-11-17).** A `release.json` that does not parse, or a `parts_read`/`parts_total` present
+  but not a number, is refused at the publish gate: present-and-unreadable is the refusal, absent is the unknown arm
+  (`@an-absent-input-is-the-unknown-arm-and-a-malformed-one-is-the-refusal`), so a lane that writes no counts is
+  not affected. Placed for later: the gate's home as a public predicate beside `SnapshotRelease` (a new public name
+  in the format tier) goes to 0.10; the duplicated "which datasets are short", reading `release.json` apart from the
+  bytes then hashed, and the double parse go with class (c) as one patch after 0.9 merges; the dead `--source`
+  branch in `_rebuild_opentargets` predates 0.9 and is triage's patch on `main` now.
+
+
 ---
 
 **Decided for 0.9 (the pm, 2026-11-16):** `ensure_opentargets_snapshot` public beside its siblings (the private
@@ -604,20 +626,6 @@ package that moves: a per-table "newest enricher version whose derivation could 
 offline from the installed enricher. A record in `just_dna_format` would force a format release for every enricher
 patch, the opposite of the small patches the maintainer asked for. The release records in the format stay about
 compiled output. It rides with RM441 and RM399, one design, in the minor desk #326 places them in (0.10 as proposed).
-
-**The builder's readings, placed (the pm, 2026-11-17).**
-
-- **Exit code:** a rehearsal that predicts a refused upload exits 0, as `cache rebuild --publish` does; kept. The
-  per-lane commands' different exit is class (c) below.
-- **(a) and (b) are part of this item, not new items:** a command 0.9 adds is not done while it can publish a
-  `--parts`-limited test build to the public repository, or publish an unlabelled snapshot without the warning its
-  siblings give. Both new publish commands refuse a snapshot whose `release.json` records `parts_read` below
-  `parts_total`, and warn on a missing label as mitomap's and STRchive's do. If the rebuild path can publish a
-  partial build too, the same refusal goes there.
-- **(c), the near-identical `X publish` commands:** not 0.9 (trial rule 1). An internal refactor with no public
-  surface, so a patch on `main` after 0.9 merges; triage files it.
-- **(d), a rehearsal predicts only as wide as the dry run:** a residual, said in the flag's help text and stated
-  at closure.
 
 **Residuals** none yet.
 
