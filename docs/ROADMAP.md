@@ -483,6 +483,13 @@ same way an empty one does, and says so in a warning that names the file and the
 version and suggesting the parquet cache. The path is deprecated and retired at 1.0. The test writes a db the
 running duckdb cannot read rather than mocking `connect`.
 
+**Keyed on the type, not the number (the pm, 2026-11-17, from the lead).** duckdb 1.5.6 (locked at 830962e9)
+refuses the same 2.0 file as "version number 69" where 1.5.5 said 999, with the same `IOException`. So the
+handler catches the `IOException` that `connect` raises and never matches the version text; the warning and the
+`EnsemblReferenceError` quote duckdb's message whole instead of parsing a number out of it, so "names the storage
+version" above means as duckdb words it. The test asserts the fallback and that the message is carried, never a
+version number.
+
 **Residuals** none yet.
 
 ## RM388 — placement readers bypass `usable_loci`
