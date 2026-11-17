@@ -49,6 +49,9 @@ The lead's working state, rewritten to the present before each reset. Last rewri
   (scratch; this line is the record): branch `0.9` off `main`; wave 0 `LookupClients` leaf module + `parse_release`;
   wave 1 RM443, RM412, RM404, RM437 in parallel; wave 2 RM430; wave 3 RM431 asks 6, 5, then 4. Then one four-leaf
   round (two at most), the pm sorts, the cut. `unattended`: starts when the person is away.
+- 0.9 progress (2026-11-17): branch `0.9` open (worktree scratchpad/wt-09, locked). Wave 0 merged, e160a132
+  (suite 7461 passed). Wave 1 runs serially under the pace rule and the 7-day quota (87%, hold at 90%): RM443
+  building; then RM412, RM404, RM437. parse_release raises rather than returning None (my brief): told the pm.
 
 ## Open decisions
 
