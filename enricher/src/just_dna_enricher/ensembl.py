@@ -85,10 +85,11 @@ class EnsemblSettings:
     """How `EnsemblResolver` asks REST: where, how fast, and how many rsIDs per batch POST.
 
     `batch_size` (0.9, RM404) is the rsIDs one `POST /variation/:species` carries; `1` is one GET per
-    rsID, the off-switch. Above Ensembl's ceiling of 200 it is refused here, never clamped where it is
-    read: a host that asked for 500 per request and silently got 200 would size its pacing on a number
-    nothing sends. `batch_timeout` is that POST's read timeout in seconds; the GET's `timeout` stays the
-    connect timeout, and the read timeout is the larger of the two.
+    rsID, the off-switch. Above Ensembl's ceiling of 200, or below 1, it is refused here, never clamped
+    where it is read: a host that asked for 500 per request and silently got 200 would size its pacing
+    on a number nothing sends. `batch_timeout` is that POST's read timeout in seconds, refused here
+    unless it is above 0; the GET's `timeout` stays the connect timeout, and the read timeout is the
+    larger of the two.
     """
 
     rest_endpoint: str = DEFAULT_REST_ENDPOINT
@@ -104,6 +105,16 @@ class EnsemblSettings:
                 f"EnsemblSettings.batch_size={self.batch_size} is above the {_REST_BATCH_CEILING} rsIDs "
                 "Ensembl takes in one POST /variation/:species; a batch size is never clamped, so pass "
                 f"{_REST_BATCH_CEILING} or fewer"
+            )
+        if self.batch_size < 1:
+            raise ValueError(
+                f"EnsemblSettings.batch_size={self.batch_size} is below 1; a batch size is never clamped, so "
+                f"pass 1 (one GET per rsID) to {_REST_BATCH_CEILING}"
+            )
+        if not self.batch_timeout > 0:  # `not >` so that NaN, which compares false both ways, is refused
+            raise ValueError(
+                f"EnsemblSettings.batch_timeout={self.batch_timeout} is not a number of seconds above 0; a "
+                "timeout is never clamped, so pass one above 0"
             )
 
 
@@ -290,7 +301,7 @@ class EnsemblResolver(Withholding):
         throttle's hold is read before each batch and set by its failure, as for one rsID.
         """
         asked = list(rsids)
-        size = max(1, self.settings.batch_size)
+        size = self.settings.batch_size  # at least 1: `EnsemblSettings` refuses anything below
         if size == 1:
             for rsid in asked:
                 yield rsid, self.resolve_rsid_rest(rsid)

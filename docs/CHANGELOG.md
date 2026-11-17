@@ -97,7 +97,9 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   with `resolve_rsids_batched(rsids)` is asked in batches. The 0.8 line's private `_BatchResolver`, its
   `_resolve_rsids` and `_Answer` are gone; `_RestBatchWitness` stays private. **`EnsemblSettings.batch_size`**
   (default 20) and **`batch_timeout`** (default 120 s) replace the fixed module constants, and a `batch_size` above
-  Ensembl's ceiling of 200 raises `ValueError` when the settings are built, where 0.8 clamped it silently.
+  Ensembl's ceiling of 200 raises `ValueError` when the settings are built, where 0.8 clamped it silently. So do a
+  `batch_size` below 1, which the read site no longer clamps to 1 (1 itself is the off-switch, one GET per rsID),
+  and a `batch_timeout` that is not above 0; each refusal is pinned word for word.
 - **`SequenceProxy` may be shared across threads** (RM404): its lazy build and its memo are under a lock, the
   remote read outside it. Before, a second reader arriving while the first built the data proxy read `None` and
   memoized it.

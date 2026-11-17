@@ -11,7 +11,8 @@ network up (S157). What these tests pin, each against the real run:
 * a passed proxy is the only sequence source the run reads, the live link's anchor reads included;
 * under `offline=True` the passed proxy is not used, and the run says so once;
 * threads sharing one proxy each get the bases while its data proxy is still being built;
-* `EnsemblSettings.batch_size` above Ensembl's ceiling is refused at construction, never clamped.
+* `EnsemblSettings.batch_size` above Ensembl's ceiling or below 1, and a `batch_timeout` of zero or less, are
+  refused at construction, never clamped.
 """
 
 import logging
@@ -356,6 +357,29 @@ def test_batch_size_above_ensembls_ceiling_is_refused_when_the_settings_are_buil
     assert str(refused.value) == (
         "EnsemblSettings.batch_size=201 is above the 200 rsIDs Ensembl takes in one "
         "POST /variation/:species; a batch size is never clamped, so pass 200 or fewer"
+    )
+
+
+@pytest.mark.parametrize("size", [0, -1])
+def test_batch_size_below_one_is_refused_when_the_settings_are_built(size: int) -> None:
+    """The other end of the same rule: 0.9 clamped a size below 1 to 1 where it was read, silently."""
+    assert EnsemblSettings(batch_size=1).batch_size == 1  # the off-switch, one GET per rsID
+    with pytest.raises(ValueError) as refused:
+        EnsemblSettings(batch_size=size)
+    assert str(refused.value) == (
+        f"EnsemblSettings.batch_size={size} is below 1; a batch size is never clamped, so pass 1 (one GET "
+        "per rsID) to 200"
+    )
+
+
+@pytest.mark.parametrize("timeout", [0.0, -5.0, float("nan")])
+def test_a_batch_timeout_of_zero_or_less_is_refused_when_the_settings_are_built(timeout: float) -> None:
+    assert EnsemblSettings(batch_timeout=0.5).batch_timeout == 0.5
+    with pytest.raises(ValueError) as refused:
+        EnsemblSettings(batch_timeout=timeout)
+    assert str(refused.value) == (
+        f"EnsemblSettings.batch_timeout={timeout} is not a number of seconds above 0; a timeout is never "
+        "clamped, so pass one above 0"
     )
 
 
