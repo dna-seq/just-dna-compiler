@@ -161,6 +161,8 @@ patches right after real use started, so the pm reads an audit sceptically: the 
   seat-builder is the person's word, D193; read 2026-11-13, no concern: no builder handoff is pending for the pm).
 - reflect after 2026-11-21: classes/base/BASE.md as of v0.1.206 (the `nothing` button closes the wake, not the turn,
   kit #481; read 2026-11-14, no concern: the pm's pending work is the 0.9 interview, which waits on the person).
+- reflect after 2026-11-24: classes/base/BASE.md as of v0.1.231 (a claim of done is checked from where the person
+  looks; a claim of absence carries its time; read 2026-11-17, no concern: the pm checks the desk and origin live).
 - reflect after 2026-11-23: classes/base/BASE.md as of v0.1.224 (only a real fork goes to the person, kit #510; read
   2026-11-16, applied at once: desk #326-#329 withdrawn under it, #347 filed as the one real fork).
 - **RM442 filed 2026-11-14** (0d84b3d6), the lead's ask: the AlphaGenome licence rows' three strings, a patch on
