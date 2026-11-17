@@ -39,6 +39,8 @@ The lead's working state, rewritten to the present before each reset. Last rewri
 
 ## In flight
 
+- 0.8.8 released 2026-11-17: enricher 0.8.8 on PyPI (02:17Z), tag `v0.8.8` on 655f1ebc, GitHub release, README and
+  CLAUDE.md name it.
 - `main` pushed 2026-11-04 by the pm at the person's word (…150d916), the lead's commits included. Auto-mode rule
   11 (kit v0.1.117) is what lets this seat push its own; the person pastes it.
 - Leftover local branches `build/RM341` and `build/RM343`: cherry-picked onto `main`, so `-d` refuses them;
