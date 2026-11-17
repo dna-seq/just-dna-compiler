@@ -545,15 +545,31 @@ newest release unasked; RM413's gates still read that release off the liaison's 
   in the format tier) goes to 0.10; the duplicated "which datasets are short", reading `release.json` apart from the
   bytes then hashed, and the double parse go with class (c) as one patch after 0.9 merges; the dead `--source`
   branch in `_rebuild_opentargets` predates 0.9 and is triage's patch on `main` now.
-
-
----
+- **The gate as built (0a1ea872), the builder's readings (the pm, 2026-11-17).**
+  1. **Refused: a per-dataset value that is present and not a whole number, `null` included.** No builder writes a
+     `null` count, so one is malformed, and the lenient read drops the whole map over it, which let `l2g` at 1 of 12
+     publish. This closes the one short read left past the gate.
+  2. **Confirmed: whole numbers only.** "Not a number" above meant not a count: `12.0`, `1.5` and `true` are refused
+     at the gate, although the lenient reader coerces them.
+  3. **Confirmed:** a whole field that is not a map is refused like `"1"`, and an `OSError` reading the file counts
+     as unparsable.
+  4. **Refused too: a count below zero, and a `parts_total` of zero.** Both read as whole today; neither describes a
+     dataset. Part of this item, as a hole in its own gate (trial rule: a defect in an item's own build is part of
+     it).
+  5. **The reader stays lenient and the gate strict, and the docstring says so.** `opentargets._part_counts`' "a
+     wrong-kind count reads as unstated" holds only for a whole field that is not a map; pydantic's lax mode reads a
+     per-dataset `"1"`, `1.0` or `true` as 1. The docstring is corrected in this item to say what holds, and that
+     the publish gate is where a wrong kind is refused. RM430's `parse_release` keeps that reader's leniency.
+  6. **`_PART_COUNT_KEYS`, a hand-kept pair beside the model:** derived from the model in class (c)'s patch after 0.9
+     merges; no wrong answer today.
 
 **Decided for 0.9 (the pm, 2026-11-16):** `ensure_opentargets_snapshot` public beside its siblings (the private
 name goes: a leading underscore carries no contract);
 `just-dna-enricher opentargets publish` and `clinvar-gkm publish` for a snapshot already built, each with the
 `--dry-run` its siblings have; `cache rebuild --dry-run --rehearse-download` as half 1's flag. RM401's and RM403's
 names are RM404's.
+
+---
 
 # 0.10's scope — a small schema release right after 0.9
 
