@@ -30,7 +30,13 @@ from just_dna_enricher.caches import (
 from just_dna_enricher.cli._shared import _use
 from just_dna_enricher.download import SnapshotNotPublished, _FollowHub
 from just_dna_enricher.licensing import LicenseRefusal, check_declared_use
-from just_dna_enricher.locations import CACHES_DIRNAME, RELEASE_FILENAME, STRCHIVE_CATALOGUE_FILENAME
+from just_dna_enricher.locations import (
+    CACHES_DIRNAME,
+    CORE_IS_NOT_A_GROUP,
+    ENSEMBL_CORE_GROUP,
+    RELEASE_FILENAME,
+    STRCHIVE_CATALOGUE_FILENAME,
+)
 
 #: Why `cache rebuild --rehearse-download` is refused without `--dry-run` and `--publish` (RM412). Pinned
 #: by a test, because a refusal's reason is what the operator acts on (`@warning-text-is-api`). The
@@ -39,6 +45,13 @@ REHEARSE_DOWNLOAD_REFUSAL = (
     "--rehearse-download rehearses a publish: it downloads and builds each lane for real, then rehearses "
     "the upload without sending it. It needs --dry-run (without it the upload would be real) and --publish "
     "(without it there is no upload to rehearse)."
+)
+
+#: Why `cache pull --groups` is refused beside any lane but `ensembl` (RM437), pinned by a test. Groups
+#: are the split Ensembl release's alone, and with no `--only` the selection is every lane.
+GROUPS_NEED_ENSEMBL_ONLY = (
+    "--groups selects groups of the ensembl lane, so it is refused beside any other lane; with no --only "
+    "every lane is selected. Pass --only ensembl."
 )
 
 # ── the caches (pre-provision, rebuild, and say what is where) ──────────────────────────────────
@@ -170,6 +183,15 @@ def cache_pull_(
             "when unstated and REFUSED when commercial — downloading is taking the data."
         ),
     ),
+    groups: list[str] = typer.Option(
+        [],
+        "--groups",
+        help=(
+            "With --only ensembl: optional column groups of the split release to pull beside the core "
+            "(NAME[,NAME], repeatable), names from its manifest. Each is gated by its own licence, as the "
+            "gated lanes are by --use; a group once pulled is re-pulled whenever the core's release moves."
+        ),
+    ),
 ) -> None:
     """Download the published parquet snapshots from HuggingFace into the local caches.
 
@@ -184,9 +206,19 @@ def cache_pull_(
     A lane with nothing published says so and names its reason, which is a field on the registry
     rather than a comment: PharmVar's and PubMind's are refusals, ACMG's and MANE's are permissions
     nobody has established. Build those with `cache rebuild`.
+
+    `--groups` (RM437) pulls optional column groups of the split Ensembl release into the lane's
+    `groups/`, attested by its manifest and recorded in its pull record; readers take a group's path
+    from `locations.ensembl_group_dir`. `core` is not a group, and `--groups` is refused beside any lane
+    but `ensembl`, both before anything is read.
     """
     declared = _use(use)
     wanted, lanes = _selected(only)
+    named_groups = [name.strip() for item in groups for name in item.split(",") if name.strip()]
+    if ENSEMBL_CORE_GROUP in named_groups:
+        raise typer.BadParameter(CORE_IS_NOT_A_GROUP, param_hint="--groups")
+    if named_groups and wanted != {"ensembl"}:
+        raise typer.BadParameter(GROUPS_NEED_ENSEMBL_ONLY, param_hint="--groups")
     failures = 0
     # What this run left on disk and what it found unpublished, for the closing line (RM395): it
     # listed every lane with a pull route, so an unpublished lane was called available.
@@ -209,8 +241,15 @@ def cache_pull_(
                 typer.secho(f"  {lane.name}: skipped — {reason}", fg=typer.colors.YELLOW, err=True)
                 continue
         follow = _FollowHub(lane.release_label)
+        # The Ensembl lane's groups (RM437): the named ones, and the declaration a recorded one is
+        # re-pulled under when this run states one.
+        extra = {"groups": named_groups, "declared_use": declared} if lane.name == "ensembl" else {}
         try:
-            path = lane.ensure(_follow_hub=follow)
+            path = lane.ensure(_follow_hub=follow, **extra)
+        except LicenseRefusal as exc:
+            typer.secho(f"  {lane.name}: REFUSED — {exc}", fg=typer.colors.RED, err=True)
+            failures += 1
+            continue
         except SnapshotNotPublished as exc:
             # Asked, and absent. Not a failure and not counted as one: three lanes gained an
             # `ensure_*` before anyone created their repos, and a provisioning command that exits 1
@@ -231,6 +270,12 @@ def cache_pull_(
             f"  {lane.name}: {path}" + (f" — {note}" if note else ""),
             fg=typer.colors.GREEN if quiet else typer.colors.YELLOW,
         )
+        for group, outcome in follow.groups.items():
+            typer.secho(
+                f"  {lane.name} group {group}: {outcome}",
+                fg=typer.colors.GREEN if outcome in ("pulled", "current") else typer.colors.YELLOW,
+                err=outcome not in ("pulled", "current"),
+            )
         on_disk.append(lane.name)
     if failures:
         raise typer.Exit(code=1)

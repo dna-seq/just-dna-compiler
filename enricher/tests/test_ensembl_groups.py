@@ -18,6 +18,7 @@ The licence sentences in the fake manifest are the ones the real split manifest 
 2026-11-17 off `ensembl-variation-2026_07_13-vep116.0`).
 """
 
+import dataclasses
 import hashlib
 import io
 import json
@@ -26,7 +27,11 @@ from pathlib import Path
 import huggingface_hub
 import polars as pl
 import pytest
+from just_dna_enricher import caches
 from just_dna_enricher import download as dl
+from just_dna_enricher.cli import app as enricher_app
+from just_dna_enricher.cli import cache_commands
+from just_dna_enricher.cli.cache_commands import GROUPS_NEED_ENSEMBL_ONLY
 from just_dna_enricher.licensing import (
     CADD_TERMS,
     ENSEMBL_TERMS,
@@ -35,6 +40,7 @@ from just_dna_enricher.licensing import (
     snapshot_group_terms,
 )
 from just_dna_enricher.locations import (
+    CACHE_BASE_VAR,
     CORE_IS_NOT_A_GROUP,
     PULL_RECORD_FILENAME,
     PULL_RECORD_GROUPS_KEY,
@@ -46,6 +52,7 @@ from just_dna_enricher.locations import (
     ensembl_release_label,
     pulled_groups,
 )
+from typer.testing import CliRunner
 
 _ROOT = f"datasets/{SNAPSHOT_REPO_IDS['ensembl']}"
 _OLD = "ensembl-variation-2026_07_13-vep116.0"
@@ -464,3 +471,86 @@ def test_a_sticky_group_that_cannot_be_fetched_does_not_sink_the_core(install_hu
         dl.EnsemblReferenceError, match="could not be fetched .ConnectionError: reset by peer"
     ):
         dl.ensure_snapshot(cache, groups=["consequence"])
+
+
+# ── `cache pull --groups` ───────────────────────────────────────────────────────────────────────
+
+
+@pytest.fixture
+def base(monkeypatch, tmp_path: Path) -> Path:
+    """A cache base of the test's own, with every lane resolving to its default directory under it."""
+    root = tmp_path / "cache-base"
+    monkeypatch.setenv(CACHE_BASE_VAR, str(root))
+    for lane in caches.CACHE_LANES:
+        monkeypatch.setenv(lane.env_var, "")  # set, never deleted (`@test-no-credential`)
+    return root
+
+
+def _pull(*args: str):
+    return CliRunner().invoke(enricher_app, ["cache", "pull", "--only", "ensembl", *args])
+
+
+def test_cache_pull_refuses_cadd_under_a_commercial_use(install_hub, base: Path, cli_text) -> None:
+    hub = install_hub(_published(0, _OLD))
+    result = _pull("--groups", "cadd", "--use", "commercial")
+    assert result.exit_code == 1, cli_text(result)
+    assert "ensembl: REFUSED — cadd is CADD terms of use (University of Washington) and its terms forbid" in (
+        cli_text(result)
+    )
+    assert hub.parquet_fetched() == [] and not (base / "ensembl_variations").exists()
+
+
+def test_cache_pull_takes_cadd_under_a_research_use(install_hub, base: Path, cli_text) -> None:
+    install_hub(_published(0, _OLD))
+    result = _pull("--groups", "cadd,consequence", "--use", "non-commercial")
+    assert result.exit_code == 0, cli_text(result)
+    assert "ensembl group cadd: pulled" in cli_text(result)
+    assert "ensembl group consequence: pulled" in cli_text(result)
+    cache = base / "ensembl_variations"
+    assert ensembl_group_dir(cache, "cadd").is_dir() and ensembl_group_dir(cache, "consequence").is_dir()
+    assert pulled_groups(cache)["cadd"]["declared_use"] == "non_commercial"
+
+
+def test_cache_pull_skips_cadd_when_no_use_is_declared(install_hub, base: Path, cli_text) -> None:
+    install_hub(_published(0, _OLD))
+    result = _pull("--groups", "cadd")
+    assert result.exit_code == 0, cli_text(result)
+    assert "ensembl group cadd: skipped — cadd forbids sale and no use was declared" in cli_text(result)
+    assert not (base / "ensembl_variations" / "groups").exists()
+
+
+def test_a_plain_cache_pull_reports_the_recorded_groups_it_re_pulled(
+    install_hub, base: Path, cli_text
+) -> None:
+    install_hub(_published(0, _OLD))
+    assert _pull("--groups", "cadd", "--use", "non-commercial").exit_code == 0
+    install_hub(_published(1, _NEW))
+    result = _pull()
+    assert result.exit_code == 0, cli_text(result)
+    assert "ensembl group cadd: pulled" in cli_text(result)
+    assert ensembl_group_dir(base / "ensembl_variations", "cadd").is_dir()
+
+
+@pytest.mark.parametrize(
+    ("args", "refusal"),
+    [
+        (["--only", "ensembl", "--groups", "core"], CORE_IS_NOT_A_GROUP),
+        (["--only", "ensembl", "--groups", "cadd,core"], CORE_IS_NOT_A_GROUP),
+        (["--only", "clinvar", "--groups", "cadd"], GROUPS_NEED_ENSEMBL_ONLY),
+        (["--only", "ensembl", "--only", "clinvar", "--groups", "cadd"], GROUPS_NEED_ENSEMBL_ONLY),
+        (["--groups", "cadd"], GROUPS_NEED_ENSEMBL_ONLY),
+    ],
+)
+def test_cache_pull_refuses_a_group_selection_before_any_lane_runs(
+    monkeypatch, base: Path, cli_text, args: list[str], refusal: str
+) -> None:
+    monkeypatch.setattr(huggingface_hub, "HfFileSystem", _explode)
+    exploding = [
+        dataclasses.replace(lane, ensure=lambda **_: pytest.fail("a lane ran")) if lane.ensure else lane
+        for lane in caches.CACHE_LANES
+    ]
+    monkeypatch.setattr(cache_commands, "CACHE_LANES", exploding)
+    result = CliRunner().invoke(enricher_app, ["cache", "pull", *args])
+    assert result.exit_code == 2, cli_text(result)
+    assert refusal in cli_text(result)
+    assert not base.exists()

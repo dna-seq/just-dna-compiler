@@ -67,7 +67,9 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   skipped under an unstated one, and an unknown licensor is skipped quoting its licence. The selection is sticky:
   every later `ensure_snapshot` re-pulls the recorded groups when the core's release moves. Readers take a group's
   path from `locations.ensembl_group_dir`, which raises `EnsemblGroupReleaseError` unless the group's recorded
-  release is the core's.
+  release is the core's. `cache pull --only ensembl --groups NAME[,NAME]` is the command's half: it prints each
+  group's outcome, prints a licence refusal as `REFUSED` and exits 1, and refuses `core` and `--groups` beside any
+  other lane (`cache_commands.GROUPS_NEED_ENSEMBL_ONLY`; no `--only` selects every lane) before any lane runs.
 - **`download.ensure_opentargets_snapshot`** (RM412): the Open Targets lane's pull, public beside its siblings. The
   0.8 line's `_ensure_opentargets_snapshot` is gone (a leading underscore carried no contract); `CACHE_LANES` and
   `cache pull` reach the same function.

@@ -2266,17 +2266,21 @@ which holds within one `release_id` only. So a group is pulled by the lane's own
 consumer's downloader into the lane's directory: that is the mixed-release shape the lane exists to
 prevent, and a stale group joins to the wrong variants silently.
 
-- **Selecting.** `download.ensure_snapshot(ensembl_cache=None, *, groups=(), declared_use="unstated")`.
-  The valid names are the manifest's own
+- **Selecting.** `download.ensure_snapshot(ensembl_cache=None, *, groups=(), declared_use="unstated")`
+  and `cache pull --only ensembl --groups NAME[,NAME] [--use …]`, which prints one
+  `ensembl group <name>: <outcome>` line per group it looked at. The valid names are the manifest's own
   `groups` (`locations.SnapshotManifest.groups`, name → `SnapshotManifestGroup`, licence included;
   `SnapshotManifest.group_files(name)` lists what it attests for one). `core` is not a group
   (`locations.ENSEMBL_CORE_GROUP`, refused with `CORE_IS_NOT_A_GROUP`), and an unknown name is refused
-  with the names the release does publish, both `ValueError` and before any download.
+  with the names the release does publish, both `ValueError` and before any download. `cache pull` refuses
+  `core` and a `--groups` beside any lane other than `ensembl` (`cache_commands.GROUPS_NEED_ENSEMBL_ONLY`;
+  with no `--only` the selection is every lane, so it needs `--only ensembl`) before any lane runs. `cache
+  pull` has no `--dry-run`.
 - **Licences, per group.** `licensing.snapshot_group_terms(group, licence)` reads the licensor off the
   manifest's `licence` (the text before the colon) and answers with its constant from
   `SNAPSHOT_GROUP_TERMS_BY_LICENSOR`: `Ensembl data` is `ENSEMBL_TERMS` (unrestricted), `CADD` is
   `CADD_TERMS` (no sale). Any other licensor is unknown terms. Each group goes through
-  `check_declared_use`, as a gated lane does in `cache pull`: `groups=["cadd"]` downloads under
+  `check_declared_use`, as a gated lane does in `cache pull`: `--groups cadd` downloads under
   `non_commercial`, raises `LicenseRefusal` under `commercial` before any byte moves (core included),
   and is skipped under `unstated`; an unknown licensor is skipped under every use, the reason quoting the
   licence. A group already current is not gated again: nothing is taken.
