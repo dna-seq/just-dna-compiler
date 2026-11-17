@@ -70,10 +70,14 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   dataset with `parts_read` below `parts_total`, such as an `opentargets build --parts N` test build, naming both
   numbers, before the repo is read. A record without those counts is not refused. A `release.json` present and
   unreadable is refused at the same point: one that does not parse or is not a JSON object, and a `parts_read` or
-  `parts_total` that is not a map of datasets to whole numbers (`"1"`, `1.5`, `12.0`, `true`), each quoted.
-  An absent record, absent counts and a `null` map are not refused by this check; a per-dataset `null` is undecided
-  and not refused either. `opentargets publish` and `clinvar-gkm publish` also warn on a snapshot with no release
-  label, as `mitomap publish` and `strchive publish` do.
+  `parts_total` that is not a map of datasets to whole numbers (`"1"`, `1.5`, `12.0`, `true`, and a dataset's
+  `null`, over which the lenient read dropped the whole map and let a short dataset beside it publish), each quoted.
+  A count below zero and a `parts_total` of 0 are refused as well, each in its own words; a `parts_read` of 0 is a
+  count the partial-build check reads. An absent record, absent counts and a `null` in place of a whole map are not
+  refused by this check. `opentargets._part_counts`' docstring now says what the lenient read does: a per-dataset
+  `"1"`, `1.0` or `true` reads as 1 there, and the publish gate is where a wrong kind is refused.
+  `opentargets publish` and `clinvar-gkm publish` also warn on a snapshot with no release label, as
+  `mitomap publish` and `strchive publish` do.
 - **`cache rebuild --dry-run --publish --rehearse-download`** (RM412): downloads and builds each lane for real into
   `<out>/<lane>`, as a run without `--dry-run` does, then rehearses the upload instead of sending it; the inverse of
   RM411's dry run, which takes nothing and is unchanged. Without both `--dry-run` and `--publish` the flag is refused

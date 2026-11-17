@@ -3075,11 +3075,15 @@ count, only one, or a dataset in one and not the other cannot say, and is not re
 **A record present and unreadable refuses too**, at the same point and first: a `release.json` that does not
 parse or is not a JSON object (the message quotes the parser's complaint), and a `parts_read` or `parts_total`
 that is present and is not a map of datasets to whole numbers (`parts_read is "1"`, `parts_read["l2g"] is 1.5`,
-each value quoted). The gate reads the file as written, because the lenient `read_release` reads an
-unparsable record as no record and a mistyped map as unstated, and coerces a count of `"1"`, `12.0` or `true`.
-Absent is the unknown arm and present-and-unreadable the refusal, so no `release.json`, no counts, or a `null`
-in place of a whole map (the model's stated unknown) is not refused by this check. A `null` for one dataset's count
-was left undecided, and is not refused by it either.
+`parts_read["study"] is null`, each value quoted). The gate reads the file as written, because the lenient
+`read_release` reads an unparsable record as no record and a mistyped map as unstated, and coerces a count of `"1"`,
+`12.0` or `true`. A dataset's `null` count is a wrong kind like those: no builder writes one, and the lenient read
+drops the whole map over it, so `{"parts_read": {"l2g": 1, "study": null}, "parts_total": {"l2g": 12, "study": 1}}`
+would otherwise pass the partial-build check as a record stating nothing. **A count that reads as whole but
+describes no dataset refuses too**: one below zero (`parts_read["l2g"] is -1, below zero`) and a total of zero
+(`parts_total["l2g"] is 0, and a dataset has at least one part`). A `parts_read` of 0 is a count, read by the
+partial-build check. Absent is the unknown arm and present-and-unreadable the refusal, so no `release.json`, no
+counts, or a `null` in place of a whole map (the model's stated unknown) is not refused by this check.
 `cache rebuild` itself never builds a partial snapshot: its adapter takes no `--parts`, and `--source` takes a
 file, never the Open Targets parts directory, so the dry run's rehearsal of a build left at `<out>/opentargets`
 is the one rebuild route that meets one. `opentargets publish` and `clinvar-gkm publish` also warn, refusing

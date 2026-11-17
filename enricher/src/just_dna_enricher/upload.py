@@ -1446,9 +1446,13 @@ def _refuse_an_unreadable_record(snapshot_dir: Path) -> None:
     this reads the file as written, decoded as `read_release` decodes it (UTF-8, then `json.loads`), and
     refuses a file that does not decode, one that is not a JSON object, and a `parts_read` or
     `parts_total` that is present and is not a map of datasets to whole numbers, quoting each value.
+    A dataset's `null` count is one of those: no builder writes it, and the lenient read drops the
+    whole map over it, which would let a short dataset beside it publish. A count below zero and a
+    `parts_total` of zero are refused too, as describing no dataset; a `parts_read` of zero is a
+    count, which `_refuse_a_partial_build` reads.
 
-    Not refused here: no `release.json`, a record with neither key, and a `null` (the model's stated
-    unknown, for the whole map; for one dataset's count, undecided and left to the lenient read).
+    Not refused here: no `release.json`, a record with neither key, and a `null` in place of a whole
+    map (the model's stated unknown).
     """
     path = snapshot_dir / RELEASE_FILENAME
     if not path.is_file():
@@ -1474,11 +1478,16 @@ def _refuse_an_unreadable_record(snapshot_dir: Path) -> None:
                 f"{key} is {json.dumps(counts, ensure_ascii=False)}, not a map of datasets to part counts"
             )
             continue
-        unreadable.extend(
-            f"{key}[{json.dumps(name, ensure_ascii=False)}] is {json.dumps(count, ensure_ascii=False)}, not a whole number"
-            for name, count in sorted(counts.items())
-            if count is not None and (isinstance(count, bool) or not isinstance(count, int))
-        )
+        for name, count in sorted(counts.items()):
+            quoted = (
+                f"{key}[{json.dumps(name, ensure_ascii=False)}] is {json.dumps(count, ensure_ascii=False)}"
+            )
+            if isinstance(count, bool) or not isinstance(count, int):
+                unreadable.append(f"{quoted}, not a whole number")
+            elif count < 0:
+                unreadable.append(f"{quoted}, below zero")
+            elif count == 0 and key == "parts_total":
+                unreadable.append(f"{quoted}, and a dataset has at least one part")
     if unreadable:
         raise SnapshotNotPublishable(
             f"{path} records {'; '.join(unreadable)}, so nothing can say whether this snapshot was built "
@@ -1535,7 +1544,7 @@ def plan_reference_snapshot(
     publish. So is a partial build (`_refuse_a_partial_build`, 0.9): its bytes are there, the whole
     of them is not. And so, first, is a `release.json` present that cannot say whether the build is
     whole (`_refuse_an_unreadable_record`, 0.9): one that does not parse, or a parts count that is not
-    a whole number.
+    a whole number (`null` included), is below zero, or is a total of zero.
     """
     _refuse_an_unreadable_record(snapshot_dir)
     _refuse_a_partial_build(snapshot_dir)

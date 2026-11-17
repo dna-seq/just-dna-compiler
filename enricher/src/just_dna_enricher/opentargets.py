@@ -228,8 +228,12 @@ def _connect(snapshot: Path) -> duckdb.DuckDBPyConnection:
 def _part_counts(release: SnapshotRelease, dataset: str) -> tuple[int, int] | None:
     """`(parts read, parts total)` for one dataset, or `None` when the record does not state both.
 
-    Read off the typed fields (RM369): a count of the wrong kind in an old `release.json` is read as
-    unstated by `read_release`, never coerced here, and an unstated count is the unknown arm (RM361).
+    Read off the typed fields (RM369), so this is as lenient as `read_release`: a `parts_read` or
+    `parts_total` that is not a map at all, or a map holding a value pydantic cannot read as an int
+    (`null`, `1.5`, `"x"`), is dropped whole and read as unstated, while pydantic's lax mode reads a
+    per-dataset `"1"`, `1.0` or `true` as 1. Nothing is coerced here, and an unstated count is the
+    unknown arm (RM361). The strict reading is the publish gate's (`upload._refuse_an_unreadable_record`,
+    RM412), which refuses every count that is not a whole number, `null` included.
     """
     read = (release.parts_read or {}).get(dataset)
     total = (release.parts_total or {}).get(dataset)

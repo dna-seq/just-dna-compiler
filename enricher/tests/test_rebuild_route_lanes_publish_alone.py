@@ -381,6 +381,28 @@ _MISCOUNTED = {
         {"parts_read": {"étude": "1"}, "parts_total": {"étude": 1}},
         ['parts_read["étude"] is "1", not a whole number'],
     ),
+    "count-is-null": (
+        # No builder writes a `null` count, and the lenient read drops the whole map over one, which
+        # let `l2g` at 1 of 12 past the partial-build check.
+        {"parts_read": {"l2g": 1, "study": None}, "parts_total": {"l2g": 12, "study": 1}},
+        ['parts_read["study"] is null, not a whole number'],
+    ),
+    "total-count-is-null": (
+        {"parts_read": {"l2g": 1}, "parts_total": {"l2g": None}},
+        ['parts_total["l2g"] is null, not a whole number'],
+    ),
+    "read-below-zero": (
+        {"parts_read": {"l2g": -1}, "parts_total": {"l2g": 12}},
+        ['parts_read["l2g"] is -1, below zero'],
+    ),
+    "total-below-zero": (
+        {"parts_read": {"l2g": 1}, "parts_total": {"l2g": -12}},
+        ['parts_total["l2g"] is -12, below zero'],
+    ),
+    "total-is-zero": (
+        {"parts_read": {"l2g": 0}, "parts_total": {"l2g": 0}},
+        ['parts_total["l2g"] is 0, and a dataset has at least one part'],
+    ),
     "several": (
         {"parts_read": {"study": "1", "l2g": "1"}, "parts_total": {"l2g": 1.0, "study": 1}},
         [
@@ -425,22 +447,17 @@ def test_a_stated_unknown_and_other_keys_are_not_this_checks_refusal(
     assert "Rebuild the snapshot before publishing" not in result.output
 
 
-def test_a_null_count_for_one_dataset_is_not_read_as_unreadable(fake_hub: type[_Api], tmp_path: Path) -> None:
-    """Undecided, so only this check's silence is pinned, never whether the snapshot publishes.
-
-    The decision names a count "present but not a number", and whether a per-dataset `null` is one was
-    not decided; whatever a later decision makes of it, this gate does not refuse it today.
-    """
+def test_a_read_of_zero_parts_is_not_this_checks_refusal(fake_hub: type[_Api], tmp_path: Path) -> None:
+    """Zero parts read is a whole number the partial-build check reads: short of any total, never unreadable."""
     snapshot = _with_release(
-        tmp_path,
-        "opentargets",
-        {"dataset": "fixture", "parts_read": {"l2g": None}, "parts_total": {"l2g": 12}},
+        tmp_path, "opentargets", {"dataset": "fixture", "parts_read": {"l2g": 0}, "parts_total": {"l2g": 12}}
     )
 
     result = CliRunner().invoke(app, ["opentargets", "publish", str(snapshot), "--dry-run"])
 
+    assert result.exit_code == 1, result.output
     assert "Rebuild the snapshot before publishing" not in result.output
-    assert "not a whole number" not in result.output
+    assert "is a partial build" in result.output and "l2g 0 of 12 parts" in result.output
 
 
 def test_a_snapshot_with_no_release_record_is_not_refused_by_this_check(
