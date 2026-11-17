@@ -51,12 +51,15 @@ The lead's working state, rewritten to the present before each reset. Last rewri
   round (two at most), the pm sorts, the cut. `unattended`: starts when the person is away.
 - 0.9 progress (2026-11-17): branch `0.9` open (worktree scratchpad/wt-09, locked). Wave 0 merged, e160a132
   (suite 7461 passed). Wave 1 runs serially under the pace rule and the 7-day quota (87%, hold at 90%): RM443
-  building; then RM412, RM404, RM437. parse_release raises rather than returning None (my brief): told the pm.
+  merged 4384bed3 (suite 7470); RM412 building; RM404, RM437 wait for quota room (7-day 89%, hold 90%). The pm
+  decided parse_release lenient: the RM430 builder (wave 2) changes it, after syncing main into 0.9.
 
 ## Open decisions
 
 None open.
 
+reflect after 2026-11-24: classes/base/BASE.md as of v0.1.231 (a done-claim is checked from where the person
+looks; read 2026-11-17, no concern).
 reflect after 2026-11-23: classes/base/BASE.md as of v0.1.224 (only a real fork goes to the person; read as its
 adversary 2026-11-16, no concern: the lead's only standing wait is the PyPI publish, a step that is the person's, not
 a choice).
