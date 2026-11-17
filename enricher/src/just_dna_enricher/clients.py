@@ -17,6 +17,7 @@ from just_dna_enricher.gnomad import GnomadClient
 from just_dna_enricher.grch37 import Grch37Client
 from just_dna_enricher.identifiers import OntologyClient
 from just_dna_enricher.literature import CrossrefClient, EuropePmcClient, PmcIdConverterClient
+from just_dna_enricher.remote import RemoteSnapshots
 
 
 @dataclass
@@ -42,6 +43,12 @@ class LookupClients:
     **A bundle a `lookup_*` call builds for itself is that call's to close.** Hold one yourself for a
     session; pass none for a one-shot question and the call closes what it opened.
 
+    **`snapshots` is the remote half of the snapshot lanes (0.9, RM430), and nothing builds it for you.**
+    A `RemoteSnapshots` holder is how a caller opts into remote reads: with the field unset, no `lookup_*`
+    reads a lane remotely and nothing leaves the machine that did not before. So it is the one field no
+    leg fills through `ensure`: a lazily built holder would turn remote reads on behind the caller's
+    back. `close()` closes it like any other field. `enrich()` does not read it (0.9 decision 1).
+
     A hosted CPIC draft is not in here on purpose: `pgx_draft.draft_gene` takes an injected
     `client=`, so a host shares pacing by holding one `CpicClient` and passing it, and a field here
     that nothing in `lookup` reads would be a promise `lookup` cannot keep.
@@ -55,6 +62,7 @@ class LookupClients:
     ontology: OntologyClient | None = None
     ensembl: EnsemblResolver | None = None
     grch37: Grch37Client | None = None
+    snapshots: RemoteSnapshots | None = None
     # Not part of the value, and every bundle gets its own: `ensure` mutates a caller-shared
     # dataclass, and a server running its blocking work through a thread pool shares one bundle by
     # following our own advice (the same reason `PacingGate` grew a lock, S15).

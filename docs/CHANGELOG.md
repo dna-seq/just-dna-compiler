@@ -122,6 +122,21 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   resolver carries across runs, holds answers only. Before, one run's failure lasted the proxy's life.
   The memo is bounded at 262,144 reads, least recently used out first. `EnsemblResolver` builds its own anchor
   reader once, lazily, under a lock of its own, so threads sharing one resolver no longer each build one.
+- **`just_dna_enricher.remote.RemoteSnapshots`** (RM430, S145 asks 1 to 3): the remote half of a lane's read order,
+  the registry's proxy and then Hugging Face, for a box with no local snapshot. **Off unless a caller holds one**:
+  a new `LookupClients` field, `snapshots`, that nothing builds lazily, so every existing call reads and fetches
+  exactly what it did. `lookup(lane, table, keys)` answers the proxy's contract on both routes (identifier keys,
+  ORed within a column, ANDed across, `chrom` with `start` paired) as a `RemoteAnswer(rows, route, release,
+  served_from, revision)`. The proxy is `proxy_url=`, else `$JUST_DNA_SNAPSHOT_PROXY_URL`, unset by default; it is
+  asked in requests of at most 100 values and one chromosome, a truncated reply is halved down to one key, and it
+  falls through to Hugging Face on a 429, 503, 504, 404 `lane_not_available`, a timeout or a connection error.
+  Hugging Face is read through duckdb's `httpfs` at the commit `main` names at the lane's first read, one
+  connection per lane per holder, the release label from `release.json` (Ensembl: `manifest.json`), and an
+  Ensembl position opens only that chromosome's file. `httpfs` is loaded with auto-install off, so it has to be
+  installed ahead of time. Eligible lanes: `ensembl` (by position only), `clinvar`, `constraint`, `clinpgx`,
+  `cpic`, `drug_labels`; a gated lane goes through `check_declared_use` first. Every could-not-ask is
+  `remote.SnapshotRouteUnavailable` (`lane`, `route`, `cause`); a wrong request is `ValueError`. CI installs
+  `httpfs` before the suite; a test that reads over HTTP through duckdb skips where it is not installed.
 
 ## 2026-11-17 — RM446: a reused client's earlier 410 no longer tells a later run's outage to upgrade (patch, on `main`)
 

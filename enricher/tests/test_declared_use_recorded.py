@@ -194,4 +194,6 @@ def test_every_gate_with_a_module_reads_its_recorded_declaration() -> None:
         # cache's pull record's, read by `download._effective_group_use` on `effective_declared_use`'s rule.
         "download._admit_named_groups",
         "download._pull_one_group",
+        # A remote snapshot read (RM430): an acquisition of keyed rows, no module directory to read.
+        "remote._admit",
     }, gates

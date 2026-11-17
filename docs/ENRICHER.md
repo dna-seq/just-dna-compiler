@@ -462,6 +462,7 @@ core was ported, not depended on, dropping `fastmcp`/`eliot`). In the workspace:
 | `mitomap_draft` | RM171: the rated misses → `variants.csv` + `studies.csv`. Only the rated ones; the photocopies and `VUS*` are each refused for their own stated reason | `mitomap_miss`, compiler `draft` |
 | `clinvar_build` | `[dev]`: VCF → snapshot parquet; `var_citations.txt` → `citations/` (+ its own `release.json` block) | `polars`, `httpx` |
 | `lookup` | authoring lookups — rsID validity/loci, ref/alts + populations, which paper a PMID names. **Writes nothing** | every client above, compiler `hints` |
+| `remote` | **0.9** (RM430): the remote half of a lane's read order, `RemoteSnapshots`: the registry's proxy, then Hugging Face over duckdb `httpfs` at a pinned commit, one `lookup(lane, table, keys)` answering the proxy's contract on both routes, `RemoteAnswer`/`RemoteRoute` saying where each answer came from, `SnapshotRouteUnavailable` for could-not-ask, and `remote_url`, the one URL builder the test fence wraps. Off unless a caller holds one | `duckdb` (`httpfs`), `httpx`, `caches`, `licensing` |
 | `clients` | **0.9**: `LookupClients`, the network-client bundle a session holds, and its derived `CLIENT_FIELDS`. A leaf that imports only the client types it names, so `enrich` can import the bundle at module level; `lookup` re-exports both names | the clients it bundles |
 | `pharmvar` | star-allele definitions + function (`Api-Key` header, 2 rps) | `httpx`, `tenacity` |
 | `cpic` | allele function, diplotype→phenotype, defining variants (PostgREST) | `httpx`, `tenacity` |
@@ -2341,6 +2342,86 @@ able to tell a pinned file from a live API, because the two can differ by a rele
 A pass that could run *neither* way is a third state, never a silent pass: `PgxResult.skipped_offline`
 and `ClinGenResult.skipped_offline` carry the reason, distinct both from "ran and found nothing" and
 from a failure.
+
+### Remote reads: the registry's proxy, then Hugging Face (RM430, 0.9)
+
+A box with no local snapshot can ask a lane's published copy, **only when the caller holds a
+`remote.RemoteSnapshots`** and hands it over as `LookupClients(snapshots=…)`. With none, nothing below
+runs and nothing leaves the machine that did not before. The read order is the maintainer's (desk #261):
+local disk first and unchanged (every `resolve_*_reference` keeps its ladder), then the registry's proxy,
+then Hugging Face. `enrich()` does not read remotely in 0.9 (its first answering link decides `alts`, and
+Hugging Face's anonymous quota cannot carry a module's worth of lookups); the remote routes serve the
+`lookup_*` functions.
+
+```python
+from just_dna_enricher.clients import LookupClients
+from just_dna_enricher.lookup import lookup_variant
+from just_dna_enricher.remote import RemoteSnapshots
+
+with RemoteSnapshots(declared_use="non_commercial") as snapshots:      # proxy from the environment, HF on
+    answer = snapshots.lookup("clinvar", "clinvar", {"rsid": ["rs334"]})
+    answer.route, answer.release, answer.revision                     # ("hf", "clinvar_2026-11-01", "<commit>")
+    hint = lookup_variant(chrom="19", start=44908684, clients=LookupClients(snapshots=snapshots))
+    hint.routes                                                       # {"ensembl": RemoteRoute(...), ...}
+```
+
+- **`RemoteSnapshots(*, proxy_url=None, proxy_token=None, huggingface=True, declared_use="unstated",
+  hf_base_url=None)`**, a context manager. The proxy is `proxy_url`, else `$JUST_DNA_SNAPSHOT_PROXY_URL`
+  (its token `$JUST_DNA_SNAPSHOT_PROXY_TOKEN`), read with `env_value` when the holder is built; unset by
+  default, as the registry asked, so its own server never calls itself. Hugging Face is on unless
+  `huggingface=False`. A Hub token (`HF_TOKEN`, else `huggingface_hub.get_token()`) is sent to
+  `https://huggingface.co` only, never to another `hf_base_url`.
+- **`lookup(lane, table, keys) -> RemoteAnswer`**, the one query, and the proxy's own contract on both
+  routes: the rows of one table matching identifier keys (`remote.KEY_COLUMNS`), values ORed within a
+  column, columns ANDed, `chrom` with `start` paired when the two lists are as long as each other. The
+  rows are the table's own parquet columns, in an order both routes reproduce. A table is named as the
+  registry names it: a `data/` file's name without its chromosome or shard suffix (`homo_sapiens`,
+  `clinvar`, `gnomad_constraint`, `annotations`, `genes`, `drug_labels`).
+- **Lanes** (`remote.REMOTE_LANES`): `ensembl` (by `chrom` + `start` only: an rsID alone is refused
+  before any route, since about 10.7 GB would be read on the Hub), `clinvar`, `constraint`, `clinpgx`,
+  `cpic`, `drug_labels`. Not `mitomap`, `strchive` or `alphagenome_avi`; `opentargets`, `civic` and
+  `clinvar_gkm` join with their keyed functions (RM431). PharmVar and PubMind have no published repo.
+- **The proxy** (`POST {proxy}/api/v1/lanes/{lane}/{table}`, the registry's §§ 46–47): one keep-alive
+  `httpx` client, a 3 s connect and 10 s read timeout, at most 100 key values a request and one
+  chromosome per request. A reply with `truncated: true` is halved and asked again, down to one key; one
+  key still truncated is could-not-ask for the whole lookup (no fall-through), never an absence. After a
+  429, a 503, a 504, a 404 `lane_not_available`, a timeout or a connection error the holder asks Hugging
+  Face instead, for the whole lookup. A 422, or a 404 `unknown_lane`/`unknown_table`, is a wrong request
+  and raises `ValueError`; any other status, and a 200 that is not a lane reply, is could-not-ask on the
+  proxy with no fall-through. A proxy answer's `release` and `revision` are what its replies state
+  (registry S34), else `None`, withheld; `served_from` is kept.
+- **Hugging Face** is read through duckdb's `httpfs`, never through `hf://` (duckdb resolves that to
+  `huggingface.co` itself, past `hf_base_url` and the test fence, and a glob over plain HTTP is
+  refused). The first read of a lane in a holder asks `GET {hub}/api/datasets/{repo}/revision/main` for
+  the commit and its files, reads `release.json` at that commit through `parse_release` (Ensembl:
+  `manifest.json`'s `release_id`, by `SnapshotManifest`), and opens one duckdb connection for the lane;
+  every later read of the lane reads `{hub}/datasets/{repo}/resolve/{commit}/{path}` on its own cursor of
+  that connection. A position key opens only the files the manifest attests for that chromosome, which
+  only Ensembl's manifest states; every other lane reads its table's files. The connection loads
+  `httpfs` with auto-install off, so **the extension must be installed ahead of time**
+  (`python -c "import duckdb; duckdb.connect().install_extension('httpfs')"`); missing, it is
+  could-not-ask naming that command. No retry inside a call (`http_retries = 0`); a 429 is could-not-ask
+  naming the Hub's quota window (3,000 requests per 5 minutes per IP, anonymous).
+- **Where an answer came from.** `RemoteAnswer(rows, route, release, served_from, revision)`;
+  `answer.provenance()` is the same without the rows, a `RemoteRoute`. One release per route per holder:
+  `main` moving mid-session does not move a holder's Hugging Face reads, and a new holder reads the new
+  commit. A 429 can send some of a session's lookups to the Hub and others to the proxy, so each answer
+  carries its own. This traces an answer; it does not detect two copies under one label with different
+  bytes.
+- **Licences.** A remote read is an acquisition: before a lane is asked on any route, the lane's terms
+  (`CACHE_LANES`) go through `check_declared_use(terms, declared_use)`. A refusal raises `LicenseRefusal`;
+  a skip is `SnapshotRouteUnavailable` with no route and the skip's reason. A lane whose registry entry
+  states no terms is not gated, as `cache rebuild` reads it.
+- **`SnapshotRouteUnavailable`** (`lane`, `route`: `proxy`, `hf`, or `None` when no route was asked,
+  `cause`) is every could-not-ask, with duckdb's or `httpx`'s error as its `__cause__`. A 410 is its
+  subclass `SnapshotRouteRetired`, which `net.could_not_ask_reason` reads as `retired`, so one handler
+  still catches every route. Neither is a `duckdb.Error` or an `httpx` error.
+- **`remote_url(base, *parts)`** builds every URL a holder asks; the root `conftest.py` wraps it, so a
+  test that would hand duckdb a host other than this machine is refused and recorded like a socket reach.
+
+`caches.lane_status(locations=…)` takes local paths only. Handed a URL, a `Path` collapses it
+(`hf://datasets/a/b` becomes `hf:/datasets/a/b`), the lane's resolver finds no directory there, and the
+lane reports `absent` with that collapsed path as `looked_in`: nothing in 0.9 passes it one.
 
 ### The one cache that is not in the table
 
@@ -6149,6 +6230,7 @@ caller and `except` order never matters. RM310 was the list shape failing: `cach
 | `gnomad` | `GnomadError` | `RateLimitedError`, `GnomadRetired` |
 | `pgs` | `PgsCatalogError` | `PgsCatalogUnavailable`, `PgsCatalogRetired` (under the one before it) |
 | `pharmvar` | `PharmVarError` | `PharmVarRetired` |
+| `remote` | `SnapshotRouteUnavailable` | `SnapshotRouteRetired` (a route answered 410; RM430's one type for every remote route, the 410 named under it) |
 
 **Builders and the publisher (`[dev]`) — what `cache rebuild` and a `build` command raise**
 

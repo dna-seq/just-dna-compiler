@@ -52,6 +52,7 @@ from just_dna_enricher.litvar import LitvarClient, LitvarRetired, LitvarUnavaila
 from just_dna_enricher.net import PacingGate, could_not_ask_reason
 from just_dna_enricher.pgs import PgsCatalogClient, PgsCatalogRetired, PgsCatalogUnavailable
 from just_dna_enricher.pharmvar import PharmVarClient, PharmVarError, PharmVarRetired
+from just_dna_enricher.remote import RemoteSnapshots, SnapshotRouteRetired, SnapshotRouteUnavailable
 from tenacity import BaseRetrying, RetryCallState
 
 
@@ -220,6 +221,19 @@ def _europepmc(handler: Callable[[httpx.Request], httpx.Response]) -> Callable[[
     return lambda: client.lookup(["11111111"])
 
 
+def _remote(handler: Callable[[httpx.Request], httpx.Response]) -> Callable[[], object]:
+    """RM430's snapshot holder, on its proxy leg with Hugging Face off, so every failure is the proxy's.
+
+    One error type for every route by decision (`SnapshotRouteUnavailable`, could-not-ask): a status the
+    registry lists (429, 503, 504, `lane_not_available`) and a transport failure would fall through to
+    Hugging Face, which is off here, and any other status is could-not-ask on the proxy. A 410 is its
+    `SnapshotRouteRetired`, under that type, as every client in this file names its 410.
+    """
+    holder = RemoteSnapshots(proxy_url="http://127.0.0.1:9", huggingface=False)
+    holder._proxy = httpx.Client(transport=httpx.MockTransport(handler))
+    return lambda: holder.lookup("clinvar", "clinvar", {"rsid": ["rs334"]})
+
+
 #: `(label, builder, the error type this client's callers are told to catch)`.
 CLIENTS = [
     ("gnomad", _gnomad, GnomadError),
@@ -266,6 +280,8 @@ CLIENTS = [
     # species is wrong (a re-run repeats it), and a 200 HTML page is an answer that cannot be read. The
     # 5xx and transport legs are the `LdUnavailable` subclass, asserted in `test_ld_pairs.py`.
     ("ld_pairs", _ld_pairs, LdError),
+    # Could-not-ask on every leg, one type for every route (RM430's decision D).
+    ("remote", _remote, SnapshotRouteUnavailable),
 ]
 
 
@@ -478,6 +494,8 @@ RETIRED_IS_NAMED = {
     "civic_api": CivicApiRetired,
     "clinvar_gkm": ClinVarGkmRetired,
     "gwas": GwasRetired,
+    # Under the one type every remote route raises (RM430), so a caller still writes one handler.
+    "remote": SnapshotRouteRetired,
 }
 
 #: A permanent 4xx answers the same on every attempt. 400 and 404 are here beside 410 because the

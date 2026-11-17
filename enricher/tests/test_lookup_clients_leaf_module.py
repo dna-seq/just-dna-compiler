@@ -3,7 +3,9 @@
 Importing `lookup` loads `enrich.orchestration` on the way (lookup → pubmind_draft → clinvar_draft →
 enrich), so while the bundle was defined in `lookup`, `orchestration` could not name it at the top of
 the file without a cycle, and inline imports are banned. RM404 hands the bundle into `enrich()`, so the
-bundle moved to `just_dna_enricher.clients`, which imports only the client types it names.
+bundle moved to `just_dna_enricher.clients`, which imports only the client types it names. RM430's
+`RemoteSnapshots` is one of them (`snapshots`); it reads the lane registry (`caches`), which loads no
+drafter and neither half of the cycle, and the probe below asserts that as well.
 
 Each probe runs in a fresh interpreter: inside the suite every module is already in `sys.modules`, so
 an import-order test there passes whatever the graph is.
@@ -34,6 +36,7 @@ _LEAF_FIRST = (
 import sys
 import just_dna_enricher.ensembl, just_dna_enricher.eutils, just_dna_enricher.gnomad
 import just_dna_enricher.grch37, just_dna_enricher.identifiers, just_dna_enricher.literature
+import just_dna_enricher.remote
 before = set(sys.modules)
 from just_dna_enricher.clients import CLIENT_FIELDS, LookupClients
 # The leaf adds itself and nothing else to what its client types already load.

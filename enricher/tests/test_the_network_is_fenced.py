@@ -29,6 +29,7 @@ import httpx
 import huggingface_hub
 import pytest
 import requests
+from just_dna_enricher import remote
 
 _ROOT = Path(__file__).resolve().parents[2]
 #: The host every client is pointed at. Never contacted: the fence refuses it before a packet leaves.
@@ -54,6 +55,11 @@ _CLIENTS: dict[str, Callable[[], object]] = {
     "grpc (an address list)": lambda: grpc.insecure_channel(f"ipv4:127.0.0.1:1,{_HOST}:443"),
     "grpc.aio (secure)": lambda: grpc.aio.secure_channel(f"{_HOST}:443", grpc.ssl_channel_credentials()),
     "grpc.aio (insecure)": lambda: grpc.aio.insecure_channel(f"{_HOST}:443"),
+    # duckdb's `httpfs` opens its sockets in C++, past every patch above, so the fence wraps the one
+    # function every remote URL is built by (RM430): the refusal comes before duckdb is handed the URL.
+    "duckdb (httpfs, through remote.remote_url)": lambda: remote.remote_url(
+        f"https://{_HOST}", "datasets/a/b"
+    ),
 }
 #: Driven above although no source file imports it, each with why it is driven anyway.
 _DRIVEN_WITHOUT_AN_IMPORT = {
@@ -64,6 +70,7 @@ _DRIVEN_WITHOUT_AN_IMPORT = {
 #: fence must be shown to cover; `urllib.parse` and `urllib.error` open nothing and are not here.
 _TRANSPORT_ROOTS = (
     "aiohttp",
+    "duckdb",
     "ftplib",
     "grpc",
     "grpc.aio",
@@ -212,6 +219,17 @@ def test_this_machine_stays_reachable(network_fence, monkeypatch: pytest.MonkeyP
             pass
     grpc.insecure_channel(f"127.0.0.1:{port}").close()
     grpc.insecure_channel(f"ipv4:127.0.0.1:{port}").close()
+    assert network_fence.take() == []
+
+
+def test_a_loopback_url_is_built_and_the_opt_in_opens_the_rest(
+    network_fence, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The duckdb case's two open doors: this machine always, any host with the opt-in (RM430)."""
+    monkeypatch.setenv("JUST_DNA_NETWORK_TESTS", "")
+    assert remote.remote_url("http://127.0.0.1:9", "/datasets/", "a/b") == "http://127.0.0.1:9/datasets/a/b"
+    monkeypatch.setenv("JUST_DNA_NETWORK_TESTS", "1")
+    assert remote.remote_url(f"https://{_HOST}/", "x") == f"https://{_HOST}/x"
     assert network_fence.take() == []
 
 
