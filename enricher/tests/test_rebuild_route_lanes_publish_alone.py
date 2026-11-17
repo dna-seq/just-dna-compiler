@@ -108,3 +108,138 @@ def test_the_rehearsal_runs_the_orphan_check_the_real_publish_refuses_on(
 
     assert result.exit_code == 1, result.output
     assert "WOULD BE REFUSED" in result.output
+
+
+# ── a partial build is refused, and an unlabelled one is warned about (RM412's follow-up) ─────────────
+
+
+def _with_release(root: Path, lane: str, release: dict) -> Path:
+    """`_built`, with `release.json` replaced by `release`."""
+    snapshot = _built(root, lane)
+    (snapshot / RELEASE_FILENAME).write_text(json.dumps(release), encoding="utf-8")
+    return snapshot
+
+
+#: A `--parts 2` test build's counts: one dataset read short, one (`study`, always read whole) not.
+_PARTS_READ = {"credible_set": 2, "study": 1}
+_PARTS_TOTAL = {"credible_set": 40, "study": 1}
+
+
+def _partial_refusal(snapshot: Path, read: dict[str, int], total: dict[str, int]) -> str:
+    """The refusal's text, computed from the fixture's numbers: every dataset read short, sorted by name."""
+    short = ", ".join(
+        f"{name} {read[name]} of {total[name]} parts"
+        for name in sorted(set(read) & set(total))
+        if read[name] < total[name]
+    )
+    return (
+        f"{snapshot} is a partial build: its {RELEASE_FILENAME} records {short} read, so whoever pulls it "
+        f"would take a row missing from a part nobody read for an answer. Publish a whole build (one made "
+        f"without --parts)."
+    )
+
+
+@pytest.mark.parametrize("lane", sorted(_GROUPS))
+def test_a_partial_build_is_refused_in_the_dry_run_and_before_the_real_run_touches_the_repo(
+    lane: str, fake_hub: type[_Api], tmp_path: Path
+) -> None:
+    """A `--parts`-limited test build may not reach the public repo: refused with both numbers, before `create_repo`."""
+    snapshot = _with_release(
+        tmp_path,
+        lane,
+        {"dataset": f"{lane}_fixture", "parts_read": _PARTS_READ, "parts_total": _PARTS_TOTAL},
+    )
+    expected = _partial_refusal(snapshot, _PARTS_READ, _PARTS_TOTAL)
+    runner = CliRunner()
+
+    rehearsed = runner.invoke(app, [_GROUPS[lane], "publish", str(snapshot), "--dry-run"])
+    real = runner.invoke(app, [_GROUPS[lane], "publish", str(snapshot)])
+
+    assert rehearsed.exit_code == 1, rehearsed.output
+    assert f"WOULD BE REFUSED: {expected}" in " ".join(rehearsed.output.split())
+    # The fake hub's `create_repo` raises: a refusal that came after it would surface as that error.
+    assert isinstance(real.exception, SystemExit), real.exception
+    assert real.exit_code == 1, real.output
+    assert f"PUBLISH FAILED: {expected}" in " ".join(real.output.split())
+
+
+@pytest.mark.parametrize(
+    "release",
+    [
+        {"dataset": "fixture"},
+        {"dataset": "fixture", "parts_total": _PARTS_TOTAL},
+        {"dataset": "fixture", "parts_read": _PARTS_READ},
+        {"dataset": "fixture", "parts_read": {"credible_set": 40}, "parts_total": {"credible_set": 40}},
+        {"dataset": "fixture", "parts_read": {"credible_set": 2}, "parts_total": {"l2g": 40}},
+    ],
+    ids=["no-keys", "total-only", "read-only", "whole", "no-dataset-in-both"],
+)
+def test_a_record_that_does_not_state_a_short_read_is_not_refused_by_this_check(
+    release: dict, fake_hub: type[_Api], tmp_path: Path
+) -> None:
+    """Only a dataset whose record states both counts, read below total, refuses; an unstated count is not partial."""
+    snapshot = _with_release(tmp_path, "opentargets", release)
+
+    result = CliRunner().invoke(app, ["opentargets", "publish", str(snapshot), "--dry-run"])
+
+    assert result.exit_code == 0, result.output
+    assert "would upload" in result.output
+    assert "partial build" not in result.output
+
+
+#: The source each lane's warning names.
+_SOURCE_NAMES = {"opentargets": "Open Targets", "clinvar_gkm": "ClinVar-GKM"}
+
+#: The opening the two new commands share with `mitomap publish` and `strchive publish`.
+_UNLABELLED = "this snapshot carries no release label, so everyone who pulls it inherits"
+
+
+@pytest.mark.parametrize("lane", sorted(_GROUPS))
+@pytest.mark.parametrize(
+    "release", [{}, {"dataset": "  "}, None], ids=["no-dataset", "blank", "no-release-json"]
+)
+def test_an_unlabelled_snapshot_is_warned_about_as_its_siblings_do_and_still_rehearsed(
+    lane: str, release: dict | None, fake_hub: type[_Api], tmp_path: Path
+) -> None:
+    snapshot = _built(tmp_path, lane)
+    if release is None:
+        (snapshot / RELEASE_FILENAME).unlink()
+    else:
+        (snapshot / RELEASE_FILENAME).write_text(json.dumps(release), encoding="utf-8")
+
+    result = CliRunner().invoke(app, [_GROUPS[lane], "publish", str(snapshot), "--dry-run"])
+
+    assert result.exit_code == 0, result.output
+    said = " ".join(result.output.split())
+    assert (
+        f"{_UNLABELLED} a snapshot that cannot name its own {_SOURCE_NAMES[lane]} release. "
+        f"Rebuild it with `{_GROUPS[lane]} build`." in said
+    )
+    assert "would upload" in said
+
+
+@pytest.mark.parametrize("lane", sorted(_GROUPS))
+def test_a_labelled_whole_snapshot_draws_neither_the_warning_nor_the_refusal(
+    lane: str, fake_hub: type[_Api], tmp_path: Path
+) -> None:
+    snapshot = _built(tmp_path, lane)
+
+    result = CliRunner().invoke(app, [_GROUPS[lane], "publish", str(snapshot), "--dry-run"])
+
+    assert result.exit_code == 0, result.output
+    assert "carries no release label" not in result.output
+    assert "partial build" not in result.output
+
+
+def test_an_unlabelled_partial_build_is_warned_about_first_and_then_refused(
+    fake_hub: type[_Api], tmp_path: Path
+) -> None:
+    snapshot = _with_release(
+        tmp_path, "opentargets", {"parts_read": _PARTS_READ, "parts_total": _PARTS_TOTAL}
+    )
+
+    result = CliRunner().invoke(app, ["opentargets", "publish", str(snapshot), "--dry-run"])
+
+    assert result.exit_code == 1, result.output
+    said = " ".join(result.output.split())
+    assert said.index(_UNLABELLED) < said.index("WOULD BE REFUSED")

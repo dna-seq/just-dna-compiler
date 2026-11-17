@@ -65,10 +65,18 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   without a rebuild, through the call `cache rebuild --publish` makes. Each takes `--repo`, `--message` and a
   `--dry-run` that rehearses (the plan and the orphan check), as its siblings do. Both lanes published only through
   `cache rebuild` in the 0.8 line.
+- **A partial snapshot is refused at publish** (RM412): `upload.plan_reference_snapshot`, which every snapshot
+  publish and rehearsal goes through, refuses (`SnapshotNotPublishable`) a snapshot whose `release.json` records a
+  dataset with `parts_read` below `parts_total`, such as an `opentargets build --parts N` test build, naming both
+  numbers, before the repo is read. A record without those counts is not refused. `opentargets publish` and
+  `clinvar-gkm publish` also warn on a snapshot with no release label, as `mitomap publish` and `strchive publish`
+  do.
 - **`cache rebuild --dry-run --publish --rehearse-download`** (RM412): downloads and builds each lane for real into
   `<out>/<lane>`, as a run without `--dry-run` does, then rehearses the upload instead of sending it; the inverse of
   RM411's dry run, which takes nothing and is unchanged. Without both `--dry-run` and `--publish` the flag is refused
   before anything runs (exit 2, `cache_commands.REHEARSE_DOWNLOAD_REFUSAL` plus the missing flags).
+  Its help states the limit: the prediction is the dry run's, so an adapter that refuses on its own inputs (ACMG
+  with no workbook, PharmVar with no key) reads `rehearsing:` and then `not run`.
 
 ## 2026-11-16 — `v0.8.8`: enricher 0.8.8 (a patch, cut from `main`)
 

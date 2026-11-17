@@ -456,7 +456,9 @@ def cache_rebuild_(
         "--rehearse-download",
         help=(
             "With --dry-run --publish only: download and build each lane for real into <out>/<lane>, "
-            "then rehearse its upload; nothing is uploaded. Refused without both."
+            "then rehearse its upload; nothing is uploaded. Refused without both. The prediction is the "
+            "dry run's and no wider: an adapter that refuses on its own inputs (ACMG with no workbook, "
+            "PharmVar with no key) prints `rehearsing:` and then `not run`."
         ),
     ),
 ) -> None:

@@ -49,6 +49,7 @@ from just_dna_format.manifest import (
     recorded_toolchain,
     toolchains_differ,
 )
+from just_dna_format.snapshot import read_release
 from pydantic import BaseModel, Field
 
 from just_dna_enricher.locations import (
@@ -60,6 +61,7 @@ from just_dna_enricher.locations import (
     env_value,
     missing_credential_reason,
 )
+from just_dna_enricher.opentargets import dataset_complete
 
 # Named once because two things now have to agree about it: the allowlist that uploads the file, and
 # the reader below that takes the module's version out of it.
@@ -307,7 +309,9 @@ class ModuleNotPublishable(PublishRefused, FileNotFoundError):
 
 
 class SnapshotNotPublishable(PublishRefused, FileNotFoundError):
-    """The snapshot directory has nothing built to publish (`plan_reference_snapshot`, RM368).
+    """The snapshot directory has nothing built to publish (`plan_reference_snapshot`, RM368), or only
+    part of it: since 0.9 a `release.json` recording a dataset read below its total is refused as well
+    (RM412).
 
     Still a `FileNotFoundError` within 0.8, for the reason `ModuleNotPublishable` is.
     """
@@ -1426,6 +1430,36 @@ class SnapshotPlan(BaseModel):
     )
 
 
+def _refuse_a_partial_build(snapshot_dir: Path) -> None:
+    """Refuse a snapshot whose `release.json` records a dataset read short of its total (RM412).
+
+    A `--parts`-limited build (`opentargets build --parts N`) is a test-sized snapshot: an absent row
+    in it may be in a part nobody read, and the pass over it says so, but only on the machine holding
+    the record. Published, every puller would serve that absence. Every snapshot publish and its
+    rehearsal go through `plan_reference_snapshot`, so this is the one check for all of them, and it
+    runs before the repo is read or created.
+
+    Refused only on a dataset whose record states **both** counts with the read below the total
+    (`opentargets.dataset_complete` is `False`). A record with neither key, one key, or a dataset named
+    in one and not the other cannot say, and is not refused here (RM361's unknown arm).
+    """
+    release = read_release(snapshot_dir)
+    if release is None:
+        return
+    named = sorted(set(release.parts_read or {}) | set(release.parts_total or {}))
+    short = [
+        f"{name} {release.parts_read[name]} of {release.parts_total[name]} parts"
+        for name in named
+        if dataset_complete(release, name) is False
+    ]
+    if short:
+        raise SnapshotNotPublishable(
+            f"{snapshot_dir} is a partial build: its {RELEASE_FILENAME} records {', '.join(short)} read, so "
+            f"whoever pulls it would take a row missing from a part nobody read for an answer. Publish a "
+            f"whole build (one made without --parts)."
+        )
+
+
 def plan_reference_snapshot(
     snapshot_dir: Path,
     repo_id: str | None = None,
@@ -1442,8 +1476,10 @@ def plan_reference_snapshot(
 
     A `payload` snapshot is refused when the file is missing, exactly as a parquet one is when
     `data/` is empty — the refusal is the same claim either way, that there is nothing built here to
-    publish.
+    publish. So is a partial build (`_refuse_a_partial_build`, 0.9): its bytes are there, the whole
+    of them is not.
     """
+    _refuse_a_partial_build(snapshot_dir)
     resolved_repo = repo_id or DEFAULT_CLINVAR_REPO_ID
     if payload is not None:
         if not (snapshot_dir / payload).is_file():

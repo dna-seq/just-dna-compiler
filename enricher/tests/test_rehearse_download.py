@@ -14,6 +14,7 @@ from pathlib import Path
 
 import huggingface_hub
 import pytest
+import typer
 from just_dna_enricher import strchive_build
 from just_dna_enricher.caches import LANES_BY_NAME
 from just_dna_enricher.cli import app, cache_commands
@@ -232,3 +233,15 @@ def test_the_dry_run_alone_still_takes_nothing(
     assert result.exit_code == 0, result.output
     assert not out.exists()
     assert "nothing was downloaded, built or uploaded" in result.output
+
+
+def test_the_flags_help_states_that_the_prediction_is_only_as_wide_as_the_dry_runs() -> None:
+    """RM412's residual (d): an adapter refusing on its own inputs is predicted to run, so the help says so."""
+    command = typer.main.get_command(app)
+    rebuild = command.commands["cache"].commands["rebuild"]
+    (option,) = [p for p in rebuild.params if p.name == "rehearse_download"]
+
+    assert (
+        "The prediction is the dry run's and no wider: an adapter that refuses on its own inputs (ACMG "
+        "with no workbook, PharmVar with no key) prints `rehearsing:` and then `not run`."
+    ) in option.help

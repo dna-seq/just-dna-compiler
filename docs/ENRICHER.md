@@ -2072,6 +2072,8 @@ publish does not move the real run's.
 Without both `--dry-run` and `--publish` the flag is refused before anything runs, with
 `cache_commands.REHEARSE_DOWNLOAD_REFUSAL` and the flags missing: without `--dry-run` the upload would be real,
 and without `--publish` there is no upload to rehearse.
+The prediction is the dry run's and no wider, and the flag's help says so: an adapter that refuses on its own
+inputs (ACMG with no workbook, PharmVar with no key) prints `rehearsing:` and then `not run`.
 
 Three things about it are worth reading before a deployment runs it nightly.
 
@@ -3035,6 +3037,18 @@ the repo pre-existed).
 Each needs a write token (`hf auth login` or `HF_TOKEN`) — a missing one raises `PermissionError`.
 `huggingface_hub` is a core dependency, imported at module level. Every refusal is a `PublishRefused`
 (RM368, below); the token is the one failure outside that family.
+
+**A partial build refuses** (0.9, RM412). `plan_reference_snapshot` refuses, as `SnapshotNotPublishable`, a
+snapshot whose `release.json` records a dataset with `parts_read` below `parts_total`: an `opentargets build
+--parts N` test build, whose absent rows may sit in parts nobody read. The message names each short dataset with
+both numbers (`l2g 1 of 12 parts`). Every snapshot publish and its rehearsal plan through that function, so the
+refusal reaches the per-lane `X publish` commands, `cache rebuild --publish` and the rebuild dry run's rehearsal
+of a snapshot already at `<out>/<lane>` alike, before the repo is read or created. A record that states neither
+count, only one, or a dataset in one and not the other cannot say, and is not refused by this check.
+`cache rebuild` itself never builds a partial snapshot: its adapter takes no `--parts`, and `--source` takes a
+file, never the Open Targets parts directory, so the dry run's rehearsal of a build left at `<out>/opentargets`
+is the one rebuild route that meets one. `opentargets publish` and `clinvar-gkm publish` also warn, refusing
+nothing, on a snapshot with no release label, as `mitomap publish` and `strchive publish` do.
 
 ### What publishes, and what refuses (RM89)
 

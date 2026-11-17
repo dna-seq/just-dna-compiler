@@ -7,6 +7,7 @@ from pathlib import Path
 import typer
 from just_dna_compiler.draft import DraftError
 from just_dna_format.manifest import VerificationRecord
+from just_dna_format.snapshot import release_label
 from just_dna_format.vocab import VALID_DECLARED_USE, match_vocab
 
 from just_dna_enricher.enrich import EnrichmentError
@@ -37,6 +38,23 @@ _DRAFT_PRECONDITION_ERRORS: tuple[type[Exception], ...] = (DraftError, Enrichmen
 
 def _mode(strict: bool) -> str:
     return "strict" if strict else "best_effort"
+
+
+def _warn_if_unlabelled(snapshot_dir: Path, source: str, build_command: str) -> None:
+    """Warn, and refuse nothing, when a snapshot about to be published states no release label (RM412).
+
+    The warning `mitomap publish` and `strchive publish` give, in their words, for the two publish
+    commands 0.9 added (`opentargets publish`, `clinvar-gkm publish`): an unlabelled snapshot can be
+    pulled and read, but nobody who pulls it can say which release they read. Those two siblings keep
+    their own inline copies; folding them in is the publish-command refactor RM412 sends to a patch.
+    """
+    if release_label(snapshot_dir) is None:
+        typer.secho(
+            f"  this snapshot carries no release label, so everyone who pulls it inherits a snapshot that "
+            f"cannot name its own {source} release. Rebuild it with `{build_command}`.",
+            fg=typer.colors.YELLOW,
+            err=True,
+        )
 
 
 def _use(value: str) -> str:

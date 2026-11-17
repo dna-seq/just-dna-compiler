@@ -5,7 +5,7 @@ from pathlib import Path
 
 import typer
 
-from just_dna_enricher.cli._shared import _use
+from just_dna_enricher.cli._shared import _use, _warn_if_unlabelled
 from just_dna_enricher.licensing import sidecar_path
 from just_dna_enricher.locations import SNAPSHOT_REPO_IDS, repro_out
 from just_dna_enricher.opentargets import OWNED_TABLES, OpenTargetsError, enrich_opentargets, summarise
@@ -183,6 +183,10 @@ def opentargets_publish_(
     The release is CC0-marked, so the snapshot may be published. Until 0.9 the lane published only
     through `cache rebuild --only opentargets --publish`, which downloads and builds first (RM412); this
     sends a snapshot you already hold, through the same publisher call that route makes.
+
+    A `--parts`-limited test build (its `release.json` records a dataset read short of its total) is
+    refused, in the dry run too, before the repo is touched; a snapshot with no release label is
+    published with a warning, as `mitomap publish` and `strchive publish` do.
     """
     from just_dna_enricher.upload import (
         PublishRefused,
@@ -190,6 +194,7 @@ def opentargets_publish_(
         rehearse_reference_snapshot,
     )
 
+    _warn_if_unlabelled(snapshot_dir, "Open Targets", "opentargets build")
     try:
         if dry_run:
             plan = rehearse_reference_snapshot(snapshot_dir, repo)

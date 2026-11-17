@@ -7,6 +7,7 @@ from pathlib import Path
 
 import typer
 
+from just_dna_enricher.cli._shared import _warn_if_unlabelled
 from just_dna_enricher.clinvar_gkm import (
     ClinVarGkmClient,
     ClinVarGkmError,
@@ -185,6 +186,10 @@ def clinvar_gkm_publish_(
     0.9 the lane published only through `cache rebuild --only clinvar_gkm --publish`, which downloads
     and builds first (RM412); this sends a snapshot you already hold, such as one `clinvar-gkm build
     --allele … --variation … --manifest …` cut from local files, through the same publisher call.
+
+    A snapshot whose `release.json` records a dataset read short of its total is refused, in the dry
+    run too, before the repo is touched; one with no release label is published with a warning, as
+    `mitomap publish` and `strchive publish` do.
     """
     from just_dna_enricher.upload import (
         PublishRefused,
@@ -192,6 +197,7 @@ def clinvar_gkm_publish_(
         rehearse_reference_snapshot,
     )
 
+    _warn_if_unlabelled(snapshot_dir, "ClinVar-GKM", "clinvar-gkm build")
     try:
         if dry_run:
             plan = rehearse_reference_snapshot(snapshot_dir, repo)
