@@ -242,8 +242,9 @@ position, `C>CT` and `CT>C` both hold the strings `C` and `CT`, so an rsID row's
 yet it means an inserted T on one and a deleted T on the other. The fill reads `ResolutionRow.placement_verdict`
 there: the spellings a second source placed as `same_event` are filled, and the others are not. If both are
 witnessed, the rsID names both events, so both stay, and a warning says so once
-per rsID in both modes. If neither is, neither is filled, and the row is left unpositioned, so `--strict`
-refuses it as unresolved. If no second source was asked at all (`placement_verdict` empty at the site), both
+per rsID in both modes. If none is (`unplaced` on every spelling, RM453, 0.8.10), that is no evidence for
+either: both stay, under a warning saying the source asked "placed neither as the same event". 0.8.9 left that
+row unpositioned instead. If no second source was asked at all (`placement_verdict` empty at the site), both
 stay as before 0.8.9, and the warning says so. A site whose only recorded verdict is `undecided` (the witness
 could not judge, as a run with no reference sequence writes) reads the same way: both stay, under a sentence
 saying the source asked "could not decide whether either is the same event". Whatever the witness, an expansion member re-keyed onto an

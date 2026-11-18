@@ -171,6 +171,7 @@ def resolve_from_table(
     both_ways: dict[str, dict[str, None]] = {}
     unasked: dict[str, dict[str, None]] = {}
     undecided_sites: dict[str, dict[str, None]] = {}
+    unplaced_sites: dict[str, dict[str, None]] = {}
     for v in variants:
         rows = resolution.get(v.variant_key or "")
         loci = usable_loci(rows, genome_build)
@@ -199,18 +200,15 @@ def resolve_from_table(
                 # a code added in a patch is an old-reader break, since `warnings_summary` validates its keys
                 # against the closed vocabulary. No position written is `rsid_no_hosting_locus`; one or more
                 # loci filled is `rsid_expanded_to_multiple_loci`. 0.9 gives them their own code.
-                warnings.extend(
-                    CodedWarning("rsid_no_hosting_locus", s)
-                    if settled.withheld_all
-                    else CodedWarning("rsid_expanded_to_multiple_loci", s)
-                    for s in settled.sentences
-                )
+                warnings.extend(CodedWarning("rsid_expanded_to_multiple_loci", s) for s in settled.sentences)
                 for site in settled.both_ways:
                     both_ways.setdefault(v.rsid, {}).setdefault(site, None)
                 for site in settled.unasked:
                     unasked.setdefault(v.rsid, {}).setdefault(site, None)
                 for site in settled.undecided:
                     undecided_sites.setdefault(v.rsid, {}).setdefault(site, None)
+                for site in settled.unplaced:
+                    unplaced_sites.setdefault(v.rsid, {}).setdefault(site, None)
                 usable = settled.kept
                 # An authored coordinate row picks its event (RM449's own remedy), so an expansion member
                 # re-keyed onto that row's exact (variant_key, genotype) is not filled: it would be the
@@ -288,9 +286,9 @@ def resolve_from_table(
                             refusal=refusal,
                         )
                     )
-                if settled.withheld_all or (claimed and not usable):
-                    # Every hosting locus sat in a mirror nothing settled, or every one is an authored
-                    # coordinate row's own: said above, and the rsID row is left unpositioned.
+                if claimed and not usable:
+                    # Every hosting locus is an authored coordinate row's own: said above, and the rsID row
+                    # is left unpositioned.
                     patched.append(v)
                 elif not usable:
                     # Every candidate contradicts the genotype: the rsid and the genotype cannot both
@@ -420,6 +418,18 @@ def resolve_from_table(
                 f"with no reference sequence, such as an offline one), so both are filled as before (RM449). "
                 f"If the row is about one of them, replace it with a row authoring that event's coordinate and "
                 f"re-run the enricher so the table files it; an online run records the witness",
+            )
+        )
+
+    for rsid, sites in unplaced_sites.items():
+        warnings.append(
+            CodedWarning(
+                "rsid_expanded_to_multiple_loci",
+                f"{rsid}: its row's genotype reads as an insertion and as a deletion at {'; '.join(sites)}, "
+                f"and the second source asked placed neither as the same event (`placement_verdict` is "
+                f"`unplaced`: it holds no counterpart under this rsID), so both are filled as before (RM453). "
+                f"If the row is about one of them, replace it with a row authoring that event's coordinate and "
+                f"re-run the enricher so the table files it",
             )
         )
 
@@ -1230,13 +1240,14 @@ class MirroredSettlement:
 
     kept: list[ResolutionRow]
     sentences: list[str] = field(default_factory=list)
-    withheld_all: bool = False
     #: `chrom:start (spellings)` of each mirrored site a second source witnessed both ways: kept, and said.
     both_ways: list[str] = field(default_factory=list)
     #: The same, for a mirrored site no second source was asked about: kept as before, and said.
     unasked: list[str] = field(default_factory=list)
     #: The same, for a mirrored site the second source judged `undecided` and nothing more: kept, and said.
     undecided: list[str] = field(default_factory=list)
+    #: The same, for a mirrored site where the witness placed no spelling as `same_event` (RM453): kept, and said.
+    unplaced: list[str] = field(default_factory=list)
 
 
 def _settle_mirrored_spellings(rsid: str, genotype: str, usable: list[ResolutionRow]) -> MirroredSettlement:
@@ -1256,13 +1267,13 @@ def _settle_mirrored_spellings(rsid: str, genotype: str, usable: list[Resolution
     events, which `@rsid-not-per-allele` says a clinical claim should not, so the site is returned in
     `both_ways` and the fill says so once per rsID (both modes, never escalated in 0.8; refusing it is a
     minor's question; under the borrowed `rsid_expanded_to_multiple_loci` until 0.9 adds
-    `rsid_genotype_reads_as_two_events`). Where it placed none, nothing settles
-    which was meant: none at that position is filled, and the row is left unpositioned rather than
-    given a guess. Where no second source was asked at all (`placement_verdict` empty everywhere at
+    `rsid_genotype_reads_as_two_events`). Where no second source was asked at all (`placement_verdict` empty everywhere at
     the site), "not asked" is not "witnessed neither": the expansion stays as before 0.8.9, returned in
     `unasked` and said once per rsID. A site whose only recorded verdict is `undecided` (the witness could
     not judge, as a run with no reference sequence writes) reads the same way, returned in `undecided`
-    under its own sentence, since its table does record a verdict. Loci at other positions (a paralog, a PAR partner) are untouched, and so is every
+    under its own sentence, since its table does record a verdict. So does one where the witness placed no
+    spelling as `same_event` (RM453): `unplaced` on every spelling is no evidence for either, returned in
+    `unplaced`. Nothing here leaves a row unpositioned any more. Loci at other positions (a paralog, a PAR partner) are untouched, and so is every
     site that is not such a mirror (a homozygote over several insertions keeps its expansion).
     """
     sites: dict[tuple[str | None, int | None], list[ResolutionRow]] = {}
@@ -1273,6 +1284,7 @@ def _settle_mirrored_spellings(rsid: str, genotype: str, usable: list[Resolution
     both_ways: list[str] = []
     unasked: list[str] = []
     undecided: list[str] = []
+    unplaced: list[str] = []
     for (chrom, start), at_site in sites.items():
         # Only a locus that hosts the genotype on its own reads it as its own event. A compound het
         # spelled in a padded frame (`G/GTTT` on `GTT>G` and `G>GT`) names one allele of each, so no
@@ -1311,21 +1323,18 @@ def _settle_mirrored_spellings(rsid: str, genotype: str, usable: list[Resolution
                 f"same event, {kept}, is filled and {others} is not (RM449)"
             )
         else:
-            dropped.update(id(lo) for lo in loci)
-            sentences.append(
-                f"{rsid}: the genotype {genotype} reads as an insertion and as a deletion at {chrom}:{start} "
-                f"({spelled}), opposite events spelled with the same strings, and no locus there was "
-                f"witnessed as the same event (`placement_verdict`), so neither is filled and the position "
-                f"remains unset; author the coordinate of the event the row means and re-run the enricher (RM449)"
-            )
-    kept_loci = [lo for lo in usable if id(lo) not in dropped]
+            # RM453: no spelling witnessed `same_event` is no evidence for either. A witness that holds no
+            # counterpart under the rsID writes `unplaced` on every spelling (ClinVar files only some
+            # variants, and files one under a retired id dbSNP merged), the same knowledge as `undecided` or
+            # an empty cell, so the expansion stays as those arms leave it, and is said.
+            unplaced.append(f"{chrom}:{start} ({spelled})")
     return MirroredSettlement(
-        kept=kept_loci,
+        kept=[lo for lo in usable if id(lo) not in dropped],
         sentences=sentences,
-        withheld_all=bool(usable) and not kept_loci,
         both_ways=both_ways,
         unasked=unasked,
         undecided=undecided,
+        unplaced=unplaced,
     )
 
 

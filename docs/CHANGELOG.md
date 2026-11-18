@@ -41,6 +41,19 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md). The `0.8` branch merged into `main` at the 0.8.0 cut (2026-11-05).
 
+## 2026-11-18 — RM453: a mirrored site where no spelling was witnessed keeps both spellings (patch, a declared corrected derivation, on `main`)
+
+**A correction to 0.8.9, declared (P3).** 0.8.9's RM449 left an rsID row unpositioned where a second source
+recorded `unplaced` on both spellings of a mirrored insertion and deletion ("witnessed neither"). But `unplaced`
+on every spelling means only that the witness held no counterpart under the rsID. ClinVar files only some
+variants, and it files `pathogenic_clinvar`'s `rs80356821` deletion under `rs281864900`, which dbSNP merged
+into it. So an offline `enrich` refused that row under `--strict`, where the online table placed it. That is no
+evidence for either spelling, the same knowledge as `undecided` or an empty cell. Both spellings now stay filled,
+under a warning (borrowed code `rsid_expanded_to_multiple_loci` until 0.9) saying the source asked "placed
+neither as the same event". A site where one spelling was witnessed still fills only that one. **What moves:** a
+table with `unplaced` on every spelling of a mirrored site compiles that rsID row onto both spellings again, as
+before 0.8.9; nothing the enricher writes changes. Compiler only.
+
 ## 2026-11-18 — `v0.8.9`: format, compiler and enricher 0.8.9 (a patch, cut from `main`)
 
 The compiler moves for RM447, RM449 and RM451, the enricher for RM446, RM448, RM449's ClinVar drafter and RM452.

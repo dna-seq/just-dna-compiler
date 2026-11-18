@@ -395,7 +395,9 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   found 2 of its 69 published modules carrying such a claim). `resolution._settle_mirrored_spellings`
   now settles that site by the recorded second witness (`placement_verdict`): the spellings witnessed
   `same_event` are filled and the others are not; witnessed both ways, both stay and
-  a warning says so once per rsID; witnessed neither way, neither is filled.
+  a warning says so once per rsID. Witnessed neither way (`unplaced` on every spelling) both stay too, since
+  RM453: a witness with no counterpart under the rsID (ClinVar filing it under a retired, merged id) is no
+  evidence for either, and 0.8.9's "neither is filled" refused such a row under `--strict`.
   Asked of nobody, or judged only `undecided` (the witness could not judge: no reference sequence), both
   stay under the warning, because could-not-judge is not witnessed-neither (`@unreachable-not-absent`).
   A mirror is only where each spelling hosts the genotype **on its own**: a compound het in a padded frame
