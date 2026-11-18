@@ -491,7 +491,7 @@ core was ported, not depended on, dropping `fastmcp`/`eliot`). In the workspace:
 | `ensembl_rsid_index_build` | **0.9** (RM431 ask 4): the Ensembl rsID index, rsID → (chrom, start) sorted by rsID, built in duckdb from the split core on disk (`build_rsid_index`), and `core_pin`, what an index pins of its core (the manifest's `release_id` and a digest of its attested `data/` files). A derived lane, local only; `resolver.lookup_loci` reads it | `duckdb`, `locations` |
 | `upload` | publisher surface — push a compiled module or a reference snapshot to HF (`[dev]`) | `huggingface_hub` (lazy) |
 | `litvar` | RM167: LitVar2/PubTator3 literature coverage per locus, **with the tier that answered** (allele node / position node / absent). Reports only; writes no row and no `SourceRow` | `httpx`, `tenacity`, `clingen_allele` |
-| `drug_labels` | RM166: five regulators' drug labels — the `(gene[, allele], drug)` cross-check at two join tiers (offline, reports only, writes no `SourceRow`) | `duckdb`, format `pgx`, compiler `load_csv_rows` |
+| `drug_labels` | RM166: five regulators' drug labels — the `(gene[, allele], drug)` cross-check at two join tiers (offline, reports only, writes no `SourceRow`). **0.9** (RM431): the keyed function `lookup_genes` | `duckdb`, format `pgx`, compiler `load_csv_rows` |
 | `drug_labels_build` | **`[dev]`** builder (0.7, RM166): ClinPGx's `drugLabels.zip` → one parquet + `LICENSE.txt` + its own `release.json`, dated from the archive's own `CREATED_*.txt` | `polars` (lazy), `httpx` |
 | `caches` | The cache registry (`CACHE_LANES`) and the rebuild adapters behind `cache rebuild` — one entry per lane carrying its three stages and, for each stage it lacks, the reason as a field. Walked by a test against the `*_build` modules on disk (RM176) | — |
 | `cli` | A package since RM260 — `__init__` assembles the app and re-exports every name `cli.py` carried, one `*_commands` submodule per command group. Typer app: the runtime commands (`enrich`, `frequencies`, `gene-metrics`, `gene-validity`, `assertions`, `enrich-and-compile`), the authoring ones (`hint`, `draft-*`, the `check-*` family), `upload`, `cache status`/`pull`/`rebuild`/`prune`, `vrs mint`, and **one builder group per `CACHE_LANES` lane carrying a `build_command`** — a `publish` exists exactly where the lane names a `publish_repo`, and `pubmind publish` is the one that exists in order to refuse with its reason. The per-command flag tables are `--help` and the dated listing in [audit/](audit/README.md); a hand-kept copy here would be the second thing to update | `typer` |
@@ -2544,7 +2544,7 @@ with RemoteSnapshots(declared_use="non_commercial") as snapshots:      # proxy f
   - Each table a remote route is asked for is a module constant beside its keyed function:
     `opentargets.REMOTE_VARIANTS_TABLE`, `REMOTE_CONSEQUENCES_TABLE`, `REMOTE_MEMBERS_TABLE` (also the
     `table` values `lookup_consequences` tags its rows with), `civic_draft.REMOTE_CIVIC_TABLE`,
-    `clinvar_gkm.REMOTE_WITNESS_TABLE` and `clinpgx.REMOTE_ANNOTATIONS_TABLE`.
+    `clinvar_gkm.REMOTE_WITNESS_TABLE`, `clinpgx.REMOTE_ANNOTATIONS_TABLE` and `drug_labels.REMOTE_LABELS_TABLE`.
   - `civic_draft.lookup_genes(reference, genes) -> dict[str, list[dict]]` and `civic_draft.lookup_rsids(reference,
     rsids) -> dict[str, list[dict]]`: every snapshot row under each gene (compared by `gene_key`: case and
     surrounding space make no second gene) or rsID (lower case, `rs` prefixed: `334` is `rs334`), keyed as asked,
@@ -2575,6 +2575,16 @@ with RemoteSnapshots(declared_use="non_commercial") as snapshots:      # proxy f
     gene inside a multi-gene cell (399 of 16,117 rows on the 2026-08 snapshot), are answered locally and not
     remotely. A strict `xfail` pins the case half; the slice holds no multi-gene cell, so that half is pinned
     locally only.
+  - `drug_labels.lookup_genes(reference, genes) -> dict[str, list[dict]]` (the pm's reading 4): every
+    regulator's label naming each gene, keyed as asked, every column of `drug_labels.parquet` (`LABEL_COLUMNS`,
+    unparsed), in one total order. A label names a gene when a member of its `genes` cell does (`CYP2C9; VKORC1`
+    names both, split on `CELL_SEPARATOR` as `load_drug_labels` splits it), compared by `gene_key`; a label naming
+    two asked genes is under both. `load_drug_labels` stays the loader the check reads. An absent snapshot raises
+    `DrugLabelUnavailable`, an unreadable one `DrugLabelError`. Remotely (lane `drug_labels`, eligible since
+    RM430, gated by ClinPGx's no-sale terms): table `drug_labels`, key `genes` (each gene as given, stripped).
+    **Known divergence:** a remote route compares the whole `genes` cell exactly, so a gene on a label naming
+    several (361 of 1,433 labels on the 2026-08 snapshot), and a gene asked in another case, are answered locally
+    and not remotely; a strict `xfail` pins the first with the slice's `VKORC1`.
 - **`remote_url(base, *parts)`** builds every URL a holder asks; the root `conftest.py` wraps it, so a
   test that would hand duckdb a host other than this machine is refused and recorded like a socket reach.
 

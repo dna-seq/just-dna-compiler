@@ -168,6 +168,12 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   unreadable snapshot raises `ClinPgxEnrichmentError`. One SQL body over the local file and a remote answer's rows
   (table `annotations`, by `rsid` or `gene`). Known divergence: a remote route compares the whole cell, so a gene
   in another case or inside a multi-gene cell is answered locally only.
+- **`drug_labels.lookup_genes`** (RM431 ask 5, the pm's reading 4, S145): the drug labels' keyed function, in
+  duckdb, beside `load_drug_labels` (unchanged): every label naming a gene (a member of the `genes` cell, by
+  `gene_key`), keyed as asked, every column; an absent snapshot raises `DrugLabelUnavailable`, an unreadable one
+  `DrugLabelError`. One SQL body over the local file and a remote answer's rows (table `drug_labels`, by
+  `genes`). Known divergence: a remote route compares the whole cell, so a gene on a label naming several
+  (a quarter of the labels) is answered locally only.
 - **A group re-pulled under its recorded declaration says which one** (RM437 follow-up, the pm's reading 1): the
   pull record keeps when each group's use was declared (`declared_at`, `download.PULL_RECORD_DECLARED_AT_KEY`),
   and a re-pull or skip gated by the recorded use rather than the call's logs `under the use recorded for it,
