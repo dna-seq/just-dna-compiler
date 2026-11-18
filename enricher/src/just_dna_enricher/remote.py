@@ -46,7 +46,7 @@ import json
 import logging
 import re
 import threading
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from types import TracebackType
 from typing import Any, Self
@@ -64,10 +64,12 @@ from just_dna_format.snapshot import (
 from just_dna_format.vrs import normalize_chrom
 from pydantic import ValidationError
 
+from just_dna_enricher import civic_draft, clinpgx, cpic, drug_labels
 from just_dna_enricher.caches import LANES_BY_NAME
 from just_dna_enricher.licensing import check_declared_use
 from just_dna_enricher.locations import SNAPSHOT_REPO_IDS, SnapshotManifest, env_value
 from just_dna_enricher.net import GONE, EndpointRetired
+from just_dna_enricher.resolver import EXACT, KeyCompare
 
 logger = logging.getLogger(__name__)
 
@@ -208,10 +210,29 @@ class RemoteLane:
     `needs_position`: a key with no `chrom` + `start` is refused before any route is asked. Ensembl's
     alone: its rsID column is about 6.1 GB over 25 files and no row group prunes by it, so the proxy
     refuses it (`remote_needs_position`) and Hugging Face would scan about 10.7 GB (the trial).
+
+    `compares`: table -> key column -> `resolver.KeyCompare`, the lane's keyed functions' own declaration
+    (their `KEY_COMPARES`, the object their local SQL is built from), so a remote read compares a key as
+    the local one does: by `gene_key`, member by member of a `;`-joined cell. A column it does not name
+    compares the whole cell exactly. The registry's proxy compares every key exactly, so a key with any
+    other compare is not sent to it (`proxy_compares`) and Hugging Face answers it.
     """
 
     name: str
     needs_position: bool = False
+    compares: Mapping[str, Mapping[str, KeyCompare]] = field(default_factory=dict)
+
+    def compare(self, table: str, column: str) -> KeyCompare:
+        """How `column` of `table` is compared with a key: the lane's declaration, else exactly."""
+        return self.compares.get(table, {}).get(column, EXACT)
+
+    def proxy_compares(self, table: str, columns: Iterable[str]) -> bool:
+        """Whether the registry's proxy compares each of `columns` as the local reader does.
+
+        It compares a whole cell exactly, so it does only where the lane declares nothing else. Asked
+        for a folded or a joined column it would return fewer rows than the local route and say
+        nothing, an absence where the row exists (`@unreachable-not-absent`)."""
+        return all(self.compare(table, column).exact for column in columns)
 
 
 #: The lanes a holder reads remotely. Each needs a published repo; a lane without one (PharmVar and
@@ -226,11 +247,11 @@ REMOTE_LANES: dict[str, RemoteLane] = {
         RemoteLane("ensembl", needs_position=True),
         RemoteLane("clinvar"),
         RemoteLane("constraint"),
-        RemoteLane("clinpgx"),
-        RemoteLane("cpic"),
-        RemoteLane("drug_labels"),
+        RemoteLane("clinpgx", compares=clinpgx.KEY_COMPARES),
+        RemoteLane("cpic", compares=cpic.KEY_COMPARES),
+        RemoteLane("drug_labels", compares=drug_labels.KEY_COMPARES),
         RemoteLane("opentargets"),
-        RemoteLane("civic"),
+        RemoteLane("civic", compares=civic_draft.KEY_COMPARES),
         RemoteLane("clinvar_gkm"),
     )
 }
@@ -483,8 +504,17 @@ class RemoteSnapshots:
     def _lookup(self, lane: str, table: str, wanted: _Keys) -> RemoteAnswer:
         """`lookup` past its checks, counted in flight so `close()` waits for it."""
         self._admit(lane)
+        spec = REMOTE_LANES[lane]
         fell_through: str | None = None
-        if self._proxy is not None:
+        passed_over: str | None = None
+        if self._proxy is not None and not spec.proxy_compares(table, wanted.plain):
+            passed_over = (
+                f"the registry's proxy compares a whole cell exactly, and {lane}/{table} compares "
+                f"{', '.join(sorted(c for c in wanted.plain if not spec.compare(table, c).exact))} "
+                f"as its local reader does (by gene_key, member by member), so the proxy is not asked"
+            )
+            logger.info("%s: %s; asking Hugging Face", lane, passed_over)
+        elif self._proxy is not None:
             try:
                 answer = self._ask_proxy(lane, table, wanted)
             except SnapshotRouteUnavailable as exc:
@@ -498,6 +528,8 @@ class RemoteSnapshots:
         if not self.huggingface:
             if fell_through is not None:
                 raise SnapshotRouteUnavailable(lane, ROUTE_PROXY, f"{fell_through}, and Hugging Face is off")
+            if passed_over is not None:
+                raise SnapshotRouteUnavailable(lane, None, f"{passed_over}, and Hugging Face is off")
             raise SnapshotRouteUnavailable(lane, None, "no proxy is configured and Hugging Face is off")
         try:
             answer = self._ask_hf(lane, table, wanted)
@@ -647,10 +679,10 @@ class RemoteSnapshots:
                 # checked on the rows that came back, so a file holding more cannot answer for it.
                 forms = set(_chrom_forms(request["chrom"][0]))
                 by_position = {k: v for k, v in request.items() if k != "chrom"}
-                found = self._hf_rows(lane, pin, group, by_position, schema, position)
+                found = self._hf_rows(lane, table, pin, group, by_position, schema, position)
                 rows.extend(row for row in found if str(row.get("chrom")) in forms)
             else:
-                rows.extend(self._hf_rows(lane, pin, group, request, schema, position))
+                rows.extend(self._hf_rows(lane, table, pin, group, request, schema, position))
         return RemoteAnswer(
             rows=_stable(rows), route=RemoteRoute(ROUTE_HF, release=pin.release, revision=pin.revision)
         )
@@ -658,6 +690,7 @@ class RemoteSnapshots:
     def _hf_rows(
         self,
         lane: str,
+        table: str,
         pin: _Pin,
         files: Sequence[str],
         request: Mapping[str, list[Any]],
@@ -673,6 +706,12 @@ class RemoteSnapshots:
                 # read the whole chromosome file (66 requests and 65 MB measured on chr19, against 3 and
                 # 5.4 MB with literals). `int()` is what makes a literal safe to render.
                 clauses.append(f'"{position}" IN ({", ".join(str(int(v)) for v in values)})')
+                continue
+            compare = REMOTE_LANES[lane].compare(table, column)
+            if not compare.exact:
+                # The lane's local compare, the same object its keyed function's SQL is built from.
+                clauses.append(compare.predicate(column))
+                params.append(compare.parameter(values))
                 continue
             asked = (
                 [form for v in values for form in _chrom_forms(v)]

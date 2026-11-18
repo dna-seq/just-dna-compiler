@@ -155,8 +155,8 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   beside the raising reader and with its semantics (an absent or unreadable snapshot raises `CivicDraftError`;
   the refutation check keeps its skipping reader). Read in duckdb, keyed as asked; a gene is compared by
   `gene_key`, an rsID as the snapshot spells it. `civic` is now remote-eligible (table `civic`, by `gene` or
-  `rsid`), one SQL body over the local file and a remote answer's rows. Known divergence: a remote route compares
-  a gene exactly, so `brca1` is answered locally and not remotely.
+  `rsid`), one SQL body over the local file and a remote answer's rows. A gene compares by `gene_key` on every route
+  (`KEY_COMPARES`, below).
 - **`clinvar_gkm.lookup_variants` and `clinvar_gkm.lookup_rsids`** (RM431 ask 5, S145): ClinVar-GKM's keyed
   functions, in duckdb, beside `ClinVarGkmWitness.load` (which stays the polars loader): every placement at a
   position or under an rsID, keyed as asked; an absent or unreadable slice raises `ClinVarGkmError`.
@@ -166,14 +166,14 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   functions, in duckdb, beside `load_snapshot` (which stays the whole-table loader): every annotation row under an
   rsID or naming a gene (a member of the `;`-joined `gene` cell, by `gene_key`), keyed as asked; an absent or
   unreadable snapshot raises `ClinPgxEnrichmentError`. One SQL body over the local file and a remote answer's rows
-  (table `annotations`, by `rsid` or `gene`). Known divergence: a remote route compares the whole cell, so a gene
-  in another case or inside a multi-gene cell is answered locally only.
+  (table `annotations`, by `rsid` or `gene`). A gene compares member by member, by `gene_key`, on
+  every route (`KEY_COMPARES`, below).
 - **`drug_labels.lookup_genes`** (RM431 ask 5, the pm's reading 4, S145): the drug labels' keyed function, in
   duckdb, beside `load_drug_labels` (unchanged): every label naming a gene (a member of the `genes` cell, by
   `gene_key`), keyed as asked, every column; an absent snapshot raises `DrugLabelUnavailable`, an unreadable one
   `DrugLabelError`. One SQL body over the local file and a remote answer's rows (table `drug_labels`, by
-  `genes`). Known divergence: a remote route compares the whole cell, so a gene on a label naming several
-  (a quarter of the labels) is answered locally only.
+  `genes`). A gene compares member by member, by `gene_key`, on every
+  route (`KEY_COMPARES`, below).
 - **A group re-pulled under its recorded declaration says which one** (RM437 follow-up, the pm's reading 1): the
   pull record keeps when each group's use was declared (`declared_at`, `download.PULL_RECORD_DECLARED_AT_KEY`),
   and a re-pull or skip gated by the recorded use rather than the call's logs `under the use recorded for it,
@@ -220,6 +220,18 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   finding): the test fence's duckdb case wraps that one function, so the walk is the fence's own guard. No duckdb
   call in the enricher carries a URL literal, no module but `remote` loads `httpfs`, and in `remote` every
   `read_parquet` binds files that `_file_url` built through `remote_url`. Each rule is shown failing on a sample.
+- **The remote compare is the local compare, on every lane** (RM430 follow-up, the pm's 2026-11-18 placing of the
+  `;`-joined cell): Hugging Face compared a key with the whole cell exactly, so a gene in another case (CIViC,
+  ClinPGx, cpic) or inside a joined cell (ClinPGx 399 of 16,117 rows, the drug labels 361 of 1,433) was answered
+  locally and missing remotely, with nothing said. New: `resolver.KeyCompare` (`fold`, `separator`; `key`,
+  `members`, `predicate`, `parameter`, `exact`) and `resolver.EXACT`; `KEY_COMPARES` in `clinpgx`, `drug_labels`,
+  `civic_draft` and `cpic`, which their local SQL is now built from; `remote.RemoteLane.compares`, `.compare()`
+  and `.proxy_compares()`, carrying the same objects to the holder. The registry's proxy compares a whole cell
+  exactly, so a key a lane folds or splits is not sent to it and Hugging Face answers it (route `hf`); with
+  Hugging Face off that is could-not-ask, saying why. cpic's local gene compare also trims (`lower(trim(gene))`),
+  as every other folded compare does. One walk over `REMOTE_LANES`, local against remote on Hugging Face and
+  again behind a `MockTransport` registry, holds it; the three strict `xfail`s in `test_remote_keyed_lanes.py` are
+  passing tests.
 
 ## 2026-11-18 — RM453: a mirrored site where no spelling was witnessed keeps both spellings (patch, a declared corrected derivation, on `main`)
 

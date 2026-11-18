@@ -53,7 +53,7 @@ from just_dna_enricher.drafting import DRAFT_PROVIDERS, licence_commit, record_d
 from just_dna_enricher.drafting import identity_refused_by_model as scaffold_identity_refused
 from just_dna_enricher.licensing import CIVIC_TERMS, CLINGEN_ALLELE_REGISTRY_TERMS
 from just_dna_enricher.locations import resolve_civic_reference
-from just_dna_enricher.resolver import _asked_genes, _asked_rsids, _typed_rows_connection
+from just_dna_enricher.resolver import KeyCompare, _asked_genes, _asked_rsids, _typed_rows_connection
 from just_dna_enricher.sequences import SequenceProxy, _held_by_one_run, _left_align
 from just_dna_enricher.verification import examples
 
@@ -218,6 +218,11 @@ _CIVIC_COLUMNS: tuple[tuple[str, str], ...] = (
 )
 #: The table a remote route names for the snapshot (`remote.table_name` of `data/civic.parquet`).
 REMOTE_CIVIC_TABLE = "civic"
+#: How `lookup_genes` compares a gene with the `gene` cell, on every route: the whole cell, by `gene_key`.
+#: The local SQL is built from it, and `remote.REMOTE_LANES` hands the same object to the holder, so the
+#: two routes cannot compare apart.
+KEY_COMPARES: dict[str, dict[str, KeyCompare]] = {REMOTE_CIVIC_TABLE: {"gene": KeyCompare(fold=True)}}
+_GENE = KEY_COMPARES[REMOTE_CIVIC_TABLE]["gene"]
 
 
 def _civic_connection(reference: Path) -> duckdb.DuckDBPyConnection:
@@ -241,7 +246,7 @@ def _civic_connection(reference: Path) -> duckdb.DuckDBPyConnection:
     return con
 
 
-def _select_civic(con: duckdb.DuckDBPyConnection, where: str, params: list[str]) -> list[dict]:
+def _select_civic(con: duckdb.DuckDBPyConnection, where: str, params: list) -> list[dict]:
     """The snapshot's rows matching `where`, every column, in one total order both routes reproduce."""
     names = ", ".join(f'"{name}"' for name, _ in _CIVIC_COLUMNS)
     cursor = con.execute(f"SELECT {names} FROM civic WHERE {where} ORDER BY ALL", params)
@@ -252,10 +257,11 @@ def _select_civic(con: duckdb.DuckDBPyConnection, where: str, params: list[str])
 def _civic_gene_keys(genes: Sequence[str]) -> dict[str, list[str]]:
     """The keys a remote route is asked for `genes`: each as given, stripped.
 
-    A remote route compares a gene exactly, where this reader compares by `gene_key` (case and space do
-    not make two genes), so a key spelled in another case than CIViC stores it is answered locally and
-    not remotely. CIViC stores HGNC symbols, and no other spelling is sent in their place: `C9orf72` is
-    not upper case, so an upper-cased guess would miss it too.
+    The holder compares them as this reader does (`KEY_COMPARES`: by `gene_key`, so case and space do not
+    make two genes), so a key spelled in another case than CIViC stores it is answered on both routes. The
+    registry's proxy compares a cell exactly, so the holder does not ask it for this key and reads Hugging
+    Face instead (`remote.RemoteLane.proxy_compares`); no upper-cased guess is sent in its place, since
+    `C9orf72` is not upper case.
     """
     return {"gene": list(dict.fromkeys(gene.strip() for gene in genes if gene.strip()))}
 
@@ -265,12 +271,10 @@ def _genes_over(con: duckdb.DuckDBPyConnection, genes: Sequence[str]) -> dict[st
     asked = _asked_genes(genes)
     if not asked:
         return {}
-    keys = sorted(asked)
-    # `lower(trim(…))` is `gene_key` for the ASCII an HGNC symbol is spelled in.
-    rows = _select_civic(con, f"lower(trim(gene)) IN ({', '.join('?' for _ in keys)})", keys)
+    rows = _select_civic(con, _GENE.predicate("gene"), [_GENE.parameter(sorted(asked))])
     answer: dict[str, list[dict]] = {}
     for row in rows:
-        for spelling in asked.get(gene_key(str(row["gene"])), ()):
+        for spelling in (s for key in _GENE.members(row["gene"]) for s in asked.get(key, ())):
             answer.setdefault(spelling, []).append(dict(row))
     return {gene: answer[gene] for spellings in asked.values() for gene in spellings if gene in answer}
 

@@ -69,7 +69,7 @@ from just_dna_enricher.locations import (
     resolve_drug_labels_reference,
 )
 from just_dna_enricher.net import EndpointRetired
-from just_dna_enricher.resolver import _asked_genes, _typed_rows_connection
+from just_dna_enricher.resolver import KeyCompare, _asked_genes, _typed_rows_connection
 from just_dna_enricher.verification import examples, ran, record_verification, skipped
 
 logger = logging.getLogger(__name__)
@@ -446,6 +446,13 @@ def load_drug_labels(reference: Path) -> DrugLabelIndex:
 _LABEL_COLUMN_TYPES: tuple[tuple[str, str], ...] = tuple((name, "VARCHAR") for name in LABEL_COLUMNS)
 #: The table a remote route names for the snapshot (`remote.table_name` of `data/drug_labels.parquet`).
 REMOTE_LABELS_TABLE = "drug_labels"
+#: How `lookup_genes` compares a gene with a `genes` cell, on every route: each member of the cell, split on
+#: `CELL_SEPARATOR` as `load_drug_labels` splits one, by `gene_key`. The local SQL is built from it, and
+#: `remote.REMOTE_LANES` hands the same object to the holder, so the two routes cannot compare apart.
+KEY_COMPARES: dict[str, dict[str, KeyCompare]] = {
+    REMOTE_LABELS_TABLE: {"genes": KeyCompare(fold=True, separator=CELL_SEPARATOR)}
+}
+_GENES = KEY_COMPARES[REMOTE_LABELS_TABLE]["genes"]
 
 
 def _labels_connection(reference: Path) -> duckdb.DuckDBPyConnection:
@@ -469,10 +476,10 @@ def _labels_connection(reference: Path) -> duckdb.DuckDBPyConnection:
 def _gene_keys(genes: Sequence[str]) -> dict[str, list[str]]:
     """The keys a remote route is asked for `genes`: the `genes` column, each gene as given, stripped.
 
-    A remote route compares the whole `genes` cell exactly, where this reader compares each member of the
-    cell by `gene_key`. So a gene spelled in another case than the labels store it, and a gene on a label
-    naming several (`CYP2C9; VKORC1`, 361 of 1,433 labels on the 2026-08 snapshot), are answered locally
-    and not remotely. No other spelling is sent in their place, for `civic_draft._civic_gene_keys`' reason.
+    The holder compares them as this reader does (`KEY_COMPARES`: each member of the cell, by `gene_key`),
+    so a gene in another case, or on a label naming several (`CYP2C9; VKORC1`), is answered on both routes.
+    The registry's proxy compares a whole cell exactly, so the holder does not ask it for this key and
+    reads Hugging Face instead (`remote.RemoteLane.proxy_compares`).
     """
     return {"genes": list(dict.fromkeys(gene.strip() for gene in genes if gene.strip()))}
 
@@ -483,18 +490,15 @@ def _genes_over(con: duckdb.DuckDBPyConnection, genes: Sequence[str]) -> dict[st
     if not asked:
         return {}
     names = ", ".join(f'"{name}"' for name in LABEL_COLUMNS)
-    # Each member of the cell as `gene_key` spells it (`lower(trim(…))` for the ASCII of an HGNC symbol),
-    # split on `CELL_SEPARATOR` alone, as `load_drug_labels` splits one.
-    members = f"list_transform(string_split(genes, '{CELL_SEPARATOR}'), member -> lower(trim(member)))"
     cursor = con.execute(
-        f"SELECT {names} FROM drug_labels WHERE list_has_any({members}, ?::VARCHAR[]) ORDER BY ALL",
-        [sorted(asked)],
+        f"SELECT {names} FROM drug_labels WHERE {_GENES.predicate('genes')} ORDER BY ALL",
+        [_GENES.parameter(sorted(asked))],
     )
     columns = [d[0] for d in cursor.description]
     answer: dict[str, list[dict]] = {}
     for values in cursor.fetchall():
         row = dict(zip(columns, values, strict=True))
-        for key in dict.fromkeys(gene_key(member) for member in _split(row["genes"])):
+        for key in _GENES.members(row["genes"]):
             for spelling in asked.get(key, ()):
                 answer.setdefault(spelling, []).append(dict(row))
     return {gene: answer[gene] for spellings in asked.values() for gene in spellings if gene in answer}

@@ -557,6 +557,59 @@ def _typed_rows_connection(
     return con
 
 
+@dataclass(frozen=True)
+class KeyCompare:
+    """How a keyed function compares a key with a cell: the one declaration its local SQL and a remote
+    route read (0.9, the RM430 follow-up: the remote compare is not the local compare).
+
+    `fold`: compared by `spelling.gene_key`, so case and surrounding space do not make two keys
+    (`lower(trim(…))` in SQL, which is `gene_key` for the ASCII an HGNC symbol is spelled in).
+    `separator`: the cell holds several members joined by it (`KLC1;XRCC3`), and a key matches when any
+    member does. A column a keyed function declares nothing for compares the whole cell exactly. A lane
+    declares its compares beside its local SQL (`KEY_COMPARES` in `clinpgx`, `drug_labels`,
+    `civic_draft`, `cpic`), and `remote.REMOTE_LANES` carries the same objects to the holder.
+    """
+
+    fold: bool = False
+    separator: str | None = None
+
+    @property
+    def exact(self) -> bool:
+        """Whether this is the whole cell, compared byte for byte: what the registry's proxy compares."""
+        return not self.fold and self.separator is None
+
+    def key(self, value: object) -> str:
+        """`value` as this compare reads a key: `gene_key` when folded, else the text as given."""
+        return gene_key(str(value)) if self.fold else str(value)
+
+    def members(self, cell: object) -> tuple[str, ...]:
+        """The keys a stored `cell` answers to, in order, once each; none for an empty cell."""
+        if cell is None:
+            return ()
+        text = str(cell)
+        parts = text.split(self.separator) if self.separator is not None else [text]
+        if self.separator is not None or self.fold:
+            parts = [part for part in parts if part.strip()]
+        return tuple(dict.fromkeys(self.key(part) for part in parts))
+
+    def predicate(self, column: str) -> str:
+        """SQL true where `column`'s cell answers to any key in one bound `VARCHAR[]` parameter."""
+        cell = f'CAST("{column}" AS VARCHAR)'
+        member = "lower(trim(member))" if self.fold else "member"
+        if self.separator is None:
+            return f"list_contains(?::VARCHAR[], {member.replace('member', cell)})"
+        split = f"string_split({cell}, '{self.separator.replace(chr(39), chr(39) * 2)}')"
+        return f"list_has_any(list_transform({split}, member -> {member}), ?::VARCHAR[])"
+
+    def parameter(self, values: Sequence[object]) -> list[str]:
+        """The bound `VARCHAR[]` for `values` under this compare, sorted and once each."""
+        return sorted({self.key(value) for value in values if str(value).strip()})
+
+
+#: The compare of a column a keyed function declares nothing for: the whole cell, exactly.
+EXACT = KeyCompare()
+
+
 def _rsid_token(rsid: str) -> str:
     """An rsID as the snapshots spell one: lower case, `rs` prefixed (`RS334` and `334` are `rs334`).
 

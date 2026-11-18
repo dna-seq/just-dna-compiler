@@ -2556,11 +2556,8 @@ with RemoteSnapshots(declared_use="non_commercial") as snapshots:      # proxy f
     surrounding space make no second gene) or rsID (lower case, `rs` prefixed: `334` is `rs334`), keyed as asked,
     every column, in one total order. With the raising reader's semantics (`_snapshot_rows`): an absent or
     unreadable snapshot raises `CivicDraftError` naming it. Remotely: table `civic`, keys `gene` (each as given,
-    stripped) and `rsid` (as the snapshot spells it). **Known divergence:** a remote route compares a gene
-    exactly, so a gene asked in another case than CIViC stores it (`brca1`) is answered locally and not
-    remotely; no guessed spelling is sent in its place, since HGNC symbols are not all upper case (`C9orf72`).
-    Every symbol of the 01-Nov-2026 snapshot is stored upper case. A strict `xfail` in
-    `test_remote_keyed_lanes.py` pins it until a remote route folds case.
+    stripped) and `rsid` (as the snapshot spells it). A gene is compared by `civic_draft.KEY_COMPARES` on every
+    route, so `brca1` answers on Hugging Face as it does locally; the proxy is not asked for a gene (below).
   - `clinvar_gkm.lookup_variants(reference, positions) -> dict[tuple[str, int], list[dict]]` and
     `clinvar_gkm.lookup_rsids(reference, rsids) -> dict[str, list[dict]]`: every placement the witness holds at
     each position (contig as `clinvar_gkm.normalize_chrom` spells it) or under each rsID (as `by_rsid` reads
@@ -2576,11 +2573,9 @@ with RemoteSnapshots(declared_use="non_commercial") as snapshots:      # proxy f
     `;`-joined `gene` cell (`KLC1;XRCC3` names both, as `draft-clinpgx --gene` reads it), compared by
     `gene_key`. `load_snapshot` stays the whole-table loader; an absent or unreadable snapshot raises
     `ClinPgxEnrichmentError`. Remotely (lane `clinpgx`, eligible since RM430, gated by ClinPGx's no-sale terms):
-    table `annotations`, keys `rsid` (as the snapshot spells it) and `gene` (each as given, stripped). **Known
-    divergence:** a remote route compares the whole `gene` cell exactly, so a gene asked in another case, and a
-    gene inside a multi-gene cell (399 of 16,117 rows on the 2026-08 snapshot), are answered locally and not
-    remotely. A strict `xfail` pins the case half; the slice holds no multi-gene cell, so that half is pinned
-    locally only.
+    table `annotations`, keys `rsid` (as the snapshot spells it) and `gene` (each as given, stripped). A gene is
+    compared by `clinpgx.KEY_COMPARES` on every route, member by member of the `;`-joined cell (399 of 16,117
+    rows on the 2026-08 snapshot name several); the proxy is not asked for a gene (below).
   - `drug_labels.lookup_genes(reference, genes) -> dict[str, list[dict]]` (the pm's reading 4): every
     regulator's label naming each gene, keyed as asked, every column of `drug_labels.parquet` (`LABEL_COLUMNS`,
     unparsed), in one total order. A label names a gene when a member of its `genes` cell does (`CYP2C9; VKORC1`
@@ -2588,9 +2583,27 @@ with RemoteSnapshots(declared_use="non_commercial") as snapshots:      # proxy f
     two asked genes is under both. `load_drug_labels` stays the loader the check reads. An absent snapshot raises
     `DrugLabelUnavailable`, an unreadable one `DrugLabelError`. Remotely (lane `drug_labels`, eligible since
     RM430, gated by ClinPGx's no-sale terms): table `drug_labels`, key `genes` (each gene as given, stripped).
-    **Known divergence:** a remote route compares the whole `genes` cell exactly, so a gene on a label naming
-    several (361 of 1,433 labels on the 2026-08 snapshot), and a gene asked in another case, are answered locally
-    and not remotely; a strict `xfail` pins the first with the slice's `VKORC1`.
+    A gene is compared by `drug_labels.KEY_COMPARES` on every route, member by member of the cell (361 of 1,433
+    labels on the 2026-08 snapshot name several); the proxy is not asked for a gene (below).
+  - **The remote compare is the local compare** (the pm, 2026-11-18, fixed as a class).
+    `resolver.KeyCompare(fold=False, separator=None)` is how a keyed function compares a key with a cell:
+    `fold` by `spelling.gene_key` (`lower(trim(…))` in SQL), `separator` member by member of a joined cell;
+    `resolver.EXACT` is the whole cell, byte for byte. `key`, `members(cell)`, `predicate(column)` (SQL over one
+    bound `VARCHAR[]`) and `parameter(values)` are the one reading of it. A lane declares its compares beside its
+    local SQL, which is built from them: `KEY_COMPARES` (table → column → `KeyCompare`) in `clinpgx` (`gene`,
+    folded, `;`), `drug_labels` (`genes`, folded, `;`), `civic_draft` (`gene`, folded) and `cpic` (`gene` of every
+    table, folded). `remote.RemoteLane.compares` carries the same objects, so the holder's Hugging Face SQL
+    compares as the local reader does; a column a lane declares nothing for compares exactly on both routes.
+    `RemoteLane.compare(table, column)` reads one, and `RemoteLane.proxy_compares(table, columns)` says whether
+    the registry's proxy, which compares a whole cell exactly, compares them all as the local reader does.
+    Where it does not, the proxy is not asked and Hugging Face answers, so the answer's route is `hf`; with
+    Hugging Face off that is could-not-ask (`…the registry's proxy compares a whole cell exactly, and
+    <lane>/<table> compares <column> as its local reader does (by gene_key, member by member), so the proxy is
+    not asked, and Hugging Face is off`). One walk in `test_remote_keyed_lanes.py` runs the same keys, a key in
+    another case and one inside a joined cell among them, through the local and the remote route of every lane
+    in `REMOTE_LANES`, on Hugging Face and again with a `MockTransport` registry in front, and asserts the
+    answers equal. The constraint lane's local `lookup_snapshot` compares a gene exactly, so it does remotely
+    too.
 - **`remote_url(base, *parts)`** builds every URL a holder asks; the root `conftest.py` wraps it, so a
   test that would hand duckdb a host other than this machine is refused and recorded like a socket reach.
   The fence holds only while nothing else builds a URL duckdb opens, so an AST walk

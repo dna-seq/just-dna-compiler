@@ -60,6 +60,7 @@ from just_dna_enricher.net import (
     raise_if_retired,
     retry_if_transient,
 )
+from just_dna_enricher.resolver import KeyCompare
 
 logger = logging.getLogger(__name__)
 
@@ -578,6 +579,17 @@ class CpicClient:
         return out, _unusable_warnings(gene, unusable)
 
 
+#: How every snapshot table's `gene` is compared, on every route: by `gene_key` (RM363), so an authored
+#: `Cyp2c19` is CPIC's `CYP2C19`. `CpicSnapshotClient` builds its SQL from it, and `remote.REMOTE_LANES`
+#: hands the same object to the holder, so a remote read compares a gene as the local one does.
+_GENE = KeyCompare(fold=True)
+#: The snapshot's tables (`data/<table>.parquet`) and the key column each compares (`_GENE`).
+KEY_COMPARES: dict[str, dict[str, KeyCompare]] = {
+    table: {"gene": _GENE}
+    for table in ("genes", "alleles", "diplotypes", "recommendations", "allele_definitions")
+}
+
+
 class CpicSnapshotClient:
     """The same four questions, answered from a built snapshot instead of the live service (RM38).
 
@@ -626,9 +638,9 @@ class CpicSnapshotClient:
                 f"{parquet} is not in the CPIC snapshot at {self.reference} — it was built by an "
                 f"older builder; rebuild it with `just-dna-enricher cpic build`."
             )
-        # A gene is compared as `lower(gene) = ?` with `spelling.gene_key` on the parameter (RM363): the
-        # snapshot stores CPIC's spelling and an authored `Cyp2c19` is that gene. The comparison lives in
-        # SQL, where the AST guard over attribute comparisons cannot see it, so the query text says it.
+        # A gene is compared by `_GENE` (`lower(trim(gene))` against `spelling.gene_key` on the parameter,
+        # RM363): the snapshot stores CPIC's spelling and an authored `Cyp2c19` is that gene. The comparison
+        # lives in SQL, where the AST guard over attribute comparisons cannot see it, so `_GENE` says it.
         pattern = str(path).replace("'", "''")
         con = duckdb.connect(":memory:")
         try:
@@ -642,14 +654,14 @@ class CpicSnapshotClient:
             con.close()
 
     def chrom_for_gene(self, gene: str) -> str | None:
-        rows = self._rows("genes.parquet", "lower(gene) = ?", [gene_key(gene)], "chrom")
+        rows = self._rows("genes.parquet", _GENE.predicate("gene"), [_GENE.parameter([gene])], "chrom")
         return rows[0]["chrom"] if rows else None
 
     def alleles_for_gene(self, gene: str) -> list[CpicAllele]:
         rows = self._rows(
             "alleles.parquet",
-            "lower(gene) = ?",
-            [gene_key(gene)],
+            _GENE.predicate("gene"),
+            [_GENE.parameter([gene])],
             "gene, allele, activity_value, clinical_function_status",
             "allele",
         )
@@ -666,8 +678,8 @@ class CpicSnapshotClient:
     def diplotypes_for_gene(self, gene: str) -> list[CpicDiplotype]:
         rows = self._rows(
             "diplotypes.parquet",
-            "lower(gene) = ?",
-            [gene_key(gene)],
+            _GENE.predicate("gene"),
+            [_GENE.parameter([gene])],
             "gene, diplotype, phenotype, activity_score",
             "diplotype",
         )
@@ -690,8 +702,8 @@ class CpicSnapshotClient:
         """
         rows = self._rows(
             "recommendations.parquet",
-            "lower(gene) = ? AND drug = ? AND gene_count = 1",
-            [gene_key(gene), drug_key(drug)],
+            f"{_GENE.predicate('gene')} AND drug = ? AND gene_count = 1",
+            [_GENE.parameter([gene]), drug_key(drug)],
             "gene, phenotype, drug, population, classification, recommendation, implication, activity_score",
         )
         out = [
@@ -739,8 +751,8 @@ class CpicSnapshotClient:
         """
         named = self._rows(
             "recommendations.parquet",
-            "lower(gene) = ? AND drug = ? AND gene_count > 1",
-            [gene_key(gene), drug_key(drug)],
+            f"{_GENE.predicate('gene')} AND drug = ? AND gene_count > 1",
+            [_GENE.parameter([gene]), drug_key(drug)],
             "gene",
         )
         if not named:
@@ -763,8 +775,8 @@ class CpicSnapshotClient:
         """
         rows = self._rows(
             "allele_definitions.parquet",
-            "lower(gene) = ?",
-            [gene_key(gene)],
+            _GENE.predicate("gene"),
+            [_GENE.parameter([gene])],
             "gene, allele, rsid, chrom, start, variant_allele",
             "allele, start, variant_allele",
         )

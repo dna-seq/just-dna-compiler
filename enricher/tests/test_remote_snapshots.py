@@ -684,6 +684,26 @@ def test_a_status_off_the_list_is_could_not_ask_on_the_proxy_without_falling_thr
     assert could_not_ask_reason(failed.value) == ("retired" if status == 410 else "unreachable")
 
 
+def test_a_key_the_proxy_cannot_compare_as_the_lane_does_is_not_sent_to_it() -> None:
+    """The registry compares a whole cell exactly; CIViC's `gene` is compared by `gene_key`. With Hugging
+    Face off nothing else could answer it as the local reader does, so it is could-not-ask, naming why."""
+    asked: list[httpx.Request] = []
+    holder = _with_proxy(
+        RemoteSnapshots(proxy_url=PROXY, huggingface=False),
+        lambda request: asked.append(request) or httpx.Response(200, json={"rows": []}),
+    )
+    with holder, pytest.raises(SnapshotRouteUnavailable) as failed:
+        holder.lookup("civic", "civic", {"gene": ["brca1"]})
+    assert asked == [] and failed.value.route is None
+    assert str(failed.value) == (
+        "civic: no remote route was asked: the registry's proxy compares a whole cell exactly, and "
+        "civic/civic compares gene as its local reader does (by gene_key, member by member), so the "
+        "proxy is not asked, and Hugging Face is off"
+    )
+    assert REMOTE_LANES["civic"].proxy_compares("civic", ["rsid"])
+    assert not REMOTE_LANES["civic"].proxy_compares("civic", ["gene"])
+
+
 def test_no_route_configured_is_could_not_ask_and_asks_nothing() -> None:
     with RemoteSnapshots(huggingface=False) as holder, pytest.raises(SnapshotRouteUnavailable) as failed:
         holder.lookup("clinvar", "clinvar", {"rsid": ["rs334"]})
