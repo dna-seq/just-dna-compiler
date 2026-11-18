@@ -280,8 +280,10 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   `locations.pulled_groups` answered `{}` for a record that was not JSON, not an object or held a malformed
   `groups`, so the next pull rewrote it without them and the sticky selection ended unsaid, and a record that was
   not UTF-8 raised `UnicodeDecodeError` past the documented type. It now raises `EnsemblGroupReleaseError`
-  naming the record and the remedy, through `ensembl_group_dir` too, and `ensure_snapshot` raises it before
-  anything is fetched or rewritten; an absent record is still `{}`. **The manifest's group records are read group
+  naming the record and the remedy, through `ensembl_group_dir` too; an absent record is still `{}`. A pull
+  repairs it rather than stopping: `ensure_snapshot` moves it aside under a dated name, writes a fresh record
+  naming the lane's repository, and pulls with this call's groups, warning that the selection is lost and which
+  repository it assumes (the pm, cf12e864; without a record the cache read as a local build, never pulled again). **The manifest's group records are read group
   by group and field by field**: a group field of a kind not typed here (`default: "auto"`) failed the whole
   `manifest.json`, losing the core's release, coverage and rsID-index pin; now that field reads as unstated with a
   warning said once per process, a record that is not an object keeps its name, and an unread licence never

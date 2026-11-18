@@ -60,6 +60,7 @@ NEW_TEXTS: tuple[Text, ...] = (
     Text("download", "Ensembl group %s: skipped — ", "test_ensembl_groups.py"),
     Text("download", "an earlier release's ", "test_ensembl_groups.py"),
     Text("download", "selected by an earlier pull, was not re-pulled", "test_ensembl_groups.py"),
+    Text("download", "any group selection it held is lost", "test_ensembl_groups.py"),
     Text(
         "enrich.orchestration",
         "does not use the sequence proxy passed as `sequences`",

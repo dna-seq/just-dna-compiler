@@ -46,6 +46,7 @@ from just_dna_enricher.locations import (
     SNAPSHOT_ROOT_FILENAMES,
     SNAPSHOT_SIDECAR_DIRNAMES,
     STRCHIVE_CATALOGUE_FILENAME,
+    EnsemblGroupReleaseError,
     ManifestCoverage,
     SnapshotManifest,
     SnapshotManifestFile,
@@ -343,6 +344,37 @@ def _carried_groups(cache_dir: Path) -> dict[str, object]:
     payload = _pull_record(cache_dir)
     groups = payload.get(PULL_RECORD_GROUPS_KEY) if payload is not None else None
     return {PULL_RECORD_GROUPS_KEY: groups} if isinstance(groups, dict) and groups else {}
+
+
+def _set_aside_unreadable_record(cache_dir: Path, repo: str, unreadable: Exception) -> Path:
+    """Move an unreadable pull record aside and write a fresh one naming `repo` (review round 1, item 3).
+
+    The fresh record names `repo` with no files' release digest and no groups, so `_pulled_by_this_repo`
+    takes the cache for a pull of it and a refresh may run; without one, a cache with a `release.json`
+    reads as a local build and is never pulled again. The old record is kept under a dated name (no `:`,
+    which an NTFS mount refuses), and the warning names it, the selection it loses, and the repository
+    assumed. Returns where the old record went.
+    """
+    record = cache_dir / PULL_RECORD_FILENAME
+    stamp = now_utc_iso().replace(":", "").replace("-", "")
+    aside = cache_dir / f"{PULL_RECORD_FILENAME}.unreadable-{stamp}"
+    n = 1
+    while aside.exists():
+        n += 1
+        aside = cache_dir / f"{PULL_RECORD_FILENAME}.unreadable-{stamp}-{n}"
+    record.rename(aside)
+    atomic_write_text(record, json.dumps({"repo": repo, "files": []}, indent=2) + "\n")
+    reason = str(unreadable).split(" could not be read (", 1)[-1].split("), so nothing says", 1)[0]
+    logger.warning(
+        "The pull record at %s could not be read (%s); moved it to %s, and any group selection it held is "
+        "lost. A fresh record takes its place, pulling as %s, which the old record may not have named: "
+        "re-pull the groups you want (`just-dna-enricher cache pull --only ensembl --groups NAME[,NAME]`).",
+        record,
+        reason,
+        aside,
+        repo,
+    )
+    return aside
 
 
 def _pull_record(cache_dir: Path) -> dict | None:
@@ -1379,16 +1411,21 @@ def ensure_snapshot(
     is gated by `declared_use` when that states a use, else by its recorded declaration; one that is
     skipped, refused or cannot be fetched is logged and left as it was, so `ensembl_group_dir` refuses
     it as another release, and never raises out of a call that did not name it. A group's files are
-    checked against the manifest's sha256 on the way in, as the core's are. **The one exception**: a pull
-    record that is there and cannot be read raises `locations.EnsemblGroupReleaseError` before anything is
-    fetched or rewritten, groups named or not (review round 1, item 3), since the core's pull would rewrite
-    it without the selection it held and nothing could say which groups those were (`locations.pulled_groups`).
+    checked against the manifest's sha256 on the way in, as the core's are. **A pull record that is there
+    and cannot be read** (`locations.pulled_groups` refuses it) is moved aside under a dated name, never
+    deleted, and a fresh one naming this lane's repository takes its place, with no groups and no release
+    digest, before anything else runs (`_set_aside_unreadable_record`). The pull then goes on with this call's
+    groups; a file the manifest attests by sha256 is kept. The warning names the moved file, says any group
+    selection it held is lost, and names the repository the fresh record assumes, since the corrupt one may
+    have named another. Without the fresh record the cache would read as a local build and never be pulled
+    again. A local build writes no pull record, so a corrupt one came from a pull.
     """
     cache_dir = Path(ensembl_cache) if ensembl_cache is not None else default_ensembl_cache_dir()
     named = _named_groups(groups)
-    # A pull record that is there and unreadable is refused before anything moves (review round 1, item 3):
-    # the core's pull would rewrite it without the groups it named, and the selection would end unsaid.
-    pulled_groups(cache_dir)
+    try:
+        pulled_groups(cache_dir)
+    except EnsemblGroupReleaseError as unreadable:  # the reader's one refusal: a record there and unreadable
+        _set_aside_unreadable_record(cache_dir, SNAPSHOT_REPO_PREFIXES["ensembl"], unreadable)
     if named:
         _admit_named_groups(cache_dir, named, declared_use)
     path = _provision_snapshot(

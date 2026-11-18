@@ -2407,8 +2407,13 @@ prevent, and a stale group joins to the wrong variants silently.
   (`declared_at`, `download.PULL_RECORD_DECLARED_AT_KEY`, UTC). `locations.pulled_groups(cache)` reads it:
   `{}` for an absent record or one naming no groups, and `EnsemblGroupReleaseError` for one that is there
   and cannot be read (not UTF-8 or JSON, not an object, `groups` or a group entry not an object), which
-  `ensure_snapshot` raises too, before anything is fetched or the record rewritten (review round 1): read
-  as no groups, it ended the sticky selection unsaid.
+  the readers refuse (review round 1): read as no groups, it ended the sticky selection unsaid. A pull
+  repairs it instead of refusing: `ensure_snapshot` moves the record aside under a dated name
+  (`pull-record.json.unreadable-<UTC stamp>`, never deleted), writes a fresh one naming the lane's repository
+  with no groups and no release digest, and pulls with this call's groups, keeping every file the manifest
+  attests by sha256. Its warning names the moved file, says any group selection it held is lost, and names
+  the repository it assumes. Without the fresh record the cache would read as a local build and never be
+  pulled again; a local build writes no pull record, so a corrupt one came from a pull.
 - **The one path, with the check.** `locations.ensembl_group_dir(cache, group)` returns
   `<cache>/groups/<group>` (`ENSEMBL_GROUPS_DIRNAME`) only when the group's recorded release is the
   core's (`manifest.json`'s `release_id`) and the directory holds exactly the files the manifest attests

@@ -283,21 +283,54 @@ def test_a_pull_record_that_is_there_and_unreadable_is_refused_by_the_reader_and
         )
 
 
-def test_ensure_refuses_an_unreadable_pull_record_before_anything_is_fetched_or_rewritten(
-    install_hub, tmp_path: Path
+def test_ensure_moves_an_unreadable_pull_record_aside_and_pulls_under_the_repo_it_assumes(
+    install_hub, tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
-    """A moved core used to be re-pulled over it, and the rewritten record carried no group: the selection was
-    lost with nothing said. Now nothing is fetched and the record is left as it was, for the operator."""
+    """Refused, an unattended `enrich(download=True)` stopped on bookkeeping a pull can rebuild; left without
+    a record, the cache read as a local build and was never pulled again (0.8.8 on). The record is moved
+    aside under a dated name, never deleted, a fresh one names the lane's repository, and the pull goes on
+    with this call's groups. The warning says the selection is lost and which repository is assumed, since
+    the corrupt record may have named another (the pm, cf12e864)."""
     cache = tmp_path / "ensembl"
     install_hub(_published(0, _OLD))
     dl.ensure_snapshot(cache, groups=["cadd"], declared_use="non_commercial")
-    broken = (cache / PULL_RECORD_FILENAME).read_bytes()[:-20]
-    (cache / PULL_RECORD_FILENAME).write_bytes(broken)
-    hub = install_hub(_published(1, _NEW))
+    repo = _record(cache)["repo"]
+    record = cache / PULL_RECORD_FILENAME
+    broken = record.read_bytes()[:-20]
+    record.write_bytes(broken)
+    new = _published(1, _NEW)
+    install_hub(new)
+
+    follow = dl._FollowHub(ensembl_release_label)
+    with caplog.at_level("WARNING", logger="just_dna_enricher.download"):
+        dl.ensure_snapshot(cache, groups=["consequence"], declared_use="non_commercial", _follow_hub=follow)
+
+    aside = sorted(p for p in cache.iterdir() if p.name.startswith(f"{PULL_RECORD_FILENAME}.unreadable-"))
+    assert len(aside) == 1 and aside[0].read_bytes() == broken, "moved aside whole, never deleted"
+    assert ":" not in aside[0].name, "a name every filesystem here takes"
+    said = [r.getMessage() for r in caplog.records if r.name == "just_dna_enricher.download"]
+    assert (
+        f"The pull record at {record} could not be read (" in said[0]
+        and f"moved it to {aside[0]}" in said[0]
+        and "any group selection it held is lost" in said[0]
+        and f"pulling as {repo}" in said[0]
+    ), said
+    assert follow.outcome == "refreshed"
+    assert ensembl_release_label(cache) == _NEW
+    assert _record(cache)["repo"] == repo
+    assert set(pulled_groups(cache)) == {"consequence"}, (
+        "the old selection is gone; this call's group is pulled"
+    )
+    for path in ensembl_group_dir(cache, "consequence").glob("*.parquet"):
+        assert path.read_bytes() == new[f"groups/consequence/{path.name}"]
+
+
+def test_the_reader_still_refuses_an_unreadable_pull_record_it_does_not_repair(tmp_path: Path) -> None:
+    """Only a pull rebuilds the record; `ensembl_group_dir` (a read, `download=False`) refuses it unchanged."""
+    (tmp_path / PULL_RECORD_FILENAME).write_bytes(b"{")
     with pytest.raises(EnsemblGroupReleaseError, match="could not be read"):
-        dl.ensure_snapshot(cache)
-    assert hub.fetched == [], "nothing was downloaded"
-    assert (cache / PULL_RECORD_FILENAME).read_bytes() == broken, "the record was not rewritten"
+        ensembl_group_dir(tmp_path, "cadd")
+    assert (tmp_path / PULL_RECORD_FILENAME).read_bytes() == b"{"
 
 
 def test_a_group_record_is_read_member_by_member_so_a_later_field_costs_no_core_pin(
