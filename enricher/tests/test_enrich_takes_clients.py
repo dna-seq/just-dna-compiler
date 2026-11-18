@@ -564,6 +564,37 @@ def test_a_batch_timeout_of_zero_or_less_is_refused_when_the_settings_are_built(
     )
 
 
+class _NoPost:
+    """An `httpx` transport that fails the test if anything is sent: a refused setting asks nothing."""
+
+    def __call__(self, request: httpx.Request) -> httpx.Response:
+        raise AssertionError(f"a refused setting sent {request.method} {request.url}")
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "said"),
+    [
+        ("batch_size", 0, "EnsemblSettings.batch_size=0 is below 1"),
+        ("batch_size", -3, "EnsemblSettings.batch_size=-3 is below 1"),
+        ("batch_size", 201, "EnsemblSettings.batch_size=201 is above the 200 rsIDs"),
+        ("batch_timeout", 0.0, "EnsemblSettings.batch_timeout=0.0 is not a number of seconds above 0"),
+    ],
+)
+def test_a_setting_changed_after_the_settings_were_built_is_refused_where_it_is_read(
+    field: str, value: float, said: str
+) -> None:
+    """`EnsemblSettings` is a mutable dataclass, so a check at construction alone let `batch_size = 0` through:
+    `net.batched(asked, 0)` yields no batch, and no rsID was answered or said to be unanswered (review round 1,
+    item 8). The batched read refuses it, with the construction's own words, before any request."""
+    settings = EnsemblSettings()
+    setattr(settings, field, value)
+    resolver = EnsemblResolver(settings=settings, gate=PacingGate(interval=0.0))
+    resolver._client = httpx.Client(transport=httpx.MockTransport(_NoPost()))
+    with pytest.raises(ValueError) as refused:
+        list(resolver.resolve_rsids_batched(["rs1801133", "rs429358"]))
+    assert str(refused.value).startswith(said)
+
+
 def test_the_batch_capability_is_public_and_met_only_by_its_own_method_name() -> None:
     """`runtime_checkable` matches by name, so the name must not be one a different contract already has:
     gnomAD's `resolve_rsids` returns a dict, and a resolver carrying it is still asked one rsID at a time."""

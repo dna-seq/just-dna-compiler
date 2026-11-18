@@ -606,7 +606,9 @@ Org limits apply **per member**, not shared. Source of truth:
   is one no other contract here uses (`GnomadClient.resolve_rsids` answers a dict). The knobs are
   `EnsemblSettings.batch_size` (default 20) and `batch_timeout` (default 120 s, the POST's read timeout);
   a `batch_size` above Ensembl's ceiling of 200 or below 1, and a `batch_timeout` that is not above 0, raise
-  `ValueError` when the settings are built, never clamped (1 is one GET per rsID, the off-switch). `_RestBatchWitness`, the witness's batch twin, stays private: nothing asks it since RM398.
+  `ValueError` when the settings are built, and again from `resolve_rsids_batched` before any request when a
+  field was set to one afterwards (the dataclass is mutable), never clamped (1 is one GET per rsID, the
+  off-switch). `_RestBatchWitness`, the witness's batch twin, stays private: nothing asks it since RM398.
 - **No response cache for the live clients.** NCBI / PharmVar / gnomAD GraphQL / Crossref / Europe PMC
   / OLS4 / HGNC / PGS Catalog / LitVar2 / the CIViC API / the ClinGen Allele Registry / GRCh37 Ensembl /
   the ClinVar release probe / live Ensembl are paced only. Persistence is the authored sidecars

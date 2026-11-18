@@ -85,8 +85,8 @@ class EnsemblSettings:
     """How `EnsemblResolver` asks REST: where, how fast, and how many rsIDs per batch POST.
 
     `batch_size` (0.9, RM404) is the rsIDs one `POST /variation/:species` carries; `1` is one GET per
-    rsID, the off-switch. Above Ensembl's ceiling of 200, or below 1, it is refused here, never clamped
-    where it is read: a host that asked for 500 per request and silently got 200 would size its pacing
+    rsID, the off-switch. Above Ensembl's ceiling of 200, or below 1, it is refused here and again by
+    the batched read (a field set after construction), never clamped where it is read: a host that asked for 500 per request and silently got 200 would size its pacing
     on a number nothing sends. `batch_timeout` is that POST's read timeout in seconds, refused here
     unless it is above 0; the GET's `timeout` stays the connect timeout, and the read timeout is the
     larger of the two.
@@ -100,6 +100,15 @@ class EnsemblSettings:
     batch_timeout: float = _REST_BATCH_TIMEOUT
 
     def __post_init__(self) -> None:
+        self._check()
+
+    def _check(self) -> None:
+        """Raise `ValueError` for a `batch_size` or `batch_timeout` this class refuses, in the words pinned.
+
+        Called when the settings are built and again where the batched read reads them (review round 1,
+        item 8): the dataclass is mutable, and `batch_size = 0` set afterwards made `net.batched` yield no
+        batch, so no rsID was answered and nothing said so.
+        """
         if self.batch_size > _REST_BATCH_CEILING:
             raise ValueError(
                 f"EnsemblSettings.batch_size={self.batch_size} is above the {_REST_BATCH_CEILING} rsIDs "
@@ -309,8 +318,10 @@ class EnsemblResolver(Withholding):
         every rsID in it, never a negative. A `batch_size` of 1 is one GET per rsID. A
         throttle's hold is read before each batch and set by its failure, as for one rsID.
         """
+        # Checked here as well as when the settings were built, since a field may have been set since.
+        self.settings._check()
         asked = list(rsids)
-        size = self.settings.batch_size  # at least 1: `EnsemblSettings` refuses anything below
+        size = self.settings.batch_size
         if size == 1:
             for rsid in asked:
                 yield rsid, self.resolve_rsid_rest(rsid)

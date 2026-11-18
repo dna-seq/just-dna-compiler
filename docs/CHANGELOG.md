@@ -247,6 +247,11 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   paragraph said such a key made the record `None`, beside the 0.9 sentence that it is dropped. The code drops the
   key and reads the rest (`test_parse_release_drops_a_mistyped_key_with_a_warning_as_read_release_does`); both
   sentences now say so.
+- **A batch setting set after the settings were built is refused where it is read** (review round 1, item 8):
+  `EnsemblSettings` is a mutable dataclass, so `settings.batch_size = 0` after construction passed the check and
+  `resolve_rsids_batched` yielded no answer for any rsID, saying nothing. The batched read now runs the same check
+  before any request, raising the construction's `ValueError` word for word, for `batch_size` at either end and for
+  `batch_timeout`.
 
 ## 2026-11-18 — RM453: a mirrored site where no spelling was witnessed keeps both spellings (patch, a declared corrected derivation, on `main`)
 
