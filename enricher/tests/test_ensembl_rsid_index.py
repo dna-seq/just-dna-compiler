@@ -592,6 +592,25 @@ def test_prepare_never_builds_the_index_even_named_and_names_the_rebuild_into_it
     assert present.ready is True and present.route == "present", "the command built it where prepare looks"
 
 
+def test_cache_prepare_named_the_index_builds_nothing_and_its_line_names_the_rebuild(
+    no_ambient_caches, monkeypatch: pytest.MonkeyPatch, core: Path, tmp_path: Path
+) -> None:
+    """The command's own line, pinned (the pm, 6e52b9a1 reading 2): not only *unavailable*, but the
+    `cache rebuild --only ensembl_rsid_index` that builds it where it is read."""
+    monkeypatch.setenv(locations.ENSEMBL_CACHE_VAR, str(core))
+    monkeypatch.setenv(locations.CACHE_BASE_VAR, str(tmp_path / "base"))
+    lane = LANES_BY_NAME["ensembl_rsid_index"]
+    monkeypatch.setenv(lane.env_var, "")
+    result = CliRunner().invoke(app, ["cache", "prepare", "--only", "ensembl_rsid_index"])
+    assert result.exit_code == 0, result.output
+    said = " ".join(result.output.split())
+    assert (
+        f"ensembl_rsid_index unavailable {lane.named_only}; build it where it is read with "
+        f"`just-dna-enricher cache rebuild --only ensembl_rsid_index --out {tmp_path / 'base'}`"
+    ) in said
+    assert not (tmp_path / "base" / lane.name).exists(), "prepare built nothing"
+
+
 def test_a_bare_cache_rebuild_dry_run_passes_the_index_over_and_a_named_one_would_build_it(
     no_ambient_caches, monkeypatch: pytest.MonkeyPatch, core: Path, tmp_path: Path
 ) -> None:
