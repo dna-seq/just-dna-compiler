@@ -30,6 +30,41 @@ loses data on a round trip, or stops a downstream project from installing or imp
 
 The pm reports after 0.9 how both went.
 
+**Review round 1, sorted (the pm, 2026-11-18).** Four models were asked over `main...0.9` at 033b7213 and three
+answered. They reported 11 error classes and a design question. **No blocker:** the compiler and schema models are
+untouched, so no round trip moves, and a core-only install imports every new module. Every class is a defect in a
+0.9 item's own build, so each is part of its item (the trial rule), and all are cheap. **Built before round 2:**
+
+1. **One strict model for the proxy's reply** (RM430). A missing `truncated` is a malformed reply, not a whole one. A
+   row that is not an object, or a reply whose lane or table differs from the request, is
+   `SnapshotRouteUnavailable`, never an `AttributeError` out of `lookup_variant` (`@client-exception-contract`, the
+   fourth leg). Tested by one walk over `REMOTE_LANES` that feeds the proxy malformed bodies.
+2. **Every new warning and log text is pinned by its stable prefix** (`@warning-text-is-api`), by one walk over the
+   texts the diff adds.
+3. **A present but unreadable file is refused, never read as absent** (RM437). An unreadable pull record raises the
+   documented typed error, instead of reading as no groups (which silently ended sticky groups). A
+   `UnicodeDecodeError` is caught where `JSONDecodeError` is. A group record in the manifest is read leniently, member
+   by member, so a field a later release adds cannot cost an older reader the core pin. A remote `release.json` keeps
+   the local reader's leniency, by design.
+4. **Every hand-kept typed column list gets the equality test** the civic, clinpgx and clinvar_gkm lists already have
+   (`@registry-completeness`). `_ensure_declaration` keys on a field, not on `lane.name == "ensembl"`.
+5. **`rsid` is declared in `KEY_COMPARES`**, and the equal-answers walk calls the holder with raw keys, not the
+   private key builders. This is RM430's own class fix missing a key, not RM454. RM454 is local compares across
+   functions; this is one function's two routes disagreeing.
+6. **A request over the proxy's per-request limit goes to the next route**, as a folded key does. It never raises
+   wrong-request.
+7. **An index pin with a file missing its `sha256` is withheld**, never hashed as `""` (RM431, the house algebra).
+8. **`batch_size` below 1 is refused where it is used**, not only when the settings are built (RM404).
+9. **SCHEMAS.md's two sentences on a mistyped `release.json` key agree** with the code: the key is dropped.
+10. **The negated shared predicate treats `NULL` as no match**, as the old `<>` did (cpic `partner_genes`).
+11. **`lane_status` and `prepare_lane` call a stale index stale**, as RM431's reading 3 decided, never "present".
+
+Not a defect: two remote asks in one lookup keep the first route, documented as deliberate in ENRICHER.md. At the
+cut: the enricher's floor on format moves to 0.9 (it imports `parse_release`), RELEASE_CYCLE step 9. **Round 2 is the
+last.** It reads the fixes, and the areas round 1 left unread: RM437's group provisioning past the pull record,
+`SequenceProxy`'s lock and per-run memo, `cache rebuild --rehearse-download`, and the CHANGELOG's claim that `enrich`
+with neither new argument writes the same bytes as before. That claim gets a test if none exists.
+
 **Earlier sizings, for the record.** The file opened on 2026-11-03, when the maintainer scoped 0.8 and sent "the rest"
 to 0.9; the pm re-sized it on 2026-11-05 after the 0.8.0 cut ("'Auto-next minor' was a policy when we didn't have a
 dedicated decision maker for this"), parking 22 items into ROADMAP.md. Everything here is **additive under Principles
