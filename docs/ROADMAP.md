@@ -2698,6 +2698,16 @@ stripped. RM449 is a defect of this build until it passes; the half-day fallback
    instruction, and `main` is patch scope only. The warning's text and its pinned phrase ship unchanged, and 0.9
    adds the code and its INTEGRATION row. Rejected: shipping the code with a documented floor raise, which makes a
    patch an old-reader break for every consumer reading a module that triggers it.
+   **Amended the same night (the lead's build):** an uncoded warning cannot ship, because `findings.classify` in
+   the format tier refuses a channel where some warnings carry no code, and every triggering module has coded ones.
+   So 0.8.9 borrows the nearest existing codes, the 0.8 line's "no new code" idiom, by what the row became: where
+   the fill writes no position, `rsid_no_hosting_locus` ("the position remains unset", word for word); where it
+   fills one or more loci (both spellings kept, or one dropped as unwitnessed or under an authored coordinate row),
+   `rsid_expanded_to_multiple_loci` ("one authored row became several, because the source says so"). The message
+   text is RM449's own in every arm. The cost, stated in the cut entry: until 0.9, a site narrowed to one locus is
+   counted in `warnings_summary` as an expansion. 0.9 adds `rsid_genotype_reads_as_two_events` and moves these
+   sentences to it. Rejected: one borrowed code for every arm (it miscounts the filled arms as unplaced), withholding
+   `warnings_summary` on a mixed channel, a partial summary, and the floor raise above.
 2. **A recorded `undecided` on both spellings reads as no verdict, fixed before the cut.** An offline run writes
    `undecided`, which says the second source could not judge, not that it witnessed neither
    (`@unreachable-not-absent`; the same reading as 84a256ef's for a missing verdict). Such a site keeps its expansion
