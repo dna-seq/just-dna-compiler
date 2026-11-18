@@ -1140,3 +1140,45 @@ def test_a_proxy_row_that_is_not_an_object_is_a_finding_out_of_lookup_variant(
     assert any(
         "could not be asked remotely, so its answer is unchecked rather than empty" in m for m in said
     ), said
+
+
+# ── a request over the proxy's own limit goes to the next route (review round 1, item 6) ──────────
+
+
+def _never(request: httpx.Request) -> httpx.Response:
+    raise AssertionError(f"the proxy was asked {request.url}")
+
+
+#: Two exact columns whose values leave no room in one proxy request: `start` is split, `id` is not.
+OVER_THE_LIMIT = {"chrom": ["1"], "start": [100], "id": [f"x{i}" for i in range(remote.PROXY_MAX_KEY_VALUES)]}
+
+
+@pytest.mark.parametrize("lane", sorted(REMOTE_LANES))
+def test_a_request_over_the_proxys_limit_skips_it_and_is_never_a_wrong_request(lane: str) -> None:
+    """The limit is the proxy's alone, so a request it cannot carry is not wrong on every route: Hugging Face is
+    asked, as for a folded key; with Hugging Face off that is could-not-ask, saying why, never `ValueError`."""
+    holder = _with_proxy(
+        RemoteSnapshots(proxy_url=PROXY, huggingface=False, declared_use="non_commercial"), _never
+    )
+    with holder, pytest.raises(SnapshotRouteUnavailable) as failed:
+        holder.lookup(lane, "t", OVER_THE_LIMIT)
+    assert failed.value.route is None
+    assert str(failed.value) == (
+        f"{lane}: no remote route was asked: the registry's proxy answers at most "
+        f"{remote.PROXY_MAX_KEY_VALUES} key values a request, and 101 besides 'start' leave no room, so the "
+        "proxy is not asked, and Hugging Face is off"
+    )
+
+
+def test_a_request_over_the_proxys_limit_is_answered_by_hugging_face(
+    httpfs, loopback_hub, clinvar_root: Path
+) -> None:
+    loopback_hub.publish(SNAPSHOT_REPO_IDS["clinvar"], clinvar_root, COMMIT_A)
+    held = sorted({str(row["variation_id"]) for row in _registry_rows(clinvar_root, {"rsid": ["rs334"]})})
+    rsids = ["rs334", *(f"rs{900000000 + i}" for i in range(99))]
+    keys = {"rsid": rsids, "variation_id": [*held, *(f"x{i}" for i in range(100 - len(held)))]}
+    expected = _registry_rows(clinvar_root, keys)
+    assert expected, "rs334's own variation is among the keys, so an empty answer cannot pass"
+    with _with_proxy(RemoteSnapshots(proxy_url=PROXY, hf_base_url=loopback_hub.base_url), _never) as holder:
+        answer = holder.lookup("clinvar", "clinvar", keys)
+    assert answer.route.route == "hf" and answer.rows == remote._stable(expected)

@@ -291,6 +291,11 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   (`SnapshotRouteUnavailable`, `a 200 that is not a lane reply (…)` or `… not the reply asked for: …`), as is a
   `truncated` or `release` of the wrong JSON kind; a field the registry adds later is ignored. One walk over
   `REMOTE_LANES` feeds the proxy each malformed body.
+- **A request over the proxy's per-request limit goes to Hugging Face** (review round 1, item 6, RM430): a lookup
+  whose columns besides the one split already held 100 values (100 rsIDs and 100 variation ids) raised
+  `ValueError`, the wrong-request channel, so Hugging Face, which has no such limit, was never asked. The proxy is
+  now passed over before any request, as for a folded key; with Hugging Face off that is could-not-ask naming the
+  limit.
 
 ## 2026-11-18 — RM453: a mirrored site where no spelling was witnessed keeps both spellings (patch, a declared corrected derivation, on `main`)
 

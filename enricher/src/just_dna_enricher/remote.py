@@ -352,15 +352,30 @@ def _batch_column(request: Mapping[str, list[Any]]) -> str:
     return max(request, key=lambda column: (len(request[column]), column))
 
 
-def _proxy_chunks(lane: str, request: dict[str, list[Any]]) -> list[dict[str, list[Any]]]:
-    """`request` cut to the proxy's limit of key values per request, along its batch column."""
+def _proxy_overflow(wanted: _Keys) -> str | None:
+    """Why no request of `wanted` fits the proxy's limit of key values, or `None` when every one does.
+
+    The batch column is split to fit, so a request overflows only when its other columns alone fill the
+    limit. The limit is the proxy's, never Hugging Face's, so such a request is not wrong on every route:
+    the proxy is passed over and Hugging Face asked, as for a folded key (review round 1, item 6).
+    """
+    for request in _requests(wanted):
+        column = _batch_column(request)
+        fixed = sum(len(values) for name, values in request.items() if name != column)
+        if fixed >= PROXY_MAX_KEY_VALUES:
+            return (
+                f"the registry's proxy answers at most {PROXY_MAX_KEY_VALUES} key values a request, and {fixed} "
+                f"besides {column!r} leave no room, so the proxy is not asked"
+            )
+    return None
+
+
+def _proxy_chunks(request: dict[str, list[Any]]) -> list[dict[str, list[Any]]]:
+    """`request` cut to the proxy's limit of key values per request, along its batch column.
+
+    Called only for a request `_proxy_overflow` passed, so there is room for at least one value."""
     column = _batch_column(request)
-    fixed = sum(len(values) for name, values in request.items() if name != column)
-    room = PROXY_MAX_KEY_VALUES - fixed
-    if room < 1:
-        raise ValueError(
-            f"{lane}: {fixed} key values besides {column!r}; the proxy answers at most {PROXY_MAX_KEY_VALUES}"
-        )
+    room = PROXY_MAX_KEY_VALUES - sum(len(values) for name, values in request.items() if name != column)
     values = request[column]
     return [{**request, column: values[i : i + room]} for i in range(0, len(values), room)]
 
@@ -569,6 +584,9 @@ class RemoteSnapshots:
                 f"{compared}, as its local reader does, so the proxy is not asked"
             )
             logger.info("%s: %s; asking Hugging Face", lane, passed_over)
+        elif self._proxy is not None and (overflow := _proxy_overflow(wanted)) is not None:
+            passed_over = overflow
+            logger.info("%s: %s; asking Hugging Face", lane, passed_over)
         elif self._proxy is not None:
             try:
                 answer = self._ask_proxy(lane, table, wanted)
@@ -628,7 +646,7 @@ class RemoteSnapshots:
     def _ask_proxy(self, lane: str, table: str, wanted: _Keys) -> RemoteAnswer:
         replies: list[_ProxyReply] = []
         for request in _requests(wanted):
-            for chunk in _proxy_chunks(lane, request):
+            for chunk in _proxy_chunks(request):
                 replies.extend(self._proxy_untruncated(lane, table, chunk))
         rows = [row for reply in replies for row in reply.rows]
         return RemoteAnswer(

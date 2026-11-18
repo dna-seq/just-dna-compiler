@@ -2505,7 +2505,10 @@ with RemoteSnapshots(declared_use="non_commercial") as snapshots:      # proxy f
   `mitomap`, `strchive` or `alphagenome_avi`. PharmVar and PubMind have no published repo.
 - **The proxy** (`POST {proxy}/api/v1/lanes/{lane}/{table}`, the registry's §§ 46–47): one keep-alive
   `httpx` client, a 3 s connect and 10 s read timeout, at most 100 key values a request and one
-  chromosome per request. A reply with `truncated: true` is halved and asked again, down to one key; one
+  chromosome per request. A lookup is split along one column (`start` for a position, else its longest);
+  one whose other columns alone fill the 100 is not sent to the proxy at all (0.9, review round 1): the
+  limit is the proxy's, so Hugging Face answers, as for a folded key, and with Hugging Face off it is
+  could-not-ask saying so, never a wrong request. A reply with `truncated: true` is halved and asked again, down to one key; one
   key still truncated is could-not-ask for the whole lookup (no fall-through), never an absence. After a
   429, a 503, a 504, a 404 `lane_not_available`, a timeout or a connection error the holder asks Hugging
   Face instead, for the whole lookup. A 422, or a 404 `unknown_lane`/`unknown_table`, is a wrong request
