@@ -415,6 +415,39 @@ def test_a_commercial_use_refuses_cadd_before_any_download(install_hub, tmp_path
     assert not cache.exists()
 
 
+def test_a_named_group_already_current_is_not_gated_again(monkeypatch, install_hub, tmp_path: Path) -> None:
+    """Review round 2, D (RM437 reading 4): the gate guards a fetch, and a current group fetches nothing
+    (`@acquisition-gate-is-not-a-read-gate`). A use that would refuse it is no refusal while nothing is taken."""
+    cache = tmp_path / "ensembl"
+    install_hub(_published(0, _OLD))
+    dl.ensure_snapshot(cache, groups=["cadd"], declared_use="non_commercial")
+    before = pulled_groups(cache)["cadd"]
+    monkeypatch.setattr(huggingface_hub, "HfFileSystem", _explode)
+
+    dl.ensure_snapshot(cache, groups=["cadd"], declared_use="commercial")
+
+    assert pulled_groups(cache)["cadd"] == before, "nothing re-declared, nothing re-pulled"
+    assert ensembl_group_dir(cache, "cadd").is_dir()
+
+
+def test_a_named_group_that_must_be_fetched_is_still_refused_before_any_download(
+    install_hub, tmp_path: Path
+) -> None:
+    """The other half of D: recorded at the core's release but missing a file, the group must be fetched, so a
+    use its terms refuse raises before anything is downloaded, the core included."""
+    cache = tmp_path / "ensembl"
+    published = _published(0, _OLD)
+    install_hub(published)
+    dl.ensure_snapshot(cache, groups=["cadd"], declared_use="non_commercial")
+    min((cache / "groups" / "cadd").glob("*.parquet")).unlink()
+    hub = install_hub(published)
+
+    with pytest.raises(LicenseRefusal, match="nothing was fetched"):
+        dl.ensure_snapshot(cache, groups=["cadd"], declared_use="commercial")
+
+    assert hub.parquet_fetched() == []
+
+
 def test_an_unstated_use_pulls_the_core_and_skips_cadd_with_the_reason(install_hub, tmp_path: Path) -> None:
     cache = tmp_path / "ensembl"
     hub = install_hub(_published(0, _OLD))
@@ -866,6 +899,19 @@ def test_cache_pull_refuses_cadd_under_a_commercial_use(install_hub, base: Path,
         cli_text(result)
     )
     assert hub.parquet_fetched() == [] and not (base / "ensembl_variations").exists()
+
+
+def test_cache_pull_reports_a_current_cadd_under_a_commercial_use_and_fetches_nothing(
+    install_hub, base: Path, cli_text
+) -> None:
+    """Review round 2, D: the command the review named, over a CADD group already current."""
+    install_hub(_published(0, _OLD))
+    assert _pull("--groups", "cadd", "--use", "non-commercial").exit_code == 0
+    hub = install_hub(_published(0, _OLD))
+    result = _pull("--groups", "cadd", "--use", "commercial")
+    assert result.exit_code == 0, cli_text(result)
+    assert "ensembl group cadd: current" in cli_text(result)
+    assert hub.parquet_fetched() == []
 
 
 def test_cache_pull_takes_cadd_under_a_research_use(install_hub, base: Path, cli_text) -> None:

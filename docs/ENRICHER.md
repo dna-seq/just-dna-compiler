@@ -2401,7 +2401,10 @@ prevent, and a stale group joins to the wrong variants silently.
   `check_declared_use`, as a gated lane does in `cache pull`: `--groups cadd` downloads under
   `non_commercial`, raises `LicenseRefusal` under `commercial` before any byte moves (core included),
   and is skipped under `unstated`; an unknown licensor is skipped under every use, the reason quoting the
-  licence. A group already current is not gated again: nothing is taken.
+  licence. A group already current (recorded at the manifest's release, every file it attests there at its
+  size) is not gated again, named or not: nothing is taken (review round 2, D). So `cache pull --only
+  ensembl --groups cadd --use commercial` over a current CADD group fetches nothing and reports it
+  `current`; the refusal comes when the group must be fetched, before any byte moves.
 - **Attested and recorded.** Each group file is renamed into place only if the manifest attests it by
   size and sha256, as a core file is. The pull record gains `groups` (`locations.PULL_RECORD_GROUPS_KEY`):
   per group, the `release_id` its files were attested against (`null` while its pull is under way), its

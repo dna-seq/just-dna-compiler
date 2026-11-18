@@ -327,6 +327,12 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   call that could not be asked remotely, the group pull's, removal's and failed re-pull's lines, the rsID index
   build's progress, and the stale-index refusal's head. The holder no longer logs "asking Hugging Face" when
   Hugging Face is off.
+- **A named group already current is not gated again** (review round 2, D, RM437's reading 4,
+  `@acquisition-gate-is-not-a-read-gate`): the preflight ran `check_declared_use` before asking whether the group
+  needed a fetch, so `cache pull --only ensembl --groups cadd --use commercial` over a current CADD group raised
+  `LicenseRefusal` though nothing would be taken. The currency check (recorded at the manifest's release, every
+  attested file there at its size) now comes first, in the preflight and the pull alike; a named group that must be
+  fetched under a use its terms refuse still raises before any download.
 
 ## 2026-11-18 — RM455: the pre-0.9 instances of four classes 0.9 fixed in its own code (patch, enricher only, on `main`)
 
