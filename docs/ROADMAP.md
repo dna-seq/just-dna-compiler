@@ -2669,6 +2669,16 @@ mirrored site with no verdict anywhere keeps its expansion, under the same warni
 one offline enrich pass files the restored row and the four round-trip tests pass, so 0.8.9 waits for neither.
 The warning's remedy now says "and re-run the enricher".
 
+**A third build defect, and 0.8.9 waits for it (the pm, 2026-11-18, from the lead's suite at aa5b88f7).** With the
+example's row restored, a table with no placement verdict (an older enricher's, an offline fill, a hand-written one;
+`test_a_version_with_no_id_survives_the_round_trip[pathogenic_clinvar]` strips the provenance columns) expands
+`rs80356821` onto the insertion again, and strict refuses `Duplicate (variant, genotype): (11:5226762:C:CAAAG,
+C/CAAAG)`. So the remedy RM449's warning names refuses whenever the verdict is absent. Decided: **an authored
+coordinate row wins over an rsID row's expansion onto its exact `(variant, genotype)` key.** The expansion is dropped
+there, and RM449's warning names it, so nothing is silent; the coordinate row is the author's narrower statement of
+that event, which is what the warning asked for. The test that failed is the fixture, plus a lap with the verdicts
+stripped. RM449 is a defect of this build until it passes; the half-day fallback above still stands.
+
 **Residuals** won't fix — a site witnessed both ways is not refused in 0.8 (the pm: refusing it is a minor's
 question, by escalating `rsid_genotype_reads_as_two_events`) · won't fix — an authored coordinate row winning over
 the expansion (S158's option 2) silences only the loud case
