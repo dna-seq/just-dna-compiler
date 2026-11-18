@@ -2311,7 +2311,7 @@ prevent, and a stale group joins to the wrong variants silently.
   `--use`. A re-pull or a skip gated by the recorded declaration says so in its log line, naming the use and
   when it was declared (`under the use recorded for it, non_commercial, declared 2026-11-18T01:21:30Z; this
   call states none`), so an operator whose use changed sees which declaration admitted the new release; the
-  re-pull keeps that `declared_at`, and a call stating its own use records a new one. A record written before
+  re-pull keeps that `declared_at`, a call stating its own use records a new one, and a pull under no stated use records none (`unstated` is no declaration). A record written before
   the key states no time, and the line says `declared at a time the pull record does not state`
   (`download.DECLARED_AT_UNRECORDED`), never an invented one. A recorded group the caller did not name never raises, whatever went wrong: it is logged,
   `cache pull` prints it, and it stays at its old release, which `ensembl_group_dir` refuses. A named

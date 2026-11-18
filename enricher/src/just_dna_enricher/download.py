@@ -1432,16 +1432,16 @@ def _group_use(declared_use: str, entry: dict | None) -> tuple[str, bool]:
     return "unstated", False
 
 
-def _declaration(entry: dict | None, from_record: bool) -> dict[str, str]:
-    """The `declared_at` a group's entry keeps: the recorded one under the recorded use, else now.
+def _declaration(entry: dict | None, use: str, from_record: bool) -> dict[str, str]:
+    """The `declared_at` a group's entry keeps: the recorded one under the recorded use, now under the call's.
 
-    A record that states no time keeps stating none: a time is never written for a declaration this
-    call did not see.
+    `unstated` is no declaration, so it gets no time; nor does a record that states none, under its own
+    use: a time is never written for a declaration this call did not see.
     """
-    if not from_record:
-        return {PULL_RECORD_DECLARED_AT_KEY: now_utc_iso()}
-    recorded = entry.get(PULL_RECORD_DECLARED_AT_KEY) if entry is not None else None
-    return {PULL_RECORD_DECLARED_AT_KEY: recorded} if isinstance(recorded, str) and recorded else {}
+    if from_record:
+        recorded = entry.get(PULL_RECORD_DECLARED_AT_KEY) if entry is not None else None
+        return {PULL_RECORD_DECLARED_AT_KEY: recorded} if isinstance(recorded, str) and recorded else {}
+    return {PULL_RECORD_DECLARED_AT_KEY: now_utc_iso()} if use != "unstated" else {}
 
 
 def _recorded_use_note(use: str, declaration: dict[str, str]) -> str:
@@ -1585,7 +1585,7 @@ def _pull_one_group(
         # Nothing is taken, so nothing is gated (`@acquisition-gate-is-not-a-read-gate`).
         return _with_strays(cache_dir, group, manifest, "current")
     use, from_record = _group_use(declared_use, entry)
-    declaration = _declaration(entry, from_record)
+    declaration = _declaration(entry, use, from_record)
     note = _recorded_use_note(use, declaration) if from_record else None
     reason = check_declared_use(snapshot_group_terms(group, record.licence), use)
     if reason is not None:

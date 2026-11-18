@@ -480,6 +480,18 @@ def test_a_recorded_use_with_no_time_says_the_time_is_not_recorded(
     assert "declared_at" not in pulled_groups(cache)["cadd"], "no time is written for a declaration not seen"
 
 
+def test_a_group_admitted_under_no_declared_use_records_no_declaration_time(
+    install_hub, tmp_path: Path
+) -> None:
+    """`unstated` is no declaration: the Ensembl-licensed group is pulled under it, and no time is invented."""
+    cache = tmp_path / "ensembl"
+    install_hub(_published(0, _OLD))
+    dl.ensure_snapshot(cache, groups=["consequence"])
+    entry = pulled_groups(cache)["consequence"]
+    assert entry["declared_use"] == "unstated"
+    assert "declared_at" not in entry
+
+
 def test_a_skip_under_the_recorded_use_names_it_too(
     install_hub, tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
