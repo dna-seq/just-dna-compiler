@@ -1705,7 +1705,6 @@ VALID_WARNING_CODES: frozenset[str] = frozenset(
         "locus_hosting_undecidable",  # whether a locus can host the genotype could not be decided
         "locus_cannot_host_genotype",  # a locus contradicts the authored genotype and was dropped
         "rsid_no_hosting_locus",  # every candidate locus contradicts the authored genotype
-        "rsid_genotype_reads_as_two_events",  # an rsID row's genotype reads as a mirrored insertion and deletion (RM449)
         # ── VRS ──
         "vrs_id_unverifiable",  # a recorded `ga4gh:VA.` this tier cannot recompute
         "vrs_coverage_incomplete",  # alleles in resolution.csv that carry no VA at all

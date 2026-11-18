@@ -78,17 +78,25 @@ refused with `Duplicate (variant, genotype)`. S158 (the registry) hit 21 such re
 in `cancer` and 14 or more in `pathogenic`. Its lead found 2 of its 69 published modules carrying the silent
 claim (`superhuman@2.4.1` `rs766212849`, `thrombophilia@2.0.1` `rs1572088853`). The fill now reads
 `ResolutionRow.placement_verdict` at such a site. It fills the spellings a second source placed as
-`same_event` and not the others. Both witnessed: both stay, and a new warning, `rsid_genotype_reads_as_two_events`, says so once
+`same_event` and not the others. Both witnessed: both stay, and a warning says so once
 per rsID, in both modes. Neither witnessed: neither is filled, and the row is left unpositioned
 (`--strict` refuses it as unresolved). No second source asked at all (an offline run, a ClinVar fill, a table
-written before 0.8): both stay as before, and the same code says so. Whatever the witness, an expansion member
-re-keyed onto an authored coordinate row's exact `(variant_key, genotype)` is not filled, and the same code names
-it: the coordinate row picks its event, which is RM449's own remedy, and never a strict duplicate. Every arm carries that one code, and none is escalated in 0.8.
+written before 0.8): both stay as before, and a warning says so. Whatever the witness, an expansion member
+re-keyed onto an authored coordinate row's exact `(variant_key, genotype)` is not filled, and a warning names
+it: the coordinate row picks its event, which is RM449's own remedy, and never a strict duplicate. None is escalated in 0.8.
 **What moves:** an artifact compiled before this may hold the claim on both spellings. The reference
 examples move two rows (`pathogenic_clinvar`: `rs80356821` and `rs193922563` now fill only the witnessed
 deletion). The ClinVar drafter now writes an indel record with its coordinate, never its rsID alone, so a
 new draft cannot pose the question. A re-draft names an older rsID-only indel row as one no current draft
-would write. New warning code: `rsid_genotype_reads_as_two_events` (format's `VALID_WARNING_CODES`, 85).
+would write.
+**No new warning code in 0.8.9; the sentences borrow two (the pm, before the cut).** `warnings_summary` validates
+its keys against the closed vocabulary, so a code added in a patch makes a `just-dna-format` 0.8.6 reader refuse
+the manifest of every module that triggers it, and an uncoded sentence cannot ship (`findings.classify` refuses a
+part-classified channel). Each RM449 sentence takes the existing code of what the row became: no position written
+is `rsid_no_hosting_locus`; one or more loci filled (both spellings kept, or one dropped as unwitnessed or under an
+authored coordinate row) is `rsid_expanded_to_multiple_loci`, which is carried. The text and its pinned phrases are
+RM449's own. Until 0.9, a site narrowed to one locus is counted in `warnings_summary` as an expansion. 0.9 adds
+`rsid_genotype_reads_as_two_events` and moves these sentences to it. `just-dna-format` stays 0.8.6.
 **A recorded `undecided` reads as no verdict (before the cut, the pm).** Where a mirrored site's only recorded
 `placement_verdict` is `undecided` (the witness was asked and could not judge, as a run with no reference sequence
 writes), both spellings stay, as for a site nobody was asked about, under their own sentence (pinned: "could not

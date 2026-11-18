@@ -241,15 +241,18 @@ against the **union** of every locus a key resolves to, never per-expanded-row, 
 position, `C>CT` and `CT>C` both hold the strings `C` and `CT`, so an rsID row's `C/CT` is hosted by both,
 yet it means an inserted T on one and a deleted T on the other. The fill reads `ResolutionRow.placement_verdict`
 there: the spellings a second source placed as `same_event` are filled, and the others are not. If both are
-witnessed, the rsID names both events, so both stay, and `rsid_genotype_reads_as_two_events` says so once
+witnessed, the rsID names both events, so both stay, and a warning says so once
 per rsID in both modes. If neither is, neither is filled, and the row is left unpositioned, so `--strict`
 refuses it as unresolved. If no second source was asked at all (`placement_verdict` empty at the site), both
 stay as before 0.8.9, and the warning says so. A site whose only recorded verdict is `undecided` (the witness
 could not judge, as a run with no reference sequence writes) reads the same way: both stay, under a sentence
 saying the source asked "could not decide whether either is the same event". Whatever the witness, an expansion member re-keyed onto an
 authored coordinate row's exact `(variant_key, genotype)` is not filled: the coordinate row picks its event, and
-the warning names the key. Each outcome is a `rsid_genotype_reads_as_two_events` warning; none is escalated
-in 0.8. A positional row was already left unplaced where two loci host it. It is a corrected derivation:
+the warning names the key. Each outcome is a warning and none is escalated in 0.8. In 0.8.9 each sentence
+borrows the code of what the row became, since a code added in a patch is refused by an older format reader:
+`rsid_no_hosting_locus` where no position is written, `rsid_expanded_to_multiple_loci` where one or more loci are
+filled (so a site narrowed to one locus counts as an expansion). 0.9 adds `rsid_genotype_reads_as_two_events`.
+A positional row was already left unplaced where two loci host it. It is a corrected derivation:
 an artifact compiled before 0.8.9 may hold the claim on both spellings. S158 is the report.
 
 **"Exactly one of those rows can match" is a statement about matching, and a reader does more than
@@ -2110,7 +2113,7 @@ actionable, which is `vocab.ACTIONABLE_WARNING_CODES`, derived by subtraction:
   `positional_identity_contradicted`, `positional_rows_unjoinable`, `rsid_unresolved`,
   `rsid_without_resolution_label`, `rsid_expanded_to_multiple_loci`, `rsid_ambiguous`,
   `rsid_coordinate_disagrees`, `rsid_placements_disagree`, `locus_hosting_undecidable`,
-  `locus_cannot_host_genotype`, `rsid_no_hosting_locus`, `rsid_genotype_reads_as_two_events`
+  `locus_cannot_host_genotype`, `rsid_no_hosting_locus`
 - **VRS** — `vrs_id_unverifiable`, `vrs_coverage_incomplete`, `vrs_version_differs`
 - **`variants.csv` coherence** — `weight_sign_disagrees_with_effect`, `genotype_allele_not_at_locus`,
   `effect_allele_not_at_locus`, `genotype_coverage_gap`, `conclusion_names_other_genotype`,
@@ -2214,6 +2217,7 @@ MISSING_ALLELE_PHRASE          = "is VCF's MISSING marker, not an allele"
 UNCLOSED_PHRASE                = "records no closure"
 LOG_NOT_SHIPPED_PHRASE         = "does not ship with the module"
 PLACEMENTS_DISAGREE_PHRASE     = "two placement sets for this one rsID"   # resolution.py, RM374
+UNDECIDED_PHRASE               = "could not decide whether either is the same event"   # resolution.py, RM449
 ```
 
 **Retired phrases.** A consumer may still grep manifests compiled before the retirement, so the text

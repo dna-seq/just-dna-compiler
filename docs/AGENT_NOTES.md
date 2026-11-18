@@ -395,7 +395,7 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   found 2 of its 69 published modules carrying such a claim). `resolution._settle_mirrored_spellings`
   now settles that site by the recorded second witness (`placement_verdict`): the spellings witnessed
   `same_event` are filled and the others are not; witnessed both ways, both stay and
-  `rsid_genotype_reads_as_two_events` says so once per rsID; witnessed neither way, neither is filled.
+  a warning says so once per rsID; witnessed neither way, neither is filled.
   Asked of nobody, or judged only `undecided` (the witness could not judge: no reference sequence), both
   stay under the warning, because could-not-judge is not witnessed-neither (`@unreachable-not-absent`).
   A mirror is only where each spelling hosts the genotype **on its own**: a compound het in a padded frame
@@ -408,6 +408,11 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   `rs80356821`, `rs193922563`). The repair refused: an authored coordinate row winning over the
   expansion (S158's option 2), which silences only the case that is loud. The ClinVar drafter writes
   an indel record with its coordinate (`clinvar_draft.is_indel_record`), so new drafts never pose it.
+  The warning has no code of its own in 0.8.9: a code added in a patch is an old-reader break
+  (`warnings_summary`'s keys are a closed vocabulary), and an uncoded sentence cannot ship because
+  `findings.classify` refuses a part-classified channel. So each sentence borrows the code of what the
+  row became, `rsid_no_hosting_locus` or `rsid_expanded_to_multiple_loci`, and 0.9 adds
+  `rsid_genotype_reads_as_two_events` (`@warning-code-names-the-finding`).
 
 - `@rsid-not-per-allele` — **An rsID is position/multi-allelic-level, not per-allele.** One rsID (`rs33922842`) legitimately spans
   pathogenic + benign + uncertain alleles at one locus, so clinical identity keys on `variant_key`+

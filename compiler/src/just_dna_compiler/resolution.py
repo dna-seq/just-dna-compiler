@@ -195,8 +195,15 @@ def resolve_from_table(
                 usable, rejected, undecided = _hostable_loci(loci, v.genotype)
                 mirrored = _mirrored_sites(usable, v.genotype)
                 settled = _settle_mirrored_spellings(v.rsid, v.genotype, usable)
+                # RM449's sentences borrow the nearest existing code by what the row became (the pm, 2026-11-18):
+                # a code added in a patch is an old-reader break, since `warnings_summary` validates its keys
+                # against the closed vocabulary. No position written is `rsid_no_hosting_locus`; one or more
+                # loci filled is `rsid_expanded_to_multiple_loci`. 0.9 gives them their own code.
                 warnings.extend(
-                    CodedWarning("rsid_genotype_reads_as_two_events", s) for s in settled.sentences
+                    CodedWarning("rsid_no_hosting_locus", s)
+                    if settled.withheld_all
+                    else CodedWarning("rsid_expanded_to_multiple_loci", s)
+                    for s in settled.sentences
                 )
                 for site in settled.both_ways:
                     both_ways.setdefault(v.rsid, {}).setdefault(site, None)
@@ -224,13 +231,16 @@ def resolve_from_table(
                 if claimed:
                     claimed_ids = {id(lo) for lo in claimed}
                     usable = [lo for lo in usable if id(lo) not in claimed_ids]
+                    sentence = (
+                        f"{v.rsid}: its row's genotype {v.genotype} is not filled on "
+                        f"{', '.join(_expansion_key(lo, genome_build) for lo in claimed)}, because the module "
+                        f"authors that coordinate row with the same genotype, which picks that event (RM449)"
+                    )
+                    # Borrowed codes until 0.9, by what the row became (see the settlement above).
                     warnings.append(
-                        CodedWarning(
-                            "rsid_genotype_reads_as_two_events",
-                            f"{v.rsid}: its row's genotype {v.genotype} is not filled on "
-                            f"{', '.join(_expansion_key(lo, genome_build) for lo in claimed)}, because the module "
-                            f"authors that coordinate row with the same genotype, which picks that event (RM449)",
-                        )
+                        CodedWarning("rsid_expanded_to_multiple_loci", sentence)
+                        if usable
+                        else CodedWarning("rsid_no_hosting_locus", sentence)
                     )
                 kept_ids = {id(lo) for lo in usable}
                 undecided = [lo for lo in undecided if id(lo) in kept_ids]
@@ -381,7 +391,7 @@ def resolve_from_table(
     for rsid, sites in both_ways.items():
         warnings.append(
             CodedWarning(
-                "rsid_genotype_reads_as_two_events",
+                "rsid_expanded_to_multiple_loci",
                 f"{rsid}: its row's genotype reads as an insertion and as a deletion at {'; '.join(sites)}, "
                 f"and a second source places both under this rsID, so the row's one claim is filled on two "
                 f"opposite events (RM449). If it is about one of them, replace the rsID row with a row "
@@ -392,7 +402,7 @@ def resolve_from_table(
     for rsid, sites in unasked.items():
         warnings.append(
             CodedWarning(
-                "rsid_genotype_reads_as_two_events",
+                "rsid_expanded_to_multiple_loci",
                 f"{rsid}: its row's genotype reads as an insertion and as a deletion at {'; '.join(sites)}, "
                 f"and no second source was asked where either is placed (`placement_verdict` is empty: an "
                 f"offline run, a ClinVar fill, or a table written before 0.8), so both are filled as before "
@@ -404,7 +414,7 @@ def resolve_from_table(
     for rsid, sites in undecided_sites.items():
         warnings.append(
             CodedWarning(
-                "rsid_genotype_reads_as_two_events",
+                "rsid_expanded_to_multiple_loci",
                 f"{rsid}: its row's genotype reads as an insertion and as a deletion at {'; '.join(sites)}, "
                 f"and the second source asked {UNDECIDED_PHRASE} (`placement_verdict` is `undecided`: a run "
                 f"with no reference sequence, such as an offline one), so both are filled as before (RM449). "
@@ -1244,8 +1254,9 @@ def _settle_mirrored_spellings(rsid: str, genotype: str, usable: list[Resolution
     names both events (ClinVar files the HBB frameshifts both ways under one rsID), so the
     one-to-many expansion stands as `@membership-union` has it; but one rsID row then claims two
     events, which `@rsid-not-per-allele` says a clinical claim should not, so the site is returned in
-    `both_ways` and the fill says so once per rsID (`rsid_genotype_reads_as_two_events`, both modes,
-    never escalated in 0.8; refusing it is a minor's question). Where it placed none, nothing settles
+    `both_ways` and the fill says so once per rsID (both modes, never escalated in 0.8; refusing it is a
+    minor's question; under the borrowed `rsid_expanded_to_multiple_loci` until 0.9 adds
+    `rsid_genotype_reads_as_two_events`). Where it placed none, nothing settles
     which was meant: none at that position is filled, and the row is left unpositioned rather than
     given a guess. Where no second source was asked at all (`placement_verdict` empty everywhere at
     the site), "not asked" is not "witnessed neither": the expansion stays as before 0.8.9, returned in

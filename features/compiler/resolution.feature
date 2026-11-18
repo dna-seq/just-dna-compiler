@@ -147,18 +147,29 @@ Feature: Resolution from the injected table
 
   # source: compiler/src/just_dna_compiler/resolution.py
   # anchor: resolve_from_table
-  @code:rsid_genotype_reads_as_two_events @actionable @both_modes
-  Scenario: an rsID row's indel genotype reads as an insertion and as a deletion at one position
+  @code:rsid_expanded_to_multiple_loci @carried @both_modes
+  Scenario: an rsID row's indel genotype reads as an insertion and as a deletion at one position, and is filled
     Given an rsID-only row whose genotype "C/CT" is hosted by both "C>CT" and "CT>C" at one position
     When the module is compiled
     Then a warning says the two are "opposite events spelled with the same strings"
     And only the spellings a second source placed as "same_event" are filled
-    And with none placed so, "neither is filled and the position remains unset"
     And with both placed so, both are filled and one sentence for the rsID says "a second source places both under this rsID"
     And with every verdict there "undecided", both are filled and the sentence says the source "could not decide whether either is the same event"
     # RM449, from S158: string hosting relies on a two-allele genotype carrying its own frame, and a
     # mirrored insertion and deletion break that. The witnessed spelling settles it; a site witnessed both
-    # ways keeps the expansion and is never silent. Never escalated under strict in 0.8.
+    # ways keeps the expansion and is never silent. Never escalated under strict in 0.8. In 0.8.9 the
+    # sentence borrows the code of what the row became, since a code added in a patch breaks a 0.8.6
+    # reader; 0.9 adds `rsid_genotype_reads_as_two_events` and moves it there.
+
+  # source: compiler/src/just_dna_compiler/resolution.py
+  # anchor: resolve_from_table
+  @code:rsid_no_hosting_locus @actionable @both_modes
+  Scenario: an rsID row's indel genotype reads as two events and no spelling was witnessed
+    Given an rsID-only row whose genotype "C/CT" is hosted by both "C>CT" and "CT>C" at one position
+    And a second source placed neither as "same_event"
+    When the module is compiled
+    Then a warning says "neither is filled and the position remains unset"
+    # RM449's arm that writes no position, under the code of what the row became until 0.9.
 
   # source: compiler/src/just_dna_compiler/resolution.py
   # anchor: resolve_from_table

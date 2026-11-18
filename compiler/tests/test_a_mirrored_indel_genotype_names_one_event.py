@@ -335,3 +335,50 @@ def test_an_example_judged_undecided_at_every_mirrored_site_compiles_strict_and_
     assert second.success, second.errors
     assert first.manifest.artifact.digest == second.manifest.artifact.digest
     assert reconstructed_projection(first.manifest) == reconstructed_projection(second.manifest)
+
+
+# ── 0.8.9 borrows two existing codes, by what the row became (the pm, 2026-11-18, 5c5d4a52) ────────────
+# A code added in a patch is an old-reader break: `warnings_summary` validates its keys against the closed
+# vocabulary, so a just-dna-format 0.8.6 reader refuses a manifest carrying one it does not know. 0.9 adds
+# `rsid_genotype_reads_as_two_events` and moves these sentences to it.
+
+
+def _summary_and_carried(result) -> tuple[dict[str, int], list[str]]:
+    compilation = result.manifest.compilation
+    return compilation.warnings_summary, compilation.carried
+
+
+def test_a_filled_mirrored_site_is_counted_as_an_expansion_until_0_9(tmp_path: Path) -> None:
+    """Both spellings witnessed, one witnessed, and none asked: the row is filled, so the sentence counts under
+    `rsid_expanded_to_multiple_loci` (carried, as that code is) and never under a code 0.8.6 cannot read."""
+    cases = {
+        "both": ("same_event", "same_event", "a second source places both under this rsID"),
+        "one": ("same_event", "unplaced", _PHRASE),
+        "unasked": ("", "", "no second source was asked"),
+        "undecided": ("undecided", "undecided", _UNDECIDED_PHRASE),
+    }
+    for name, (insertion, deletion, phrase) in cases.items():
+        loci = _locus("rs1057516393", 0, 108256251, "C", "CT", insertion) + _locus(
+            "rs1057516393", 1, 108256251, "CT", "C", deletion
+        )
+        spec = _spec(tmp_path / name, _HEADER + _RSID_ROW, loci, "rs1057516393")
+        result = compile_module(spec, tmp_path / name / "out", strict=True)
+        assert result.success, (name, result.errors)
+        summary, carried = _summary_and_carried(result)
+        (said,) = [w for w in result.manifest.compilation.warnings if phrase in w]
+        assert said in carried, name
+        assert "rsid_genotype_reads_as_two_events" not in summary
+        assert summary.get("rsid_expanded_to_multiple_loci", 0) >= 1
+
+
+def test_an_unpositioned_mirrored_site_is_counted_as_no_hosting_locus_until_0_9(tmp_path: Path) -> None:
+    loci = _locus("rs1057516393", 0, 108256251, "C", "CT", "unplaced") + _locus(
+        "rs1057516393", 1, 108256251, "CT", "C", "unplaced"
+    )
+    spec = _spec(tmp_path, _HEADER + _RSID_ROW, loci, "rs1057516393")
+    result = compile_module(spec, tmp_path / "out", strict=False)
+    summary, carried = _summary_and_carried(result)
+    (said,) = [w for w in result.manifest.compilation.warnings if _PHRASE in w]
+    assert said not in carried
+    assert summary == {**summary, "rsid_no_hosting_locus": 1}
+    assert "rsid_genotype_reads_as_two_events" not in summary
