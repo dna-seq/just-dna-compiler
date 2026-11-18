@@ -2615,7 +2615,8 @@ with RemoteSnapshots(declared_use="non_commercial") as snapshots:      # proxy f
   test that would hand duckdb a host other than this machine is refused and recorded like a socket reach.
   The fence holds only while nothing else builds a URL duckdb opens, so an AST walk
   (`test_the_network_is_fenced.py`) holds that: no duckdb call in the enricher carries a URL literal, no
-  module but `remote` loads `httpfs`, and in `remote` duckdb reads a file only through SQL, every
+  module but `remote` loads `httpfs` explicitly (duckdb autoloads it on a URL by default, so outside `remote`
+  the walk sees URL literals only, not a URL held in a variable), and in `remote` duckdb reads a file only through SQL, every
   `read_parquet` binds its files as a parameter built by `_file_url` (never rewritten in place), and
   `_file_url` returns `remote_url(...)`.
 

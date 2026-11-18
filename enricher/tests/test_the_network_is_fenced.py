@@ -321,7 +321,9 @@ def _duckdb_url_faults(sources: dict[str, str]) -> list[str]:
     """Every place a module could hand duckdb a URL that `remote_url` did not build, by `file:line`.
 
     Five rules. No duckdb call anywhere carries a URL scheme in a literal. No module but the holder's
-    loads `httpfs` (without it duckdb opens no URL). In the holder's module duckdb reads a file only
+    loads `httpfs` explicitly. That second rule is not a fence by itself: duckdb autoloads `httpfs` on a URL
+    by default (measured on a plain connection), so outside the holder's module the walk sees only URL
+    literals, and a URL held in a variable there passes it unseen (its limit, stated). In the holder's module duckdb reads a file only
     through SQL, never a relational `read_parquet(...)`/`from_parquet(...)` method, every `read_parquet`
     binds its files (`read_parquet(?)`), the bound value is `self._file_url(...)`, never a string put
     together on the spot, and no bound list is rewritten in place (`params[0] = …`). And `_file_url`

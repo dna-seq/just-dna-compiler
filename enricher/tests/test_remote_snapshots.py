@@ -502,6 +502,12 @@ def test_close_waits_for_a_lookup_in_flight_and_refuses_one_that_starts_while_cl
     closing.start()
     closing.join(0.2)
     assert closing.is_alive(), "close() returned with a lookup in flight"
+    for _ in range(1000):  # close() sets `_closed` under the lock before it waits; never ask before it has
+        with holder._lock:
+            if holder._closed:
+                break
+        threading.Event().wait(0.01)
+    assert holder._closed
     with pytest.raises(ValueError) as late:
         holder.lookup("clinvar", "clinvar", {"rsid": ["rs334"]})
     assert str(late.value) == remote.HOLDER_CLOSED

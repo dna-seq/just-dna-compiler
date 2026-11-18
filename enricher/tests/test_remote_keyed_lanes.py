@@ -720,9 +720,18 @@ def test_the_proxy_answers_every_lane_it_compares_alike_and_is_not_asked_where_i
         _root, local, remote_answer = _PROBES[lane](request, recorder)
     assert remote_answer == local
     spec = REMOTE_LANES[lane]
-    expected = {
-        table: "proxy" if spec.proxy_compares(table, set(keys) - {"chrom", "start"}) else "hf"
-        for table, keys, _answer in recorder.asked
+    # Per ask, never per table: civic and clinpgx ask one table twice, by gene (folded) and by rsID (exact).
+    asked = [(table, tuple(sorted(keys)), answer.route.route) for table, keys, answer in recorder.asked]
+    expected = [
+        (table, columns, "proxy" if spec.proxy_compares(table, set(columns) - {"chrom", "start"}) else "hf")
+        for table, columns, _route in asked
+    ]
+    assert asked == expected
+    assert {(table, tuple(sorted(keys))) for table, keys in proxied} == {
+        (table, columns) for table, columns, route in expected if route == "proxy"
     }
-    assert {table: answer.route.route for table, _keys, answer in recorder.asked} == expected
-    assert {table for table, _keys in proxied} == {t for t, route in expected.items() if route == "proxy"}
+    assert all(spec.compare(table, column).exact for table, keys in proxied for column in keys), (
+        "no key the lane folds or splits reaches the proxy"
+    )
+    if spec.compares:
+        assert any(route == "hf" for *_, route in asked), "the lane's folded key went to the Hub"

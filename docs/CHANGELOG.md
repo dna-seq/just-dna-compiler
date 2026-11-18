@@ -218,8 +218,9 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   lookup closed the proxy's client under it and the lookup's next request leaked `httpx`'s `RuntimeError`.
 - **An AST walk holds that only `remote.remote_url` hands duckdb a URL** (RM430 follow-up, the pm's 2026-11-18
   finding): the test fence's duckdb case wraps that one function, so the walk is the fence's own guard. No duckdb
-  call in the enricher carries a URL literal, no module but `remote` loads `httpfs`, and in `remote` every
-  `read_parquet` binds files that `_file_url` built through `remote_url`. Each rule is shown failing on a sample.
+  call in the enricher carries a URL literal, no module but `remote` loads `httpfs` explicitly, and in `remote`
+  duckdb reads a file only through SQL and every `read_parquet` binds files that `_file_url` built through
+  `remote_url`. Its limit: duckdb autoloads `httpfs`, so outside `remote` only URL literals are seen. Each rule is shown failing on a sample.
 - **The remote compare is the local compare, on every lane** (RM430 follow-up, the pm's 2026-11-18 placing of the
   `;`-joined cell): Hugging Face compared a key with the whole cell exactly, so a gene in another case (CIViC,
   ClinPGx, cpic) or inside a joined cell (ClinPGx 399 of 16,117 rows, the drug labels 361 of 1,433) was answered
