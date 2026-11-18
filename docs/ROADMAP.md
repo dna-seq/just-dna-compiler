@@ -2689,6 +2689,24 @@ there, and RM449's warning names it, so nothing is silent; the coordinate row is
 that event, which is what the warning asked for. The test that failed is the fixture, plus a lap with the verdicts
 stripped. RM449 is a defect of this build until it passes; the half-day fallback above still stands.
 
+**Two calls before the 0.8.9 cut (the pm, 2026-11-18, from the lead's cut branch).**
+
+1. **The warning code waits for 0.9; the warning ships in 0.8.9 uncoded.** `warnings_summary` validates its keys
+   against the closed `VALID_WARNING_CODES`, so a reader on `just-dna-format` 0.8.6 refuses a 0.8.9 manifest that
+   carries `rsid_genotype_reads_as_two_events` (measured on `hboc_palb2`). Every code added in the 0.8 line was added
+   in the minor, where INTEGRATION_0_8 § 1 tells a consumer to raise its format floor with it; a patch carries no such
+   instruction, and `main` is patch scope only. The warning's text and its pinned phrase ship unchanged, and 0.9
+   adds the code and its INTEGRATION row. Rejected: shipping the code with a documented floor raise, which makes a
+   patch an old-reader break for every consumer reading a module that triggers it.
+2. **A recorded `undecided` on both spellings reads as no verdict, fixed before the cut.** An offline run writes
+   `undecided`, which says the second source could not judge, not that it witnessed neither
+   (`@unreachable-not-absent`; the same reading as 84a256ef's for a missing verdict). Such a site keeps its expansion
+   under the warning, as the CHANGELOG already says, so an offline re-derivation never turns a module that compiled
+   into a strict refusal. The test: the example enriched offline, compiled strict.
+
+Confirmed: the corrected derivation's reach is stated by `compilation.expanded_keys` in the release record, and RM451
+is declared an addition whose reach is unstated where a header-only `resolution.csv` leaves `expanded_keys` null.
+
 **Residuals** won't fix — a site witnessed both ways is not refused in 0.8 (the pm: refusing it is a minor's
 question, by escalating `rsid_genotype_reads_as_two_events`) · won't fix — an authored coordinate row winning over
 the expansion (S158's option 2) silences only the loud case
