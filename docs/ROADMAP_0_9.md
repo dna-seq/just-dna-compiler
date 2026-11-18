@@ -329,6 +329,37 @@ become passing tests.
   the one normalizer. A patch after 0.9 merges, because its home is 0.9's `KEY_COMPARES`. If the review round reports
   the same class, its finding joins RM454.
 
+**The round-1 fixes, placed (the pm, 2026-11-18; merged as ea3dcf07).** All eleven classes are built, plus the enrich
+byte test (default against explicit `None`; a one-off run of `main`'s code on five examples matched byte for byte
+except `verification.json`'s clocks).
+
+- **`stale` joins `LANE_STATES`: kept, with an upgrade-notes line.** Checked on 2026-11-18: the registry derives its
+  own `/caches` states and never reads the enricher's, and the module creator compares `state == "present"`, so a
+  stale index reads there as not present and is offered a build. A reader that validates the set as closed would
+  refuse it; the upgrade notes name the new member.
+- **Flipped (1): an unreadable pull record is moved aside, not refused.** `ensure_snapshot` moves it beside itself
+  under a dated name, warns that a group selection it may have held is lost and names the moved file, and pulls (with
+  the groups this call names). An unattended `enrich(download=True)` should not stop on bookkeeping it can rebuild,
+  and nothing is deleted. **As built (the lead's (b), 2026-11-18):** a cache with `release.json` and no pull record
+  reads as a local build and is never pulled again (0.8.8 already froze a corrupt record's cache that way; only
+  older releases re-pulled over it). So the move writes a fresh record naming the lane's repository, with no groups
+  and no release digest, and the pull goes on. A file the new manifest attests by `sha256` is kept and the rest are
+  fetched. The warning names the repository the fresh record assumes. A local build writes no pull record, so a
+  corrupt one can only have come from a pull.
+- **Confirmed:** (2) a non-object group entry makes the whole pull record unreadable, which the flip above handles.
+  (3) A proxy reply missing `lane` or `table` is malformed. (4) rsID keys still go to the proxy, since the key is
+  normalized before the query and the column is stored in that form, so an exact compare gives the local answer; gene
+  keys go to Hugging Face. (5) A stale index in `cache prepare` is reported as an unbuilt one is (not ready here,
+  exit 0), its reason naming `cache rebuild --only ensembl_rsid_index`. (6) An unstated size withholds the pin too.
+  (7) A core that cannot be pinned makes the index stale, while a core that is gone leaves it present with its parent
+  absent: a moved parent and a gone one are different instructions. (8) The text walk covers logger calls, findings
+  and warning lists, not exception texts or CLI echo lines.
+- **Older than 0.9, filed as RM455**, a patch on `main`: `UnicodeDecodeError` in three pull-record readers, the mutable
+  `batch_size` in three settings, `mitomap_miss` without a stale reason, `_payload` keyed on a lane's name.
+- **Residuals of this item (additive, the next minor):** the proxy's `release_unreadable` is not carried into
+  `RemoteRoute`; `_batch_column` always splits on `start`; the text walk cannot see a new text added to a module older
+  than 0.9.
+
 **Residuals** none yet.
 
 ## RM431 — the keyed readers a remote lookup needs: an rsID index for Ensembl, and a key on the whole-table readers
