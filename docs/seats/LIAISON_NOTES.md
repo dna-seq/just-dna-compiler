@@ -60,7 +60,8 @@ registry from the global endpoint and the test passes only within a day of a rea
 Lesson: before blaming a moved package, run the failing test on the old lock. **Second bump 2026-11-17** (830962e9): eleven moves, duckdb
 1.5.5 -> 1.5.6 (held on 1.x for RM344), suite 7446 green, no new warning. Re-measured the same run: data sources (clinvar
 and mitomap behind their sources, sent to the lead), the GWAS probe (unchanged), the VCF PRs (unchanged). The
-duckdb-python tag watcher went (finals only, as the index); polars' stays (its rc tags). Next bump: Tuesday 2026-11-24.
+duckdb-python tag watcher went (finals only, as the index); polars' stays (its rc tags). Next bump: Tuesday 2026-11-24. Its worktree goes on disk, `sh $K/bin/wt.sh liaison/deps-<date>` (`.worktrees/`), never the scratchpad:
+/tmp here is a 32 GB tmpfs (RAM), and the three bump worktrees of 11-10/11-17 took 1.5 GB of it (base v0.1.236, kit #536).
 
 **GWAS Catalog REST v2** (`docs/UPSTREAM_GWAS_CATALOG.md`, since 2026-11-11, after RM428): a live service, no
 package or clone; its release channel is the news page (read through the 2026-08-19 post). A weekly probe of the page
@@ -123,6 +124,8 @@ message is never repeated; this seat holds none, no concern). reflect after 2026
 a real fork goes to the person: of this seat's asks, none is a fork; the VCF filing grant waits on the rule that a
 seat-relayed brief change is the person's to confirm, the rest are steps only the person can take; no concern). reflect after 2026-11-24:
 classes/base/BASE.md as of v0.1.231 (a claim of done is tested where the person looks, an absence carries its time;
-the liaison's live-read rule of 2026-11-16 says the same for upstream states; no concern).
+the liaison's live-read rule of 2026-11-16 says the same for upstream states; no concern). reflect after 2026-11-25: classes/base/BASE.md as of v0.1.236
+(a worktree goes in `.worktrees/`, never the scratchpad; this seat's three were there, unlocked and handed to the person,
+whose settings keep removal theirs; the next bump uses `bin/wt.sh`).
 
 **Priming c339487** (a cap on a proven break; adoption maps to the lead) was read; no concern.
