@@ -2669,6 +2669,9 @@ its, and RM449 follows as 0.8.10. A re-close after the restore needs an enrich p
   filled, and `rsid_genotype_reads_as_two_events` names it (the pm, `05addf11`). Tests: S158's loud case with no
   verdicts, and `pathogenic_clinvar` with every placement verdict stripped, compiled strict and lapped. Both fail
   on `aa5b88f7`.
+  Scoped to a mirrored site, RM449's own (`_mirrored_sites`): an expansion colliding with an authored row
+  anywhere else, a paralog's other copy, still refuses as the duplicate it is, which `test_one_verdict` pins
+  (`expansion_collides_with_an_authored_row`). The first cut applied it to every expansion and that test caught it.
 
 **Both resolved (the pm, 2026-11-18, 84a256ef).** (1) was RM449's: an offline ClinVar fill records no verdict, and
 no verdict was read as witnessed by neither. Not asked is not witnessed-neither (`@unreachable-not-absent`), so a

@@ -192,6 +192,7 @@ def resolve_from_table(
                 patched.append(v.model_copy(update=_coord_update(loci[0])))
             else:
                 usable, rejected, undecided = _hostable_loci(loci, v.genotype)
+                mirrored = _mirrored_sites(usable, v.genotype)
                 settled = _settle_mirrored_spellings(v.rsid, v.genotype, usable)
                 warnings.extend(
                     CodedWarning("rsid_genotype_reads_as_two_events", s) for s in settled.sentences
@@ -205,8 +206,15 @@ def resolve_from_table(
                 # re-keyed onto that row's exact (variant_key, genotype) is not filled: it would be the
                 # same row twice (`Duplicate (variant, genotype)` under strict), whatever the witness said
                 # or whether one was asked at all. Only an expansion re-keys; one locus keeps the rsID key.
+                # Only at a mirrored site, RM449's own: an expansion colliding with an authored row anywhere
+                # else (a paralog's other copy) still refuses as the duplicate it is (`test_one_verdict`).
                 claimed = (
-                    [lo for lo in usable if (_expansion_key(lo, genome_build), v.genotype) in authored_rows]
+                    [
+                        lo
+                        for lo in usable
+                        if (lo.chrom, lo.start) in mirrored
+                        and (_expansion_key(lo, genome_build), v.genotype) in authored_rows
+                    ]
                     if len(usable) > 1
                     else []
                 )
@@ -1154,6 +1162,15 @@ def site_verdicts(genotype: str, loci: Sequence[LocusSpelling]) -> list[bool | N
     if all(verdict is False for verdict in per_locus):
         return [True if k in named else verdict for k, verdict in enumerate(per_locus)]
     return per_locus
+
+
+def _mirrored_sites(loci: list[ResolutionRow], genotype: str) -> set[tuple[str | None, int | None]]:
+    """The positions where an insertion and a deletion each host `genotype` on their own (RM449's mirror)."""
+    directions: dict[tuple[str | None, int | None], set[str | None]] = {}
+    for locus in loci:
+        if hosting_verdict(genotype, locus.ref, locus.alts) is not False:
+            directions.setdefault((locus.chrom, locus.start), set()).add(_indel_direction(locus))
+    return {site for site, seen in directions.items() if {"insertion", "deletion"} <= seen}
 
 
 def _expansion_key(locus: ResolutionRow, genome_build: str) -> str:
