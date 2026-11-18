@@ -232,6 +232,11 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   as every other folded compare does. One walk over `REMOTE_LANES`, local against remote on Hugging Face and
   again behind a `MockTransport` registry, holds it; the three strict `xfail`s in `test_remote_keyed_lanes.py` are
   passing tests.
+- **`lookup_variant(..., rsid_index=None)` and `enrich(..., rsid_index=None)`** (RM431, the pm's 2026-11-18
+  reading 1): the rsID index's seam on every entry point that reads the index, beside `ensembl_cache`, since the
+  registry's hints call `lookup_variant` and its enrich step calls `enrich`, neither `lookup_loci`. Each passes
+  it down to `resolver.lookup_loci(..., rsid_index=)`, with its semantics: given, it is the only place an index
+  is looked for, never the environment; `None` keeps the lane's ladder.
 
 ## 2026-11-18 — RM453: a mirrored site where no spelling was witnessed keeps both spellings (patch, a declared corrected derivation, on `main`)
 

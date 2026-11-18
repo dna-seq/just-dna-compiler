@@ -25,6 +25,7 @@ Offline is a first-class answer, not a failure: a check that could not run repor
 `absent`. `None` is not `False` anywhere in this file.
 """
 
+import functools
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -206,6 +207,7 @@ def lookup_variant(
     clinvar_cache: Path | None = None,
     pubmind_cache: Path | None = None,
     clients: LookupClients | None = None,
+    rsid_index: Path | None = None,
 ) -> VariantHint:
     """Answer "what is this variant?" — validity, coordinates, alleles, frequencies, clinical calls.
 
@@ -220,7 +222,12 @@ def lookup_variant(
     `remote.RemoteSnapshots`** (0.9, RM430), in the local snapshot's place and before live Ensembl
     REST: the proxy, then Hugging Face, read by the same SQL the local reader runs. Ensembl is asked
     by position only; ClinVar by rsID and by position, and for its clinical calls. Each lane answered
-    remotely says where in `routes`. Never under `offline=True`. A route that could not be asked is a
+    remotely says where in `routes`. Never under `offline=True`.
+
+    `rsid_index` is the `ensembl_rsid_index` lane's directory, beside `ensembl_cache` (0.9, RM431), for a
+    host that passes its lanes' paths explicitly (the registry's hints): handed to `resolver.lookup_loci`,
+    so given it is the only place an index is looked for, never the environment; `None` keeps the lane's
+    ladder. An index is read only when it pins the core, and the answer is the scan's either way. A route that could not be asked is a
     `warning` finding; a request a route refuses as wrong (a 422, an unknown table or column, a closed
     holder) raises its `ValueError`, since it is wrong on every route.
     """
@@ -231,7 +238,9 @@ def lookup_variant(
     # keeps zero egress at zero.
     remote = None if offline else clients.snapshots
     try:
-        _lookup_from_cache(hint, rsid, chrom, start, ref, alts, ensembl_cache, clinvar_cache, remote)
+        _lookup_from_cache(
+            hint, rsid, chrom, start, ref, alts, ensembl_cache, clinvar_cache, remote, rsid_index=rsid_index
+        )
         if not offline:
             # The live coordinate link, in `enrich()`'s own order: caches first, live Ensembl for what
             # they missed. Without it this surface was *silently weaker than the pass it advises on* —
@@ -299,6 +308,8 @@ def _lookup_from_cache(
     ensembl_cache: Path | None,
     clinvar_cache: Path | None,
     remote: RemoteSnapshots | None = None,
+    *,
+    rsid_index: Path | None = None,
 ) -> None:
     """The snapshot links: the Ensembl snapshot, then ClinVar, in `enrich()`'s own order.
 
@@ -309,7 +320,11 @@ def _lookup_from_cache(
     reader SQL over the rows the remote route answered, so the link reads alike on every route."""
     positions = [(chrom, start, ref, alts)] if chrom is not None and start is not None else []
     links = (
-        (resolve_ensembl_reference(ensembl_cache), lookup_loci, "ensembl"),
+        (
+            resolve_ensembl_reference(ensembl_cache),
+            functools.partial(lookup_loci, rsid_index=rsid_index),
+            "ensembl",
+        ),
         (resolve_clinvar_reference(clinvar_cache), clinvar_lookup_loci, "clinvar"),
     )
     for reference, lookup, label in links:

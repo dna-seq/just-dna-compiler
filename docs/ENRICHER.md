@@ -740,7 +740,7 @@ That is the documented "inject what you already hold" escape.
 ## `enrich()` — the resolver chain
 
 ```python
-enrich(spec_dir, *, mode="best_effort", offline=False, ensembl_cache=None,
+enrich(spec_dir, *, mode="best_effort", offline=False, ensembl_cache=None, rsid_index=None,
        clinvar_cache=None, use_clinvar=True, use_gnomad=True, download=True,
        genome_build=None, write=True, mint_vrs=True,
        verify_ref=True, verify_clinsig=True, verify_rsids=True, verify_datasets=True,
@@ -1886,8 +1886,11 @@ group, and a lookup by rsID pruned nothing (every row group's `id` spans rs1 to 
   never the environment, and an index there is read only when it pins `reference`, as above. With no index
   there, or a stale one, the note and the refusal name the place passed, and an instruction for a place not
   named `ensembl_rsid_index` says to pass `<dir>/ensembl_rsid_index` as `rsid_index` rather than to export
-  `$JUST_DNA_ENSEMBL_RSID_INDEX_CACHE`. `None` keeps the ladder above. `lookup_variant` and `enrich` take no
-  such path in 0.9: they read the index from the environment.
+  `$JUST_DNA_ENSEMBL_RSID_INDEX_CACHE`. `None` keeps the ladder above. **Every entry point that reads the
+  index takes the same seam** (the pm, 2026-11-18: the registry's hints call `lookup_variant` and its enrich
+  step calls `enrich`, neither `lookup_loci`): `lookup_variant(..., ensembl_cache=…, rsid_index=…)` and
+  `enrich(spec_dir, *, ensembl_cache=…, rsid_index=…)` pass it down to `lookup_loci`'s, with the same
+  semantics.
 
 **MANE's ❓ is an unestablished permission, and the third column says so.** MANE's bytes carry a
 *policy* — NCBI places no restrictions on use or distribution and, in the same paragraph, declines to

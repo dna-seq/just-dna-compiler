@@ -17,6 +17,7 @@ import pytest
 from just_dna_enricher import caches, download, ensembl_rsid_index_build, locations, remote, resolver
 from just_dna_enricher.caches import CACHE_LANES, LANES_BY_NAME, RebuildRequest, rebuild_lane
 from just_dna_enricher.cli import app
+from just_dna_enricher.enrich import enrich
 from just_dna_enricher.ensembl_rsid_index_build import (
     INDEX_BUCKET_WIDTH,
     INDEX_FILE_PATTERN,
@@ -26,6 +27,7 @@ from just_dna_enricher.ensembl_rsid_index_build import (
     core_pin,
 )
 from just_dna_enricher.locations import SNAPSHOT_REPO_IDS, resolve_ensembl_rsid_index_reference
+from just_dna_enricher.lookup import lookup_variant
 from just_dna_enricher.resolver import lookup_loci
 from just_dna_format.snapshot import read_release, release_label
 from typer.testing import CliRunner
@@ -380,6 +382,64 @@ def test_a_stale_index_passed_explicitly_is_refused_naming_the_rebuild_for_the_c
         "Rebuild it with `just-dna-enricher cache rebuild --only ensembl_rsid_index --out <dir>` and pass "
         "<dir>/ensembl_rsid_index as `rsid_index`."
     )
+
+
+# ── the seam on every entry point that reads the index (the pm, 6e52b9a1 reading 1) ──────────────
+#
+# The registry's hints call `lookup_variant` and its enrich step calls `enrich(ensembl_cache=)`; neither
+# calls `lookup_loci`. Each takes `rsid_index` beside `ensembl_cache` and passes it down: given, it is the
+# only place looked in. The environment names an index lacking the rsID asked, so an answer that finds it
+# read the index passed, and one that misses it read the environment's.
+
+#: An rsID the fixture core holds at one locus, 11:5226773 TGG>T,TG.
+ONE_LOCUS = "rs267607291"
+
+
+@pytest.fixture
+def environment_lacks_it(
+    no_ambient_caches, monkeypatch: pytest.MonkeyPatch, core: Path, tmp_path: Path
+) -> Path:
+    """An index of this core, without `ONE_LOCUS`, named by the environment."""
+    elsewhere = build_rsid_index(core, tmp_path / "env-index").out_dir
+    _drop_from_index(elsewhere, ONE_LOCUS)
+    monkeypatch.setenv(locations.ENSEMBL_RSID_INDEX_CACHE_VAR, str(elsewhere))
+    return elsewhere
+
+
+def test_lookup_variant_reads_the_index_passed_beside_the_core_never_the_environments(
+    environment_lacks_it: Path, core: Path, index: Path, tmp_path: Path
+) -> None:
+    nowhere = tmp_path / "no-clinvar"
+    asked = {"rsid": ONE_LOCUS, "offline": True, "ensembl_cache": core, "clinvar_cache": nowhere}
+    passed = lookup_variant(**asked, rsid_index=index)
+    expected = lookup_loci(core, [ONE_LOCUS], [], rsid_index=index)[0][ONE_LOCUS]
+    assert expected and passed.loci == expected
+    assert lookup_variant(**asked).loci == [], "unpassed, the environment's index (which lacks it) is read"
+
+
+def test_enrich_reads_the_index_passed_beside_the_core_never_the_environments(
+    environment_lacks_it: Path, core: Path, index: Path, tmp_path: Path
+) -> None:
+    def spec(name: str) -> Path:
+        root = tmp_path / name
+        root.mkdir()
+        (root / "module_spec.yaml").write_text(
+            f"schema_version: '1.0'\nmodule:\n  name: {name}\n  title: T\n  description: d\n  report_title: T\n",
+            encoding="utf-8",
+        )
+        (root / "variants.csv").write_text(
+            f"rsid,genotype,state,conclusion,gene\n{ONE_LOCUS},T/TGG,risk,c,HBB\n", encoding="utf-8"
+        )
+        (root / "studies.csv").write_text(f"rsid,pmid\n{ONE_LOCUS},25741868\n", encoding="utf-8")
+        return root
+
+    asked = {"offline": True, "ensembl_cache": core, "clinvar_cache": tmp_path / "no-clinvar", "write": False}
+    passed = enrich(spec("passed"), rsid_index=index, **asked)
+    placed = {(row.rsid, row.chrom, row.start) for row in passed.rows if row.chrom}
+    expected = lookup_loci(core, [ONE_LOCUS], [], rsid_index=index)[0][ONE_LOCUS]
+    assert placed == {(ONE_LOCUS, locus["chrom"], int(locus["start"])) for locus in expected}
+    unpassed = enrich(spec("unpassed"), **asked)
+    assert not [row for row in unpassed.rows if row.chrom], "unpassed, the environment's index is read"
 
 
 # ── the lane ────────────────────────────────────────────────────────────────────────────────────

@@ -250,6 +250,7 @@ def enrich(
     mode: str = "best_effort",
     offline: bool = False,
     ensembl_cache: Path | None = None,
+    rsid_index: Path | None = None,
     clinvar_cache: Path | None = None,
     pubmind_cache: Path | None = None,
     civic_cache: Path | None = None,
@@ -283,6 +284,12 @@ def enrich(
     decides its `alts` — and since `alts` is a fact column, that decides the compiled bytes. The
     ordering is therefore chosen so no already-compiled module's `artifact.digest` can move when a new
     link is added. `--offline` clamps the chain to the two local caches (zero egress).
+
+    `rsid_index` is the `ensembl_rsid_index` lane's directory, beside `ensembl_cache` (0.9, RM431), for a
+    host that passes its lanes' paths explicitly (the registry's enrich step): the Ensembl link's rsID
+    lookup reads it, so given it is the only place an index is looked for, never the environment; `None`
+    keeps the lane's ladder. An index is read only when it pins the core, and the answer is the scan's
+    either way. Nothing here builds one (`cache rebuild --only ensembl_rsid_index`).
 
     `mint_vrs` stamps a `ga4gh:VA.…` allele id onto every resolved row (see `vrs.mint_resolution_rows`).
     Substitutions mint offline with no dependency; indels need the sequence, so they mint only when the
@@ -409,6 +416,7 @@ def enrich(
             mode=mode,
             offline=offline,
             ensembl_cache=ensembl_cache,
+            rsid_index=rsid_index,
             clinvar_cache=clinvar_cache,
             pubmind_cache=pubmind_cache,
             civic_cache=civic_cache,
@@ -648,6 +656,7 @@ def _run_enrichment(
     mode: str,
     offline: bool,
     ensembl_cache: Path | None,
+    rsid_index: Path | None,
     clinvar_cache: Path | None,
     pubmind_cache: Path | None,
     civic_cache: Path | None,
@@ -939,6 +948,7 @@ def _run_enrichment(
                 positions,
                 non_nucleotide=non_nucleotide_rsids,
                 candidate_loci=rev_loci["cache"],
+                rsid_index=rsid_index,
             )
             reverse_maps_read.add("cache")
         except Exception as exc:
