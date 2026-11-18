@@ -339,8 +339,13 @@ except `verification.json`'s clocks).
   refuse it; the upgrade notes name the new member.
 - **Flipped (1): an unreadable pull record is moved aside, not refused.** `ensure_snapshot` moves it beside itself
   under a dated name, warns that a group selection it may have held is lost and names the moved file, and pulls (with
-  the groups this call names). 0.8 re-pulled over it, and an unattended `enrich(download=True)` should not stop on
-  bookkeeping it can rebuild. Nothing is deleted.
+  the groups this call names). An unattended `enrich(download=True)` should not stop on bookkeeping it can rebuild,
+  and nothing is deleted. **As built (the lead's (b), 2026-11-18):** a cache with `release.json` and no pull record
+  reads as a local build and is never pulled again (0.8.8 already froze a corrupt record's cache that way; only
+  older releases re-pulled over it). So the move writes a fresh record naming the lane's repository, with no groups
+  and no release digest, and the pull goes on. A file the new manifest attests by `sha256` is kept and the rest are
+  fetched. The warning names the repository the fresh record assumes. A local build writes no pull record, so a
+  corrupt one can only have come from a pull.
 - **Confirmed:** (2) a non-object group entry makes the whole pull record unreadable, which the flip above handles.
   (3) A proxy reply missing `lane` or `table` is malformed. (4) rsID keys still go to the proxy, since the key is
   normalized before the query and the column is stored in that form, so an exact compare gives the local answer; gene
