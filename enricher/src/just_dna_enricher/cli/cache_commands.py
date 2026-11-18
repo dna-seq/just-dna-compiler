@@ -30,7 +30,7 @@ from just_dna_enricher.caches import (
 from just_dna_enricher.cli._shared import _use
 from just_dna_enricher.download import SnapshotNotPublished, _FollowHub
 from just_dna_enricher.licensing import LicenseRefusal, check_declared_use
-from just_dna_enricher.locations import CACHES_DIRNAME, RELEASE_FILENAME, STRCHIVE_CATALOGUE_FILENAME
+from just_dna_enricher.locations import CACHES_DIRNAME, RELEASE_FILENAME
 
 # ── the caches (pre-provision, rebuild, and say what is where) ──────────────────────────────────
 #
@@ -555,7 +555,7 @@ def _dry_run(
             typer.secho(f"      not published — {lane.unpublished}", fg=typer.colors.YELLOW, err=True)
             continue
         typer.echo(f"      published at {lane.publish_repo}: {_published_release(lane.publish_repo)}")
-        payload = STRCHIVE_CATALOGUE_FILENAME if lane.name == "strchive" else None
+        payload = lane.payload_filename
         built = request.out_dir
         if not holds_snapshot_payload(built, payload_filename=payload):
             typer.echo(
@@ -616,7 +616,7 @@ def _publish_rebuilt(lane: CacheLane, outcome: RebuildOutcome) -> None:
             err=True,
         )
         return
-    payload = STRCHIVE_CATALOGUE_FILENAME if lane.name == "strchive" else None
+    payload = lane.payload_filename
     try:
         plan = publish_reference_snapshot(snapshot_dir, lane.publish_repo, payload=payload)
     except (PublishRefused, PermissionError, ImportError) as exc:

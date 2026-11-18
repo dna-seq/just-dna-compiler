@@ -54,6 +54,12 @@ fixed in the form 0.9 gave its own. Nothing a module resolves moves.
   `PmcIdConverterClient` never checked `batch_size`, and `net.batched` yields no batch for 0, so a client set to 0
   asked nothing and answered `{}`, which every caller reads as no record for any id. Each now refuses it with a
   `ValueError` naming the field (`net.check_batch_size`), when it is built and again by each batched read.
+- **A lane's root-file payload is a field, never its name.** `cache rebuild --publish` and its `--dry-run` chose
+  the payload a snapshot is checked and uploaded by with `lane.name == "strchive"`. `CacheLane.payload_filename`
+  now states it for `strchive` and `acmg`, a test holds it equal to what each lane's resolver finds, and an AST
+  walk refuses a `lane.name` compared with a literal anywhere in the enricher.
+- **Not here:** `mitomap_miss` calling itself present over moved parents. `main` has no stale state for any lane;
+  that one is fixed with RM431 on 0.9.
 
 ## 2026-11-18 — RM453: a mirrored site where no spelling was witnessed keeps both spellings (patch, a declared corrected derivation, on `main`)
 

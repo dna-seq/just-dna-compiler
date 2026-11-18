@@ -48,6 +48,7 @@ having said it.
 | `release_label` | — | override only if `release.json`'s `dataset` is not the label. **No lane overrides it** since RM303: write `dataset` through `SnapshotRelease` instead |
 | `parents` | — | for a derived lane; an absent parent is *could not run*, never an empty result. Also a **cost** fact: `provisioning_closure` prices the lane by its parents |
 | `approx_mb` | ✅ | the provisioned size as an order of magnitude in whole MB, rounded up (`1` = at most a megabyte). Measured, never guessed; a test re-measures it against every snapshot the box holds (RM229) |
+| `payload_filename` | — | the one file at the snapshot's root when the payload is not parquet under `data/` (`strchive`, `acmg`). Must agree with what the lane's resolver finds by name (`test_the_field_names_the_root_file_the_lanes_own_resolver_finds`); the publisher reads it, and no code tells a lane apart by its `name` (RM455) |
 
 ## The two routes to publishing, and the trap between them
 

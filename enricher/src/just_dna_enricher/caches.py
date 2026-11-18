@@ -98,6 +98,7 @@ from just_dna_enricher.licensing import (
 )
 from just_dna_enricher.locations import (
     ACMG_CACHE_VAR,
+    ACMG_SNAPSHOT_FILENAME,
     ACMG_SUBDIR,
     ALPHAGENOME_AVI_CACHE_VAR,
     ALPHAGENOME_AVI_SUBDIR,
@@ -132,6 +133,7 @@ from just_dna_enricher.locations import (
     SNAPSHOT_DATA_DIRNAME,
     SNAPSHOT_REPO_IDS,
     STRCHIVE_CACHE_VAR,
+    STRCHIVE_CATALOGUE_FILENAME,
     STRCHIVE_SUBDIR,
     default_acmg_cache_dir,
     default_alphagenome_avi_cache_dir,
@@ -340,6 +342,12 @@ class CacheLane:
     #: parents are `mitomap` and `clinvar`, so on a blank box the honest cost of the increment is a
     #: ClinVar download. `provisioning_closure` walks `parents` transitively for exactly that sum.
     approx_mb: int | None = None
+    #: The one file a lane's snapshot holds at its root in place of parquet under `data/`, or `None`
+    #: for the parquet lanes (RM455): `strchive`'s catalogue and `acmg`'s list, the two its resolver
+    #: finds by name (`locations._resolve_named_cache`), as a test asserts lane by lane. The publisher
+    #: and its rehearsal read it from here; until RM455 `cache rebuild --publish` chose it by comparing
+    #: `lane.name` with `"strchive"`, a rule a new root-file lane would have missed.
+    payload_filename: str | None = None
 
 
 # ── the adapters ────────────────────────────────────────────────────────────────────────────────
@@ -1103,6 +1111,7 @@ CACHE_LANES: list[CacheLane] = [
         ensure=ensure_strchive_snapshot,
         publish_repo=DEFAULT_STRCHIVE_REPO_ID,
         terms=None,
+        payload_filename=STRCHIVE_CATALOGUE_FILENAME,
     ),
     CacheLane(
         name="mitomap",
@@ -1183,6 +1192,7 @@ CACHE_LANES: list[CacheLane] = [
         ensure=None,
         publish_repo=None,
         terms=None,
+        payload_filename=ACMG_SNAPSHOT_FILENAME,
         unpublished=(
             "unestablished: the SF v3.3 list is ACMG/Elsevier supplementary material and nothing "
             "grants redistribution of it. Build your own with `acmg build <workbook.xlsx>`"
