@@ -471,17 +471,6 @@ def _labels_connection(reference: Path) -> duckdb.DuckDBPyConnection:
     return con
 
 
-def _gene_keys(genes: Sequence[str]) -> dict[str, list[str]]:
-    """The keys a remote route is asked for `genes`: the `genes` column, each gene as given, stripped.
-
-    The holder compares them as this reader does (`key_compare.KEY_COMPARES`: each member of the cell, by `gene_key`),
-    so a gene in another case, or on a label naming several (`CYP2C9; VKORC1`), is answered on both routes.
-    The registry's proxy compares a whole cell exactly, so the holder does not ask it for this key and
-    reads Hugging Face instead (`remote.RemoteLane.proxy_compares`).
-    """
-    return {"genes": list(dict.fromkeys(gene.strip() for gene in genes if gene.strip()))}
-
-
 def _genes_over(con: duckdb.DuckDBPyConnection, genes: Sequence[str]) -> dict[str, list[dict]]:
     """`lookup_genes`' query over a connection exposing `drug_labels`: the one copy."""
     asked = _asked_genes(genes)

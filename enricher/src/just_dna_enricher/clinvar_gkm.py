@@ -55,6 +55,7 @@ from just_dna_format.snapshot import SNAPSHOT_DATA_DIRNAME, SnapshotRelease, rea
 from just_dna_format.vrs import vrs_spec_release
 from tenacity import retry
 
+from just_dna_enricher.key_compare import _rsid_token, lane_compare
 from just_dna_enricher.net import (
     EndpointRetired,
     PacingGate,
@@ -559,8 +560,7 @@ class ClinVarGkmWitness:
         return self._rows(pl.col("vrs_id") == vrs_id.strip())
 
     def by_rsid(self, rsid: str) -> list[WitnessPlacement]:
-        token = rsid.strip().lower()
-        return self._rows(pl.col("rsid") == (token if token.startswith("rs") else f"rs{token}"))
+        return self._rows(pl.col("rsid") == _rsid_token(rsid))
 
     def by_rsids(self, rsids: Iterable[str]) -> dict[str, list[WitnessPlacement]]:
         """`by_rsid` over many rsIDs in one filter, keyed by the rsID as asked; an absent one is absent.
@@ -568,7 +568,7 @@ class ClinVarGkmWitness:
         One pass over the slice rather than one per rsID: a module asks about every rsID it places
         (RM267), and the slice is every ClinVar indel.
         """
-        asked = {(t if (t := r.strip().lower()).startswith("rs") else f"rs{t}"): r for r in rsids}
+        asked = {_rsid_token(r): r for r in rsids}
         found: dict[str, list[WitnessPlacement]] = {}
         for row in self._rows(pl.col("rsid").is_in(list(asked))):
             found.setdefault(asked[str(row.rsid)], []).append(row)
@@ -627,6 +627,9 @@ _WITNESS_COLUMNS: tuple[tuple[str, str], ...] = (
 )
 #: The table a remote route names for the slice (`remote.table_name` of `data/clinvar_gkm-indels.parquet`).
 REMOTE_WITNESS_TABLE = "clinvar_gkm-indels"
+#: How `lookup_rsids` compares an rsID with the `rsid` cell, on every route: the key read as an rsID, the cell
+#: whole (`key_compare.KEY_COMPARES`, which the holder reads too).
+_RSID = lane_compare("clinvar_gkm", REMOTE_WITNESS_TABLE, "rsid")
 
 
 def _witness_connection(reference: Path) -> duckdb.DuckDBPyConnection:
@@ -721,17 +724,13 @@ def _variants_from_rows(
         con.close()
 
 
-def _rsid_keys(rsids: Sequence[str]) -> dict[str, list[str]]:
-    """The keys a remote route is asked for `rsids`: each as the slice spells it, as the local SQL compares."""
-    return {"rsid": list(_asked_rsids(rsids))}
-
-
 def _rsids_over(con: duckdb.DuckDBPyConnection, rsids: Sequence[str]) -> dict[str, list[dict]]:
     """`lookup_rsids`' query over a connection exposing `witness`: the one copy."""
     asked = _asked_rsids(rsids)
     if not asked:
         return {}
-    tokens = list(asked)
+    # Each key read as `_RSID` reads it, then the cell compared whole with `IN`, which prunes row groups.
+    tokens = _RSID.parameter(list(asked))
     rows = _select_witness(con, f"rsid IN ({', '.join('?' for _ in tokens)})", tokens)
     answer: dict[str, list[dict]] = {}
     for row in rows:

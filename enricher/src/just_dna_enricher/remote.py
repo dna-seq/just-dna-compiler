@@ -62,7 +62,7 @@ from just_dna_format.snapshot import (
     parse_release,
 )
 from just_dna_format.vrs import normalize_chrom
-from pydantic import ValidationError
+from pydantic import BaseModel, ConfigDict, ValidationError, field_validator
 
 from just_dna_enricher.caches import LANES_BY_NAME
 from just_dna_enricher.key_compare import KEY_COMPARES, KeyCompare, lane_compare
@@ -232,10 +232,11 @@ class RemoteLane:
     def proxy_compares(self, table: str, columns: Iterable[str]) -> bool:
         """Whether the registry's proxy compares each of `columns` as the local reader does.
 
-        It compares a whole cell exactly, so it does only where the lane declares nothing else. Asked
-        for a folded or a joined column it would return fewer rows than the local route and say
-        nothing, an absence where the row exists (`@unreachable-not-absent`)."""
-        return all(self.compare(table, column).exact for column in columns)
+        It compares a whole cell exactly, so it does only where the lane compares the cell whole
+        (`KeyCompare.cell_exact`), the holder sending each key as the compare reads it (an rsID as the
+        snapshot spells one). Asked for a folded or a joined column it would return fewer rows than the
+        local route and say nothing, an absence where the row exists (`@unreachable-not-absent`)."""
+        return all(self.compare(table, column).cell_exact for column in columns)
 
 
 #: The lanes a holder reads remotely. Each needs a published repo; a lane without one (PharmVar and
@@ -338,6 +339,25 @@ def _read_keys(lane: RemoteLane, keys: Mapping[str, Sequence[Any]]) -> _Keys:
     return _Keys(plain, positions)
 
 
+def _read_as_compared(lane: RemoteLane, table: str, keys: _Keys) -> _Keys:
+    """`keys` with each value of a column whose compare reads the key (an rsID: `RS334` is `rs334`) read so.
+
+    The local reader reads an asked key so before its SQL compares the cell, so both routes are asked the
+    key as read: the proxy, which compares a cell exactly, then answers as the local route does (review
+    round 1, item 5). A column compared as given keeps its values, unconverted. A column left with no value
+    (only blanks) is a wrong request, as an empty one is.
+    """
+    plain: dict[str, list[Any]] = {}
+    for column, values in keys.plain.items():
+        compare = lane.compare(table, column)
+        plain[column] = values if compare.exact else compare.parameter(values)
+        if not plain[column]:
+            raise ValueError(
+                f"{lane.name}: a remote lookup needs a value for every key it names; {column} holds only blanks"
+            )
+    return _Keys(plain, keys.positions)
+
+
 def _requests(keys: _Keys) -> list[dict[str, list[Any]]]:
     """The key sets one route is asked, each naming one chromosome at most (decision 3)."""
     if keys.positions is None:
@@ -352,15 +372,47 @@ def _batch_column(request: Mapping[str, list[Any]]) -> str:
     return max(request, key=lambda column: (len(request[column]), column))
 
 
-def _proxy_chunks(lane: str, request: dict[str, list[Any]]) -> list[dict[str, list[Any]]]:
-    """`request` cut to the proxy's limit of key values per request, along its batch column."""
-    column = _batch_column(request)
-    fixed = sum(len(values) for name, values in request.items() if name != column)
-    room = PROXY_MAX_KEY_VALUES - fixed
-    if room < 1:
-        raise ValueError(
-            f"{lane}: {fixed} key values besides {column!r}; the proxy answers at most {PROXY_MAX_KEY_VALUES}"
+def _passed_over(lane: RemoteLane, table: str, wanted: _Keys) -> str | None:
+    """Why the registry's proxy is not asked for `wanted`, or `None` when it is: a key it would compare
+    otherwise than the local reader (`RemoteLane.proxy_compares`), or a request over its own limit
+    (`_proxy_overflow`). Either way Hugging Face is asked instead, and with it off the reason is said."""
+    if not lane.proxy_compares(table, wanted.plain):
+        compared = "; ".join(
+            f"{column} {lane.compare(table, column).described}"
+            for column in sorted(wanted.plain)
+            if not lane.compare(table, column).cell_exact
         )
+        return (
+            f"the registry's proxy compares a whole cell exactly, and {lane.name}/{table} compares "
+            f"{compared}, as its local reader does, so the proxy is not asked"
+        )
+    return _proxy_overflow(wanted)
+
+
+def _proxy_overflow(wanted: _Keys) -> str | None:
+    """Why no request of `wanted` fits the proxy's limit of key values, or `None` when every one does.
+
+    The batch column is split to fit, so a request overflows only when its other columns alone fill the
+    limit. The limit is the proxy's, never Hugging Face's, so such a request is not wrong on every route:
+    the proxy is passed over and Hugging Face asked, as for a folded key (review round 1, item 6).
+    """
+    for request in _requests(wanted):
+        column = _batch_column(request)
+        fixed = sum(len(values) for name, values in request.items() if name != column)
+        if fixed >= PROXY_MAX_KEY_VALUES:
+            return (
+                f"the registry's proxy answers at most {PROXY_MAX_KEY_VALUES} key values a request, and {fixed} "
+                f"besides {column!r} leave no room, so the proxy is not asked"
+            )
+    return None
+
+
+def _proxy_chunks(request: dict[str, list[Any]]) -> list[dict[str, list[Any]]]:
+    """`request` cut to the proxy's limit of key values per request, along its batch column.
+
+    Called only for a request `_proxy_overflow` passed, so there is room for at least one value."""
+    column = _batch_column(request)
+    room = PROXY_MAX_KEY_VALUES - sum(len(values) for name, values in request.items() if name != column)
     values = request[column]
     return [{**request, column: values[i : i + room]} for i in range(0, len(values), room)]
 
@@ -390,6 +442,58 @@ class _Pin:
                 f"{lane} has no table {table!r} at {self.repo}@{self.revision} (it has {', '.join(tables)})"
             )
         return found
+
+
+class _ProxyReply(BaseModel):
+    """The registry's lane reply (§§ 46–47), read strictly: the one model a proxy 200 is read through.
+
+    Review round 1, item 1: a 200 was read after an outer shape check only, so a missing `truncated` read as
+    a whole answer, a row that was not an object reached the readers as an `AttributeError`, and a reply for
+    another lane or table was taken for the one asked. Each is a malformed reply now, could-not-ask on the
+    proxy with no fall-through. Strict on what the client reads (types are not coerced: `"false"` is no
+    bool), and blind to what it does not (`extra="ignore"`), so a field the registry adds later costs
+    nothing. `lane`, `table`, `rows` and `truncated` are in every reply since the proxy's first version
+    (registry 0.30); `served_from`, `release` and `revision` came later and may be absent or `null`, and one
+    of another kind is withheld rather than refused.
+    """
+
+    model_config = ConfigDict(extra="ignore", strict=True)
+
+    lane: str
+    table: str
+    rows: list[dict[str, Any]]
+    truncated: bool
+    served_from: str | None = None
+    release: str | None = None
+    revision: str | None = None
+
+    @field_validator("served_from", "release", "revision", mode="before")
+    @classmethod
+    def _withheld_unless_text(cls, value: object) -> object:
+        """Provenance of another kind is withheld (`None`), never a malformed reply: these fields only say
+        where the rows came from, so a registry that changes one's kind costs that field, not the route."""
+        return value if value is None or isinstance(value, str) else None
+
+
+def _proxy_reply(lane: str, table: str, body: object) -> _ProxyReply:
+    """`body` read as the reply to a request for `lane`'s `table`, or could-not-ask saying what is wrong."""
+    try:
+        reply = _ProxyReply.model_validate(body)
+    except ValidationError as exc:
+        problems = "; ".join(
+            f"{'.'.join(str(part) for part in error['loc']) or 'the body'}: {error['msg']}"
+            for error in exc.errors()[:3]
+        )
+        raise SnapshotRouteUnavailable(
+            lane, ROUTE_PROXY, f"a 200 that is not a lane reply ({problems})"
+        ) from exc
+    if (reply.lane, reply.table) != (lane, table):
+        raise SnapshotRouteUnavailable(
+            lane,
+            ROUTE_PROXY,
+            f"a 200 that is not the reply asked for: it answers {reply.lane}/{reply.table}, not {lane}/{table}",
+        )
+    return reply
 
 
 def _hub_cause(exc: Exception) -> str:
@@ -512,19 +616,12 @@ class RemoteSnapshots:
         """`lookup` past its checks, counted in flight so `close()` waits for it."""
         self._admit(lane)
         spec = REMOTE_LANES[lane]
+        wanted = _read_as_compared(spec, table, wanted)
         fell_through: str | None = None
-        passed_over: str | None = None
-        if self._proxy is not None and not spec.proxy_compares(table, wanted.plain):
-            compared = "; ".join(
-                f"{column} {spec.compare(table, column).described}"
-                for column in sorted(wanted.plain)
-                if not spec.compare(table, column).exact
-            )
-            passed_over = (
-                f"the registry's proxy compares a whole cell exactly, and {lane}/{table} compares "
-                f"{compared}, as its local reader does, so the proxy is not asked"
-            )
-            logger.info("%s: %s; asking Hugging Face", lane, passed_over)
+        passed_over = _passed_over(spec, table, wanted) if self._proxy is not None else None
+        if passed_over is not None:
+            if self.huggingface:  # with it off, the could-not-ask below says so
+                logger.info("%s: %s; asking Hugging Face", lane, passed_over)
         elif self._proxy is not None:
             try:
                 answer = self._ask_proxy(lane, table, wanted)
@@ -532,7 +629,10 @@ class RemoteSnapshots:
                 if not exc._falls_through:
                     raise
                 fell_through = exc.cause
-                logger.info("%s: the proxy could not answer (%s); asking Hugging Face next", lane, exc.cause)
+                if self.huggingface:
+                    logger.info(
+                        "%s: the proxy could not answer (%s); asking Hugging Face next", lane, exc.cause
+                    )
             else:
                 self._log(lane, table, answer)
                 return answer
@@ -582,30 +682,25 @@ class RemoteSnapshots:
     # ── the proxy ───────────────────────────────────────────────────────────────────────────────
 
     def _ask_proxy(self, lane: str, table: str, wanted: _Keys) -> RemoteAnswer:
-        replies: list[dict[str, Any]] = []
+        replies: list[_ProxyReply] = []
         for request in _requests(wanted):
-            for chunk in _proxy_chunks(lane, request):
+            for chunk in _proxy_chunks(request):
                 replies.extend(self._proxy_untruncated(lane, table, chunk))
-        rows = [row for reply in replies for row in reply["rows"]]
+        rows = [row for reply in replies for row in reply.rows]
         return RemoteAnswer(
             rows=_stable(rows),
             route=RemoteRoute(
                 route=ROUTE_PROXY,
-                release=_agreed(lane, "release", [reply.get("release") for reply in replies]),
-                served_from=", ".join(
-                    sorted({str(r["served_from"]) for r in replies if r.get("served_from")})
-                )
-                or None,
-                revision=_agreed(lane, "revision", [reply.get("revision") for reply in replies]),
+                release=_agreed(lane, "release", [reply.release for reply in replies]),
+                served_from=", ".join(sorted({r.served_from for r in replies if r.served_from})) or None,
+                revision=_agreed(lane, "revision", [reply.revision for reply in replies]),
             ),
         )
 
-    def _proxy_untruncated(
-        self, lane: str, table: str, request: dict[str, list[Any]]
-    ) -> list[dict[str, Any]]:
+    def _proxy_untruncated(self, lane: str, table: str, request: dict[str, list[Any]]) -> list[_ProxyReply]:
         """The replies that answer `request` whole: a truncated one is halved and asked again, to one key."""
         reply = self._proxy_post(lane, table, request)
-        if not reply.get("truncated"):
+        if not reply.truncated:
             return [reply]
         column = _batch_column(request)
         values = request[column]
@@ -622,7 +717,7 @@ class RemoteSnapshots:
             *self._proxy_untruncated(lane, table, {**request, column: values[half:]}),
         ]
 
-    def _proxy_post(self, lane: str, table: str, request: dict[str, list[Any]]) -> dict[str, Any]:
+    def _proxy_post(self, lane: str, table: str, request: dict[str, list[Any]]) -> _ProxyReply:
         assert self._proxy is not None and self.proxy_url is not None
         url = remote_url(self.proxy_url, "api/v1/lanes", quote(lane, safe=""), quote(table, safe=""))
         try:
@@ -648,14 +743,10 @@ class RemoteSnapshots:
                 lane, ROUTE_PROXY, f"HTTP {response.status_code}: {_said(response)}", response.status_code
             ) from error
         try:
-            reply = response.json()
+            body = response.json()
         except ValueError as exc:
             raise SnapshotRouteUnavailable(lane, ROUTE_PROXY, "a 200 whose body is not JSON") from exc
-        if not isinstance(reply, dict) or not isinstance(reply.get("rows"), list):
-            raise SnapshotRouteUnavailable(
-                lane, ROUTE_PROXY, "a 200 that is not a lane reply (no `rows` list)"
-            )
-        return reply
+        return _proxy_reply(lane, table, body)
 
     # ── Hugging Face ────────────────────────────────────────────────────────────────────────────
 
@@ -719,8 +810,10 @@ class RemoteSnapshots:
                 clauses.append(f'"{position}" IN ({", ".join(str(int(v)) for v in values)})')
                 continue
             compare = REMOTE_LANES[lane].compare(table, column)
-            if not compare.exact:
-                # The lane's local compare, the same object its keyed function's SQL is built from.
+            if not compare.cell_exact:
+                # The lane's local compare, the same object its keyed function's SQL is built from. A compare
+                # that reads only the key (an rsID) takes the plain `IN` below: `_read_as_compared` has read
+                # each value already, and `IN` over the column prunes row groups where a function does not.
                 clauses.append(compare.predicate(column))
                 params.append(compare.parameter(values))
                 continue

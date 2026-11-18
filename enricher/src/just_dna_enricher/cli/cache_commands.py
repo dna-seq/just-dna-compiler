@@ -18,9 +18,11 @@ from just_dna_enricher.caches import (
     CacheLane,
     RebuildOutcome,
     RebuildRequest,
+    _ensure_declaration,
     _gate,
     _named_only_detail,
     _rebuild_blocked,
+    _rebuild_detail,
     _unpinnable,
     lane_name,
     lane_status,
@@ -167,6 +169,14 @@ def cache_status_() -> None:
         # failure — the snapshot is still usable, so this says so instead of hiding it.
         label = status.release or ("(unreadable release.json)" if status.release_unreadable else "")
         size = f"{(status.size_bytes or 0) / 1e6:.1f} MB"
+        if status.state == "stale":
+            # On disk, and refused by its readers: its parents moved under it (review round 1, item 11).
+            typer.secho(
+                f"  {lane.name:13} stale    {status.path}  {label}  {size} — {status.stale}; "
+                f"{_rebuild_detail(lane, status.looked_in)}",
+                fg=typer.colors.YELLOW,
+            )
+            continue
         typer.secho(f"  {lane.name:13} present  {status.path}  {label}  {size}", fg=typer.colors.GREEN)
 
 
@@ -257,7 +267,11 @@ def cache_pull_(
         follow = _FollowHub(lane.release_label)
         # The Ensembl lane's groups (RM437): the named ones, and the declaration a recorded one is
         # re-pulled under when this run states one.
-        extra = {"groups": named_groups, "declared_use": declared} if lane.name == "ensembl" else {}
+        extra = {
+            **_ensure_declaration(lane, declared),
+            # Only the Ensembl lane runs when groups are named (`GROUPS_NEED_ENSEMBL_ONLY`, refused above).
+            **({"groups": named_groups} if named_groups else {}),
+        }
         try:
             path = lane.ensure(_follow_hub=follow, **extra)
         except LicenseRefusal as exc:

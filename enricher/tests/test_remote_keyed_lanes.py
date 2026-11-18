@@ -120,8 +120,8 @@ def test_civic_answers_remotely_by_gene_and_by_rsid_as_the_local_reader_does(
     genes = [*_civic_values(civic_root, "gene")[:2], "NOT_A_GENE"]
     rsids = [*_civic_values(civic_root, "rsid")[:2], "334"]
     with RemoteSnapshots(hf_base_url=loopback_hub.base_url) as holder:
-        by_gene = holder.lookup("civic", civic_draft.REMOTE_CIVIC_TABLE, civic_draft._civic_gene_keys(genes))
-        by_rsid = holder.lookup("civic", civic_draft.REMOTE_CIVIC_TABLE, civic_draft._civic_rsid_keys(rsids))
+        by_gene = holder.lookup("civic", civic_draft.REMOTE_CIVIC_TABLE, {"gene": genes})
+        by_rsid = holder.lookup("civic", civic_draft.REMOTE_CIVIC_TABLE, {"rsid": rsids})
     local_genes = civic_draft.lookup_genes(civic_root, genes)
     assert len(local_genes) == 2, "both genes are in the slice, so an empty answer cannot pass"
     assert civic_draft._genes_from_rows(by_gene.rows, genes) == local_genes
@@ -136,7 +136,7 @@ def test_a_gene_asked_in_another_case_answers_alike_on_both_routes(
     loopback_hub.publish(SNAPSHOT_REPO_IDS["civic"], civic_root, COMMIT)
     genes = [_civic_values(civic_root, "gene")[0].lower()]
     with RemoteSnapshots(hf_base_url=loopback_hub.base_url) as holder:
-        answer = holder.lookup("civic", civic_draft.REMOTE_CIVIC_TABLE, civic_draft._civic_gene_keys(genes))
+        answer = holder.lookup("civic", civic_draft.REMOTE_CIVIC_TABLE, {"gene": genes})
     assert civic_draft._genes_from_rows(answer.rows, genes) == civic_draft.lookup_genes(civic_root, genes)
 
 
@@ -176,9 +176,7 @@ def test_clinvar_gkm_answers_remotely_by_position_and_by_rsid_as_the_local_reade
         by_position = holder.lookup(
             "clinvar_gkm", clinvar_gkm.REMOTE_WITNESS_TABLE, clinvar_gkm._variant_keys(positions)
         )
-        by_rsid = holder.lookup(
-            "clinvar_gkm", clinvar_gkm.REMOTE_WITNESS_TABLE, clinvar_gkm._rsid_keys(rsids)
-        )
+        by_rsid = holder.lookup("clinvar_gkm", clinvar_gkm.REMOTE_WITNESS_TABLE, {"rsid": rsids})
     local_positions = clinvar_gkm.lookup_variants(gkm_root, positions)
     assert len(local_positions) == 2, "both indels are in the slice, so an empty answer cannot pass"
     assert clinvar_gkm._variants_from_rows(by_position.rows, positions) == local_positions
@@ -231,8 +229,8 @@ def test_clinpgx_answers_remotely_by_rsid_and_by_gene_as_the_local_reader_does(
     rsids = [*held, held[0].removeprefix("rs"), "1"]
     genes = [*_parquet_values(parquet, "gene"), "NOT_A_GENE"]
     with RemoteSnapshots(hf_base_url=loopback_hub.base_url, declared_use="non_commercial") as holder:
-        by_rsid = holder.lookup("clinpgx", clinpgx.REMOTE_ANNOTATIONS_TABLE, clinpgx._rsid_keys(rsids))
-        by_gene = holder.lookup("clinpgx", clinpgx.REMOTE_ANNOTATIONS_TABLE, clinpgx._gene_keys(genes))
+        by_rsid = holder.lookup("clinpgx", clinpgx.REMOTE_ANNOTATIONS_TABLE, {"rsid": rsids})
+        by_gene = holder.lookup("clinpgx", clinpgx.REMOTE_ANNOTATIONS_TABLE, {"gene": genes})
     local_rsids = clinpgx.lookup_rsids(clinpgx_root, rsids)
     assert len(local_rsids) == len(held) + 1, (
         "every rsID held, and one asked bare, so an empty answer cannot pass"
@@ -249,7 +247,7 @@ def test_a_clinpgx_gene_asked_in_another_case_answers_alike_on_both_routes(
     loopback_hub.publish(SNAPSHOT_REPO_IDS["clinpgx"], clinpgx_root, COMMIT)
     genes = [_parquet_values(clinpgx_root / "data" / "annotations.parquet", "gene")[0].lower()]
     with RemoteSnapshots(hf_base_url=loopback_hub.base_url, declared_use="non_commercial") as holder:
-        answer = holder.lookup("clinpgx", clinpgx.REMOTE_ANNOTATIONS_TABLE, clinpgx._gene_keys(genes))
+        answer = holder.lookup("clinpgx", clinpgx.REMOTE_ANNOTATIONS_TABLE, {"gene": genes})
     assert clinpgx._genes_from_rows(answer.rows, genes) == clinpgx.lookup_genes(clinpgx_root, genes)
 
 
@@ -295,7 +293,7 @@ def test_drug_labels_answer_remotely_by_a_gene_named_alone_as_the_local_reader_d
     assert alone, "the slice names DPYD and SLCO1B1 only on their own"
     genes = [*alone, "NOT_A_GENE"]
     with RemoteSnapshots(hf_base_url=loopback_hub.base_url, declared_use="non_commercial") as holder:
-        answer = holder.lookup("drug_labels", drug_labels.REMOTE_LABELS_TABLE, drug_labels._gene_keys(genes))
+        answer = holder.lookup("drug_labels", drug_labels.REMOTE_LABELS_TABLE, {"genes": genes})
     local = drug_labels.lookup_genes(labels_root, genes)
     assert len(local) == len(alone), "every gene is on a label in the slice, so an empty answer cannot pass"
     assert drug_labels._genes_from_rows(answer.rows, genes) == local
@@ -308,7 +306,7 @@ def test_a_gene_inside_a_multi_gene_label_answers_alike_on_both_routes(
     _, inside = _label_genes(labels_root)
     assert inside, "the slice names VKORC1 only beside CYP2C9"
     with RemoteSnapshots(hf_base_url=loopback_hub.base_url, declared_use="non_commercial") as holder:
-        answer = holder.lookup("drug_labels", drug_labels.REMOTE_LABELS_TABLE, drug_labels._gene_keys(inside))
+        answer = holder.lookup("drug_labels", drug_labels.REMOTE_LABELS_TABLE, {"genes": inside})
     assert drug_labels._genes_from_rows(answer.rows, inside) == drug_labels.lookup_genes(labels_root, inside)
 
 
@@ -447,8 +445,8 @@ def _clinpgx_probe(request: pytest.FixtureRequest, remote_: _Recorder) -> tuple[
     genes = ["slco1b1", "KLC1", " Cyp2c19 ", "NOT_A_GENE"]
     rsids = [_first_cell(root, "annotations", "rsid").upper()]
     local = (clinpgx.lookup_genes(root, genes), clinpgx.lookup_rsids(root, rsids))
-    by_gene = remote_.lookup("clinpgx", clinpgx.REMOTE_ANNOTATIONS_TABLE, clinpgx._gene_keys(genes)).rows
-    by_rsid = remote_.lookup("clinpgx", clinpgx.REMOTE_ANNOTATIONS_TABLE, clinpgx._rsid_keys(rsids)).rows
+    by_gene = remote_.lookup("clinpgx", clinpgx.REMOTE_ANNOTATIONS_TABLE, {"gene": genes}).rows
+    by_rsid = remote_.lookup("clinpgx", clinpgx.REMOTE_ANNOTATIONS_TABLE, {"rsid": rsids}).rows
     assert "KLC1" in local[0], "the joined cell answers its second gene locally, so equality is not vacuous"
     return root, local, (clinpgx._genes_from_rows(by_gene, genes), clinpgx._rsids_from_rows(by_rsid, rsids))
 
@@ -472,7 +470,7 @@ def _drug_labels_probe(request: pytest.FixtureRequest, remote_: _Recorder) -> tu
     root = request.getfixturevalue("labels_root")
     whole, inside = _label_genes(root)
     genes = [whole[0].lower(), *inside, "NOT_A_GENE"]
-    rows = remote_.lookup("drug_labels", drug_labels.REMOTE_LABELS_TABLE, drug_labels._gene_keys(genes)).rows
+    rows = remote_.lookup("drug_labels", drug_labels.REMOTE_LABELS_TABLE, {"genes": genes}).rows
     local = drug_labels.lookup_genes(root, genes)
     assert set(inside) <= set(local), (
         "a gene inside a joined cell answers locally, so equality is not vacuous"
@@ -494,12 +492,8 @@ def _civic_probe(request: pytest.FixtureRequest, remote_: _Recorder) -> tuple[Pa
     stored = _civic_values(root, "gene")[0]
     genes = [stored.lower(), f" {stored.title()} ", "NOT_A_GENE"]
     rsids = [f"RS{_civic_values(root, 'rsid')[0].removeprefix('rs')}"]
-    by_gene = remote_.lookup(
-        "civic", civic_draft.REMOTE_CIVIC_TABLE, civic_draft._civic_gene_keys(genes)
-    ).rows
-    by_rsid = remote_.lookup(
-        "civic", civic_draft.REMOTE_CIVIC_TABLE, civic_draft._civic_rsid_keys(rsids)
-    ).rows
+    by_gene = remote_.lookup("civic", civic_draft.REMOTE_CIVIC_TABLE, {"gene": genes}).rows
+    by_rsid = remote_.lookup("civic", civic_draft.REMOTE_CIVIC_TABLE, {"rsid": rsids}).rows
     local = (civic_draft.lookup_genes(root, genes), civic_draft.lookup_rsids(root, rsids))
     assert local[0], "a gene in another case is CIViC's gene locally, so equality is not vacuous"
     return (
@@ -515,7 +509,7 @@ def _clinvar_gkm_probe(request: pytest.FixtureRequest, remote_: _Recorder) -> tu
     by_position = remote_.lookup(
         "clinvar_gkm", clinvar_gkm.REMOTE_WITNESS_TABLE, clinvar_gkm._variant_keys(positions)
     )
-    by_rsid = remote_.lookup("clinvar_gkm", clinvar_gkm.REMOTE_WITNESS_TABLE, clinvar_gkm._rsid_keys(rsids))
+    by_rsid = remote_.lookup("clinvar_gkm", clinvar_gkm.REMOTE_WITNESS_TABLE, {"rsid": rsids})
     local = (clinvar_gkm.lookup_variants(root, positions), clinvar_gkm.lookup_rsids(root, rsids))
     return (
         root,
@@ -565,7 +559,8 @@ def test_a_key_compare_negated_and_described() -> None:
         f"SELECT cell FROM (SELECT unnest(?::VARCHAR[]) AS cell) WHERE {joined.predicate('cell', negated=True)}",
         [cells, joined.parameter(["VKORC1"])],
     ).fetchall()
-    assert [cell for (cell,) in kept] == ["CYP2D6", None]
+    # A NULL cell matches no key, negated or not, as the old `lower(gene) <> ?` read it (review round 1).
+    assert [cell for (cell,) in kept] == ["CYP2D6"]
     assert joined.described == "by gene_key, member by member of a ';'-joined cell"
     assert key_compare.KeyCompare(fold=True).described == "by gene_key"
     assert key_compare.EXACT.described == "exactly"
@@ -579,6 +574,18 @@ def test_cpic_partner_genes_compares_the_asked_gene_one_way_in_both_its_queries(
         {"gene": [" CYP2C9", "VKORC1"], "drug": ["warfarin", "warfarin"], "gene_count": [2, 2]}
     ).write_parquet(root / "data" / "recommendations.parquet")
     assert cpic.CpicSnapshotClient(root).partner_genes("cyp2c9", "Warfarin") == ["VKORC1"]
+
+
+def test_cpic_partner_genes_names_no_partner_for_a_row_with_no_gene(tmp_path: Path) -> None:
+    """A recommendation row whose `gene` is NULL is no partner: the negated compare treats NULL as no match,
+    as the old `lower(gene) <> ?` did, so `None` never joins the partners (review round 1, item 10)."""
+    root = tmp_path / "cpic"
+    (root / "data").mkdir(parents=True)
+    pl.DataFrame(
+        {"gene": ["CYP2C9", "VKORC1", None], "drug": ["warfarin"] * 3, "gene_count": [2, 2, 2]},
+        schema={"gene": pl.Utf8, "drug": pl.Utf8, "gene_count": pl.Int64},
+    ).write_parquet(root / "data" / "recommendations.parquet")
+    assert cpic.CpicSnapshotClient(root).partner_genes("CYP2C9", "warfarin") == ["VKORC1"]
 
 
 def test_every_declared_compare_is_on_a_key_column_of_a_remote_lane_and_names_its_readers_tables() -> None:
@@ -599,6 +606,16 @@ def test_every_declared_compare_is_on_a_key_column_of_a_remote_lane_and_names_it
     assert REMOTE_LANES["clinpgx"].compare("annotations", "gene") is clinpgx._GENE
     assert REMOTE_LANES["drug_labels"].compare("drug_labels", "genes") is drug_labels._GENES
     assert REMOTE_LANES["civic"].compare("civic", "gene") is civic_draft._GENE
+    # The rsID compare each keyed function reads an asked rsID by (review round 1, item 5): declared, so the
+    # holder reads `RS334` as `rs334` too, and the proxy is still asked (the cell is compared whole).
+    assert tables["clinvar_gkm"] == {clinvar_gkm.REMOTE_WITNESS_TABLE}
+    assert REMOTE_LANES["civic"].compare("civic", "rsid") is civic_draft._RSID
+    assert REMOTE_LANES["clinpgx"].compare("annotations", "rsid") is clinpgx._RSID
+    assert REMOTE_LANES["clinvar_gkm"].compare(clinvar_gkm.REMOTE_WITNESS_TABLE, "rsid") is clinvar_gkm._RSID
+    for rsid in (civic_draft._RSID, clinpgx._RSID, clinvar_gkm._RSID):
+        assert rsid.cell_exact and not rsid.exact
+        assert rsid.parameter(["RS334", " 334 ", "rs334"]) == ["rs334"]
+        assert rsid.described == "as an rsID (`RS334` is `rs334`)"
 
 
 def _cpic_tables_read() -> set[str]:
@@ -730,8 +747,14 @@ def test_the_proxy_answers_every_lane_it_compares_alike_and_is_not_asked_where_i
     assert {(table, tuple(sorted(keys))) for table, keys in proxied} == {
         (table, columns) for table, columns, route in expected if route == "proxy"
     }
-    assert all(spec.compare(table, column).exact for table, keys in proxied for column in keys), (
+    assert all(spec.compare(table, column).cell_exact for table, keys in proxied for column in keys), (
         "no key the lane folds or splits reaches the proxy"
     )
-    if spec.compares:
+    assert all(
+        values == spec.compare(table, column).parameter(values)
+        for table, keys in proxied
+        for column, values in keys.items()
+        if not spec.compare(table, column).exact and column not in ("chrom", "start")
+    ), "a key read in another spelling (an rsID) reaches the proxy as the snapshot spells it"
+    if any(not c.cell_exact for columns in spec.compares.values() for c in columns.values()):
         assert any(route == "hf" for *_, route in asked), "the lane's folded key went to the Hub"

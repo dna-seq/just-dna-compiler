@@ -38,7 +38,7 @@ from just_dna_format.snapshot import holds_snapshot_payload as holds_snapshot_pa
 from just_dna_format.snapshot import read_release as read_release
 from just_dna_format.snapshot import release_label as snapshot_release_label
 from platformdirs import user_cache_dir
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 logger = logging.getLogger(__name__)
 
@@ -372,6 +372,19 @@ def pulled_from(cache_dir: Path, repo: str) -> str | None:
 # ── a snapshot's per-file manifest (RM372) ──────────────────────────────────────────────────────
 
 
+#: The manifest-group warnings already said in this process: a manifest is read many times per lookup
+#: (`core_pin`, `manifest_coverage`, `ensembl_group_dir`), and one unread field is one finding, said once.
+_SAID: set[str] = set()
+
+
+def _warn_once(template: str, *args: object) -> None:
+    """`logger.warning(template, *args)`, the first time this process would say that message."""
+    message = template % args
+    if message not in _SAID:
+        _SAID.add(message)
+        logger.warning(template, *args)
+
+
 class SnapshotManifestFile(BaseModel):
     """One file `manifest.json` attests: its path under the snapshot root, its size and its sha256.
 
@@ -424,6 +437,46 @@ class SnapshotManifest(BaseModel):
     built_at: str | None = None
     groups: dict[str, SnapshotManifestGroup] | None = None
     files: list[SnapshotManifestFile] | None = None
+
+    @field_validator("groups", mode="before")
+    @classmethod
+    def _groups_member_by_member(cls, value: object) -> object:
+        """`groups` read group by group and field by field, so no group costs the core (review round 1, item 3).
+
+        Read whole, one group field of a kind this reader does not type (`default: "auto"`, a structured
+        `licence`) failed the whole manifest, and the core's release, coverage and pin went with it. Now
+        that field alone reads as unstated, with a warning naming it; a group record that is not an object
+        keeps its name with nothing stated, so it is never "no such group", and a licence not read is no
+        licence, which never admits (`licensing.snapshot_group_terms`). `groups` that are not a map are
+        unstated, with a warning.
+        """
+        if value is None:
+            return None
+        if not isinstance(value, dict):
+            _warn_once("The snapshot manifest's groups are not a map of name to record; read as unstated.")
+            return None
+        read: dict[object, dict[str, object]] = {}
+        for name, record in value.items():
+            if not isinstance(record, dict):
+                _warn_once(
+                    "The snapshot manifest's %s group is not an object; read with nothing stated.", name
+                )
+                read[name] = {}
+                continue
+            bad = []
+            for key, field_value in record.items():
+                try:
+                    SnapshotManifestGroup.model_validate({key: field_value})
+                except ValidationError:
+                    bad.append(str(key))
+            if bad:
+                _warn_once(
+                    "The snapshot manifest's %s group: %s do not fit; read as unstated.",
+                    name,
+                    ", ".join(sorted(bad)),
+                )
+            read[name] = {key: field_value for key, field_value in record.items() if str(key) not in bad}
+        return read
 
     def entry(self, relative: str) -> SnapshotManifestFile | None:
         """The attestation for `relative` (`data/<name>`), or `None` when the manifest names no such file."""
@@ -621,20 +674,38 @@ class EnsemblGroupReleaseError(FileNotFoundError):
 def pulled_groups(ensembl_cache: Path) -> dict[str, dict]:
     """The groups `ensembl_cache`'s pull record names, by name (`PULL_RECORD_GROUPS_KEY`); `{}` with none.
 
-    A record that is absent, unreadable, or names no groups answers `{}`, and an entry that is not an
-    object is dropped: none of them states a group the pull took.
+    An absent record, and one naming no groups, answer `{}`. **A record that is there and cannot be read
+    raises `EnsemblGroupReleaseError`** (review round 1, item 3): one that is not UTF-8 or not JSON, not an
+    object, whose `groups` is not an object, or with a group entry that is not one. Read as no groups, it
+    ended a sticky selection silently, since the next pull rewrote it without them, and the guard blamed a
+    group "not taken by a pull"; nothing can say which groups it held, so nothing reads past it.
     """
+    if not Path(ensembl_cache).is_dir():
+        return {}  # a `.duckdb` handed as the cache, or nothing there: no pull record, and no groups
     path = Path(ensembl_cache) / PULL_RECORD_FILENAME
     try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+        payload = json.loads(path.read_bytes().decode("utf-8"))
+    except FileNotFoundError:
         return {}
-    groups = payload.get(PULL_RECORD_GROUPS_KEY) if isinstance(payload, dict) else None
-    if not isinstance(groups, dict):
+    except (OSError, ValueError) as exc:  # UnicodeDecodeError and JSONDecodeError are both ValueErrors
+        raise _unreadable_pull_record(path, f"{type(exc).__name__}: {exc}") from exc
+    if not isinstance(payload, dict):
+        raise _unreadable_pull_record(path, "it is not a JSON object")
+    groups = payload.get(PULL_RECORD_GROUPS_KEY)
+    if groups is None:
         return {}
-    return {
-        name: entry for name, entry in groups.items() if isinstance(name, str) and isinstance(entry, dict)
-    }
+    if not isinstance(groups, dict) or not all(isinstance(entry, dict) for entry in groups.values()):
+        raise _unreadable_pull_record(path, f"its {PULL_RECORD_GROUPS_KEY!r} is not a map of group to record")
+    return {str(name): entry for name, entry in groups.items()}
+
+
+def _unreadable_pull_record(path: Path, why: str) -> EnsemblGroupReleaseError:
+    """The refusal for a pull record that is there and cannot be read: what is wrong, and the remedy."""
+    return EnsemblGroupReleaseError(
+        f"The pull record at {path} is there and could not be read ({why}), so nothing says which groups a pull "
+        f"took or which release each is. Move it aside and re-pull the lane with the groups you want "
+        f"(`just-dna-enricher cache pull --only ensembl --groups NAME[,NAME]`)."
+    )
 
 
 def _unnamed_group_files(cache: Path, group: str, manifest: SnapshotManifest | None) -> list[str]:
@@ -654,9 +725,9 @@ def ensembl_group_dir(ensembl_cache: Path, group: str) -> Path:
 
     **The path and the check are one call**, so no reader spells the layout and none reads a group
     without the check. The core's release is its `manifest.json`'s `release_id`, the record that
-    attests the core's files; the group's is the one its pull recorded. Six refusals, each its own
-    sentence (`@answered-is-not-absent`), all `EnsemblGroupReleaseError`: the pull record names no such
-    group (absent, or placed by hand), the group's pull did not finish, the core states no release, the
+    attests the core's files; the group's is the one its pull recorded. Seven refusals, each its own
+    sentence (`@answered-is-not-absent`), all `EnsemblGroupReleaseError`: the pull record is there and
+    cannot be read (`pulled_groups`), it names no such group (absent, or placed by hand), the group's pull did not finish, the core states no release, the
     two releases differ, an attested file is missing or of another size, and a parquet there is not one
     the manifest names for the group (the last two compared by size, as the core is read). `core` itself
     raises `ValueError` (`CORE_IS_NOT_A_GROUP`).

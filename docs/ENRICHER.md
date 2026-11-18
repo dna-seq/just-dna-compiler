@@ -606,7 +606,9 @@ Org limits apply **per member**, not shared. Source of truth:
   is one no other contract here uses (`GnomadClient.resolve_rsids` answers a dict). The knobs are
   `EnsemblSettings.batch_size` (default 20) and `batch_timeout` (default 120 s, the POST's read timeout);
   a `batch_size` above Ensembl's ceiling of 200 or below 1, and a `batch_timeout` that is not above 0, raise
-  `ValueError` when the settings are built, never clamped (1 is one GET per rsID, the off-switch). `_RestBatchWitness`, the witness's batch twin, stays private: nothing asks it since RM398.
+  `ValueError` when the settings are built, and again from `resolve_rsids_batched` before any request when a
+  field was set to one afterwards (the dataclass is mutable), never clamped (1 is one GET per rsID, the
+  off-switch). `_RestBatchWitness`, the witness's batch twin, stays private: nothing asks it since RM398.
 - **No response cache for the live clients.** NCBI / PharmVar / gnomAD GraphQL / Crossref / Europe PMC
   / OLS4 / HGNC / PGS Catalog / LitVar2 / the CIViC API / the ClinGen Allele Registry / GRCh37 Ensembl /
   the ClinVar release probe / live Ensembl are paced only. Persistence is the authored sidecars
@@ -1715,12 +1717,20 @@ provisioned by variable derives the whole set as `{lane.env_var for lane in CACH
 {CACHE_BASE_VAR}` rather than keeping the names by hand.
 **The status half is `caches.lane_status()` (S91, RM204)**, one `LaneStatus` per lane in registry
 order, and `cache status` renders it — a consumer serving the same answer over HTTP reads the function
-rather than re-writing the loop, which is two projections of one registry. Its `state` is
-three-valued: `present`, `absent`, and **`occupied`** — the place the lane looks exists, is non-empty
-and holds no snapshot (a build that failed after its downloads, a payload deleted beside its
-`release.json`, a stray `.part`, a foreign parquet). That third state used to print as `absent`,
-which sends an operator to run a pull that `prepare` is going to refuse, since provisioning never
-deletes. `looked_in` says which directory the verdict is about (the path given in `locations`, else
+rather than re-writing the loop, which is two projections of one registry. Its `state` is one of
+`LANE_STATES`, four since 0.9: `present`, `absent`, **`occupied`** — the place the lane looks exists, is
+non-empty and holds no snapshot (a build that failed after its downloads, a payload deleted beside its
+`release.json`, a stray `.part`, a foreign parquet) — and **`stale`**. `occupied` used to print as
+`absent`, which sends an operator to run a pull that `prepare` is going to refuse, since provisioning
+never deletes. `stale` (0.9, review round 1) is a derived lane on disk whose parents moved under it:
+its `CacheLane.stale_reason` (each parent's path as this call resolved it, the call's `locations`
+included) says why, in `LaneStatus.stale`. Only `ensembl_rsid_index` states one, the verdict its reader
+refuses the index by (an index of another core), so `cache status` prints `stale` with the reason and the
+rebuild where a reader looks, and `cache prepare` leaves it as it is, *unavailable* (`ready=None`, route
+`none`, `stale: …`), never `present`. A core on disk that cannot be pinned (no manifest, a file of unstated
+sha256) is stale too, since no index is read beside it; a core that is gone is no moved parent, and the
+index stays `present`. The reader logs the same reason when it refuses an index. Before, both called a
+refused index present. A named lane is judged before any unnamed lane of the call loads `.env`. `looked_in` says which directory the verdict is about (the path given in `locations`, else
 the lane's `env_var` if set, else the default), `release` is what the snapshot names, and
 `release_unreadable` is the present-and-unreadable `release.json` — a provenance failure, not a data
 failure.
@@ -1844,7 +1854,9 @@ group, and a lookup by rsID pruned nothing (every row group's `id` spans rs1 to 
   `parents.ensembl` holds `ensembl_rsid_index_build.core_pin(core)`, the core manifest's `release_id` and
   `files_sha256`, a digest of the manifest's `data/` attestations (path, size, sha256), beside the core's
   path. A label alone is not a core: one label has been seen over two sets of bytes (RM445), and a test
-  slice states the real release's label. A core whose manifest names no release cannot be indexed.
+  slice states the real release's label. A core whose manifest names no release cannot be indexed, and
+  nor can one whose manifest states no size or sha256 for a `data/` file: its pin is withheld (`core_pin`
+  answers `None`), never hashed with an empty part, and the build refuses naming the files.
   `dataset` is the core's release, so `cache status` prints which release the index is of.
 - **Built, never pulled, and only when named** (the pm's reading 2, 2026-11-18). `cache rebuild --only
   ensembl_rsid_index` builds it; no `ensure` does, so `cache pull`, `ensure_snapshot` and
@@ -2126,6 +2138,10 @@ published, build if not.
   `cache rebuild --only <lane>` builds it. `RebuildRequest.named` (default `True`: a caller of
   `rebuild_lane` has named its lane) is what the loops over every lane set to `False`.
   `ensembl_rsid_index` is the one such lane.
+- **A lane whose `ensure` takes the run's declared use** says so in a field (0.9, review round 1:
+  `CacheLane.ensure_takes_declared_use`, `False` by default), which `cache prepare` and `cache pull` read
+  to pass `declared_use=` on; `ensembl` is the one such lane (its recorded groups, RM437). A test holds it
+  equal to whether `ensure` has that parameter.
 
 **Every bulk download goes through one body, and a failed one is a failed lane (RM187).** Each
 builder streams its source's file through `net.stream_to_file`, which is atomic (`.part`, renamed only
@@ -2363,7 +2379,12 @@ prevent, and a stale group joins to the wrong variants silently.
   and `cache pull --only ensembl --groups NAME[,NAME] [--use …]`, which prints one
   `ensembl group <name>: <outcome>` line per group it looked at. The valid names are the manifest's own
   `groups` (`locations.SnapshotManifest.groups`, name → `SnapshotManifestGroup`, licence included;
-  `SnapshotManifest.group_files(name)` lists what it attests for one). `core` is not a group
+  `SnapshotManifest.group_files(name)` lists what it attests for one). The groups are read group by group
+  and field by field (0.9, review round 1): a field of a kind this reader does not type reads as unstated
+  with a warning (`The snapshot manifest's <group> group: <fields> do not fit; read as unstated.`), a
+  record that is not an object keeps its name with nothing stated, and `groups` that are not a map are
+  unstated, so a field a later release adds never costs the core's release, coverage or pin, and an unread
+  licence is no licence (unknown terms, never admitted). `core` is not a group
   (`locations.ENSEMBL_CORE_GROUP`, refused with `CORE_IS_NOT_A_GROUP`), and an unknown name is refused
   with the names the release does publish, both `ValueError` and before any download (a name the cache's
   manifest lacks is checked against the hub's, which may publish a newer release that adds it). `cache
@@ -2383,12 +2404,17 @@ prevent, and a stale group joins to the wrong variants silently.
   size and sha256, as a core file is. The pull record gains `groups` (`locations.PULL_RECORD_GROUPS_KEY`):
   per group, the `release_id` its files were attested against (`null` while its pull is under way), its
   files, the declaration it was admitted under, and since the pm's follow-up when that use was declared
-  (`declared_at`, `download.PULL_RECORD_DECLARED_AT_KEY`, UTC). `locations.pulled_groups(cache)` reads it.
+  (`declared_at`, `download.PULL_RECORD_DECLARED_AT_KEY`, UTC). `locations.pulled_groups(cache)` reads it:
+  `{}` for an absent record or one naming no groups, and `EnsemblGroupReleaseError` for one that is there
+  and cannot be read (not UTF-8 or JSON, not an object, `groups` or a group entry not an object), which
+  `ensure_snapshot` raises too, before anything is fetched or the record rewritten (review round 1): read
+  as no groups, it ended the sticky selection unsaid.
 - **The one path, with the check.** `locations.ensembl_group_dir(cache, group)` returns
   `<cache>/groups/<group>` (`ENSEMBL_GROUPS_DIRNAME`) only when the group's recorded release is the
   core's (`manifest.json`'s `release_id`) and the directory holds exactly the files the manifest attests
   for the group, at their sizes (a `stat`, as the core is read). Otherwise it raises
-  `EnsemblGroupReleaseError`, with its own sentence for each of six causes: not taken by a pull of this
+  `EnsemblGroupReleaseError`, with its own sentence for each of seven causes: a pull record there and
+  unreadable (`The pull record at <path> is there and could not be read (…)`), not taken by a pull of this
   cache (absent, or placed by hand), a pull that did not finish, a core stating no release, two releases,
   an attested file missing or of another size (re-pull it), and a parquet the manifest does not name for
   the group (move it aside: no pull removes a file it did not put there, and a pull over such a directory
@@ -2481,12 +2507,20 @@ with RemoteSnapshots(declared_use="non_commercial") as snapshots:      # proxy f
   `mitomap`, `strchive` or `alphagenome_avi`. PharmVar and PubMind have no published repo.
 - **The proxy** (`POST {proxy}/api/v1/lanes/{lane}/{table}`, the registry's §§ 46–47): one keep-alive
   `httpx` client, a 3 s connect and 10 s read timeout, at most 100 key values a request and one
-  chromosome per request. A reply with `truncated: true` is halved and asked again, down to one key; one
+  chromosome per request. A lookup is split along one column (`start` for a position, else its longest);
+  one whose other columns alone fill the 100 is not sent to the proxy at all (0.9, review round 1): the
+  limit is the proxy's, so Hugging Face answers, as for a folded key, and with Hugging Face off it is
+  could-not-ask saying so, never a wrong request. A reply with `truncated: true` is halved and asked again, down to one key; one
   key still truncated is could-not-ask for the whole lookup (no fall-through), never an absence. After a
   429, a 503, a 504, a 404 `lane_not_available`, a timeout or a connection error the holder asks Hugging
   Face instead, for the whole lookup. A 422, or a 404 `unknown_lane`/`unknown_table`, is a wrong request
   and raises `ValueError`; any other status, and a 200 that is not a lane reply, is could-not-ask on the
-  proxy with no fall-through. A proxy answer's `release` and `revision` are what its replies state
+  proxy with no fall-through. A 200 is read through one strict model of the registry's reply (0.9, review
+  round 1): `lane` and `table` equal to the request's, `rows` a list of objects, `truncated` a JSON bool, and
+  `served_from`, `release` and `revision` text or absent (another kind is withheld, `None`, since they only
+  trace the rows), with no coercion (`"false"` is no bool) and fields it does not read ignored. A reply missing `truncated`, a row that is not an object, or a reply for another
+  lane or table is `a 200 that is not a lane reply (…)` or `a 200 that is not the reply asked for: …`,
+  never a whole answer and never an `AttributeError` out of `lookup_variant`. A proxy answer's `release` and `revision` are what its replies state
   (registry S34), else `None`, withheld; `served_from` is kept.
 - **Hugging Face** is read through duckdb's `httpfs`, never through `hf://` (duckdb resolves that to
   `huggingface.co` itself, past `hf_base_url` and the test fence, and a glob over plain HTTP is
@@ -2537,7 +2571,10 @@ with RemoteSnapshots(declared_use="non_commercial") as snapshots:      # proxy f
 - **The keyed functions (RM431).** A lane RM431 made eligible is asked by the keys of its keyed function, and
   that function's SQL runs over the rows a route answers exactly as over the local files (one body per question,
   `_…_over`; the remote half is `_…_from_rows`, private, as RM430's are). No public function takes a holder in
-  0.9: a host asks `RemoteSnapshots.lookup` with the table and keys below and gets the rows.
+  0.9: a host asks `RemoteSnapshots.lookup` with the table and keys below and gets the rows. The rows are typed
+  by a hand-kept `(column, duckdb type)` list per table (ClinVar's and Ensembl's read subsets included), and
+  `test_typed_read_columns_are_the_snapshots.py` finds every such list at its call site and holds each to the
+  schema its builder writes, so a list added without a source fails that walk.
   - `opentargets.lookup_variants(reference, positions: Sequence[tuple[str, int]]) -> dict[tuple[str, int],
     list[dict]]`: every allele the release's allele table states at each position, keyed as asked (`chr6` and
     `6` are two keys with the same rows), compared as the release spells it (`normalize_chrom`). A row is the
@@ -2560,15 +2597,16 @@ with RemoteSnapshots(declared_use="non_commercial") as snapshots:      # proxy f
     rsids) -> dict[str, list[dict]]`: every snapshot row under each gene (compared by `gene_key`: case and
     surrounding space make no second gene) or rsID (lower case, `rs` prefixed: `334` is `rs334`), keyed as asked,
     every column, in one total order. With the raising reader's semantics (`_snapshot_rows`): an absent or
-    unreadable snapshot raises `CivicDraftError` naming it. Remotely: table `civic`, keys `gene` (each as given,
-    stripped) and `rsid` (as the snapshot spells it). A gene is compared by its `key_compare.KEY_COMPARES` entry on every
+    unreadable snapshot raises `CivicDraftError` naming it. Remotely: table `civic`, keys `gene` and `rsid`,
+    each as asked: the holder reads them as the local reader does (an rsID as the snapshot spells one). A gene is compared by its `key_compare.KEY_COMPARES` entry on every
     route, so `brca1` answers on Hugging Face as it does locally; the proxy is not asked for a gene (below).
   - `clinvar_gkm.lookup_variants(reference, positions) -> dict[tuple[str, int], list[dict]]` and
     `clinvar_gkm.lookup_rsids(reference, rsids) -> dict[str, list[dict]]`: every placement the witness holds at
     each position (contig as `clinvar_gkm.normalize_chrom` spells it) or under each rsID (as `by_rsid` reads
     one), keyed as asked, every column of the slice. `ClinVarGkmWitness.load` stays the polars loader. An
     absent or unreadable slice raises `ClinVarGkmError`; an absent key is *not witnessed*, never *placed
-    wrong*. Remotely: table `clinvar_gkm-indels`, keys `chrom` + `start` (the holder reads `pos`) and `rsid`.
+    wrong*. Remotely: table `clinvar_gkm-indels`, keys `chrom` + `start` (the holder reads `pos`) and `rsid` (as
+    asked; the holder reads it as `by_rsid` does).
     The VRS id is not a key: it is not one of `remote.KEY_COLUMNS`, the registry's list, so it stays local
     (`by_vrs_id`).
   - `clinpgx.lookup_rsids(reference, rsids) -> dict[str, list[dict]]` and `clinpgx.lookup_genes(reference, genes)
@@ -2578,7 +2616,7 @@ with RemoteSnapshots(declared_use="non_commercial") as snapshots:      # proxy f
     `;`-joined `gene` cell (`KLC1;XRCC3` names both, as `draft-clinpgx --gene` reads it), compared by
     `gene_key`. `load_snapshot` stays the whole-table loader; an absent or unreadable snapshot raises
     `ClinPgxEnrichmentError`. Remotely (lane `clinpgx`, eligible since RM430, gated by ClinPGx's no-sale terms):
-    table `annotations`, keys `rsid` (as the snapshot spells it) and `gene` (each as given, stripped). A gene is
+    table `annotations`, keys `rsid` and `gene`, each as asked (the holder reads them as the local reader does). A gene is
     compared by its `key_compare.KEY_COMPARES` entry on every route, member by member of the `;`-joined cell (399 of 16,117
     rows on the 2026-08 snapshot name several); the proxy is not asked for a gene (below).
   - `drug_labels.lookup_genes(reference, genes) -> dict[str, list[dict]]` (the pm's reading 4): every
@@ -2587,17 +2625,22 @@ with RemoteSnapshots(declared_use="non_commercial") as snapshots:      # proxy f
     names both, split on `CELL_SEPARATOR` as `load_drug_labels` splits it), compared by `gene_key`; a label naming
     two asked genes is under both. `load_drug_labels` stays the loader the check reads. An absent snapshot raises
     `DrugLabelUnavailable`, an unreadable one `DrugLabelError`. Remotely (lane `drug_labels`, eligible since
-    RM430, gated by ClinPGx's no-sale terms): table `drug_labels`, key `genes` (each gene as given, stripped).
+    RM430, gated by ClinPGx's no-sale terms): table `drug_labels`, key `genes` (each gene as asked).
     A gene is compared by its `key_compare.KEY_COMPARES` entry on every route, member by member of the cell (361 of 1,433
     labels on the 2026-08 snapshot name several); the proxy is not asked for a gene (below).
   - **The remote compare is the local compare** (the pm, 2026-11-18, fixed as a class).
-    `key_compare.KeyCompare(fold=False, separator=None)` is how a keyed function compares a key with a cell:
-    `fold` by `spelling.gene_key` (`lower(trim(…))` in SQL), `separator` member by member of a joined cell;
-    `key_compare.EXACT` is the whole cell, byte for byte. `key`, `members(cell)`, `predicate(column, *,
-    negated=False)` (SQL over one bound `VARCHAR[]`), `parameter(values)` and `described` are the one reading of
-    it. `key_compare.KEY_COMPARES` (lane → table → column → `KeyCompare`, read with `lane_compare`) is the one
-    registry: `clinpgx` (`gene`, folded, `;`), `drug_labels` (`genes`, folded, `;`), `civic` (`gene`, folded) and
-    `cpic` (`gene` of every table, folded). The keyed functions build their local SQL from their entry, and
+    `key_compare.KeyCompare(fold=False, separator=None, rsid=False)` is how a keyed function compares a key with
+    a cell: `fold` by `spelling.gene_key` (`lower(trim(…))` in SQL), `separator` member by member of a joined
+    cell, and `rsid` (0.9, review round 1) the key read as an rsID (`RS334` and `334` are `rs334`) against the
+    whole cell; `key_compare.EXACT` is the whole cell, byte for byte. `exact` is no reading on either side;
+    `cell_exact` is the whole cell byte for byte against the key as read, which the proxy compares too when
+    the holder sends it the key as read, as it does: so an rsID still goes to the proxy, a gene does not. `key`, `members(cell)`, `predicate(column, *,
+    negated=False)` (SQL over one bound `VARCHAR[]`; a `NULL` cell matches neither way, so `negated` is true only
+    for a stated cell that answers to none, as SQL's `<>` read it), `parameter(values)` and `described` are the one
+    reading of it. `key_compare.KEY_COMPARES` (lane → table → column → `KeyCompare`, read with `lane_compare`) is the one
+    registry: `clinpgx` (`gene`, folded, `;`; `rsid`), `drug_labels` (`genes`, folded, `;`), `civic` (`gene`,
+    folded; `rsid`), `clinvar_gkm` (`rsid`) and `cpic` (`gene` of every table, folded). The walk asks the holder
+    with the keys as a host types them (`RS334`, ` Brca1 `), never through a reader's private key builder. The keyed functions build their local SQL from their entry, and
     `remote.RemoteLane.compares` is the lane's entry, derived from its name, so the holder's Hugging Face SQL
     compares as the local reader does; a column the registry does not name compares exactly on both routes.
     `RemoteLane.compare(table, column)` reads one, and `RemoteLane.proxy_compares(table, columns)` says whether

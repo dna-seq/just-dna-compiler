@@ -222,6 +222,9 @@ REMOTE_CIVIC_TABLE = "civic"
 #: How `lookup_genes` compares a gene with the `gene` cell, on every route: the whole cell, by `gene_key`
 #: (`key_compare.KEY_COMPARES`, which the holder reads too, so the two routes cannot compare apart).
 _GENE = lane_compare("civic", REMOTE_CIVIC_TABLE, "gene")
+#: How `lookup_rsids` compares an rsID with the `rsid` cell, on every route: the key read as an rsID
+#: (`RS334` and `334` are `rs334`), the cell whole (`key_compare.KEY_COMPARES`, which the holder reads too).
+_RSID = lane_compare("civic", REMOTE_CIVIC_TABLE, "rsid")
 
 
 def _civic_connection(reference: Path) -> duckdb.DuckDBPyConnection:
@@ -251,18 +254,6 @@ def _select_civic(con: duckdb.DuckDBPyConnection, where: str, params: list) -> l
     cursor = con.execute(f"SELECT {names} FROM civic WHERE {where} ORDER BY ALL", params)
     columns = [d[0] for d in cursor.description]
     return [dict(zip(columns, values, strict=True)) for values in cursor.fetchall()]
-
-
-def _civic_gene_keys(genes: Sequence[str]) -> dict[str, list[str]]:
-    """The keys a remote route is asked for `genes`: each as given, stripped.
-
-    The holder compares them as this reader does (`key_compare.KEY_COMPARES`: by `gene_key`, so case and space do not
-    make two genes), so a key spelled in another case than CIViC stores it is answered on both routes. The
-    registry's proxy compares a cell exactly, so the holder does not ask it for this key and reads Hugging
-    Face instead (`remote.RemoteLane.proxy_compares`); no upper-cased guess is sent in its place, since
-    `C9orf72` is not upper case.
-    """
-    return {"gene": list(dict.fromkeys(gene.strip() for gene in genes if gene.strip()))}
 
 
 def _genes_over(con: duckdb.DuckDBPyConnection, genes: Sequence[str]) -> dict[str, list[dict]]:
@@ -304,17 +295,13 @@ def _genes_from_rows(rows: Sequence[Mapping[str, object]], genes: Sequence[str])
         con.close()
 
 
-def _civic_rsid_keys(rsids: Sequence[str]) -> dict[str, list[str]]:
-    """The keys a remote route is asked for `rsids`: each as the snapshot spells it, as the local SQL compares."""
-    return {"rsid": list(_asked_rsids(rsids))}
-
-
 def _rsids_over(con: duckdb.DuckDBPyConnection, rsids: Sequence[str]) -> dict[str, list[dict]]:
     """`lookup_rsids`' query over a connection exposing `civic`: the one copy."""
     asked = _asked_rsids(rsids)
     if not asked:
         return {}
-    tokens = list(asked)
+    # Each key read as `_RSID` reads it, then the cell compared whole with `IN`, which prunes row groups.
+    tokens = _RSID.parameter(list(asked))
     rows = _select_civic(con, f"rsid IN ({', '.join('?' for _ in tokens)})", tokens)
     answer: dict[str, list[dict]] = {}
     for row in rows:

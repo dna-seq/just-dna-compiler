@@ -97,5 +97,4 @@ def test_the_holder_keys_are_the_witness_spelling(built: Path) -> None:
         "chrom": ["MT", "4"],
         "start": [73, HSD17B13[1]],
     }
-    assert clinvar_gkm._rsid_keys(["RS72613567", "72613567"]) == {"rsid": ["rs72613567"]}
-    assert json.dumps(clinvar_gkm._rsid_keys([])) == '{"rsid": []}'
+    assert clinvar_gkm._RSID.parameter(["RS72613567", "72613567"]) == ["rs72613567"]

@@ -34,14 +34,14 @@ from just_dna_compiler.resolution_findings import (
 from just_dna_format.alleles import split_genotype
 from just_dna_format.base import derive_variant_key
 from just_dna_format.findings import CodedWarning
-from just_dna_format.snapshot import SNAPSHOT_DATA_DIRNAME, read_release
+from just_dna_format.snapshot import SNAPSHOT_DATA_DIRNAME
 from just_dna_format.spec import VariantRow
 from just_dna_format.spelling import gene_key
 from just_dna_format.vocab import ALLELE_PATTERN
 from just_dna_format.vrs import normalize_chrom
 
 from just_dna_enricher.ensembl import _placeable_alleles
-from just_dna_enricher.ensembl_rsid_index_build import INDEX_GLOB, core_pin
+from just_dna_enricher.ensembl_rsid_index_build import INDEX_GLOB, _moved_parent, core_pin
 from just_dna_enricher.events import (
     Mint,
     ReadWindow,
@@ -51,6 +51,7 @@ from just_dna_enricher.events import (
     names_event,
     no_mint,
 )
+from just_dna_enricher.key_compare import _rsid_token
 from just_dna_enricher.locations import (
     DUCKDB_NAME,
     ENSEMBL_RSID_INDEX_CACHE_VAR,
@@ -453,24 +454,18 @@ def _rsid_index_beside(reference: Path, explicit: Path | None = None) -> Path | 
         )
         return None
     payload = index_dir / SNAPSHOT_DATA_DIRNAME / INDEX_GLOB
-    release = read_release(index_dir)
-    pinned = ((release.parents or {}) if release is not None else {}).get("ensembl")
-    if (
-        any(payload.parent.glob(payload.name))
-        and pinned is not None
-        and {key: pinned.get(key) for key in current} == current
-    ):
+    # The one verdict `cache status` and `cache prepare` read too, so they call stale what is refused here.
+    moved = _moved_parent(index_dir, reference)
+    if moved is None and any(payload.parent.glob(payload.name)):
         return payload
     if (index_dir, reference) not in _REFUSED_INDEXES:
         _REFUSED_INDEXES.add((index_dir, reference))
-        stated = pinned.get("release_id") if pinned is not None else None
         logger.warning(
-            "The rsID index at %s was not built from the Ensembl core at %s (it pins %s; the core is %s), "
-            "so rsIDs are looked up by scanning the core. %s",
+            "The rsID index at %s was not built from the Ensembl core at %s (%s), so rsIDs are looked up by "
+            "scanning the core. %s",
             index_dir,
             reference,
-            stated or "no core",
-            current["release_id"],
+            moved or "it holds no index file",
             _rebuild_instruction(index_dir, explicit=explicit is not None),
         )
     return None
@@ -557,18 +552,8 @@ def _typed_rows_connection(
     return con
 
 
-def _rsid_token(rsid: str) -> str:
-    """An rsID as the snapshots spell one: lower case, `rs` prefixed (`RS334` and `334` are `rs334`).
-
-    The one spelling CIViC's and ClinVar-GKM's keyed functions (RM431) compare an asked rsID in, and
-    `ClinVarGkmWitness.by_rsid`'s reading.
-    """
-    token = rsid.strip().lower()
-    return token if token.startswith("rs") else f"rs{token}"
-
-
 def _asked_rsids(rsids: Sequence[str]) -> dict[str, list[str]]:
-    """`_rsid_token` → the rsIDs asked under it, as asked and in order; blanks are dropped."""
+    """`key_compare._rsid_token` → the rsIDs asked under it, as asked and in order; blanks are dropped."""
     asked: dict[str, list[str]] = {}
     for rsid in rsids:
         if rsid.strip() and rsid not in asked.setdefault(_rsid_token(rsid), []):

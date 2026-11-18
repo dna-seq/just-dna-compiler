@@ -27,7 +27,7 @@ from pathlib import Path
 import huggingface_hub
 import polars as pl
 import pytest
-from just_dna_enricher import caches
+from just_dna_enricher import caches, locations
 from just_dna_enricher import download as dl
 from just_dna_enricher.caches import LANES_BY_NAME
 from just_dna_enricher.cli import app as enricher_app
@@ -49,6 +49,7 @@ from just_dna_enricher.locations import (
     SNAPSHOT_REPO_IDS,
     EnsemblGroupReleaseError,
     SnapshotManifest,
+    SnapshotManifestGroup,
     ensembl_group_dir,
     ensembl_release_label,
     pulled_groups,
@@ -236,6 +237,118 @@ def test_the_manifest_types_its_groups_with_their_licence() -> None:
     )
 
 
+# ── a record present but unreadable is refused, never read as absent (review round 1, item 3) ───────────
+
+
+#: Pull records that are there and cannot be read, by what is wrong with them.
+_UNREADABLE_RECORDS: dict[str, bytes] = {
+    "not utf-8": b"\xff\xfe{",
+    "not json": b'{"repo": "x", "groups": ',
+    "not an object": b'["cadd"]',
+    "groups not an object": json.dumps({"repo": "x", PULL_RECORD_GROUPS_KEY: ["cadd"]}).encode(),
+    "a group entry not an object": json.dumps(
+        {"repo": "x", PULL_RECORD_GROUPS_KEY: {"cadd": "pulled"}}
+    ).encode(),
+}
+
+
+def test_an_absent_pull_record_names_no_group_and_a_readable_one_names_its_own(tmp_path: Path) -> None:
+    assert pulled_groups(tmp_path) == {}
+    duckdb_file = tmp_path / "ensembl_variations.duckdb"
+    duckdb_file.write_bytes(b"")
+    assert pulled_groups(duckdb_file) == {}, (
+        "a cache handed as one file holds no pull record, which is no refusal"
+    )
+    (tmp_path / PULL_RECORD_FILENAME).write_text(json.dumps({"repo": "x"}), encoding="utf-8")
+    assert pulled_groups(tmp_path) == {}
+    entry = {"release_id": _OLD, "files": [], "declared_use": "unstated"}
+    (tmp_path / PULL_RECORD_FILENAME).write_text(
+        json.dumps({"repo": "x", PULL_RECORD_GROUPS_KEY: {"cadd": entry}}), encoding="utf-8"
+    )
+    assert pulled_groups(tmp_path) == {"cadd": entry}
+
+
+@pytest.mark.parametrize("fault", sorted(_UNREADABLE_RECORDS))
+def test_a_pull_record_that_is_there_and_unreadable_is_refused_by_the_reader_and_the_guard(
+    tmp_path: Path, fault: str
+) -> None:
+    """Read as no groups, it ended a sticky selection silently and the guard blamed "not taken by a pull";
+    a record that was not UTF-8 raised `UnicodeDecodeError` past the documented type."""
+    (tmp_path / PULL_RECORD_FILENAME).write_bytes(_UNREADABLE_RECORDS[fault])
+    for read in (lambda: pulled_groups(tmp_path), lambda: ensembl_group_dir(tmp_path, "cadd")):
+        with pytest.raises(EnsemblGroupReleaseError) as refused:
+            read()
+        assert str(refused.value).startswith(
+            f"The pull record at {tmp_path / PULL_RECORD_FILENAME} is there and could not be read ("
+        )
+
+
+def test_ensure_refuses_an_unreadable_pull_record_before_anything_is_fetched_or_rewritten(
+    install_hub, tmp_path: Path
+) -> None:
+    """A moved core used to be re-pulled over it, and the rewritten record carried no group: the selection was
+    lost with nothing said. Now nothing is fetched and the record is left as it was, for the operator."""
+    cache = tmp_path / "ensembl"
+    install_hub(_published(0, _OLD))
+    dl.ensure_snapshot(cache, groups=["cadd"], declared_use="non_commercial")
+    broken = (cache / PULL_RECORD_FILENAME).read_bytes()[:-20]
+    (cache / PULL_RECORD_FILENAME).write_bytes(broken)
+    hub = install_hub(_published(1, _NEW))
+    with pytest.raises(EnsemblGroupReleaseError, match="could not be read"):
+        dl.ensure_snapshot(cache)
+    assert hub.fetched == [], "nothing was downloaded"
+    assert (cache / PULL_RECORD_FILENAME).read_bytes() == broken, "the record was not rewritten"
+
+
+def test_a_group_record_is_read_member_by_member_so_a_later_field_costs_no_core_pin(
+    caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A group field of a kind this reader does not type used to fail the whole manifest: the core's release,
+    coverage and pin went with it. Now that field alone reads as unstated, said in a warning, and a group
+    record that is not an object keeps its name with nothing stated, so it is never "no such group" and never
+    terms that admit."""
+    files = _release(0)
+    raw = json.loads(_manifest(files, _OLD))
+    raw["groups"]["cadd"]["default"] = "auto"
+    raw["groups"]["cadd"]["licence"] = {"text": _CADD_LICENCE}
+    raw["groups"]["mystery"] = "see the README"
+    monkeypatch.setattr(locations, "_SAID", set())
+    with caplog.at_level("WARNING", logger="just_dna_enricher.locations"):
+        manifest = SnapshotManifest.model_validate_json(json.dumps(raw))
+        assert SnapshotManifest.model_validate_json(json.dumps(raw)) == manifest
+    assert manifest.release_id == _OLD and manifest.files, "the core is still read"
+    assert set(manifest.groups or {}) == {"consequence", "cadd", "mystery"}
+    assert (manifest.groups["cadd"].licence, manifest.groups["cadd"].default) == (None, None)
+    assert manifest.groups["cadd"].name == "cadd"
+    assert manifest.groups["mystery"] == SnapshotManifestGroup()
+    assert manifest.groups["consequence"].licence == _ENSEMBL_LICENCE
+    said = [r.getMessage() for r in caplog.records]
+    assert (
+        said.count("The snapshot manifest's cadd group: default, licence do not fit; read as unstated.") == 1
+    ), "a manifest is read many times per lookup, and one unread field is said once"
+    assert (
+        said.count("The snapshot manifest's mystery group is not an object; read with nothing stated.") == 1
+    )
+    reason = check_declared_use(
+        snapshot_group_terms("cadd", manifest.groups["cadd"].licence), "non_commercial"
+    )
+    assert reason is not None, "an unread licence never admits"
+
+
+def test_groups_that_are_not_a_map_are_unstated_and_the_core_is_still_read(
+    caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(locations, "_SAID", set())
+    raw = json.loads(_manifest(_release(0), _OLD))
+    raw["groups"] = ["cadd"]
+    with caplog.at_level("WARNING", logger="just_dna_enricher.locations"):
+        manifest = SnapshotManifest.model_validate_json(json.dumps(raw))
+    assert manifest.release_id == _OLD and manifest.files and manifest.groups is None
+    assert "The snapshot manifest's groups are not a map of name to record; read as unstated." in [
+        r.getMessage() for r in caplog.records
+    ]
+
+
 # ── selecting, gating and pulling a group ───────────────────────────────────────────────────────
 
 
@@ -398,7 +511,9 @@ def test_a_warm_cache_with_current_groups_reads_no_hub(install_hub, monkeypatch,
     assert ensembl_group_dir(cache, "cadd").is_dir()
 
 
-def test_a_moved_core_re_pulls_the_recorded_groups_without_naming_them(install_hub, tmp_path: Path) -> None:
+def test_a_moved_core_re_pulls_the_recorded_groups_without_naming_them(
+    install_hub, tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
     """`cache pull` with no `--groups`, unstated: the CADD group comes back under its recorded declaration."""
     cache = tmp_path / "ensembl"
     install_hub(_published(0, _OLD))
@@ -407,7 +522,16 @@ def test_a_moved_core_re_pulls_the_recorded_groups_without_naming_them(install_h
     hub = install_hub(new)
 
     follow = dl._FollowHub(ensembl_release_label)
-    dl.ensure_snapshot(cache, _follow_hub=follow)
+    with caplog.at_level("INFO", logger="just_dna_enricher.download"):
+        dl.ensure_snapshot(cache, _follow_hub=follow)
+    said = [r.getMessage() for r in caplog.records if r.name == "just_dna_enricher.download"]
+    assert any(
+        m.startswith(f"Pulling the Ensembl cadd group (1 file(s)) for {_NEW} under the use") for m in said
+    )
+    assert (
+        f"Removed groups/cadd/homo_sapiens-chrMT.parquet: an earlier release's cadd file the release {_NEW} "
+        "does not name."
+    ) in said
 
     assert follow.outcome == "refreshed"
     assert follow.groups == {"cadd": "pulled", "consequence": "pulled"}
@@ -505,7 +629,7 @@ def test_a_skip_under_the_recorded_use_names_it_too(
     install_hub(_published(1, _NEW))
     with caplog.at_level("INFO", logger="just_dna_enricher.download"):
         dl.ensure_snapshot(cache, _follow_hub=dl._FollowHub(ensembl_release_label))
-    assert "Ensembl group cadd: skipped" in caplog.text
+    assert "Ensembl group cadd: skipped — " in caplog.text
     assert "under the use recorded for it, unstated, declared 2026-11-01T00:00:00Z" in caplog.text
 
 
@@ -543,7 +667,9 @@ def test_a_core_refresh_keeps_a_group_at_its_old_release_until_that_group_is_pul
         ensembl_group_dir(cache, "consequence")
 
 
-def test_a_sticky_group_that_cannot_be_fetched_does_not_sink_the_core(install_hub, tmp_path: Path) -> None:
+def test_a_sticky_group_that_cannot_be_fetched_does_not_sink_the_core(
+    install_hub, tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
     cache = tmp_path / "ensembl"
     install_hub(_published(0, _OLD))
     dl.ensure_snapshot(cache, groups=["consequence"])
@@ -552,9 +678,15 @@ def test_a_sticky_group_that_cannot_be_fetched_does_not_sink_the_core(install_hu
         failing={"groups/consequence/homo_sapiens-chr21.parquet": ConnectionError("reset by peer")},
     )
 
-    dl.ensure_snapshot(cache, _follow_hub=dl._FollowHub(ensembl_release_label))  # no raise
+    with caplog.at_level("WARNING", logger="just_dna_enricher.download"):
+        dl.ensure_snapshot(cache, _follow_hub=dl._FollowHub(ensembl_release_label))  # no raise
 
     assert ensembl_release_label(cache) == _NEW
+    (said,) = [r.getMessage() for r in caplog.records if "was not re-pulled" in r.getMessage()]
+    assert said.startswith(
+        f"Ensembl cache at {cache}: the consequence group, selected by an earlier pull, was not re-pulled ("
+    )
+    assert said.endswith("); it is refused to readers until a pull succeeds.")
     assert not (cache / "groups/consequence/homo_sapiens-chr21.part").exists()
     with pytest.raises(EnsemblGroupReleaseError, match="a pull that did not finish"):
         ensembl_group_dir(cache, "consequence")

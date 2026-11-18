@@ -105,7 +105,7 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   passed proxy is the only GRCh38 reference source the run reads (the reference check, left-alignment, the minter
   and the anchor base of the resolver the run builds; a resolver the caller gives keeps its own, and the
   wrong-build diagnosis reads GRCh37 through `grch37`). Under `offline=True` it is not used, and the run warns once
-  (`orchestration.OFFLINE_OUTRANKS_SEQUENCES`). With neither argument a run writes the same bytes as before.
+  (`orchestration.OFFLINE_OUTRANKS_SEQUENCES`). With neither argument a run writes the same bytes as before: measured against `main`'s 0.8 code on five reference examples offline (only `verification.json`'s clock differs), and held by a test that a call naming each new argument as `None` writes what a call leaving them out does.
 - **`ensembl.BatchResolver` and `ensembl.RsidAnswer`** (RM404, RM401's capability published): an injected resolver
   with `resolve_rsids_batched(rsids)` is asked in batches. The 0.8 line's private `_BatchResolver`, its
   `_resolve_rsids` and `_Answer` are gone; `_RestBatchWitness` stays private. **`EnsemblSettings.batch_size`**
@@ -239,6 +239,85 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   registry's hints call `lookup_variant` and its enrich step calls `enrich`, neither `lookup_loci`. Each passes
   it down to `resolver.lookup_loci(..., rsid_index=)`, with its semantics: given, it is the only place an index
   is looked for, never the environment; `None` keeps the lane's ladder.
+- **The negated key compare treats a `NULL` cell as no match** (review round 1, item 10):
+  `KeyCompare.predicate(column, negated=True)` is true only where a stated cell answers to no key, as cpic's
+  `lower(gene) <> ?` read it before the shared predicate. `CpicSnapshotClient.partner_genes` no longer lists `None` as a
+  partner when a recommendation row states no gene.
+- **`SCHEMAS.md` says one thing of a mistyped `release.json` key** (review round 1, item 9): `read_release`'s
+  paragraph said such a key made the record `None`, beside the 0.9 sentence that it is dropped. The code drops the
+  key and reads the rest (`test_parse_release_drops_a_mistyped_key_with_a_warning_as_read_release_does`); both
+  sentences now say so.
+- **A batch setting set after the settings were built is refused where it is read** (review round 1, item 8):
+  `EnsemblSettings` is a mutable dataclass, so `settings.batch_size = 0` after construction passed the check and
+  `resolve_rsids_batched` yielded no answer for any rsID, saying nothing. The batched read now runs the same check
+  before any request, raising the construction's `ValueError` word for word, for `batch_size` at either end and for
+  `batch_timeout`.
+- **An rsID index pin with a file of unstated size or sha256 is withheld** (review round 1, item 7):
+  `ensembl_rsid_index_build.core_pin` hashed a missing sha256 as `""`, so two cores alike in release, paths and
+  sizes but not in bytes pinned alike and an index of one was read beside the other. It now answers `None` for such
+  a manifest (a core it cannot pin is scanned), and `build_rsid_index` refuses naming the files. A fully stated
+  manifest pins exactly as before, so an index already built stays current.
+- **Every hand-kept typed column list is held to its builder's schema** (review round 1, item 4,
+  `@registry-completeness`): the lists a remote answer's rows are typed by (Open Targets' three, ClinVar's and
+  Ensembl's read subsets, beside CIViC's, ClinPGx's, ClinVar-GKM's and the drug labels') are found by an AST walk
+  over their call sites and each is compared with what its builder writes; `lookup`'s table per link is held to
+  `remote.table_name` of the lane's files. New: **`CacheLane.ensure_takes_declared_use`** (`True` for `ensembl`
+  only), which `cache prepare` and `cache pull` read to pass `declared_use=` to `ensure`, where both compared
+  `lane.name == "ensembl"`; `lookup_variant` skips an rsID-only remote ask by `RemoteLane.needs_position`. No
+  behaviour moves.
+- **A stale rsID index is called stale, never present** (review round 1, item 11, as RM431's reading 3 decided):
+  `lane_status` and `cache status` said `present` and `cache prepare` said ready for an index its reader refuses
+  because it pins another core. `LANE_STATES` gains **`stale`**, `LaneStatus` gains **`stale`** (the reason), and
+  `CacheLane` gains **`stale_reason`**, which `ensembl_rsid_index` states with the reader's own verdict, so the
+  three agree. `cache status` prints `stale` with the reason and the rebuild where a reader looks; `cache
+  prepare` leaves the index as it is and reports it *unavailable* (`ready=None`, `stale: …`). Each parent is
+  read where this call resolved it, `locations` included, so a call naming every lane still loads no `.env`. A
+  core on disk that cannot be pinned is stale too; a core that is gone is no moved parent, and the index stays
+  `present`. The reader's refusal now logs that same reason, where it said "it pins R; the core is R" of a core
+  of one release over other files. `cache status` prints every state in
+  its own word, which a walk over `LANE_STATES` holds.
+- **A pull record present but unreadable is refused, never read as no groups** (review round 1, item 3, RM437):
+  `locations.pulled_groups` answered `{}` for a record that was not JSON, not an object or held a malformed
+  `groups`, so the next pull rewrote it without them and the sticky selection ended unsaid, and a record that was
+  not UTF-8 raised `UnicodeDecodeError` past the documented type. It now raises `EnsemblGroupReleaseError`
+  naming the record and the remedy, through `ensembl_group_dir` too, and `ensure_snapshot` raises it before
+  anything is fetched or rewritten; an absent record is still `{}`. **The manifest's group records are read group
+  by group and field by field**: a group field of a kind not typed here (`default: "auto"`) failed the whole
+  `manifest.json`, losing the core's release, coverage and rsID-index pin; now that field reads as unstated with a
+  warning said once per process, a record that is not an object keeps its name, and an unread licence never
+  admits. A remote
+  `release.json` keeps the local reader's leniency, by design.
+- **A proxy 200 is read through one strict model of the registry's reply** (review round 1, item 1, RM430,
+  `@client-exception-contract`'s fourth leg): a reply missing `truncated` was taken as a whole answer, a row that
+  was not an object reached the readers and raised `AttributeError` out of `lookup_variant`, and a reply for
+  another lane or table was taken for the one asked. Each is now could-not-ask on the proxy with no fall-through
+  (`SnapshotRouteUnavailable`, `a 200 that is not a lane reply (…)` or `… not the reply asked for: …`), as is a
+  `truncated` of the wrong JSON kind; a `release`, `revision` or `served_from` of another kind is withheld, and a
+  field the registry adds later is ignored. One walk over
+  `REMOTE_LANES` feeds the proxy each malformed body.
+- **A request over the proxy's per-request limit goes to Hugging Face** (review round 1, item 6, RM430): a lookup
+  whose columns besides the one split already held 100 values (100 rsIDs and 100 variation ids) raised
+  `ValueError`, the wrong-request channel, so Hugging Face, which has no such limit, was never asked. The proxy is
+  now passed over before any request, as for a folded key; with Hugging Face off that is could-not-ask naming the
+  limit.
+- **`rsid` is declared in `KEY_COMPARES`, so the holder reads an rsID as the local reader does** (review round 1,
+  item 5, RM430's class fix missing a key): CIViC's, ClinPGx's and ClinVar-GKM's keyed functions read `RS334` and
+  `334` as `rs334`, but the holder compared the key exactly, so a raw rsID answered locally and was missing
+  remotely; the equal-answers walk could not see it, since it asked the holder through the readers' private key
+  builders, which did the reading. New: `KeyCompare.rsid` and `KeyCompare.cell_exact`; the holder reads each key
+  as its compare does before any route, so the proxy, which compares a cell exactly, is still asked for an rsID.
+  The three readers read an asked rsID through the registry's compare (the cell still compared with a plain `IN`,
+  which prunes), the private key builders are gone, and the walk asks
+  the holder with raw keys.
+- **Every warning and log text 0.9 adds is pinned by its stable fragment** (review round 1, item 2,
+  `@warning-text-is-api`): one walk (`test_every_new_text_is_pinned.py`) over the 30 texts the diff added to a
+  logger, a `Finding` or a `warnings` list holds that each module still says its fragment, that an `assert` in
+  the test file each entry names says it, and that `remote`, `key_compare`, `ensembl_rsid_index_build` and `clients` emit nothing
+  the list does not name. Fifteen were unpinned, each now asserted where it is emitted: the holder's pin, answer,
+  pass-over and fall-through lines, two replies stating two releases, an unreadable Hub manifest, the clinical
+  call that could not be asked remotely, the group pull's, removal's and failed re-pull's lines, the rsID index
+  build's progress, and the stale-index refusal's head. The holder no longer logs "asking Hugging Face" when
+  Hugging Face is off.
 
 ## 2026-11-18 — RM453: a mirrored site where no spelling was witnessed keeps both spellings (patch, a declared corrected derivation, on `main`)
 

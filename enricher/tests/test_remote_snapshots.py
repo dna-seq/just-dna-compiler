@@ -12,6 +12,8 @@ import ast
 import dataclasses
 import hashlib
 import json
+import logging
+import shutil
 import threading
 from collections.abc import Callable
 from pathlib import Path
@@ -1061,3 +1063,269 @@ def test_nothing_in_the_package_builds_a_holder_lazily() -> None:
         and node.args[0].value == "snapshots"
     ]
     assert lazily == []
+
+
+# ── one strict model for the proxy's reply (review round 1, item 1) ────────────────────────────────
+
+
+def _well_formed(lane: str, table: str) -> dict[str, Any]:
+    return {"lane": lane, "table": table, "served_from": "local", "rows": [], "truncated": False}
+
+
+#: A 200 that is not the lane reply the registry documents (its § 46–47 shape), each malformed one way.
+MALFORMED_REPLIES: dict[str, Callable[[str, str], dict[str, Any]]] = {
+    "no truncated": lambda lane, table: {
+        k: v for k, v in _well_formed(lane, table).items() if k != "truncated"
+    },
+    "truncated as text": lambda lane, table: {**_well_formed(lane, table), "truncated": "false"},
+    "no rows": lambda lane, table: {k: v for k, v in _well_formed(lane, table).items() if k != "rows"},
+    "a row not an object": lambda lane, table: {**_well_formed(lane, table), "rows": [{"chrom": "1"}, None]},
+    "a row a string": lambda lane, table: {**_well_formed(lane, table), "rows": ["chrom=1"]},
+    "another lane": lambda lane, table: {**_well_formed(lane, table), "lane": f"{lane}_other"},
+    "another table": lambda lane, table: {**_well_formed(lane, table), "table": f"{table}_other"},
+    "no lane": lambda lane, table: {k: v for k, v in _well_formed(lane, table).items() if k != "lane"},
+}
+
+
+@pytest.mark.parametrize("fault", sorted(MALFORMED_REPLIES))
+@pytest.mark.parametrize("lane", sorted(REMOTE_LANES))
+def test_a_malformed_proxy_reply_is_could_not_ask_on_every_lane(lane: str, fault: str) -> None:
+    """Walked over `REMOTE_LANES`: a 200 that is not the documented lane reply is could-not-ask on the proxy,
+    with no fall-through, never a whole answer and never an `AttributeError` later (`@client-exception-contract`,
+    the fourth leg). A position key is one every lane sends the proxy, so each lane's proxy really is asked."""
+    asked: list[str] = []
+
+    def proxy(request: httpx.Request) -> httpx.Response:
+        _lane, table = request.url.path.split("/")[-2:]
+        asked.append(table)
+        return httpx.Response(200, json=MALFORMED_REPLIES[fault](_lane, table))
+
+    holder = _with_proxy(
+        RemoteSnapshots(proxy_url=PROXY, huggingface=False, declared_use="non_commercial"), proxy
+    )
+    with holder, pytest.raises(SnapshotRouteUnavailable) as failed:
+        holder.lookup(lane, "t", {"chrom": ["1"], "start": [100]})
+    assert asked == ["t"], "the proxy was asked, once"
+    assert failed.value.route == "proxy" and not failed.value._falls_through
+    assert str(failed.value).startswith(
+        f"{lane}: the registry's proxy could not be asked: a 200 that is not "
+    )
+    if fault in ("another lane", "another table"):
+        answered = f"{lane}_other/t" if fault == "another lane" else f"{lane}/t_other"
+        assert str(failed.value).endswith(
+            f"a 200 that is not the reply asked for: it answers {answered}, not {lane}/t"
+        )
+    else:
+        assert "a 200 that is not a lane reply (" in str(failed.value)
+
+
+def test_provenance_of_another_kind_is_withheld_never_a_malformed_reply() -> None:
+    """`release`, `revision` and `served_from` only say where the rows came from: a kind the client does not read
+    costs that field (withheld, `None`), never the route (review round 1, the code review of item 1)."""
+    reply = {
+        **_well_formed("clinvar", "clinvar"),
+        "rows": [{"rsid": "rs334"}],
+        "release": 7,
+        "revision": {"a": 1},
+    }
+    holder = _with_proxy(
+        RemoteSnapshots(proxy_url=PROXY, huggingface=False), lambda r: httpx.Response(200, json=reply)
+    )
+    with holder:
+        answer = holder.lookup("clinvar", "clinvar", {"rsid": ["rs334"]})
+    assert answer.rows == [{"rsid": "rs334"}] and answer.route == RemoteRoute("proxy", None, "local", None)
+
+
+def test_a_well_formed_reply_with_extra_fields_is_read() -> None:
+    """Strict on what the client reads, never on what it does not: a field the registry adds later is ignored."""
+    reply = {**_well_formed("clinvar", "clinvar"), "rows": [{"rsid": "rs334"}], "added_later": {"x": 1}}
+    holder = _with_proxy(
+        RemoteSnapshots(proxy_url=PROXY, huggingface=False), lambda r: httpx.Response(200, json=reply)
+    )
+    with holder:
+        answer = holder.lookup("clinvar", "clinvar", {"rsid": ["rs334"]})
+    assert answer.rows == [{"rsid": "rs334"}] and answer.route == RemoteRoute("proxy", None, "local", None)
+
+
+@pytest.mark.parametrize("question", [{"chrom": "16", "start": 23635706}, {"rsid": "rs334"}])
+def test_a_proxy_row_that_is_not_an_object_is_a_finding_out_of_lookup_variant(
+    no_ambient_caches, tmp_path: Path, question: dict[str, Any]
+) -> None:
+    """Ensembl and ClinVar through `lookup_variant`: a non-object row used to raise `AttributeError` out of the
+    reader's rows connection, past the handlers; it is now a could-not-ask finding."""
+
+    def proxy(request: httpx.Request) -> httpx.Response:
+        _lane, table = request.url.path.split("/")[-2:]
+        return httpx.Response(200, json={**_well_formed(_lane, table), "rows": [None]})
+
+    holder = _with_proxy(RemoteSnapshots(proxy_url=PROXY, huggingface=False), proxy)
+    with holder:
+        hint, _ensembl = _ask(tmp_path, holder, **question)
+    said = [f.message for f in hint.findings if f.level == "warning"]
+    assert any(
+        "could not be asked remotely, so its answer is unchecked rather than empty" in m for m in said
+    ), said
+
+
+# ── a request over the proxy's own limit goes to the next route (review round 1, item 6) ──────────
+
+
+def _never(request: httpx.Request) -> httpx.Response:
+    raise AssertionError(f"the proxy was asked {request.url}")
+
+
+#: Two exact columns whose values leave no room in one proxy request: `start` is split, `id` is not.
+OVER_THE_LIMIT = {"chrom": ["1"], "start": [100], "id": [f"x{i}" for i in range(remote.PROXY_MAX_KEY_VALUES)]}
+
+
+@pytest.mark.parametrize("lane", sorted(REMOTE_LANES))
+def test_a_request_over_the_proxys_limit_skips_it_and_is_never_a_wrong_request(lane: str) -> None:
+    """The limit is the proxy's alone, so a request it cannot carry is not wrong on every route: Hugging Face is
+    asked, as for a folded key; with Hugging Face off that is could-not-ask, saying why, never `ValueError`."""
+    holder = _with_proxy(
+        RemoteSnapshots(proxy_url=PROXY, huggingface=False, declared_use="non_commercial"), _never
+    )
+    with holder, pytest.raises(SnapshotRouteUnavailable) as failed:
+        holder.lookup(lane, "t", OVER_THE_LIMIT)
+    assert failed.value.route is None
+    assert str(failed.value) == (
+        f"{lane}: no remote route was asked: the registry's proxy answers at most "
+        f"{remote.PROXY_MAX_KEY_VALUES} key values a request, and 101 besides 'start' leave no room, so the "
+        "proxy is not asked, and Hugging Face is off"
+    )
+
+
+def test_a_request_over_the_proxys_limit_is_answered_by_hugging_face(
+    httpfs, loopback_hub, clinvar_root: Path
+) -> None:
+    loopback_hub.publish(SNAPSHOT_REPO_IDS["clinvar"], clinvar_root, COMMIT_A)
+    held = sorted({str(row["variation_id"]) for row in _registry_rows(clinvar_root, {"rsid": ["rs334"]})})
+    rsids = ["rs334", *(f"rs{900000000 + i}" for i in range(99))]
+    keys = {"rsid": rsids, "variation_id": [*held, *(f"x{i}" for i in range(100 - len(held)))]}
+    expected = _registry_rows(clinvar_root, keys)
+    assert expected, "rs334's own variation is among the keys, so an empty answer cannot pass"
+    with _with_proxy(RemoteSnapshots(proxy_url=PROXY, hf_base_url=loopback_hub.base_url), _never) as holder:
+        answer = holder.lookup("clinvar", "clinvar", keys)
+    assert answer.route.route == "hf" and answer.rows == remote._stable(expected)
+
+
+# ── the holder's log lines and the clinical call's finding, pinned (review round 1, item 2) ───────
+
+
+def _remote_log(caplog: pytest.LogCaptureFixture) -> list[str]:
+    return [r.getMessage() for r in caplog.records if r.name == "just_dna_enricher.remote"]
+
+
+def test_the_holders_log_says_why_the_hub_was_asked_where_it_pinned_and_what_answered(
+    httpfs, loopback_hub, clinvar_root: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    loopback_hub.publish(SNAPSHOT_REPO_IDS["clinvar"], clinvar_root, COMMIT_A)
+    release = json.loads((clinvar_root / "release.json").read_text())["dataset"]
+    with (
+        caplog.at_level(logging.INFO, logger="just_dna_enricher.remote"),
+        _with_proxy(
+            RemoteSnapshots(proxy_url=PROXY, hf_base_url=loopback_hub.base_url), _staged(503)
+        ) as holder,
+    ):
+        answer = holder.lookup("clinvar", "clinvar", {"rsid": ["rs334"]})
+    assert _remote_log(caplog) == [
+        "clinvar: the proxy could not answer (HTTP 503); asking Hugging Face next",
+        f"clinvar: pinned {SNAPSHOT_REPO_IDS['clinvar']} at revision {COMMIT_A}, release {release}",
+        f"clinvar/clinvar: {len(answer.rows)} row(s) over hf, release {release}, served_from None, "
+        f"revision {COMMIT_A}",
+    ]
+
+
+def test_a_request_over_the_limit_logs_that_the_proxy_is_passed_over(
+    httpfs, loopback_hub, clinvar_root: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    loopback_hub.publish(SNAPSHOT_REPO_IDS["clinvar"], clinvar_root, COMMIT_A)
+    keys = {"rsid": [f"rs{i}" for i in range(1, 101)], "variation_id": [str(i) for i in range(1, 101)]}
+    with (
+        caplog.at_level(logging.INFO, logger="just_dna_enricher.remote"),
+        _with_proxy(RemoteSnapshots(proxy_url=PROXY, hf_base_url=loopback_hub.base_url), _never) as holder,
+    ):
+        holder.lookup("clinvar", "clinvar", keys)
+    assert _remote_log(caplog)[0] == (
+        "clinvar: the registry's proxy answers at most 100 key values a request, and 100 besides "
+        "'variation_id' leave no room, so the proxy is not asked; asking Hugging Face"
+    )
+
+
+def test_two_proxy_replies_stating_two_releases_withhold_it_and_say_so(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """One lookup cut into two requests, answered at two releases: neither is the answer's, and the log says both."""
+    releases = iter(["clinvar_2026-11-01", "clinvar_2026-11-08"])
+
+    def proxy(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={**_well_formed("clinvar", "clinvar"), "release": next(releases)})
+
+    rsids = [f"rs{i}" for i in range(1, remote.PROXY_MAX_KEY_VALUES + 2)]
+    with (
+        caplog.at_level(logging.WARNING, logger="just_dna_enricher.remote"),
+        _with_proxy(RemoteSnapshots(proxy_url=PROXY, huggingface=False), proxy) as holder,
+    ):
+        answer = holder.lookup("clinvar", "clinvar", {"rsid": rsids})
+    assert answer.route.release is None
+    assert _remote_log(caplog) == [
+        "clinvar: the proxy's replies to one lookup state 2 releases (clinvar_2026-11-01, clinvar_2026-11-08); withheld"
+    ]
+
+
+def test_an_unreadable_hub_manifest_attests_no_file_and_says_so(
+    httpfs, loopback_hub, ensembl_root: Path, tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The lookup still answers, over the whole table: the warning is the only sign the manifest was dropped."""
+    broken = tmp_path / "ensembl"
+    shutil.copytree(ensembl_root, broken)
+    (broken / "manifest.json").write_text("{ not json", encoding="utf-8")
+    loopback_hub.publish(SNAPSHOT_REPO_IDS["ensembl"], broken, COMMIT_A)
+    with (
+        caplog.at_level(logging.WARNING, logger="just_dna_enricher.remote"),
+        RemoteSnapshots(hf_base_url=loopback_hub.base_url) as holder,
+    ):
+        answer = holder.lookup("ensembl", "homo_sapiens", {"chrom": ["16"], "start": [23635706]})
+    assert answer.rows, "the slice holds rows there, read over the whole table"
+    assert _remote_log(caplog) == [
+        f"ensembl: {SNAPSHOT_REPO_IDS['ensembl']}@{COMMIT_A}/manifest.json could not be read; it attests no file"
+    ]
+
+
+def test_a_clinical_call_that_could_not_be_asked_remotely_is_a_finding_naming_it(
+    no_ambient_caches, clinvar_root: Path, tmp_path: Path
+) -> None:
+    """The rsID resolves over the proxy's ClinVar, and ClinVar's own call at its alleles (asked by position)
+    could not be asked: a `clin_sig` finding, never an empty call."""
+    proxy = _Proxy({"clinvar": clinvar_root})
+    proxy.status = lambda request: (
+        httpx.Response(500, text="staged by the test")
+        if "chrom" in json.loads(request.content)["keys"]
+        else None
+    )
+    holder = _with_proxy(RemoteSnapshots(proxy_url=PROXY, huggingface=False), proxy)
+    with holder:
+        hint, _ensembl = _ask(tmp_path, holder, rsid="rs334")
+    assert hint.loci, "the rsID resolved remotely, so ClinVar's call was asked"
+    said = [f.message for f in hint.findings if f.column == "clin_sig" and f.level == "warning"]
+    assert any(
+        m.startswith(
+            "ClinVar could not be asked remotely, clin_sig unchecked: clinvar: the registry's proxy could not be "
+            "asked: HTTP 500"
+        )
+        for m in said
+    ), said
+
+
+def test_a_key_of_only_blanks_is_a_wrong_request_once_read_as_its_column_compares() -> None:
+    """`RS334` is read as `rs334` before any route; a cell of only blanks reads as nothing, which is a request
+    that names a key and asks nothing, refused as an empty one is (review round 1, item 5)."""
+    with (
+        RemoteSnapshots(huggingface=False, declared_use="non_commercial") as holder,
+        pytest.raises(ValueError) as wrong,
+    ):
+        holder.lookup("civic", "civic", {"rsid": ["  "]})
+    assert (
+        str(wrong.value)
+        == "civic: a remote lookup needs a value for every key it names; rsid holds only blanks"
+    )

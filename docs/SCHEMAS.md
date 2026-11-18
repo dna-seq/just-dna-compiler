@@ -3075,8 +3075,9 @@ formula on both sides and the per-lane reader is gone. `builder` (ACMG's, a modu
 version and is not an alias of `builder_version`; it rides in extra.
 
 **`read_release(dir) -> SnapshotRelease | None`** answers `None` for an absent file and for an
-unreadable one (does not parse, is not an object, or a typed key holds the wrong kind of value), with a
-warning for the second. **`parse_release(data, *, source="release.json") -> SnapshotRelease | None`**
+unreadable one (does not parse, or is not an object), with a warning for the second. A typed key holding
+the wrong kind of value costs that key and never the record: it is dropped, read as unstated, with a
+warning naming it, and every other key is read (`release_is_unreadable` is `True` for such a file). **`parse_release(data, *, source="release.json") -> SnapshotRelease | None`**
 (0.9, RM430) is that reading of the content, and `read_release` calls it with the file's bytes: it takes
 the record's bytes or text, never a path, so a reader that fetched `release.json` from a remote snapshot
 gets the same answer from the same bytes. It is as lenient as `read_release`: content that is not JSON
