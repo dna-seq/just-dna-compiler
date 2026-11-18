@@ -126,8 +126,8 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   the registry's proxy and then Hugging Face, for a box with no local snapshot. **Off unless a caller holds one**:
   a new `LookupClients` field, `snapshots`, that nothing builds lazily, so every existing call reads and fetches
   exactly what it did. `lookup(lane, table, keys)` answers the proxy's contract on both routes (identifier keys,
-  ORed within a column, ANDed across, `chrom` with `start` paired) as a `RemoteAnswer(rows, route, release,
-  served_from, revision)`. The proxy is `proxy_url=`, else `$JUST_DNA_SNAPSHOT_PROXY_URL`, unset by default; it is
+  ORed within a column, ANDed across, `chrom` with `start` paired) as a `RemoteAnswer(rows, route)`, whose `route` is a
+  `RemoteRoute(route, release, served_from, revision)`. The proxy is `proxy_url=`, else `$JUST_DNA_SNAPSHOT_PROXY_URL`, unset by default; it is
   asked in requests of at most 100 values and one chromosome, a truncated reply is halved down to one key, and it
   falls through to Hugging Face on a 429, 503, 504, 404 `lane_not_available`, a timeout or a connection error.
   Hugging Face is read through duckdb's `httpfs` at the commit `main` names at the lane's first read, one
@@ -204,6 +204,10 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   paths explicitly (the registry's proxy, S154) hands over the rsID index's directory beside the core's. Given,
   it is the only place looked in, never the environment; the index is still read only when it pins the core, and
   the note and the stale refusal name the place passed and say to pass the rebuilt one, not to export a variable.
+- **`RemoteAnswer(rows, route: RemoteRoute)`** (RM430 follow-up, the pm's 2026-11-18 finding): an answer's `route`
+  is the one `RemoteRoute` record (route, release, `served_from`, revision) rather than a copy of its four fields,
+  and `RemoteAnswer.provenance()` is gone with the copy. Settled before 0.9 ships, since a public shape is permanent
+  within the major.
 
 ## 2026-11-18 — RM453: a mirrored site where no spelling was witnessed keeps both spellings (patch, a declared corrected derivation, on `main`)
 

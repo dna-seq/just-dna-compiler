@@ -9,6 +9,7 @@ the registry reads them, so the two routes are two independent readers of one sn
 """
 
 import ast
+import dataclasses
 import hashlib
 import json
 import threading
@@ -210,13 +211,18 @@ def test_hf_answers_clinvar_by_rsid_with_the_rows_the_local_snapshot_holds(
         answer = holder.lookup("clinvar", "clinvar", {"rsid": ["rs334"]})
     release = json.loads((clinvar_root / "release.json").read_text())["dataset"]
     assert answer.rows == remote._stable(expected)
-    assert (answer.route, answer.release, answer.served_from, answer.revision) == (
-        "hf",
-        release,
-        None,
-        COMMIT_A,
-    )
-    assert answer.provenance() == RemoteRoute("hf", release, None, COMMIT_A)
+    assert answer.route == RemoteRoute("hf", release, None, COMMIT_A)
+
+
+def test_an_answer_is_its_rows_and_the_route_record_never_a_copy_of_its_fields() -> None:
+    """`RemoteAnswer(rows, route: RemoteRoute)`: one record of where an answer came from (a35e30f5)."""
+    assert [f.name for f in dataclasses.fields(RemoteAnswer)] == ["rows", "route"]
+    assert [f.name for f in dataclasses.fields(RemoteRoute)] == [
+        "route",
+        "release",
+        "served_from",
+        "revision",
+    ]
 
 
 def test_hf_opens_only_the_chromosome_file_the_manifest_attests_for_ensembl(
@@ -227,7 +233,7 @@ def test_hf_opens_only_the_chromosome_file_the_manifest_attests_for_ensembl(
     with RemoteSnapshots(hf_base_url=loopback_hub.base_url) as holder:
         answer = holder.lookup("ensembl", "homo_sapiens", {"chrom": ["chr16"], "start": [23635706]})
     assert answer.rows and answer.rows == remote._stable(expected)
-    assert answer.release == ENSEMBL_RELEASE and answer.revision == COMMIT_A
+    assert answer.route == RemoteRoute("hf", ENSEMBL_RELEASE, None, COMMIT_A)
     parquet = {path.rsplit("/", 1)[-1] for path in loopback_hub.paths() if path.endswith(".parquet")}
     assert parquet == {"homo_sapiens-chr16.parquet"}
 
@@ -348,13 +354,13 @@ def test_a_holder_stays_on_the_commit_it_pinned_and_a_new_holder_reads_the_new_o
         first = holder.lookup("clinvar", "clinvar", {"rsid": ["rs334"]})
         loopback_hub.publish(hub_repo, moved, COMMIT_B)
         second = holder.lookup("clinvar", "clinvar", {"chrom": ["11"], "start": [5227002]})
-    assert (first.revision, second.revision) == (COMMIT_A, COMMIT_A)
-    assert first.release == second.release != "clinvar_next"
+    assert (first.route.revision, second.route.revision) == (COMMIT_A, COMMIT_A)
+    assert first.route.release == second.route.release != "clinvar_next"
     revision_reads = [p for p in loopback_hub.paths() if "/revision/" in p]
     assert len(revision_reads) == 1
     with RemoteSnapshots(hf_base_url=loopback_hub.base_url) as fresh:
         third = fresh.lookup("clinvar", "clinvar", {"rsid": ["rs334"]})
-    assert (third.revision, third.release) == (COMMIT_B, "clinvar_next")
+    assert third.route == RemoteRoute("hf", "clinvar_next", None, COMMIT_B)
 
 
 def test_threads_share_one_pin_and_each_query_gets_its_own_cursor(
@@ -473,7 +479,7 @@ def test_proxy_and_hf_answer_the_same_rows_for_the_same_keys(
         hubbed = [by_hub.lookup(*a) for a in asked]
     for via_proxy, via_hub in zip(proxied, hubbed, strict=True):
         assert via_proxy.rows and via_proxy.rows == via_hub.rows
-        assert (via_proxy.route, via_proxy.served_from, via_proxy.release) == ("proxy", "local", None)
+        assert via_proxy.route == RemoteRoute("proxy", None, "local", None)
     # Paired positions: 1:943234 and 11:5227002 only, never the cross product's 1:5227002.
     assert {(r["chrom"], r["start"]) for r in proxied[1].rows} == {("1", 943234), ("11", 5227002)}
 
@@ -482,7 +488,7 @@ def test_a_proxy_reply_that_states_its_release_carries_it(clinvar_root: Path) ->
     proxy = _Proxy({"clinvar": clinvar_root}, release="clinvar_2026-11-01")
     with _with_proxy(RemoteSnapshots(proxy_url=PROXY, huggingface=False), proxy) as holder:
         answer = holder.lookup("clinvar", "clinvar", {"rsid": ["rs334"]})
-    assert (answer.route, answer.release, answer.revision) == ("proxy", "clinvar_2026-11-01", None)
+    assert answer.route == RemoteRoute("proxy", "clinvar_2026-11-01", "local", None)
 
 
 def test_a_lookup_is_cut_to_the_proxys_key_limit_one_chromosome_per_request(clinvar_root: Path) -> None:
@@ -557,7 +563,7 @@ def test_the_proxy_falls_through_to_hf_exactly_on_the_registrys_list(
         RemoteSnapshots(proxy_url=PROXY, hf_base_url=loopback_hub.base_url), FALL_THROUGH[stage]
     ) as holder:
         answer = holder.lookup("clinvar", "clinvar", {"rsid": ["rs334"]})
-    assert answer.route == "hf" and answer.revision == COMMIT_A
+    assert answer.route.route == "hf" and answer.route.revision == COMMIT_A
     assert answer.rows == remote._stable(_registry_rows(clinvar_root, {"rsid": ["rs334"]}))
 
 
@@ -671,7 +677,7 @@ def test_a_declared_non_commercial_use_reads_a_gated_lane(httpfs, loopback_hub, 
     loopback_hub.publish(SNAPSHOT_REPO_IDS["cpic"], root, COMMIT_A)
     with RemoteSnapshots(hf_base_url=loopback_hub.base_url, declared_use="non_commercial") as holder:
         answer = holder.lookup("cpic", "genes", {"gene": ["CYP2C19"]})
-    assert answer.rows == [{"gene": "CYP2C19", "chrom": "10"}] and answer.release is None
+    assert answer.rows == [{"gene": "CYP2C19", "chrom": "10"}] and answer.route.release is None
 
 
 def test_a_lane_whose_registry_entry_states_no_terms_is_not_gated() -> None:

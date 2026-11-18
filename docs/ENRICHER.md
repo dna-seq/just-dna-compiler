@@ -2453,7 +2453,7 @@ from just_dna_enricher.remote import RemoteSnapshots
 
 with RemoteSnapshots(declared_use="non_commercial") as snapshots:      # proxy from the environment, HF on
     answer = snapshots.lookup("clinvar", "clinvar", {"rsid": ["rs334"]})
-    answer.route, answer.release, answer.revision                     # ("hf", "clinvar_2026-11-01", "<commit>")
+    answer.route                     # RemoteRoute(route="hf", release="clinvar_2026-11-01", served_from=None, revision="<commit>")
     hint = lookup_variant(chrom="19", start=44908684, clients=LookupClients(snapshots=snapshots))
     hint.routes                                                       # {"ensembl": RemoteRoute(...), ...}
 ```
@@ -2499,8 +2499,8 @@ with RemoteSnapshots(declared_use="non_commercial") as snapshots:      # proxy f
   bound integer parameters prune no row group in duckdb, so one Ensembl position read its whole chromosome
   file that way (65 MB on chr19, against about 5 MB). No retry inside a call (`http_retries = 0`); a 429 is could-not-ask
   naming the Hub's quota window (3,000 requests per 5 minutes per IP, anonymous).
-- **Where an answer came from.** `RemoteAnswer(rows, route, release, served_from, revision)`;
-  `answer.provenance()` is the same without the rows, a `RemoteRoute`. One release per route per holder:
+- **Where an answer came from.** `RemoteAnswer(rows, route)`, whose `route` is a `RemoteRoute(route,
+  release, served_from, revision)`: one record, never a copy of its fields. One release per route per holder:
   `main` moving mid-session does not move a holder's Hugging Face reads, and a new holder reads the new
   commit. A 429 can send some of a session's lookups to the Hub and others to the proxy, so each answer
   carries its own. This traces an answer; it does not detect two copies under one label with different

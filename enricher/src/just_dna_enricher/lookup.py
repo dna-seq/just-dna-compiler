@@ -409,7 +409,9 @@ def _remote_loci(
         _record_route(hint, label, answer)
     rows = [row for answer in answers for row in answer.rows]
     first = answers[0]
-    searched = f"the ClinVar snapshot read over {first.route} (release {first.release or 'unstated'})"
+    searched = (
+        f"the ClinVar snapshot read over {first.route.route} (release {first.route.release or 'unstated'})"
+    )
     return clinvar._loci_from_rows(rows, [rsid] if rsid else [], positions, searched)
 
 
@@ -428,7 +430,7 @@ def _ask_remote(remote: RemoteSnapshots, label: str, keys: dict[str, list]) -> R
 
 def _record_route(hint: VariantHint, label: str, answer: RemoteAnswer) -> None:
     """Note where `label` was answered; a second route in the same lookup is said, never folded."""
-    route = answer.provenance()
+    route = answer.route
     hint.routes = hint.routes if hint.routes is not None else {}
     known = hint.routes.setdefault(label, route)
     if known != route:

@@ -185,18 +185,14 @@ class RemoteRoute:
 
 @dataclass(frozen=True)
 class RemoteAnswer:
-    """The rows one remote lookup matched, and where they came from (`route`, `release`, `served_from`,
-    `revision`, as `RemoteRoute` reads them). `rows` are the table's own columns, in a stable order."""
+    """The rows one remote lookup matched, and where they came from.
+
+    `rows` are the table's own columns, in a stable order. `route` is the one record of where they came
+    from (a `RemoteRoute`: the route, its release label, `served_from`, the Hub revision), never a copy
+    of its fields, so the two shapes cannot drift apart within the major."""
 
     rows: list[dict[str, Any]]
-    route: str
-    release: str | None = None
-    served_from: str | None = None
-    revision: str | None = None
-
-    def provenance(self) -> RemoteRoute:
-        """This answer's route, label, `served_from` and revision, without the rows."""
-        return RemoteRoute(self.route, self.release, self.served_from, self.revision)
+    route: RemoteRoute
 
 
 @dataclass(frozen=True)
@@ -493,10 +489,10 @@ class RemoteSnapshots:
             lane,
             table,
             len(answer.rows),
-            answer.route,
-            answer.release,
-            answer.served_from,
-            answer.revision,
+            answer.route.route,
+            answer.route.release,
+            answer.route.served_from,
+            answer.route.revision,
         )
 
     def _admit(self, lane: str) -> None:
@@ -522,11 +518,15 @@ class RemoteSnapshots:
         rows = [row for reply in replies for row in reply["rows"]]
         return RemoteAnswer(
             rows=_stable(rows),
-            route=ROUTE_PROXY,
-            release=_agreed(lane, "release", [reply.get("release") for reply in replies]),
-            served_from=", ".join(sorted({str(r["served_from"]) for r in replies if r.get("served_from")}))
-            or None,
-            revision=_agreed(lane, "revision", [reply.get("revision") for reply in replies]),
+            route=RemoteRoute(
+                route=ROUTE_PROXY,
+                release=_agreed(lane, "release", [reply.get("release") for reply in replies]),
+                served_from=", ".join(
+                    sorted({str(r["served_from"]) for r in replies if r.get("served_from")})
+                )
+                or None,
+                revision=_agreed(lane, "revision", [reply.get("revision") for reply in replies]),
+            ),
         )
 
     def _proxy_untruncated(
@@ -623,7 +623,9 @@ class RemoteSnapshots:
                 rows.extend(row for row in found if str(row.get("chrom")) in forms)
             else:
                 rows.extend(self._hf_rows(lane, pin, group, request, schema, position))
-        return RemoteAnswer(rows=_stable(rows), route=ROUTE_HF, release=pin.release, revision=pin.revision)
+        return RemoteAnswer(
+            rows=_stable(rows), route=RemoteRoute(ROUTE_HF, release=pin.release, revision=pin.revision)
+        )
 
     def _hf_rows(
         self,
