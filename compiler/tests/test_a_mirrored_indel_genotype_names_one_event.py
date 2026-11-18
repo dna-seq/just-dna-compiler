@@ -235,3 +235,103 @@ def test_pathogenic_clinvar_with_its_placement_verdicts_stripped_compiles_strict
     assert second.success, second.errors
     assert first.manifest.artifact.digest == second.manifest.artifact.digest
     assert reconstructed_projection(first.manifest) == reconstructed_projection(second.manifest)
+
+
+# ── a recorded `undecided` is not a witness (the pm, 2026-11-18, before the 0.8.9 cut) ─────────────────
+_UNDECIDED_PHRASE = "could not decide whether either is the same event"
+
+
+def test_a_site_judged_undecided_both_ways_keeps_the_expansion_and_says_so(tmp_path: Path) -> None:
+    """`undecided` is what a run with no reference sequence writes: the witness could not judge, which is not
+    witnessed-neither (`@unreachable-not-absent`). Before the fix the row was left unpositioned and strict refused."""
+    loci = _locus("rs1057516393", 0, 108256251, "C", "CT", "undecided") + _locus(
+        "rs1057516393", 1, 108256251, "CT", "C", "undecided"
+    )
+    spec = _spec(tmp_path, _HEADER + _RSID_ROW, loci, "rs1057516393")
+    result = compile_module(spec, tmp_path / "out", strict=True)
+    assert result.success, result.errors
+    assert len(_placed(tmp_path / "out")) == 2
+    (said,) = [w for w in result.warnings if _UNDECIDED_PHRASE in w]
+    assert "so both are filled as before (RM449)" in said and "108256251" in said
+    # Its own sentence: the not-asked one says `placement_verdict` is empty, which this table contradicts.
+    assert not [w for w in result.warnings if "no second source was asked" in w]
+
+
+def test_undecided_beside_unplaced_reads_as_unplaced_beside_nothing(tmp_path: Path) -> None:
+    """`undecided` reads as an empty cell, nothing more: beside an `unplaced` spelling the site was asked, no
+    spelling was witnessed as the same event, and neither is filled, exactly as for an empty cell there."""
+    for verdict in ("undecided", ""):
+        loci = _locus("rs1057516393", 0, 108256251, "C", "CT", verdict) + _locus(
+            "rs1057516393", 1, 108256251, "CT", "C", "unplaced"
+        )
+        spec = _spec(tmp_path / (verdict or "empty"), _HEADER + _RSID_ROW, loci, "rs1057516393")
+        result = compile_module(spec, tmp_path / (verdict or "empty") / "out", strict=False)
+        (sentence,) = [w for w in result.warnings if _PHRASE in w]
+        assert "neither is filled and the position remains unset" in sentence
+
+
+def _rewrite_mirrored_verdicts(spec: Path, verdict: str) -> int:
+    """Set `placement_verdict` to `verdict` on both spellings of every mirrored site, keeping the bytes else.
+
+    A mirrored site is an rsID's insertion and deletion at one position, read off the table itself.
+    """
+    data = (spec / "resolution.csv").read_bytes()
+    newline = b"\r\n" if b"\r\n" in data else b"\n"
+    header, *body = data.split(newline)
+    columns = header.decode("utf-8").split(",")
+    at = {
+        name: columns.index(name)
+        for name in ("variant_key", "chrom", "start", "ref", "alts", "placement_verdict")
+    }
+    parsed = [next(csv.reader(io.StringIO(line.decode("utf-8")))) if line else None for line in body]
+    kinds: dict[tuple[str, str, str], set[str]] = {}
+    for cells in parsed:
+        if cells is None:
+            continue
+        ref, alts = cells[at["ref"]], cells[at["alts"]]
+        if ref and alts and "," not in alts and len(ref) != len(alts):
+            kind = "insertion" if len(alts) > len(ref) else "deletion"
+            kinds.setdefault((cells[at["variant_key"]], cells[at["chrom"]], cells[at["start"]]), set()).add(
+                kind
+            )
+    mirrored = {site for site, seen in kinds.items() if seen == {"insertion", "deletion"}}
+    out, changed = [header], 0
+    for line, cells in zip(body, parsed, strict=True):
+        if (
+            cells is None
+            or (cells[at["variant_key"]], cells[at["chrom"]], cells[at["start"]]) not in mirrored
+        ):
+            out.append(line)
+            continue
+        cells[at["placement_verdict"]] = verdict
+        buffer = io.StringIO()
+        csv.writer(buffer, lineterminator="").writerow(cells)
+        out.append(buffer.getvalue().encode("utf-8"))
+        changed += 1
+    (spec / "resolution.csv").write_bytes(newline.join(out))
+    return changed
+
+
+_EXAMPLES = Path(__file__).resolve().parents[2] / "reference_examples"
+
+
+@pytest.mark.parametrize("example", ["pathogenic_clinvar", "hboc_palb2"])
+def test_an_example_judged_undecided_at_every_mirrored_site_compiles_strict_and_laps(
+    example: str, tmp_path: Path
+) -> None:
+    """The pm's fixture: the example as a run with no reference sequence leaves it, `undecided` on both spellings
+    of every mirrored site, compiled strict. Every such site keeps its expansion (the restored `11:5226762
+    C>CAAAG` coordinate row in `pathogenic_clinvar` still picks its event over `rs80356821`'s), and the lap holds."""
+    if not (_EXAMPLES / example).is_dir():
+        pytest.skip(f"the {example} example is not in this checkout")
+    spec = tmp_path / example
+    shutil.copytree(_EXAMPLES / example, spec)
+    assert _rewrite_mirrored_verdicts(spec, "undecided") > 0
+    first = compile_module(spec, tmp_path / "a1", strict=True)
+    assert first.success, first.errors
+    assert [w for w in first.warnings if _UNDECIDED_PHRASE in w]
+    reverse_module(tmp_path / "a1", tmp_path / "rev1")
+    second = compile_module(tmp_path / "rev1", tmp_path / "a2", strict=True)
+    assert second.success, second.errors
+    assert first.manifest.artifact.digest == second.manifest.artifact.digest
+    assert reconstructed_projection(first.manifest) == reconstructed_projection(second.manifest)

@@ -89,6 +89,12 @@ examples move two rows (`pathogenic_clinvar`: `rs80356821` and `rs193922563` now
 deletion). The ClinVar drafter now writes an indel record with its coordinate, never its rsID alone, so a
 new draft cannot pose the question. A re-draft names an older rsID-only indel row as one no current draft
 would write. New warning code: `rsid_genotype_reads_as_two_events` (format's `VALID_WARNING_CODES`, 85).
+**A recorded `undecided` reads as no verdict (before the cut, the pm).** Where a mirrored site's only recorded
+`placement_verdict` is `undecided` (the witness was asked and could not judge, as a run with no reference sequence
+writes), both spellings stay, as for a site nobody was asked about, under their own sentence (pinned: "could not
+decide whether either is the same event"). Could not judge is not witnessed-neither, so an offline re-derivation
+never turns a module that compiled into a strict refusal. `undecided` beside `unplaced` reads as an empty cell
+beside `unplaced`: neither is filled.
 
 ## 2026-11-17 — RM446: a reused client's earlier 410 no longer tells a later run's outage to upgrade (patch, on `main`)
 

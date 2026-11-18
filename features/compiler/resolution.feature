@@ -155,6 +155,7 @@ Feature: Resolution from the injected table
     And only the spellings a second source placed as "same_event" are filled
     And with none placed so, "neither is filled and the position remains unset"
     And with both placed so, both are filled and one sentence for the rsID says "a second source places both under this rsID"
+    And with every verdict there "undecided", both are filled and the sentence says the source "could not decide whether either is the same event"
     # RM449, from S158: string hosting relies on a two-allele genotype carrying its own frame, and a
     # mirrored insertion and deletion break that. The witnessed spelling settles it; a site witnessed both
     # ways keeps the expansion and is never silent. Never escalated under strict in 0.8.

@@ -396,6 +396,8 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   now settles that site by the recorded second witness (`placement_verdict`): the spellings witnessed
   `same_event` are filled and the others are not; witnessed both ways, both stay and
   `rsid_genotype_reads_as_two_events` says so once per rsID; witnessed neither way, neither is filled.
+  Asked of nobody, or judged only `undecided` (the witness could not judge: no reference sequence), both
+  stay under the warning, because could-not-judge is not witnessed-neither (`@unreachable-not-absent`).
   A mirror is only where each spelling hosts the genotype **on its own**: a compound het in a padded frame
   (`G/GTTT` on `GTT>G` and `G>GT`) names one allele of each and means both events, so it is left alone.
   And an authored coordinate row always picks its event: an expansion member re-keyed onto its exact

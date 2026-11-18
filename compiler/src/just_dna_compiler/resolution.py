@@ -170,6 +170,7 @@ def resolve_from_table(
     # sentence per rsID however many authored rows carry it.
     both_ways: dict[str, dict[str, None]] = {}
     unasked: dict[str, dict[str, None]] = {}
+    undecided_sites: dict[str, dict[str, None]] = {}
     for v in variants:
         rows = resolution.get(v.variant_key or "")
         loci = usable_loci(rows, genome_build)
@@ -201,6 +202,8 @@ def resolve_from_table(
                     both_ways.setdefault(v.rsid, {}).setdefault(site, None)
                 for site in settled.unasked:
                     unasked.setdefault(v.rsid, {}).setdefault(site, None)
+                for site in settled.undecided:
+                    undecided_sites.setdefault(v.rsid, {}).setdefault(site, None)
                 usable = settled.kept
                 # An authored coordinate row picks its event (RM449's own remedy), so an expansion member
                 # re-keyed onto that row's exact (variant_key, genotype) is not filled: it would be the
@@ -395,6 +398,18 @@ def resolve_from_table(
                 f"offline run, a ClinVar fill, or a table written before 0.8), so both are filled as before "
                 f"(RM449). If the row is about one of them, replace it with a row authoring that event's "
                 f"coordinate and re-run the enricher so the table files it; an online run records the witness",
+            )
+        )
+
+    for rsid, sites in undecided_sites.items():
+        warnings.append(
+            CodedWarning(
+                "rsid_genotype_reads_as_two_events",
+                f"{rsid}: its row's genotype reads as an insertion and as a deletion at {'; '.join(sites)}, "
+                f"and the second source asked {UNDECIDED_PHRASE} (`placement_verdict` is `undecided`: a run "
+                f"with no reference sequence, such as an offline one), so both are filled as before (RM449). "
+                f"If the row is about one of them, replace it with a row authoring that event's coordinate and "
+                f"re-run the enricher so the table files it; an online run records the witness",
             )
         )
 
@@ -1180,6 +1195,10 @@ def _expansion_key(locus: ResolutionRow, genome_build: str) -> str:
 
 #: `ResolutionRow.placement_verdict`'s member that says a second source placed this locus as the same event (RM267).
 PLACED_SAME_EVENT = "same_event"
+#: The member that says the second source was asked and could not judge (no reference sequence): never agreement.
+PLACED_UNDECIDED = "undecided"
+#: The phrase the sentence for a mirrored site judged only `undecided` carries, pinned (`@warning-text-is-api`).
+UNDECIDED_PHRASE = "could not decide whether either is the same event"
 
 
 def _indel_direction(locus: ResolutionRow) -> str | None:
@@ -1206,6 +1225,8 @@ class MirroredSettlement:
     both_ways: list[str] = field(default_factory=list)
     #: The same, for a mirrored site no second source was asked about: kept as before, and said.
     unasked: list[str] = field(default_factory=list)
+    #: The same, for a mirrored site the second source judged `undecided` and nothing more: kept, and said.
+    undecided: list[str] = field(default_factory=list)
 
 
 def _settle_mirrored_spellings(rsid: str, genotype: str, usable: list[ResolutionRow]) -> MirroredSettlement:
@@ -1228,7 +1249,9 @@ def _settle_mirrored_spellings(rsid: str, genotype: str, usable: list[Resolution
     which was meant: none at that position is filled, and the row is left unpositioned rather than
     given a guess. Where no second source was asked at all (`placement_verdict` empty everywhere at
     the site), "not asked" is not "witnessed neither": the expansion stays as before 0.8.9, returned in
-    `unasked` and said once per rsID. Loci at other positions (a paralog, a PAR partner) are untouched, and so is every
+    `unasked` and said once per rsID. A site whose only recorded verdict is `undecided` (the witness could
+    not judge, as a run with no reference sequence writes) reads the same way, returned in `undecided`
+    under its own sentence, since its table does record a verdict. Loci at other positions (a paralog, a PAR partner) are untouched, and so is every
     site that is not such a mirror (a homozygote over several insertions keeps its expansion).
     """
     sites: dict[tuple[str | None, int | None], list[ResolutionRow]] = {}
@@ -1238,6 +1261,7 @@ def _settle_mirrored_spellings(rsid: str, genotype: str, usable: list[Resolution
     sentences: list[str] = []
     both_ways: list[str] = []
     unasked: list[str] = []
+    undecided: list[str] = []
     for (chrom, start), at_site in sites.items():
         # Only a locus that hosts the genotype on its own reads it as its own event. A compound het
         # spelled in a padded frame (`G/GTTT` on `GTT>G` and `G>GT`) names one allele of each, so no
@@ -1248,10 +1272,17 @@ def _settle_mirrored_spellings(rsid: str, genotype: str, usable: list[Resolution
         if len(loci) < 2 or not {"insertion", "deletion"} <= directions:
             continue
         spelled = ", ".join(f"{lo.ref}>{lo.alts}" for lo in loci)
-        if not any(getattr(lo, "placement_verdict", None) for lo in loci):
+        verdicts = {getattr(lo, "placement_verdict", None) or None for lo in loci}
+        if verdicts == {None}:
             # No second source was asked (an offline run, a ClinVar fill, a table written before 0.8):
             # "not asked" is not "witnessed neither", so the expansion stays as it was, and is said.
             unasked.append(f"{chrom}:{start} ({spelled})")
+            continue
+        if verdicts <= {None, PLACED_UNDECIDED}:
+            # Asked, and it could not judge (no reference sequence: an offline run). "Could not judge" is
+            # not "witnessed neither" either (the pm, 2026-11-18), so this reads as the empty cell above,
+            # under its own sentence, since the table does record a verdict.
+            undecided.append(f"{chrom}:{start} ({spelled})")
             continue
         witnessed = [lo for lo in loci if getattr(lo, "placement_verdict", None) == PLACED_SAME_EVENT]
         if len(witnessed) == len(loci):
@@ -1283,6 +1314,7 @@ def _settle_mirrored_spellings(rsid: str, genotype: str, usable: list[Resolution
         withheld_all=bool(usable) and not kept_loci,
         both_ways=both_ways,
         unasked=unasked,
+        undecided=undecided,
     )
 
 
