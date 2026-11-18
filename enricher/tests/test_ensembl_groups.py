@@ -811,6 +811,32 @@ def test_a_group_directory_the_manifest_does_not_attest_is_withheld_whole(
     assert "homo_sapiens-chrMT.parquet" in str(caught.value)
 
 
+def test_a_group_file_the_manifest_states_no_size_for_names_the_publisher_never_a_re_pull(
+    install_hub, tmp_path: Path
+) -> None:
+    """Review round 2, H: one reason per verdict arm (`@answered-is-not-absent`). An entry with no size cannot be
+    attested, so `_fetch_parquet` refuses its download and a re-pull cannot clear the refusal: the remedy is the
+    publisher's. The file there, at the size it was published at, changes nothing."""
+    cache = tmp_path / "ensembl"
+    install_hub(_published(0, _OLD))
+    dl.ensure_snapshot(cache, groups=["consequence"])
+    manifest = json.loads((cache / SNAPSHOT_MANIFEST_FILENAME).read_text(encoding="utf-8"))
+    unsized = "groups/consequence/homo_sapiens-chrMT.parquet"
+    for entry in manifest["files"]:
+        if entry["path"] == unsized:
+            del entry["bytes"]
+    (cache / SNAPSHOT_MANIFEST_FILENAME).write_text(json.dumps(manifest), encoding="utf-8")
+    assert (cache / unsized).is_file()
+
+    with pytest.raises(EnsemblGroupReleaseError) as caught:
+        ensembl_group_dir(cache, "consequence")
+
+    said = str(caught.value)
+    assert "states no size for 1 file(s) it attests" in said and unsized.rsplit("/", 1)[-1] in said
+    assert "a re-pull cannot clear this. The snapshot's publisher must state each file's size" in said
+    assert "missing there or of another size" not in said and "Re-run" not in said
+
+
 def test_a_group_the_cache_release_lacks_is_checked_against_the_hubs(install_hub, tmp_path: Path) -> None:
     """A newer published release may add a group; the refusal is only the cache's when the hub cannot say."""
     cache = tmp_path / "ensembl"

@@ -347,6 +347,12 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   RM431 ask 4): Ensembl is asked remotely by position only, and one position cannot say every locus a
   multi-place rsID has, so its rows there give rsID candidates and no locus, and ClinVar, asked next by rsID,
   places it. No code changed; the test is red if the link passes the rsID to its reader.
+- **A group file the manifest states no size for gets its own refusal, naming the publisher** (review round 2, H,
+  RM437, `@answered-is-not-absent`): `ensembl_group_dir` called it missing or of another size and said to re-pull,
+  but no pull can fetch a file the manifest attests no size for (`_fetch_parquet` refuses it), so the remedy
+  could not clear the refusal. It now says the manifest states no size for it, that a re-pull cannot clear this,
+  and that the snapshot's publisher must state each file's size: eight refusals, one sentence each. Latent:
+  the published manifest states every size.
 
 ## 2026-11-18 — RM455: the pre-0.9 instances of four classes 0.9 fixed in its own code (patch, enricher only, on `main`)
 

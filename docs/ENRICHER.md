@@ -2424,10 +2424,13 @@ prevent, and a stale group joins to the wrong variants silently.
   `<cache>/groups/<group>` (`ENSEMBL_GROUPS_DIRNAME`) only when the group's recorded release is the
   core's (`manifest.json`'s `release_id`) and the directory holds exactly the files the manifest attests
   for the group, at their sizes (a `stat`, as the core is read). Otherwise it raises
-  `EnsemblGroupReleaseError`, with its own sentence for each of seven causes: a pull record there and
+  `EnsemblGroupReleaseError`, with its own sentence for each of eight causes: a pull record there and
   unreadable (`The pull record at <path> is there and could not be read (…)`), not taken by a pull of this
   cache (absent, or placed by hand), a pull that did not finish, a core stating no release, two releases,
-  an attested file missing or of another size (re-pull it), and a parquet the manifest does not name for
+  a manifest stating no size for a file it attests for the group (`… states no size for N file(s) it
+  attests …: a re-pull cannot clear this`, the publisher's to fix, since no pull can fetch a file the
+  manifest attests no size for; review round 2, H), an attested file missing or of another size (re-pull
+  it), and a parquet the manifest does not name for
   the group (move it aside: no pull removes a file it did not put there, and a pull over such a directory
   reports the group as `current, but …` rather than plainly current). A reader takes a group's path from
   it and nowhere else.
