@@ -2830,7 +2830,7 @@ shape.
 
 ## RM453 — offline, the placement witness reads a merged rsID's ClinVar record as no record, so RM449's "witnessed neither" leaves `rs80356821` unpositioned
 
-**Severity** medium · **Status** open — **a patch on `main`, a declared corrected derivation, `unattended` (about 45 minutes, triage), for 0.8.10** · **Owner** enricher (`placement.compare_placements`, the ClinVar witness's rsID key) and compiler (RM449's neither arm, `resolution._settle_mirrored_spellings`) ·
+**Severity** medium · **Status** open — **a patch, a declared corrected derivation, built on `main` 2026-11-18, uncut, for 0.8.10** · **Owner** enricher (`placement.compare_placements`, the ClinVar witness's rsID key) and compiler (RM449's neither arm, `resolution._settle_mirrored_spellings`) ·
 **Motivating case** the lead's 0.8.9 run (2026-11-18): `pathogenic_clinvar` enriched offline compiles strict except one row; the 0.8.9 cut states it (`c8f3f3ed`) · *related* RM267, RM398, RM449
 
 **What was seen.** An `enrich --offline` of `pathogenic_clinvar` (the table deleted, ClinVar `clinvar_2026-11-15`, the
@@ -2879,7 +2879,24 @@ Candidate 2, the offline witness following dbSNP merges through the snapshot's s
 entry: it would make more offline verdicts `same_event`, but after the change above nothing refuses for want of it.
 It becomes an item if an offline placement elsewhere is seen to misread a merged rsID.
 
-**Residuals** none yet.
+**Built (triage, 2026-11-18).** Candidate 1, compiler side, as the pm sized it (`f3e6d6a1`). RM449's neither arm is gone.
+At a mirrored site where no spelling was witnessed `same_event`, any mix of `unplaced`, `undecided` and empty, both
+spellings stay filled, said once per rsID under the borrowed `rsid_expanded_to_multiple_loci` ("placed neither as
+the same event", `(RM453)`). Nothing the enricher writes changes, and no verdict member is added. A one-sided witness
+still fills only the witnessed spelling. `MirroredSettlement.withheld_all` is removed, since no settlement leaves a
+row unpositioned any more. Tests in `test_a_mirrored_indel_genotype_names_one_event.py`:
+
+- `pathogenic_clinvar` with `rs80356821`'s two verdicts set to `unplaced`, as the offline run writes them, compiles
+  strict;
+- the both-`unplaced` and `undecided`/empty-beside-`unplaced` cases fill both;
+- the summary counts no `rsid_no_hosting_locus`.
+
+Four fail on `origin/main`. Two of the lead's 0.8.9 tests pinned the removed arm and now state the new rule. The
+feature scenario moves to the borrowed code, and COMPILER.md, AGENT_NOTES and the CHANGELOG say it. 0.8.9's entries
+keep what 0.8.9 did.
+
+**Residuals** candidate 2, the offline witness following dbSNP merges through the snapshot's synonyms, is left as
+the pm decided: this item no longer needs it, and it would change what the witness compares
 
 # Not format scope
 

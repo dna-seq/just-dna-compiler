@@ -163,13 +163,15 @@ Feature: Resolution from the injected table
 
   # source: compiler/src/just_dna_compiler/resolution.py
   # anchor: resolve_from_table
-  @code:rsid_no_hosting_locus @actionable @both_modes
+  @code:rsid_expanded_to_multiple_loci @carried @both_modes
   Scenario: an rsID row's indel genotype reads as two events and no spelling was witnessed
     Given an rsID-only row whose genotype "C/CT" is hosted by both "C>CT" and "CT>C" at one position
     And a second source placed neither as "same_event"
     When the module is compiled
-    Then a warning says "neither is filled and the position remains unset"
-    # RM449's arm that writes no position, under the code of what the row became until 0.9.
+    Then both spellings are filled and a warning says the source "placed neither as the same event"
+    # RM453: `unplaced` on every spelling is no evidence for either (ClinVar files only some variants, and one
+    # under a retired rsID), the same knowledge as `undecided` or an empty cell. RM449's 0.8.9 arm that left the
+    # row unpositioned is gone; the sentence rides the borrowed code until 0.9.
 
   # source: compiler/src/just_dna_compiler/resolution.py
   # anchor: resolve_from_table

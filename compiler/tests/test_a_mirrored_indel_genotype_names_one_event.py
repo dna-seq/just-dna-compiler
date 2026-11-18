@@ -112,19 +112,18 @@ def test_a_published_case_lands_on_the_witnessed_deletion_only(case: str, tmp_pa
     assert _placed(tmp_path / "out") == [(rsid, start, deletion[0], (deletion[1],), "p")]
 
 
-def test_with_no_witness_neither_spelling_is_filled_and_strict_refuses_it_as_unresolved(
-    tmp_path: Path,
-) -> None:
+def test_a_witness_that_placed_neither_spelling_leaves_both_filled_and_says_so(tmp_path: Path) -> None:
+    """RM453: `unplaced` on every spelling is no evidence for either (a witness holding no counterpart under
+    the rsID), so the expansion stays as the not-asked and undecided arms leave it; it no longer refuses."""
     loci = _locus("rs1057516393", 0, 108256251, "C", "CT", "unplaced") + _locus(
         "rs1057516393", 1, 108256251, "CT", "C", "unplaced"
     )
     spec = _spec(tmp_path, _HEADER + _RSID_ROW, loci, "rs1057516393")
-    lenient = compile_module(spec, tmp_path / "lenient", strict=False)
-    (sentence,) = [w for w in lenient.warnings if _PHRASE in w]
-    assert "neither is filled and the position remains unset" in sentence
-    strict = compile_module(spec, tmp_path / "strict", strict=True)
-    assert not strict.success
-    assert any("unresolved genomic positions" in e and "rs1057516393" in e for e in strict.errors)
+    result = compile_module(spec, tmp_path / "out", strict=True)
+    assert result.success, result.errors
+    assert len(_placed(tmp_path / "out")) == 2
+    (said,) = [w for w in result.warnings if "placed neither as the same event" in w]
+    assert "so both are filled as before (RM453)" in said
 
 
 def test_both_spellings_witnessed_keep_the_expansion(tmp_path: Path) -> None:
@@ -258,16 +257,18 @@ def test_a_site_judged_undecided_both_ways_keeps_the_expansion_and_says_so(tmp_p
 
 
 def test_undecided_beside_unplaced_reads_as_unplaced_beside_nothing(tmp_path: Path) -> None:
-    """`undecided` reads as an empty cell, nothing more: beside an `unplaced` spelling the site was asked, no
-    spelling was witnessed as the same event, and neither is filled, exactly as for an empty cell there."""
+    """`undecided` reads as an empty cell, nothing more: beside an `unplaced` spelling the site was asked and no
+    spelling was witnessed as the same event, so both stay filled (RM453), exactly as for an empty cell there."""
     for verdict in ("undecided", ""):
         loci = _locus("rs1057516393", 0, 108256251, "C", "CT", verdict) + _locus(
             "rs1057516393", 1, 108256251, "CT", "C", "unplaced"
         )
         spec = _spec(tmp_path / (verdict or "empty"), _HEADER + _RSID_ROW, loci, "rs1057516393")
-        result = compile_module(spec, tmp_path / (verdict or "empty") / "out", strict=False)
-        (sentence,) = [w for w in result.warnings if _PHRASE in w]
-        assert "neither is filled and the position remains unset" in sentence
+        result = compile_module(spec, tmp_path / (verdict or "empty") / "out", strict=True)
+        assert result.success, result.errors
+        assert len(_placed(tmp_path / (verdict or "empty") / "out")) == 2
+        (sentence,) = [w for w in result.warnings if "placed neither as the same event" in w]
+        assert "so both are filled as before (RM453)" in sentence
 
 
 def _rewrite_mirrored_verdicts(spec: Path, verdict: str) -> int:
@@ -372,14 +373,45 @@ def test_a_filled_mirrored_site_is_counted_as_an_expansion_until_0_9(tmp_path: P
         assert summary["rsid_expanded_to_multiple_loci"] == (1 if name == "one" else 2), name
 
 
-def test_an_unpositioned_mirrored_site_is_counted_as_no_hosting_locus_until_0_9(tmp_path: Path) -> None:
+def test_a_mirrored_site_no_spelling_was_witnessed_at_is_counted_as_an_expansion_until_0_9(
+    tmp_path: Path,
+) -> None:
+    """Since RM453 no mirrored site leaves a row unpositioned, so nothing here is `rsid_no_hosting_locus`: the
+    sentence rides the borrowed `rsid_expanded_to_multiple_loci` until 0.9 gives it its own code."""
     loci = _locus("rs1057516393", 0, 108256251, "C", "CT", "unplaced") + _locus(
         "rs1057516393", 1, 108256251, "CT", "C", "unplaced"
     )
     spec = _spec(tmp_path, _HEADER + _RSID_ROW, loci, "rs1057516393")
     result = compile_module(spec, tmp_path / "out", strict=False)
     summary, carried = _summary_and_carried(result)
-    (said,) = [w for w in result.manifest.compilation.warnings if _PHRASE in w]
-    assert said not in carried
-    assert summary == {**summary, "rsid_no_hosting_locus": 1}
+    (said,) = [w for w in result.manifest.compilation.warnings if "placed neither as the same event" in w]
+    assert said in carried
+    assert "rsid_no_hosting_locus" not in summary and summary.get("rsid_expanded_to_multiple_loci", 0) >= 1
     assert "rsid_genotype_reads_as_two_events" not in summary
+
+
+@pytest.mark.skipif(not _EXAMPLE.is_dir(), reason="the pathogenic_clinvar example is not in this checkout")
+def test_pathogenic_clinvar_as_an_offline_enrich_writes_it_compiles_strict(tmp_path: Path) -> None:
+    """RM453's case: offline, ClinVar files `rs80356821`'s deletion under the retired `rs281864900`, so the
+    witness writes `unplaced` on both spellings at 11:5226762. Those two cells, as an offline run writes them."""
+    spec = tmp_path / "pathogenic_clinvar"
+    shutil.copytree(_EXAMPLE, spec)
+    data = (spec / "resolution.csv").read_bytes()
+    newline = b"\r\n" if b"\r\n" in data else b"\n"
+    header, *body = data.split(newline)
+    columns = header.split(b",")
+    verdict = columns.index(b"placement_verdict")
+    out, changed = [header], 0
+    for line in body:
+        if line.startswith(b"rs80356821,"):
+            cells = next(csv.reader(io.StringIO(line.decode("utf-8"))))
+            cells[verdict] = "unplaced"
+            buffer = io.StringIO()
+            csv.writer(buffer, lineterminator="").writerow(cells)
+            line, changed = buffer.getvalue().encode("utf-8"), changed + 1
+        out.append(line)
+    assert changed == 2, "the example's table files rs80356821 at both spellings"
+    (spec / "resolution.csv").write_bytes(newline.join(out))
+    result = compile_module(spec, tmp_path / "out", strict=True)
+    assert result.success, result.errors
+    assert any("rs80356821" in w and "(RM453)" in w for w in result.warnings)
