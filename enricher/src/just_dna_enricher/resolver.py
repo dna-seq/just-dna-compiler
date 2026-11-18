@@ -430,6 +430,25 @@ def _typed_rows_connection(
     return con
 
 
+def _rsid_token(rsid: str) -> str:
+    """An rsID as the snapshots spell one: lower case, `rs` prefixed (`RS334` and `334` are `rs334`).
+
+    The one spelling CIViC's and ClinVar-GKM's keyed functions (RM431) compare an asked rsID in, and
+    `ClinVarGkmWitness.by_rsid`'s reading.
+    """
+    token = rsid.strip().lower()
+    return token if token.startswith("rs") else f"rs{token}"
+
+
+def _asked_rsids(rsids: Sequence[str]) -> dict[str, list[str]]:
+    """`_rsid_token` → the rsIDs asked under it, as asked and in order; blanks are dropped."""
+    asked: dict[str, list[str]] = {}
+    for rsid in rsids:
+        if rsid.strip() and rsid not in asked.setdefault(_rsid_token(rsid), []):
+            asked[_rsid_token(rsid)].append(rsid)
+    return {token: spellings for token, spellings in asked.items() if spellings}
+
+
 def _loci_from_rows(
     rows: Sequence[Mapping[str, object]],
     rsids: list[str],

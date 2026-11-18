@@ -53,7 +53,7 @@ from just_dna_enricher.drafting import DRAFT_PROVIDERS, licence_commit, record_d
 from just_dna_enricher.drafting import identity_refused_by_model as scaffold_identity_refused
 from just_dna_enricher.licensing import CIVIC_TERMS, CLINGEN_ALLELE_REGISTRY_TERMS
 from just_dna_enricher.locations import resolve_civic_reference
-from just_dna_enricher.resolver import _typed_rows_connection
+from just_dna_enricher.resolver import _asked_rsids, _typed_rows_connection
 from just_dna_enricher.sequences import SequenceProxy, _held_by_one_run, _left_align
 from just_dna_enricher.verification import examples
 
@@ -308,20 +308,6 @@ def _genes_from_rows(rows: Sequence[Mapping[str, object]], genes: Sequence[str])
         return _genes_over(con, genes)
     finally:
         con.close()
-
-
-def _rsid_token(rsid: str) -> str:
-    """An rsID as the snapshot spells it: lower case, `rs` prefixed (`RS334` and `334` are `rs334`)."""
-    token = rsid.strip().lower()
-    return token if token.startswith("rs") else f"rs{token}"
-
-
-def _asked_rsids(rsids: Sequence[str]) -> dict[str, list[str]]:
-    asked: dict[str, list[str]] = {}
-    for rsid in rsids:
-        if rsid.strip() and rsid not in asked.setdefault(_rsid_token(rsid), []):
-            asked[_rsid_token(rsid)].append(rsid)
-    return {token: spellings for token, spellings in asked.items() if spellings}
 
 
 def _civic_rsid_keys(rsids: Sequence[str]) -> dict[str, list[str]]:

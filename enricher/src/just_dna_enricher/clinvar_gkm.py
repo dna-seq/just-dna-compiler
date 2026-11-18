@@ -66,7 +66,7 @@ from just_dna_enricher.net import (
     raise_if_retired,
     retry_if_transient,
 )
-from just_dna_enricher.resolver import _typed_rows_connection
+from just_dna_enricher.resolver import _asked_rsids, _typed_rows_connection
 
 try:  # the one guarded optional import (CLAUDE.md): polars reads the slice
     import polars as pl
@@ -719,20 +719,6 @@ def _variants_from_rows(
         return _variants_over(con, positions)
     finally:
         con.close()
-
-
-def _rsid_token(rsid: str) -> str:
-    """An rsID as the slice spells it, as `ClinVarGkmWitness.by_rsid` reads one: lower case, `rs` prefixed."""
-    token = rsid.strip().lower()
-    return token if token.startswith("rs") else f"rs{token}"
-
-
-def _asked_rsids(rsids: Sequence[str]) -> dict[str, list[str]]:
-    asked: dict[str, list[str]] = {}
-    for rsid in rsids:
-        if rsid.strip() and rsid not in asked.setdefault(_rsid_token(rsid), []):
-            asked[_rsid_token(rsid)].append(rsid)
-    return {token: spellings for token, spellings in asked.items() if spellings}
 
 
 def _rsid_keys(rsids: Sequence[str]) -> dict[str, list[str]]:
