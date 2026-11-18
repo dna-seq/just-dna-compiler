@@ -56,6 +56,9 @@ GROUPS_NEED_ENSEMBL_ONLY = (
 # be asked about the other three at all. The registry is walked by a test against the `*_build`
 # modules on disk, which a table in a CLI module never was (`@registry-completeness`).
 
+#: The lanes a bare `cache rebuild` passes over, derived from the registry for `--only`'s help (RM431).
+_NAMED_ONLY = ", ".join(lane.name for lane in CACHE_LANES if lane.named_only is not None)
+
 cache_app = typer.Typer(
     add_completion=False,
     help="Pre-provision, rebuild and report the snapshot caches.",
@@ -140,8 +143,10 @@ def cache_status_() -> None:
                 [f"`{lane.build_command}`"] if lane.build_command is not None else []
             )
             how = " or ".join(routes)
+            # A lane built only when named says so (RM431): `cache prepare` will not build it.
+            when = f" ({lane.named_only})" if lane.named_only is not None else ""
             typer.secho(
-                f"  {lane.name:13} absent   — {lane.serves}; provision with {how}",
+                f"  {lane.name:13} absent   — {lane.serves}; provision with {how}{when}",
                 fg=typer.colors.YELLOW,
             )
             continue
@@ -464,7 +469,10 @@ def cache_rebuild_(
     only: list[str] = typer.Option(
         [],
         "--only",
-        help="Rebuild just these caches (repeatable). Default: every one that can be.",
+        help=(
+            "Rebuild just these caches (repeatable). Default: every one that can be, except those built "
+            f"only when named here ({_NAMED_ONLY})."
+        ),
     ),
     use: str = typer.Option(
         "unstated",
@@ -537,7 +545,7 @@ def cache_rebuild_(
         )
         raise typer.Exit(code=2)
     declared = _use(use)
-    _, lanes = _selected(only)
+    wanted, lanes = _selected(only)
     pins = _pairs(pin, "--pin")
     sources = _pairs(source, "--source", must_exist=True)
 
@@ -548,6 +556,8 @@ def cache_rebuild_(
             pin=pins.get(lane.name),
             source=Path(sources[lane.name]).expanduser() if lane.name in sources else None,
             parents=parents_from_rebuild_dir(lane, out),
+            # A lane built only when named is not run unless `--only` names it (RM431).
+            named=lane.name in wanted,
         )
 
     if rehearse_download:

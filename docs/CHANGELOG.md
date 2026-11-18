@@ -170,7 +170,7 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   (`download.DECLARED_AT_UNRECORDED`).
 - **The Ensembl rsID index, a derived local lane** (RM431 ask 4, S145, RM405's local half): `ensembl_rsid_index`,
   rsID → (chrom, start) over the split core, sorted by rsID (`data/ensembl_rsid_index-<bucket>.parquet`, columns
-  `rs`, `chrom`, `start`). Built by `cache rebuild --only ensembl_rsid_index` (and `cache prepare`) through
+  `rs`, `chrom`, `start`). Built only by `cache rebuild --only ensembl_rsid_index` through
   `ensembl_rsid_index_build.build_rsid_index`, never by a pull, so `enrich(download=True)` pays nothing; not
   published and not remote-eligible. Its `release.json` pins the core (`parents.ensembl`: the manifest's
   `release_id` and a digest of its attested files, `core_pin`). `resolver.lookup_loci` by rsID reads it first when
@@ -179,6 +179,11 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   2,524 s to build; one rsID in 0.15 s against 6.2 s scanned. New: `locations.ENSEMBL_RSID_INDEX_SUBDIR`,
   `ENSEMBL_RSID_INDEX_CACHE_VAR` (`$JUST_DNA_ENSEMBL_RSID_INDEX_CACHE`), `resolve_ensembl_rsid_index_reference`,
   `default_ensembl_rsid_index_cache_dir`.
+- **The rsID index is built only when named** (RM431, the pm's reading 2): `cache rebuild --only
+  ensembl_rsid_index`. A bare `cache rebuild` (and `rebuild_caches(lanes=None)`) reports it *not run*, and
+  `cache prepare` never builds it, named or not, its line naming the rebuild into the base it looked in; neither
+  pays about 42 minutes and 6 GB unasked. New: `CacheLane.named_only` (the reason, `None` on every other lane)
+  and `RebuildRequest.named` (default `True`); `cache status` says it of an absent index.
 
 ## 2026-11-18 — RM453: a mirrored site where no spelling was witnessed keeps both spellings (patch, a declared corrected derivation, on `main`)
 

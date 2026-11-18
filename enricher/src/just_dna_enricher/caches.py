@@ -215,6 +215,11 @@ class RebuildRequest:
     miss lane should join against is the one *this run* just cut, not whatever is in the live cache.
     A parent the caller does not name falls back to that lane's own resolver, which is what
     `cache prepare` and a bare `--only mitomap_miss` want.
+
+    `named` says whether the caller named this lane rather than selecting every lane (0.9, RM431): a
+    lane built only when named (`CacheLane.named_only`) is *not run* on a request with `named=False`,
+    saying why. `True` by default, since a caller of `rebuild_lane` has named its lane; the loops over
+    every lane (`rebuild_caches(lanes=None)`, a bare `cache rebuild`) pass `False`.
     """
 
     out_dir: Path
@@ -222,6 +227,7 @@ class RebuildRequest:
     pin: str | None = None
     source: Path | None = None
     parents: dict[str, Path] = field(default_factory=dict)
+    named: bool = True
 
 
 @dataclass(frozen=True)
@@ -297,6 +303,13 @@ class CacheLane:
     #: not allowed to fetch, so the adapter has no bytes to start from. The first is a division of
     #: labour, the second is an acquisition gate (`@acquisition-gate-is-not-a-read-gate`).
     unbuilt: str | None = None
+    #: Why this lane is built **only when named** (`cache rebuild --only <lane>`), or `None` for every
+    #: lane a bare `cache rebuild` and `cache prepare` build (0.9, RM431). Stated as a field for the
+    #: reason `unbuilt` is one: the operator reads it where the lane was passed over. `cache prepare`
+    #: never builds such a lane (it leaves a present one alone and reports an absent one *unavailable*,
+    #: with this reason), and a bare `cache rebuild` reports it *not run*. `ensembl_rsid_index` alone:
+    #: its build takes about 42 minutes and 6 GB from the Ensembl core, which no host should pay unasked.
+    named_only: str | None = None
     #: How this lane's snapshot names the release it holds (RM180). The default is the format
     #: tier's `snapshot.release_label`, `release.json`'s `dataset`, and since RM303 every lane uses it:
     #: ClinVar's builder used to write `clinvar_file_date` and no `dataset`, so `cache status` printed
@@ -910,8 +923,9 @@ def _rebuild_mitomap_miss(request: RebuildRequest) -> RebuildOutcome:
 def _rebuild_ensembl_rsid_index(request: RebuildRequest) -> RebuildOutcome:
     """The rsID index of the Ensembl core on disk (RM431). `rebuild_lane`'s parent guard has run.
 
-    Only this route and `cache prepare` build it: no `ensure` does, so a pull and `enrich(download=True)`
-    pay nothing for it.
+    Only this route builds it, and only when the lane is named (`CacheLane.named_only`): no `ensure`
+    does, and neither `cache prepare` nor a bare `cache rebuild` reaches it, so a pull,
+    `enrich(download=True)` and a provisioning run pay nothing for it.
     """
     request.out_dir.mkdir(parents=True, exist_ok=True)
     try:
@@ -1022,6 +1036,12 @@ CACHE_LANES: list[CacheLane] = [
             "derived, and local only: the index of the Ensembl core on this machine, pinned to that core's "
             "release and files, so a pulled copy would index somebody else's. Build it from the core with "
             "`cache rebuild --only ensembl_rsid_index`"
+        ),
+        # About 42 minutes and 6 GB from the 2026-07-13 core (RM431's measurement): built only when named
+        # (the pm, 2026-11-18), so a provisioning run and a nightly rebuild never pay it unasked.
+        named_only=(
+            "built only when named, `cache rebuild --only ensembl_rsid_index` (about 42 minutes and 6 GB "
+            "from the Ensembl core), so neither `cache prepare` nor a bare `cache rebuild` builds it"
         ),
         parents=("ensembl",),
     ),
@@ -1452,8 +1472,11 @@ def _rebuild_blocked(
 
     The half of `rebuild_lane` that reads and never fetches, so `cache rebuild --dry-run` (RM411) says
     *not run* for exactly the lanes a real run would, in the same words: no adapter, or a derived lane
-    whose parents are not on disk. The returned request carries the parents it resolved.
+    whose parents are not on disk. The returned request carries the parents it resolved. A lane built
+    only when named (`CacheLane.named_only`) on a request that did not name it is *not run* too, first.
     """
+    if lane.named_only is not None and not request.named:
+        return RebuildOutcome(lane.name, None, lane.named_only), request
     if lane.rebuild is None:
         return RebuildOutcome(lane.name, None, lane.unbuilt or "no builder in this tier"), request
     if request.pin is not None and lane.name not in _PINNABLE:
@@ -1753,6 +1776,16 @@ def prepare_lane(lane: CacheLane, request: RebuildRequest) -> PrepareOutcome:
     existing = lane.resolve()
     if existing is not None:
         return _present_or_completed(lane, existing, request)
+    if lane.named_only is not None:
+        # Never built here, named or not (RM431): the reason, and the command that builds it where this
+        # machine's readers look, since `cache rebuild` writes into the `--out` it is given.
+        return PrepareOutcome(
+            lane.name,
+            None,
+            "none",
+            f"{lane.named_only}; build it here with "
+            f"`just-dna-enricher {lane.build_command} --out {lane.default_dir().parent}`",
+        )
 
     if lane.ensure is not None:
         if lane.terms is not None:
@@ -1851,6 +1884,9 @@ def prepare_caches(
     deployment's own provisioning step is Python far more often than it is a shell script, and the
     alternative is every caller re-deriving *which lane pulls and which builds* from the licensing
     story. That derivation is the command.
+
+    A lane built only when named (`CacheLane.named_only`, RM431) is never built here, even when `lanes`
+    names it: an absent one is *unavailable*, its outcome naming the `cache rebuild` that builds it.
     """
     pins = pins or {}
     sources = sources or {}
@@ -1895,6 +1931,9 @@ def rebuild_caches(
     cut a new set and adopt it deliberately. **Prepare provisions**, into the live cache locations,
     and leaves a lane that already has a snapshot alone. A caller wanting "make sure every cache
     exists" wants prepare; one wanting "cut a fresh set from today's sources" wants rebuild.
+
+    A lane built only when named (`CacheLane.named_only`, RM431) is built only when `lanes` names it;
+    with `lanes=None` it is *not run*, with its reason.
     """
     pins = pins or {}
     sources = sources or {}
@@ -1902,6 +1941,8 @@ def rebuild_caches(
     # is written into `out/<lane>/`, so by the time the child's turn comes its parents are siblings on
     # disk — and joining the live cache instead would produce a child whose `release.json` pins two
     # parents that are not the ones beside it.
+    # `lanes=None` names no lane, so a lane built only when named is *not run* there (RM431); a lane
+    # in an explicit `lanes` is named.
     return [
         rebuild_lane(
             lane,
@@ -1911,6 +1952,7 @@ def rebuild_caches(
                 pin=pins.get(lane.name),
                 source=sources.get(lane.name),
                 parents=parents_from_rebuild_dir(lane, out),
+                named=lanes is not None,
             ),
         )
         for lane in (lanes if lanes is not None else CACHE_LANES)

@@ -7,9 +7,10 @@ spans rs1 to rs9…, and `lookup_loci` by rsID read the whole column (about 6.1 
 positions in the core.
 
 **A derived lane, local only** (the pm, 2026-11-16, on the registry's answer). Its acquire stage is the
-Ensembl core on disk, its parent is a field (`CacheLane.parents`), and it is built by `cache rebuild
---only ensembl_rsid_index` (or `cache prepare`) and never inside `ensure_snapshot`, so a pull, and
-`enrich(download=True)`, pay nothing for it. It is not pulled, not published and not remote-eligible:
+Ensembl core on disk, its parent is a field (`CacheLane.parents`), and it is built only when named,
+by `cache rebuild --only ensembl_rsid_index` (`CacheLane.named_only`): never inside `ensure_snapshot`,
+by `cache prepare` or by a bare `cache rebuild`, so a pull, `enrich(download=True)` and a provisioning
+run pay nothing for it. It is not pulled, not published and not remote-eligible:
 Ensembl by rsID is never sent remotely (RM430 decision 8).
 
 **What the parent pin is.** The core's `manifest.json` `release_id`, which the decision names, and a

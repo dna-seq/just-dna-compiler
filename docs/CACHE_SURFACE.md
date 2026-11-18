@@ -46,6 +46,7 @@ having said it.
 | `publish_command` | — | needed **only** when the lane has a `publish_repo` and no `rebuild` (RM202) |
 | `unpublished` / `unbuilt` | — | stated iff the stage is absent |
 | `release_label` | — | override only if `release.json`'s `dataset` is not the label. **No lane overrides it** since RM303: write `dataset` through `SnapshotRelease` instead |
+| `named_only` | — | the reason a lane is built **only when named** (`cache rebuild --only <lane>`): `cache prepare` never builds it and a bare `cache rebuild` reports it *not run*. Such a lane has a `rebuild`, no `ensure`, and that `--only` as its `build_command` (`test_ensembl_rsid_index.py::test_a_lane_built_only_when_named_is_rebuild_only_and_states_why`) |
 | `parents` | — | for a derived lane; an absent parent is *could not run*, never an empty result. Also a **cost** fact: `provisioning_closure` prices the lane by its parents |
 | `approx_mb` | ✅ | the provisioned size as an order of magnitude in whole MB, rounded up (`1` = at most a megabyte). Measured, never guessed; a test re-measures it against every snapshot the box holds (RM229) |
 

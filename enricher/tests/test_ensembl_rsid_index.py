@@ -13,7 +13,7 @@ from pathlib import Path
 
 import duckdb
 import pytest
-from just_dna_enricher import download, ensembl_rsid_index_build, locations, remote, resolver
+from just_dna_enricher import caches, download, ensembl_rsid_index_build, locations, remote, resolver
 from just_dna_enricher.caches import CACHE_LANES, LANES_BY_NAME, RebuildRequest, rebuild_lane
 from just_dna_enricher.cli import app
 from just_dna_enricher.ensembl_rsid_index_build import (
@@ -257,3 +257,77 @@ def test_the_builder_is_its_own_module_and_reads_with_duckdb() -> None:
     assert not {name for name in imported if name.startswith("polars")}, (
         "a runtime reader imports helpers from here, so the module stays off the [dev] extra"
     )
+
+
+# ── built only when named (the pm's reading 2, 2026-11-18) ──────────────────────────────────────
+
+#: The phrase every passed-over route says, pinned (`@warning-text-is-api`): the reason, and the command.
+NAMED_ONLY_PHRASE = "built only when named, `cache rebuild --only ensembl_rsid_index`"
+
+
+def test_a_lane_built_only_when_named_is_rebuild_only_and_states_why() -> None:
+    """Walked: such a lane has an adapter and no pull, and its own command is the `--only` that names it."""
+    named_only = [lane for lane in CACHE_LANES if lane.named_only is not None]
+    assert [lane.name for lane in named_only] == ["ensembl_rsid_index"]
+    for lane in named_only:
+        assert lane.rebuild is not None and lane.ensure is None, lane.name
+        assert lane.build_command == f"cache rebuild --only {lane.name}", lane.name
+    assert LANES_BY_NAME["ensembl_rsid_index"].named_only.startswith(NAMED_ONLY_PHRASE)
+
+
+def test_a_bare_rebuild_does_not_build_the_index_and_says_how(
+    no_ambient_caches, monkeypatch: pytest.MonkeyPatch, core: Path, tmp_path: Path
+) -> None:
+    """`rebuild_caches(lanes=None)` names no lane: the index is not run, its parent on disk or not."""
+    monkeypatch.setenv(locations.ENSEMBL_CACHE_VAR, str(core))
+    lane = LANES_BY_NAME["ensembl_rsid_index"]
+    monkeypatch.setattr(caches, "CACHE_LANES", [lane])
+    (outcome,) = caches.rebuild_caches(out=tmp_path / "out")
+    assert outcome.built is None and NAMED_ONLY_PHRASE in outcome.detail
+    assert not (tmp_path / "out" / lane.name).exists(), "nothing was built"
+    (named,) = caches.rebuild_caches([lane], out=tmp_path / "out")
+    assert named.built is True, named.detail
+
+
+def test_prepare_never_builds_the_index_even_named_and_names_the_rebuild_into_its_place(
+    no_ambient_caches, monkeypatch: pytest.MonkeyPatch, core: Path, tmp_path: Path
+) -> None:
+    monkeypatch.setenv(locations.ENSEMBL_CACHE_VAR, str(core))
+    monkeypatch.setenv(locations.CACHE_BASE_VAR, str(tmp_path / "base"))
+    lane = LANES_BY_NAME["ensembl_rsid_index"]
+    monkeypatch.setenv(lane.env_var, "")
+    (outcome,) = caches.prepare_caches([lane])
+    assert outcome.ready is None and outcome.route == "none"
+    assert outcome.detail == (
+        f"{lane.named_only}; build it here with "
+        f"`just-dna-enricher cache rebuild --only ensembl_rsid_index --out {tmp_path / 'base'}`"
+    )
+    assert not (tmp_path / "base" / lane.name).exists(), "prepare built nothing"
+    command = outcome.detail.split("`")[-2].split()
+    result = CliRunner().invoke(app, command[1:])
+    assert result.exit_code == 0, result.output
+    (present,) = caches.prepare_caches([lane])
+    assert present.ready is True and present.route == "present", "the command built it where prepare looks"
+
+
+def test_a_bare_cache_rebuild_dry_run_passes_the_index_over_and_a_named_one_would_build_it(
+    no_ambient_caches, monkeypatch: pytest.MonkeyPatch, core: Path, tmp_path: Path
+) -> None:
+    monkeypatch.setenv(locations.ENSEMBL_CACHE_VAR, str(core))
+    runner = CliRunner()
+    bare = runner.invoke(app, ["cache", "rebuild", "--dry-run", "--out", str(tmp_path / "out")])
+    assert bare.exit_code == 0, bare.output
+    line = next(line for line in bare.output.splitlines() if line.strip().startswith("ensembl_rsid_index"))
+    assert "not run" in line and NAMED_ONLY_PHRASE in line
+    named = runner.invoke(
+        app, ["cache", "rebuild", "--dry-run", "--only", "ensembl_rsid_index", "--out", str(tmp_path / "out")]
+    )
+    assert named.exit_code == 0, named.output
+    assert "ensembl_rsid_index would build" in " ".join(named.output.split())
+
+
+def test_cache_status_says_an_absent_index_is_built_only_when_named(no_ambient_caches) -> None:
+    result = CliRunner().invoke(app, ["cache", "status"])
+    assert result.exit_code == 0, result.output
+    line = next(line for line in result.output.splitlines() if line.strip().startswith("ensembl_rsid_index"))
+    assert "absent" in line and NAMED_ONLY_PHRASE in line

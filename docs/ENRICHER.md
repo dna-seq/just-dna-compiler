@@ -1845,9 +1845,14 @@ group, and a lookup by rsID pruned nothing (every row group's `id` spans rs1 to 
   path. A label alone is not a core: one label has been seen over two sets of bytes (RM445), and a test
   slice states the real release's label. A core whose manifest names no release cannot be indexed.
   `dataset` is the core's release, so `cache status` prints which release the index is of.
-- **Built, never pulled.** `cache rebuild --only ensembl_rsid_index` (and `cache prepare`, which builds a
-  missing derived lane from its parents) builds it; no `ensure` does, so `cache pull`,
-  `ensure_snapshot` and `enrich(download=True)` pay nothing for it. The build runs in duckdb with an
+- **Built, never pulled, and only when named** (the pm's reading 2, 2026-11-18). `cache rebuild --only
+  ensembl_rsid_index` builds it; no `ensure` does, so `cache pull`, `ensure_snapshot` and
+  `enrich(download=True)` pay nothing for it, and neither does a provisioning run or a nightly rebuild:
+  the lane's `CacheLane.named_only` states why (about 42 minutes and 6 GB), and a bare `cache rebuild`
+  (`rebuild_caches(lanes=None)`, which passes `RebuildRequest(named=False)`) reports it *not run* with
+  that reason. `cache prepare` never builds it, named or not: an absent index is *unavailable*, its line
+  naming `cache rebuild --only ensembl_rsid_index --out <base>` for the base it looked in, and a present
+  one is left alone. `cache status` says it of an absent index. The build runs in duckdb with an
   8 GB ceiling and 4 threads, in two passes so nothing holds the whole index in memory (one global
   `DISTINCT … ORDER BY` ran out of that ceiling): each core file's distinct rows go into rsID buckets,
   then each bucket is sorted into its file, all under a hidden staging directory inside the output. It
@@ -2096,6 +2101,11 @@ published, build if not.
 - **In Python:** `caches.prepare_caches(...)`, which the command calls. `caches.rebuild_caches(...)` is
   its sibling. Both return one outcome per lane in registry order, so a caller can zip against
   `CACHE_LANES` without matching on names.
+- **A lane built only when named** (0.9, RM431: `CacheLane.named_only`, the reason as a field, `None` for
+  every other lane) is never built by `cache prepare`, and a bare `cache rebuild` reports it *not run*;
+  `cache rebuild --only <lane>` builds it. `RebuildRequest.named` (default `True`: a caller of
+  `rebuild_lane` has named its lane) is what the loops over every lane set to `False`.
+  `ensembl_rsid_index` is the one such lane.
 
 **Every bulk download goes through one body, and a failed one is a failed lane (RM187).** Each
 builder streams its source's file through `net.stream_to_file`, which is atomic (`.part`, renamed only
