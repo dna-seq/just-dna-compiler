@@ -1878,6 +1878,14 @@ group, and a lookup by rsID pruned nothing (every row group's `id` spans rs1 to 
   that builds an index there (`just-dna-enricher cache rebuild --only ensembl_rsid_index --out <base>`).
   `info`, because a scan is the normal state of a host that never named the index: the answers are the
   same, only slower.
+- **A host that passes its lanes' paths hands the index over too** (the pm's reading 5; the registry's proxy,
+  S154): `resolver.lookup_loci(reference, rsids, positions, non_nucleotide=None, *, rsid_index=None)`.
+  `rsid_index` is the lane's directory, beside the core's `reference`; given, it is the only place looked in,
+  never the environment, and an index there is read only when it pins `reference`, as above. With no index
+  there, or a stale one, the note and the refusal name the place passed, and an instruction for a place not
+  named `ensembl_rsid_index` says to pass `<dir>/ensembl_rsid_index` as `rsid_index` rather than to export
+  `$JUST_DNA_ENSEMBL_RSID_INDEX_CACHE`. `None` keeps the ladder above. `lookup_variant` and `enrich` take no
+  such path in 0.9: they read the index from the environment.
 
 **MANE's ❓ is an unestablished permission, and the third column says so.** MANE's bytes carry a
 *policy* — NCBI places no restrictions on use or distribution and, in the same paragraph, declines to

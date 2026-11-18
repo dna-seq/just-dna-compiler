@@ -259,6 +259,85 @@ def test_a_core_with_no_manifest_is_scanned_whatever_index_is_present(
     assert _lookup(core) == scanned
 
 
+# ── the explicit seam (the pm's reading 5): a host that passes lane paths hands the index over too ──
+
+
+def _drop_from_index(index: Path, rsid: str) -> None:
+    """Rewrite the index without `rsid`, its pin unchanged: a lookup that misses it read the index."""
+    path = index / "data" / INDEX_FILE_PATTERN.format(bucket=int(rsid[2:]) // INDEX_BUCKET_WIDTH)
+    con = duckdb.connect()
+    con.execute(
+        f"COPY (SELECT * FROM read_parquet('{path}') WHERE rs <> {int(rsid[2:])}) TO '{path}.tmp' (FORMAT parquet)"
+    )
+    Path(f"{path}.tmp").replace(path)
+
+
+def test_an_index_passed_explicitly_is_read_and_the_environment_is_not_asked(
+    no_ambient_caches, monkeypatch: pytest.MonkeyPatch, ensembl_split_core, core: Path, index: Path, tmp_path
+) -> None:
+    """The environment names an index of another core; the one passed, which pins this core, is read."""
+    scanned = _lookup(core)
+    stale = build_rsid_index(
+        ensembl_split_core(tmp_path / "older", drop=(MULTI_ALT,)), tmp_path / "stale"
+    ).out_dir
+    monkeypatch.setenv(locations.ENSEMBL_RSID_INDEX_CACHE_VAR, str(stale))
+    collected: set[str] = set()
+    explicit = lookup_loci(core, ASKED, [], non_nucleotide=collected, rsid_index=index)
+    assert (explicit[0], explicit[1], [str(w) for w in explicit[2]], collected) == scanned
+    _drop_from_index(index, MULTI_ALT)
+    loci, _, _ = lookup_loci(core, [MULTI_ALT], [], rsid_index=index)
+    assert loci == {}, "the index passed is what was read"
+
+
+def test_an_explicit_place_with_no_index_is_scanned_and_named_never_the_environments(
+    no_ambient_caches,
+    monkeypatch: pytest.MonkeyPatch,
+    core: Path,
+    index: Path,
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    monkeypatch.setattr(resolver, "_SCAN_NOTED", threading.Event())
+    monkeypatch.setenv(locations.ENSEMBL_RSID_INDEX_CACHE_VAR, str(index))
+    _drop_from_index(index, MULTI_ALT)
+    place = tmp_path / "host" / "rsid-index"
+    with caplog.at_level(logging.INFO, logger="just_dna_enricher.resolver"):
+        loci, _, _ = lookup_loci(core, [MULTI_ALT], [], rsid_index=place)
+    assert loci[MULTI_ALT], "scanned: the environment's index (which lacks it) was not read"
+    (note,) = [r.getMessage() for r in caplog.records if SCAN_NOTE in r.getMessage()]
+    assert f"No rsID index was found at {place}," in note
+    assert note.endswith(
+        "Build it with `just-dna-enricher cache rebuild --only ensembl_rsid_index --out <dir>` and pass "
+        "<dir>/ensembl_rsid_index as `rsid_index`."
+    )
+    assert locations.ENSEMBL_RSID_INDEX_CACHE_VAR not in note, (
+        "a host passing paths is not told to export one"
+    )
+
+
+def test_a_stale_index_passed_explicitly_is_refused_naming_the_rebuild_for_the_caller(
+    no_ambient_caches,
+    ensembl_split_core,
+    core: Path,
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    stale = build_rsid_index(
+        ensembl_split_core(tmp_path / "older", drop=(MULTI_ALT,)), tmp_path / "idx"
+    ).out_dir
+    scanned = _lookup(core)
+    with caplog.at_level(logging.WARNING, logger="just_dna_enricher.resolver"):
+        collected: set[str] = set()
+        loci, candidates, warnings = lookup_loci(core, ASKED, [], non_nucleotide=collected, rsid_index=stale)
+    assert (loci, candidates, [str(w) for w in warnings], collected) == scanned
+    (refusal,) = [r.getMessage() for r in caplog.records if "rsID index" in r.getMessage()]
+    assert str(stale) in refusal and str(core) in refusal
+    assert refusal.endswith(
+        "Rebuild it with `just-dna-enricher cache rebuild --only ensembl_rsid_index --out <dir>` and pass "
+        "<dir>/ensembl_rsid_index as `rsid_index`."
+    )
+
+
 # ── the lane ────────────────────────────────────────────────────────────────────────────────────
 
 

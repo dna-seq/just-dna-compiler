@@ -331,6 +331,8 @@ def lookup_loci(
     rsids: list[str],
     positions: list[tuple[str | None, int | None, str | None, str | None]],
     non_nucleotide: set[str] | None = None,
+    *,
+    rsid_index: Path | None = None,
 ) -> tuple[dict[str, list[dict]], dict[tuple, list[str]], list[str]]:
     """Public cache lookup the enricher uses to *build* a resolution table (0.5).
 
@@ -341,8 +343,15 @@ def lookup_loci(
 
     `non_nucleotide`, when given, receives the rsIDs the snapshot holds with no nucleotide allele at
     any locus (RM271), so a caller can name them rather than read them out of the log (RM272).
+
+    `rsid_index` is the `ensembl_rsid_index` lane's directory, for a host that passes its lanes' paths
+    explicitly rather than through the environment (0.9, RM431; the registry's proxy, S154): beside
+    `reference`, as `reference` is the Ensembl core's. Given, it is the only place looked in, never the
+    environment; `None` keeps the lane's ladder (`$JUST_DNA_ENSEMBL_RSID_INDEX_CACHE`, else
+    `<base>/ensembl_rsid_index`, no `.env` loaded). Either way an index is read only when it pins
+    `reference`, and the answer is the scan's.
     """
-    return _lookup_loci(reference, rsids, positions, non_nucleotide)
+    return _lookup_loci(reference, rsids, positions, non_nucleotide, rsid_index=rsid_index)
 
 
 def _lookup_loci(
@@ -351,35 +360,41 @@ def _lookup_loci(
     positions: list[tuple[str | None, int | None, str | None, str | None]],
     non_nucleotide: set[str] | None = None,
     candidate_loci: dict[tuple, dict[str, list[LocusSpelling]]] | None = None,
+    *,
+    rsid_index: Path | None = None,
 ) -> tuple[dict[str, list[dict]], dict[tuple, list[str]], list[str]]:
     """`lookup_loci`, plus each reverse candidate's alleles at its position into `candidate_loci` (RM438).
 
     What `enrich` calls, so its back-fill narrows the candidates by the row's alleles (`_hosting_rsids`)
     from the same query. Private, so the public signature `clinvar.lookup_loci` mirrors stays as it was.
     """
-    rsid_index = _rsid_index_beside(Path(reference)) if rsids else None
+    index_files = _rsid_index_beside(Path(reference), rsid_index) if rsids else None
     con = _connect(reference)
     try:
-        return _loci_over(con, rsids, positions, non_nucleotide, candidate_loci, rsid_index)
+        return _loci_over(con, rsids, positions, non_nucleotide, candidate_loci, index_files)
     finally:
         con.close()
 
 
-def _rebuild_instruction(index_dir: Path, *, build: bool = False) -> str:
+def _rebuild_instruction(index_dir: Path, *, build: bool = False, explicit: bool = False) -> str:
     """The command that (re)builds the index where the reader looks for it (`cache rebuild` writes `<out>/<lane>`).
 
     `cache prepare` never builds the index (it is built only when named, `CacheLane.named_only`), so the
     instruction is a rebuild into the index's own place: the builder withdraws `release.json` before it
     moves a file, and a reader in between scans. `build` words it for a place that holds no index yet.
+    `explicit` is a place the caller passed (`lookup_loci(rsid_index=…)`): one not named for the lane is
+    pointed at by passing it again, never by the environment, which such a host does not configure.
     """
     command = "just-dna-enricher cache rebuild --only ensembl_rsid_index"
     if index_dir.name == ENSEMBL_RSID_INDEX_SUBDIR:
         verb = "Build it" if build else "Rebuild it in place"
         return f"{verb} with `{command} --out {index_dir.parent}`."
-    return (
-        f"{'Build' if build else 'Rebuild'} it with `{command} --out <dir>` and point "
-        f"${ENSEMBL_RSID_INDEX_CACHE_VAR} at <dir>/{ENSEMBL_RSID_INDEX_SUBDIR}."
+    point = (
+        f"pass <dir>/{ENSEMBL_RSID_INDEX_SUBDIR} as `rsid_index`"
+        if explicit
+        else f"point ${ENSEMBL_RSID_INDEX_CACHE_VAR} at <dir>/{ENSEMBL_RSID_INDEX_SUBDIR}"
     )
+    return f"{'Build' if build else 'Rebuild'} it with `{command} --out <dir>` and {point}."
 
 
 #: `(index, core)` pairs whose refusal was already logged: said once per process, not per lookup.
@@ -388,7 +403,7 @@ _REFUSED_INDEXES: set[tuple[Path, Path]] = set()
 _SCAN_NOTED = threading.Event()
 
 
-def _note_scan(place: Path, reference: Path) -> None:
+def _note_scan(place: Path, reference: Path, *, explicit: bool = False) -> None:
     """Say once per process, at `info`, that rsIDs are scanned for want of an index, and how to build one.
 
     The pm's reading 2 (2026-11-18): the index is built only when named, so a host that never named it
@@ -404,16 +419,17 @@ def _note_scan(place: Path, reference: Path) -> None:
         "when named. %s",
         place,
         reference,
-        _rebuild_instruction(place, build=True),
+        _rebuild_instruction(place, build=True, explicit=explicit),
     )
 
 
-def _rsid_index_beside(reference: Path) -> Path | None:
+def _rsid_index_beside(reference: Path, explicit: Path | None = None) -> Path | None:
     """The rsID index's files (a glob) to read for `reference`'s rsIDs (RM431), or `None` to scan the core.
 
-    The index is the `ensembl_rsid_index` lane's, found as its resolver finds it from the process
-    environment (`$JUST_DNA_ENSEMBL_RSID_INDEX_CACHE`, else `<base>/ensembl_rsid_index`; the `.env` is
-    not loaded here, as `lookup_loci` never loaded it). It is read only when its `release.json` pins this
+    The index is the `ensembl_rsid_index` lane's: at `explicit` when the caller passed one (and nowhere
+    else), else found as its resolver finds it from the process environment
+    (`$JUST_DNA_ENSEMBL_RSID_INDEX_CACHE`, else `<base>/ensembl_rsid_index`; the `.env` is not loaded
+    here, as `lookup_loci` never loaded it). It is read only when its `release.json` pins this
     core (`ensembl_rsid_index_build.core_pin`: the release and the files its manifest attests); an index
     of another core is refused with a warning naming both and the rebuild, and the core is scanned. With
     no index there, the core is scanned and the first such lookup of the process says so at `info`, with
@@ -423,12 +439,13 @@ def _rsid_index_beside(reference: Path) -> Path | None:
     current = core_pin(reference)
     if current is None:
         return None
-    index_dir = resolve_ensembl_rsid_index_reference(load_dotenv_file=False)
+    index_dir = resolve_ensembl_rsid_index_reference(explicit, load_dotenv_file=False)
     if index_dir is None:
-        looked_in = os.getenv(ENSEMBL_RSID_INDEX_CACHE_VAR)
+        looked_in = str(explicit) if explicit is not None else os.getenv(ENSEMBL_RSID_INDEX_CACHE_VAR)
         _note_scan(
             Path(looked_in) if looked_in else default_ensembl_rsid_index_cache_dir(load_dotenv_file=False),
             reference,
+            explicit=explicit is not None,
         )
         return None
     payload = index_dir / SNAPSHOT_DATA_DIRNAME / INDEX_GLOB
@@ -450,7 +467,7 @@ def _rsid_index_beside(reference: Path) -> Path | None:
             reference,
             stated or "no core",
             current["release_id"],
-            _rebuild_instruction(index_dir),
+            _rebuild_instruction(index_dir, explicit=explicit is not None),
         )
     return None
 

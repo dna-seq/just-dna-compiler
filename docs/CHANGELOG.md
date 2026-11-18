@@ -188,6 +188,10 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   lookup of a process that finds no index where it looks logs, at `info`, that an index exists and the command
   that builds one there (`No rsID index was found at <place>, so rsIDs in the Ensembl core at <core> are looked
   up by scanning…`). A core with no manifest, which no index could be built from, says nothing.
+- **`resolver.lookup_loci(..., *, rsid_index=None)`** (RM431, the pm's reading 5): a host that passes its lanes'
+  paths explicitly (the registry's proxy, S154) hands over the rsID index's directory beside the core's. Given,
+  it is the only place looked in, never the environment; the index is still read only when it pins the core, and
+  the note and the stale refusal name the place passed and say to pass the rebuilt one, not to export a variable.
 
 ## 2026-11-18 — RM453: a mirrored site where no spelling was witnessed keeps both spellings (patch, a declared corrected derivation, on `main`)
 
