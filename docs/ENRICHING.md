@@ -222,6 +222,14 @@ on disk: clinvar_gkm
 A lane whose repository holds nothing yet says *not published yet* and leaves nothing on disk, and
 `cache prepare` reports the same and does not build a pullable lane.
 
+One lane is built only when you name it: the Ensembl rsID index (`ensembl_rsid_index`), about 42 minutes and
+6 GB from the Ensembl core, which makes an rsID lookup a pruned read instead of a scan. `cache prepare` and a
+bare `cache rebuild` pass it over, and `cache status` names the command that builds it where it is read:
+
+```text
+  ensembl_rsid_index absent   — rsID → (chrom, start) over the Ensembl core, …; built only when named, … ; build it where it is read with `just-dna-enricher cache rebuild --only ensembl_rsid_index --out <base>`
+```
+
 A lane has three stages, and where one is absent the status says **why** as a field rather than
 leaving you to guess. A derived lane also names its parents: an absent parent is *could not run*,
 never *an empty result*, and a parent that moved and a parent that is gone are different instructions.

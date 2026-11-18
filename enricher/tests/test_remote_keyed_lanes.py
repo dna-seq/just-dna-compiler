@@ -287,20 +287,25 @@ def test_the_labels_table_is_named_as_a_remote_route_names_it() -> None:
     assert remote.table_name(f"data/{drug_labels.LABELS_PARQUET}") == drug_labels.REMOTE_LABELS_TABLE
 
 
-def test_drug_labels_answer_remotely_by_a_gene_that_is_a_whole_cell_as_the_local_reader_does(
+def test_drug_labels_answer_remotely_by_a_gene_named_alone_as_the_local_reader_does(
     httpfs, loopback_hub, labels_root: Path
 ) -> None:
     assert "drug_labels" in REMOTE_LANES
     loopback_hub.publish(SNAPSHOT_REPO_IDS["drug_labels"], labels_root, COMMIT)
     whole, _ = _label_genes(labels_root)
-    genes = [*whole, "NOT_A_GENE"]
+    cells = _parquet_values(labels_root / "data" / drug_labels.LABELS_PARQUET, "genes")
+    beside = {
+        member for cell in cells if len(drug_labels._split(cell)) > 1 for member in drug_labels._split(cell)
+    }
+    # Genes no label names beside another: the divergence on a multi-gene label is the strict xfail's.
+    alone = [gene for gene in whole if gene not in beside]
+    assert alone, "the slice names DPYD and SLCO1B1 only on their own"
+    genes = [*alone, "NOT_A_GENE"]
     with RemoteSnapshots(hf_base_url=loopback_hub.base_url, declared_use="non_commercial") as holder:
         answer = holder.lookup("drug_labels", drug_labels.REMOTE_LABELS_TABLE, drug_labels._gene_keys(genes))
     local = drug_labels.lookup_genes(labels_root, genes)
-    assert len(local) == len(whole), "every gene is on a label in the slice, so an empty answer cannot pass"
-    # A label naming several genes, one of them asked, is not sent by a route comparing whole cells.
-    whole_cells = {gene: [row for row in rows if row["genes"] == gene] for gene, rows in local.items()}
-    assert drug_labels._genes_from_rows(answer.rows, genes) == whole_cells
+    assert len(local) == len(alone), "every gene is on a label in the slice, so an empty answer cannot pass"
+    assert drug_labels._genes_from_rows(answer.rows, genes) == local
 
 
 @pytest.mark.xfail(
