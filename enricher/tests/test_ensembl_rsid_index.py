@@ -154,6 +154,50 @@ def test_an_index_of_another_core_is_refused_and_the_core_is_scanned(
     assert str(index) in refusals[0] and str(core) in refusals[0]
 
 
+def test_a_moved_parent_never_rebuilds_the_index_it_is_refused_once_and_the_core_scanned(
+    no_ambient_caches,
+    monkeypatch: pytest.MonkeyPatch,
+    ensembl_split_core,
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The pm's reading 3: a 42-minute build inside a lookup is no answer, and neither is a provisioning run.
+
+    The core moved under the index (its bytes differ under the same label). Two lookups and a
+    `prepare_caches` leave every byte of the index as it was; the refusal is said once, naming the
+    rebuild, and each lookup is the scan's answer.
+    """
+    stale = build_rsid_index(
+        ensembl_split_core(tmp_path / "older", drop=(MULTI_ALT,)), tmp_path / "base" / "ensembl_rsid_index"
+    ).out_dir
+    core = ensembl_split_core(tmp_path / "ensembl_variations")
+    scanned = _lookup(core)
+    before = {
+        path: (path.read_bytes(), path.stat().st_mtime_ns)
+        for path in sorted(stale.rglob("*"))
+        if path.is_file()
+    }
+    monkeypatch.setenv(locations.ENSEMBL_CACHE_VAR, str(core))
+    monkeypatch.setenv(locations.ENSEMBL_RSID_INDEX_CACHE_VAR, str(stale))
+    with caplog.at_level(logging.WARNING, logger="just_dna_enricher.resolver"):
+        assert _lookup(core) == scanned
+        assert _lookup(core) == scanned
+    (refusal,) = [r.getMessage() for r in caplog.records if "rsID index" in r.getMessage()]
+    assert refusal.endswith(
+        f"Rebuild it in place with `just-dna-enricher cache rebuild --only ensembl_rsid_index --out {tmp_path / 'base'}`."
+    )
+    (prepared,) = caches.prepare_caches([LANES_BY_NAME["ensembl_rsid_index"]])
+    assert prepared.ready is True and prepared.route == "present", (
+        "a present index, stale or not, is left alone"
+    )
+    after = {
+        path: (path.read_bytes(), path.stat().st_mtime_ns)
+        for path in sorted(stale.rglob("*"))
+        if path.is_file()
+    }
+    assert after == before, "nothing rebuilt the index"
+
+
 def test_an_index_that_cannot_be_read_is_no_answer_and_the_core_is_scanned(
     no_ambient_caches,
     monkeypatch: pytest.MonkeyPatch,
@@ -377,6 +421,53 @@ def test_cache_rebuild_builds_it_from_the_parent_on_disk(
 def test_a_rebuild_with_no_parent_is_could_not_run_naming_it(no_ambient_caches, tmp_path: Path) -> None:
     outcome = rebuild_lane(LANES_BY_NAME["ensembl_rsid_index"], RebuildRequest(out_dir=tmp_path / "out"))
     assert outcome.built is None and "ensembl" in outcome.detail
+
+
+class _ObservedConnection:
+    """A real duckdb connection that records its statements and, at close, its temporary directory."""
+
+    def __init__(self, connection: duckdb.DuckDBPyConnection) -> None:
+        self._connection = connection
+        self.statements: list[str] = []
+        self.temp_directory: str | None = None
+
+    def execute(self, sql: str, *args):
+        self.statements.append(sql)
+        return self._connection.execute(sql, *args)
+
+    def close(self) -> None:
+        (self.temp_directory,) = self._connection.execute(
+            "SELECT current_setting('temp_directory')"
+        ).fetchone()
+        self._connection.close()
+
+
+def test_the_build_spills_into_its_staging_directory_and_leaves_nothing_behind(
+    monkeypatch: pytest.MonkeyPatch, core: Path, tmp_path: Path
+) -> None:
+    """The deferred spill fix's test: the sort's temporary directory is inside the output's staging.
+
+    A spill anywhere else lands on whatever disk duckdb defaults to (`.tmp` in the working directory),
+    which on the real release was about 11 GB at the peak; inside the staging it is on the output's disk
+    and removed with it.
+    """
+    opened: list[_ObservedConnection] = []
+    real_connect = duckdb.connect
+
+    def observed_connect(*args, **kwargs):
+        connection = _ObservedConnection(real_connect(*args, **kwargs))
+        opened.append(connection)
+        return connection
+
+    monkeypatch.setattr(ensembl_rsid_index_build.duckdb, "connect", observed_connect)
+    out = tmp_path / "ensembl_rsid_index"
+    build_rsid_index(core, out)
+    sorting = [c for c in opened if any(sql.lstrip().startswith("COPY") for sql in c.statements)]
+    assert len(sorting) == 1, "one connection runs both passes"
+    staging = out / ensembl_rsid_index_build._STAGING_DIRNAME
+    assert sorting[0].temp_directory == str(staging / "spill")
+    assert Path(sorting[0].temp_directory).is_relative_to(staging)
+    assert not staging.exists(), "the staging directory, spill included, is removed after the build"
 
 
 def test_the_builder_is_its_own_module_and_reads_with_duckdb() -> None:
