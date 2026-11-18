@@ -209,7 +209,7 @@ class RebuildRequest:
     `source`**: two of three is not a build for either of them, and a flag that can only ever supply
     one would be a flag that cannot do its job.
 
-    `parents` is where each parent lane's snapshot is, for the one lane that has any (RM171). Filled
+    `parents` is where each parent lane's snapshot is, for the derived lanes (RM171, RM431). Filled
     by the caller rather than resolved inside the adapter, because a rebuild run has an answer the
     registry cannot give: `cache rebuild` writes every lane into `out/<lane>/`, so the ClinVar the
     miss lane should join against is the one *this run* just cut, not whatever is in the live cache.
@@ -321,7 +321,7 @@ class CacheLane:
     #: biconditional — a lane that can publish is reachable by exactly one of the two routes.
     publish_command: str | None = None
     #: The lanes this one is **derived from** (RM171). Empty for every lane that acquires its own
-    #: bytes, which is all of them but `mitomap_miss`.
+    #: bytes, which is all of them but `mitomap_miss` and `ensembl_rsid_index` (RM431).
     #:
     #: A field rather than knowledge inside the adapter, because three things follow from it and only
     #: one is the adapter's: the rebuild guard below (a child whose parents are not on disk reports

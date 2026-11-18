@@ -15,6 +15,7 @@ import duckdb
 import pytest
 from just_dna_enricher import download, ensembl_rsid_index_build, locations, remote, resolver
 from just_dna_enricher.caches import CACHE_LANES, LANES_BY_NAME, RebuildRequest, rebuild_lane
+from just_dna_enricher.cli import app
 from just_dna_enricher.ensembl_rsid_index_build import (
     INDEX_BUCKET_WIDTH,
     INDEX_FILE_PATTERN,
@@ -26,6 +27,7 @@ from just_dna_enricher.ensembl_rsid_index_build import (
 from just_dna_enricher.locations import SNAPSHOT_REPO_IDS, resolve_ensembl_rsid_index_reference
 from just_dna_enricher.resolver import lookup_loci
 from just_dna_format.snapshot import read_release, release_label
+from typer.testing import CliRunner
 
 #: The release RM381's slice was copied from (its README), which the fixture core states.
 ENSEMBL_SPLIT_RELEASE = "ensembl-variation-2026_07_13-vep116.0"
@@ -175,6 +177,25 @@ def test_the_refusal_names_a_rebuild_into_the_place_the_reader_looks(tmp_path: P
     )
     elsewhere = resolver._rebuild_instruction(tmp_path / "my-index")
     assert "--out <dir>" in elsewhere and locations.ENSEMBL_RSID_INDEX_CACHE_VAR in elsewhere
+
+
+def test_the_command_the_refusal_names_rebuilds_the_index_where_the_reader_looks(
+    no_ambient_caches, monkeypatch: pytest.MonkeyPatch, ensembl_split_core, tmp_path: Path
+) -> None:
+    """Run as printed: an index of an older core is rebuilt in place, and the reader takes it again."""
+    older = ensembl_split_core(tmp_path / "older", drop=(MULTI_ALT,))
+    index = build_rsid_index(older, tmp_path / "ensembl_rsid_index").out_dir
+    core = ensembl_split_core(tmp_path / "ensembl_variations")
+    scanned = _lookup(core)
+    monkeypatch.setenv(locations.ENSEMBL_CACHE_VAR, str(core))
+    monkeypatch.setenv(locations.ENSEMBL_RSID_INDEX_CACHE_VAR, str(index))
+    assert resolver._rsid_index_beside(core) is None, "the older core's index is refused"
+    command = resolver._rebuild_instruction(index).split("`")[1].split()
+    assert command[:2] == ["just-dna-enricher", "cache"]
+    result = CliRunner().invoke(app, command[1:])
+    assert result.exit_code == 0, result.output
+    assert resolver._rsid_index_beside(core) is not None, "the rebuilt index pins the core beside it"
+    assert _lookup(core) == scanned
 
 
 def test_a_core_with_no_manifest_is_scanned_whatever_index_is_present(

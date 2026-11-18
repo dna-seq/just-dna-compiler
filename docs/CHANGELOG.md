@@ -165,8 +165,9 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 - **A group re-pulled under its recorded declaration says which one** (RM437 follow-up, the pm's reading 1): the
   pull record keeps when each group's use was declared (`declared_at`, `download.PULL_RECORD_DECLARED_AT_KEY`),
   and a re-pull or skip gated by the recorded use rather than the call's logs `under the use recorded for it,
-  <use>, declared <when>; this call states none`. A call stating its own use records a new time; a record
-  without the key says the time is not stated (`download.DECLARED_AT_UNRECORDED`).
+  <use>, declared <when>; this call states none`. A call stating its own use records a new time, a pull under
+  no stated use records none, and a record without the key says the time is not stated
+  (`download.DECLARED_AT_UNRECORDED`).
 - **The Ensembl rsID index, a derived local lane** (RM431 ask 4, S145, RM405's local half): `ensembl_rsid_index`,
   rsID → (chrom, start) over the split core, sorted by rsID (`data/ensembl_rsid_index-<bucket>.parquet`, columns
   `rs`, `chrom`, `start`). Built by `cache rebuild --only ensembl_rsid_index` (and `cache prepare`) through

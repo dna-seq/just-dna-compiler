@@ -1821,6 +1821,13 @@ group, and a lookup by rsID pruned nothing (every row group's `id` spans rs1 to 
   number, `UBIGINT`, so it sorts and prunes as a range), `chrom`, `start`, one row per distinct triple,
   sorted by all three, zstd, 262,144 rows a group. An `id` that is not `rs` + digits is not indexed (none
   in the 2026-07-13 release) and is scanned for when asked.
+- **The names.** `ensembl_rsid_index_build.build_rsid_index(core, out_dir, *, memory_limit=BUILD_MEMORY_LIMIT,
+  threads=BUILD_THREADS) -> RsidIndexBuildResult` (`out_dir`, `files`, `rows`, `core_rows`, `parent`,
+  `seconds`, `size_bytes`), raising `RsidIndexError`; `core_pin(core)`; the layout constants
+  `INDEX_FILE_PATTERN`, `INDEX_GLOB`, `INDEX_BUCKET_WIDTH`, `INDEX_ROW_GROUP_SIZE` and `RSID_PATTERN` (the
+  `id` form indexed). In `locations`: `ENSEMBL_RSID_INDEX_SUBDIR`, `ENSEMBL_RSID_INDEX_CACHE_VAR`,
+  `resolve_ensembl_rsid_index_reference(ensembl_rsid_index_cache=None, *, load_dotenv_file=True)` and
+  `default_ensembl_rsid_index_cache_dir(*, load_dotenv_file=True)`.
 - **Its one parent is a field** (`parents=("ensembl",)`), and its `release.json` pins it:
   `parents.ensembl` holds `ensembl_rsid_index_build.core_pin(core)`, the core manifest's `release_id` and
   `files_sha256`, a digest of the manifest's `data/` attestations (path, size, sha256), beside the core's
@@ -2500,6 +2507,10 @@ with RemoteSnapshots(declared_use="non_commercial") as snapshots:      # proxy f
     part (25 and 200 files), so it costs many requests of the anonymous quota.
   - Both return plain dicts, as `lookup_clin_sig` does; a key the release holds nothing for is not in the
     answer, and a snapshot that cannot be read raises `OpenTargetsError`, never an empty answer.
+  - Each table a remote route is asked for is a module constant beside its keyed function:
+    `opentargets.REMOTE_VARIANTS_TABLE`, `REMOTE_CONSEQUENCES_TABLE`, `REMOTE_MEMBERS_TABLE` (also the
+    `table` values `lookup_consequences` tags its rows with), `civic_draft.REMOTE_CIVIC_TABLE` and
+    `clinvar_gkm.REMOTE_WITNESS_TABLE`.
   - `civic_draft.lookup_genes(reference, genes) -> dict[str, list[dict]]` and `civic_draft.lookup_rsids(reference,
     rsids) -> dict[str, list[dict]]`: every snapshot row under each gene (compared by `gene_key`: case and
     surrounding space make no second gene) or rsID (lower case, `rs` prefixed: `334` is `rs334`), keyed as asked,

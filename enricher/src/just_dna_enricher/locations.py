@@ -189,7 +189,7 @@ OPENTARGETS_SUBDIR: str = "opentargets"
 #: outright, and what was missing was plumbing rather than permission.
 MITOMAP_SUBDIR: str = "mitomap"
 
-#: The **derived** cache, and the only one in the registry that is not a download (RM171). Its acquire
+#: The first **derived** cache, a lane that is not a download (RM171; `ensembl_rsid_index` is the second). Its acquire
 #: stage is *both parents on disk*: it is the join of the MITOMAP snapshot against the ClinVar chrMT
 #: parquet, and it exists as a snapshot rather than as a computation inside `draft` so the increment
 #: has an identity a currency check can talk about. Its `release.json` pins both parents, which is
