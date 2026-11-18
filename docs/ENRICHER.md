@@ -2510,7 +2510,12 @@ with RemoteSnapshots(declared_use="non_commercial") as snapshots:      # proxy f
   429, a 503, a 504, a 404 `lane_not_available`, a timeout or a connection error the holder asks Hugging
   Face instead, for the whole lookup. A 422, or a 404 `unknown_lane`/`unknown_table`, is a wrong request
   and raises `ValueError`; any other status, and a 200 that is not a lane reply, is could-not-ask on the
-  proxy with no fall-through. A proxy answer's `release` and `revision` are what its replies state
+  proxy with no fall-through. A 200 is read through one strict model of the registry's reply (0.9, review
+  round 1): `lane` and `table` equal to the request's, `rows` a list of objects, `truncated` a JSON bool, and
+  `served_from`, `release` and `revision` text or absent, with no coercion (`"false"` is no bool) and fields
+  it does not read ignored. A reply missing `truncated`, a row that is not an object, or a reply for another
+  lane or table is `a 200 that is not a lane reply (…)` or `a 200 that is not the reply asked for: …`,
+  never a whole answer and never an `AttributeError` out of `lookup_variant`. A proxy answer's `release` and `revision` are what its replies state
   (registry S34), else `None`, withheld; `served_from` is kept.
 - **Hugging Face** is read through duckdb's `httpfs`, never through `hf://` (duckdb resolves that to
   `huggingface.co` itself, past `hf_base_url` and the test fence, and a glob over plain HTTP is

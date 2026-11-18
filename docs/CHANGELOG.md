@@ -284,6 +284,13 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   `manifest.json`, losing the core's release, coverage and rsID-index pin; now that field reads as unstated with a
   warning, a record that is not an object keeps its name, and an unread licence never admits. A remote
   `release.json` keeps the local reader's leniency, by design.
+- **A proxy 200 is read through one strict model of the registry's reply** (review round 1, item 1, RM430,
+  `@client-exception-contract`'s fourth leg): a reply missing `truncated` was taken as a whole answer, a row that
+  was not an object reached the readers and raised `AttributeError` out of `lookup_variant`, and a reply for
+  another lane or table was taken for the one asked. Each is now could-not-ask on the proxy with no fall-through
+  (`SnapshotRouteUnavailable`, `a 200 that is not a lane reply (…)` or `… not the reply asked for: …`), as is a
+  `truncated` or `release` of the wrong JSON kind; a field the registry adds later is ignored. One walk over
+  `REMOTE_LANES` feeds the proxy each malformed body.
 
 ## 2026-11-18 — RM453: a mirrored site where no spelling was witnessed keeps both spellings (patch, a declared corrected derivation, on `main`)
 

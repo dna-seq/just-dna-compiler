@@ -62,7 +62,7 @@ from just_dna_format.snapshot import (
     parse_release,
 )
 from just_dna_format.vrs import normalize_chrom
-from pydantic import ValidationError
+from pydantic import BaseModel, ConfigDict, ValidationError
 
 from just_dna_enricher.caches import LANES_BY_NAME
 from just_dna_enricher.key_compare import KEY_COMPARES, KeyCompare, lane_compare
@@ -392,6 +392,50 @@ class _Pin:
         return found
 
 
+class _ProxyReply(BaseModel):
+    """The registry's lane reply (§§ 46–47), read strictly: the one model a proxy 200 is read through.
+
+    Review round 1, item 1: a 200 was read after an outer shape check only, so a missing `truncated` read as
+    a whole answer, a row that was not an object reached the readers as an `AttributeError`, and a reply for
+    another lane or table was taken for the one asked. Each is a malformed reply now, could-not-ask on the
+    proxy with no fall-through. Strict on what the client reads (types are not coerced: `"false"` is no
+    bool), and blind to what it does not (`extra="ignore"`), so a field the registry adds later costs
+    nothing. `lane`, `table`, `rows` and `truncated` are in every reply since the proxy's first version
+    (registry 0.30); `served_from`, `release` and `revision` came later and may be absent or `null`.
+    """
+
+    model_config = ConfigDict(extra="ignore", strict=True)
+
+    lane: str
+    table: str
+    rows: list[dict[str, Any]]
+    truncated: bool
+    served_from: str | None = None
+    release: str | None = None
+    revision: str | None = None
+
+
+def _proxy_reply(lane: str, table: str, body: object) -> _ProxyReply:
+    """`body` read as the reply to a request for `lane`'s `table`, or could-not-ask saying what is wrong."""
+    try:
+        reply = _ProxyReply.model_validate(body)
+    except ValidationError as exc:
+        problems = "; ".join(
+            f"{'.'.join(str(part) for part in error['loc']) or 'the body'}: {error['msg']}"
+            for error in exc.errors()[:3]
+        )
+        raise SnapshotRouteUnavailable(
+            lane, ROUTE_PROXY, f"a 200 that is not a lane reply ({problems})"
+        ) from exc
+    if (reply.lane, reply.table) != (lane, table):
+        raise SnapshotRouteUnavailable(
+            lane,
+            ROUTE_PROXY,
+            f"a 200 that is not the reply asked for: it answers {reply.lane}/{reply.table}, not {lane}/{table}",
+        )
+    return reply
+
+
 def _hub_cause(exc: Exception) -> str:
     """Why a Hub read failed, with the quota named on a 429 (duckdb's error carries no `Retry-After`)."""
     status = getattr(exc, "status_code", None)
@@ -582,30 +626,25 @@ class RemoteSnapshots:
     # ── the proxy ───────────────────────────────────────────────────────────────────────────────
 
     def _ask_proxy(self, lane: str, table: str, wanted: _Keys) -> RemoteAnswer:
-        replies: list[dict[str, Any]] = []
+        replies: list[_ProxyReply] = []
         for request in _requests(wanted):
             for chunk in _proxy_chunks(lane, request):
                 replies.extend(self._proxy_untruncated(lane, table, chunk))
-        rows = [row for reply in replies for row in reply["rows"]]
+        rows = [row for reply in replies for row in reply.rows]
         return RemoteAnswer(
             rows=_stable(rows),
             route=RemoteRoute(
                 route=ROUTE_PROXY,
-                release=_agreed(lane, "release", [reply.get("release") for reply in replies]),
-                served_from=", ".join(
-                    sorted({str(r["served_from"]) for r in replies if r.get("served_from")})
-                )
-                or None,
-                revision=_agreed(lane, "revision", [reply.get("revision") for reply in replies]),
+                release=_agreed(lane, "release", [reply.release for reply in replies]),
+                served_from=", ".join(sorted({r.served_from for r in replies if r.served_from})) or None,
+                revision=_agreed(lane, "revision", [reply.revision for reply in replies]),
             ),
         )
 
-    def _proxy_untruncated(
-        self, lane: str, table: str, request: dict[str, list[Any]]
-    ) -> list[dict[str, Any]]:
+    def _proxy_untruncated(self, lane: str, table: str, request: dict[str, list[Any]]) -> list[_ProxyReply]:
         """The replies that answer `request` whole: a truncated one is halved and asked again, to one key."""
         reply = self._proxy_post(lane, table, request)
-        if not reply.get("truncated"):
+        if not reply.truncated:
             return [reply]
         column = _batch_column(request)
         values = request[column]
@@ -622,7 +661,7 @@ class RemoteSnapshots:
             *self._proxy_untruncated(lane, table, {**request, column: values[half:]}),
         ]
 
-    def _proxy_post(self, lane: str, table: str, request: dict[str, list[Any]]) -> dict[str, Any]:
+    def _proxy_post(self, lane: str, table: str, request: dict[str, list[Any]]) -> _ProxyReply:
         assert self._proxy is not None and self.proxy_url is not None
         url = remote_url(self.proxy_url, "api/v1/lanes", quote(lane, safe=""), quote(table, safe=""))
         try:
@@ -648,14 +687,10 @@ class RemoteSnapshots:
                 lane, ROUTE_PROXY, f"HTTP {response.status_code}: {_said(response)}", response.status_code
             ) from error
         try:
-            reply = response.json()
+            body = response.json()
         except ValueError as exc:
             raise SnapshotRouteUnavailable(lane, ROUTE_PROXY, "a 200 whose body is not JSON") from exc
-        if not isinstance(reply, dict) or not isinstance(reply.get("rows"), list):
-            raise SnapshotRouteUnavailable(
-                lane, ROUTE_PROXY, "a 200 that is not a lane reply (no `rows` list)"
-            )
-        return reply
+        return _proxy_reply(lane, table, body)
 
     # ── Hugging Face ────────────────────────────────────────────────────────────────────────────
 

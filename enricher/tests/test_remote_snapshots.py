@@ -1061,3 +1061,82 @@ def test_nothing_in_the_package_builds_a_holder_lazily() -> None:
         and node.args[0].value == "snapshots"
     ]
     assert lazily == []
+
+
+# ── one strict model for the proxy's reply (review round 1, item 1) ────────────────────────────────
+
+
+def _well_formed(lane: str, table: str) -> dict[str, Any]:
+    return {"lane": lane, "table": table, "served_from": "local", "rows": [], "truncated": False}
+
+
+#: A 200 that is not the lane reply the registry documents (its § 46–47 shape), each malformed one way.
+MALFORMED_REPLIES: dict[str, Callable[[str, str], dict[str, Any]]] = {
+    "no truncated": lambda lane, table: {
+        k: v for k, v in _well_formed(lane, table).items() if k != "truncated"
+    },
+    "truncated as text": lambda lane, table: {**_well_formed(lane, table), "truncated": "false"},
+    "no rows": lambda lane, table: {k: v for k, v in _well_formed(lane, table).items() if k != "rows"},
+    "a row not an object": lambda lane, table: {**_well_formed(lane, table), "rows": [{"chrom": "1"}, None]},
+    "a row a string": lambda lane, table: {**_well_formed(lane, table), "rows": ["chrom=1"]},
+    "another lane": lambda lane, table: {**_well_formed(lane, table), "lane": f"{lane}_other"},
+    "another table": lambda lane, table: {**_well_formed(lane, table), "table": f"{table}_other"},
+    "no lane": lambda lane, table: {k: v for k, v in _well_formed(lane, table).items() if k != "lane"},
+    "a release not text": lambda lane, table: {**_well_formed(lane, table), "release": 7},
+}
+
+
+@pytest.mark.parametrize("fault", sorted(MALFORMED_REPLIES))
+@pytest.mark.parametrize("lane", sorted(REMOTE_LANES))
+def test_a_malformed_proxy_reply_is_could_not_ask_on_every_lane(lane: str, fault: str) -> None:
+    """Walked over `REMOTE_LANES`: a 200 that is not the documented lane reply is could-not-ask on the proxy,
+    with no fall-through, never a whole answer and never an `AttributeError` later (`@client-exception-contract`,
+    the fourth leg). A position key is one every lane sends the proxy, so each lane's proxy really is asked."""
+    asked: list[str] = []
+
+    def proxy(request: httpx.Request) -> httpx.Response:
+        _lane, table = request.url.path.split("/")[-2:]
+        asked.append(table)
+        return httpx.Response(200, json=MALFORMED_REPLIES[fault](_lane, table))
+
+    holder = _with_proxy(
+        RemoteSnapshots(proxy_url=PROXY, huggingface=False, declared_use="non_commercial"), proxy
+    )
+    with holder, pytest.raises(SnapshotRouteUnavailable) as failed:
+        holder.lookup(lane, "t", {"chrom": ["1"], "start": [100]})
+    assert asked == ["t"], "the proxy was asked, once"
+    assert failed.value.route == "proxy" and not failed.value._falls_through
+    assert str(failed.value).startswith(
+        f"{lane}: the registry's proxy could not be asked: a 200 that is not "
+    )
+
+
+def test_a_well_formed_reply_with_extra_fields_is_read() -> None:
+    """Strict on what the client reads, never on what it does not: a field the registry adds later is ignored."""
+    reply = {**_well_formed("clinvar", "clinvar"), "rows": [{"rsid": "rs334"}], "added_later": {"x": 1}}
+    holder = _with_proxy(
+        RemoteSnapshots(proxy_url=PROXY, huggingface=False), lambda r: httpx.Response(200, json=reply)
+    )
+    with holder:
+        answer = holder.lookup("clinvar", "clinvar", {"rsid": ["rs334"]})
+    assert answer.rows == [{"rsid": "rs334"}] and answer.route == RemoteRoute("proxy", None, "local", None)
+
+
+@pytest.mark.parametrize("question", [{"chrom": "16", "start": 23635706}, {"rsid": "rs334"}])
+def test_a_proxy_row_that_is_not_an_object_is_a_finding_out_of_lookup_variant(
+    no_ambient_caches, tmp_path: Path, question: dict[str, Any]
+) -> None:
+    """Ensembl and ClinVar through `lookup_variant`: a non-object row used to raise `AttributeError` out of the
+    reader's rows connection, past the handlers; it is now a could-not-ask finding."""
+
+    def proxy(request: httpx.Request) -> httpx.Response:
+        _lane, table = request.url.path.split("/")[-2:]
+        return httpx.Response(200, json={**_well_formed(_lane, table), "rows": [None]})
+
+    holder = _with_proxy(RemoteSnapshots(proxy_url=PROXY, huggingface=False), proxy)
+    with holder:
+        hint, _ensembl = _ask(tmp_path, holder, **question)
+    said = [f.message for f in hint.findings if f.level == "warning"]
+    assert any(
+        "could not be asked remotely, so its answer is unchecked rather than empty" in m for m in said
+    ), said
