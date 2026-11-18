@@ -398,6 +398,9 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   `rsid_genotype_reads_as_two_events` says so once per rsID; witnessed neither way, neither is filled.
   A mirror is only where each spelling hosts the genotype **on its own**: a compound het in a padded frame
   (`G/GTTT` on `GTT>G` and `G>GT`) names one allele of each and means both events, so it is left alone.
+  And an authored coordinate row always picks its event: an expansion member re-keyed onto its exact
+  `(variant_key, genotype)` is dropped and named, witness or not. Without that, the remedy the warning gives
+  (author the coordinate) refused under `--strict` wherever no verdict was recorded (the lead's 0.8.9 run).
   This **removes** an acceptance, against "normalization may only add", on purpose: it is a corrected
   derivation, declared, and the reference-examples sweep moved two rows (`pathogenic_clinvar`
   `rs80356821`, `rs193922563`). The repair refused: an authored coordinate row winning over the

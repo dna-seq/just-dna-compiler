@@ -164,6 +164,8 @@ def resolve_from_table(
     # many artifact rows they became. Collected rather than reported in place — see the expansion
     # branch below.
     expansions: dict[str, list[list[ResolutionRow]]] = {}
+    # The (variant_key, genotype) of every authored coordinate row, which an expansion may not duplicate (RM449).
+    authored_rows = {(v.variant_key, v.genotype) for v in variants if v.chrom is not None and v.variant_key}
     # rsID → its mirrored sites a second source witnessed both ways (RM449), in first-seen order, one
     # sentence per rsID however many authored rows carry it.
     both_ways: dict[str, dict[str, None]] = {}
@@ -198,9 +200,29 @@ def resolve_from_table(
                     both_ways.setdefault(v.rsid, {}).setdefault(site, None)
                 for site in settled.unasked:
                     unasked.setdefault(v.rsid, {}).setdefault(site, None)
-                kept_ids = {id(lo) for lo in settled.kept}
-                undecided = [lo for lo in undecided if id(lo) in kept_ids]
                 usable = settled.kept
+                # An authored coordinate row picks its event (RM449's own remedy), so an expansion member
+                # re-keyed onto that row's exact (variant_key, genotype) is not filled: it would be the
+                # same row twice (`Duplicate (variant, genotype)` under strict), whatever the witness said
+                # or whether one was asked at all. Only an expansion re-keys; one locus keeps the rsID key.
+                claimed = (
+                    [lo for lo in usable if (_expansion_key(lo, genome_build), v.genotype) in authored_rows]
+                    if len(usable) > 1
+                    else []
+                )
+                if claimed:
+                    claimed_ids = {id(lo) for lo in claimed}
+                    usable = [lo for lo in usable if id(lo) not in claimed_ids]
+                    warnings.append(
+                        CodedWarning(
+                            "rsid_genotype_reads_as_two_events",
+                            f"{v.rsid}: its row's genotype {v.genotype} is not filled on "
+                            f"{', '.join(_expansion_key(lo, genome_build) for lo in claimed)}, because the module "
+                            f"authors that coordinate row with the same genotype, which picks that event (RM449)",
+                        )
+                    )
+                kept_ids = {id(lo) for lo in usable}
+                undecided = [lo for lo in undecided if id(lo) in kept_ids]
                 for locus in undecided:
                     # Kept, and said out loud. This tier cannot re-anchor an indel (that needs the
                     # reference sequence, which P2 keeps out of the compiler), so the row is carried and
@@ -245,8 +267,9 @@ def resolve_from_table(
                             refusal=refusal,
                         )
                     )
-                if settled.withheld_all:
-                    # Every hosting locus sat in a mirror nothing settled: said above, left unpositioned.
+                if settled.withheld_all or (claimed and not usable):
+                    # Every hosting locus sat in a mirror nothing settled, or every one is an authored
+                    # coordinate row's own: said above, and the rsID row is left unpositioned.
                     patched.append(v)
                 elif not usable:
                     # Every candidate contradicts the genotype: the rsid and the genotype cannot both
@@ -1131,6 +1154,11 @@ def site_verdicts(genotype: str, loci: Sequence[LocusSpelling]) -> list[bool | N
     if all(verdict is False for verdict in per_locus):
         return [True if k in named else verdict for k, verdict in enumerate(per_locus)]
     return per_locus
+
+
+def _expansion_key(locus: ResolutionRow, genome_build: str) -> str:
+    """The key an expansion member is re-keyed to, as `resolve_from_table` mints it."""
+    return derive_variant_key(None, locus.chrom, locus.start, locus.ref, locus.alts, build=genome_build)
 
 
 #: `ResolutionRow.placement_verdict`'s member that says a second source placed this locus as the same event (RM267).

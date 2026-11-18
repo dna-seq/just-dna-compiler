@@ -2662,6 +2662,13 @@ its, and RM449 follows as 0.8.10. A re-close after the restore needs an enrich p
   table never filed, and it breaks a lap with no mirror anywhere. Filed as RM451. An enrich pass removes it, and
   the four round-trip tests then pass on the restored example. Every remedy sentence now says to re-run the
   enricher after authoring the coordinate.
+- A third, from the lead's re-run after the restore (`aa5b88f7`, `test_reproduced_locus_compares_every_rebuilt_column`):
+  with the verdicts stripped, the not-asked arm expanded `rs80356821` onto the restored coordinate row again, and
+  `--strict` refused `Duplicate (variant, genotype)`. So the remedy refused wherever no verdict was recorded. Now an
+  authored coordinate row wins: an expansion member re-keyed onto its exact `(variant_key, genotype)` is not
+  filled, and `rsid_genotype_reads_as_two_events` names it (the pm, `05addf11`). Tests: S158's loud case with no
+  verdicts, and `pathogenic_clinvar` with every placement verdict stripped, compiled strict and lapped. Both fail
+  on `aa5b88f7`.
 
 **Both resolved (the pm, 2026-11-18, 84a256ef).** (1) was RM449's: an offline ClinVar fill records no verdict, and
 no verdict was read as witnessed by neither. Not asked is not witnessed-neither (`@unreachable-not-absent`), so a

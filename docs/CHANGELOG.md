@@ -68,7 +68,9 @@ claim (`superhuman@2.4.1` `rs766212849`, `thrombophilia@2.0.1` `rs1572088853`). 
 `same_event` and not the others. Both witnessed: both stay, and a new warning, `rsid_genotype_reads_as_two_events`, says so once
 per rsID, in both modes. Neither witnessed: neither is filled, and the row is left unpositioned
 (`--strict` refuses it as unresolved). No second source asked at all (an offline run, a ClinVar fill, a table
-written before 0.8): both stay as before, and the same code says so. Every arm carries that one code, and none is escalated in 0.8.
+written before 0.8): both stay as before, and the same code says so. Whatever the witness, an expansion member
+re-keyed onto an authored coordinate row's exact `(variant_key, genotype)` is not filled, and the same code names
+it: the coordinate row picks its event, which is RM449's own remedy, and never a strict duplicate. Every arm carries that one code, and none is escalated in 0.8.
 **What moves:** an artifact compiled before this may hold the claim on both spellings. The reference
 examples move two rows (`pathogenic_clinvar`: `rs80356821` and `rs193922563` now fill only the witnessed
 deletion). The ClinVar drafter now writes an indel record with its coordinate, never its rsID alone, so a

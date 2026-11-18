@@ -244,7 +244,9 @@ there: the spellings a second source placed as `same_event` are filled, and the 
 witnessed, the rsID names both events, so both stay, and `rsid_genotype_reads_as_two_events` says so once
 per rsID in both modes. If neither is, neither is filled, and the row is left unpositioned, so `--strict`
 refuses it as unresolved. If no second source was asked at all (`placement_verdict` empty at the site), both
-stay as before 0.8.9, and the warning says so. Each outcome is a `rsid_genotype_reads_as_two_events` warning; none is escalated
+stay as before 0.8.9, and the warning says so. Whatever the witness, an expansion member re-keyed onto an
+authored coordinate row's exact `(variant_key, genotype)` is not filled: the coordinate row picks its event, and
+the warning names the key. Each outcome is a `rsid_genotype_reads_as_two_events` warning; none is escalated
 in 0.8. A positional row was already left unplaced where two loci host it. It is a corrected derivation:
 an artifact compiled before 0.8.9 may hold the claim on both spellings. S158 is the report.
 

@@ -8,11 +8,15 @@ deletion without one, VCV 3653980), and the registry's published `superhuman@2.4
 `A/A` was compiled onto `A>AAACTT` (no insertion) and `AAACTT>A` (a homozygous deletion, the witnessed one).
 """
 
+import csv
+import io
+import shutil
 from pathlib import Path
 
 import polars as pl
 import pytest
 from just_dna_compiler.compiler import compile_module, reverse_module
+from just_dna_compiler.compiler.reverse import reconstructed_projection
 
 _YAML = (
     "schema_version: '1.0'\nmodule:\n  name: rm449\n  title: RM449\n  description: d\n  report_title: RM449\n"
@@ -177,3 +181,57 @@ def test_a_site_no_second_source_was_asked_about_keeps_the_expansion_and_says_so
     assert len(_placed(tmp_path / "out")) == 2
     (said,) = [w for w in result.warnings if "no second source was asked" in w]
     assert "so both are filled as before (RM449)" in said
+
+
+def test_an_authored_coordinate_row_wins_over_an_unwitnessed_expansion_onto_its_key(tmp_path: Path) -> None:
+    """RM449's own remedy, where no witness was asked: the coordinate row picks its event, and the rsID row's
+    expansion onto that exact (variant_key, genotype) is dropped and named, never a strict duplicate."""
+    loci = _locus("rs1057516393", 0, 108256251, "C", "CT", "") + _locus(
+        "rs1057516393", 1, 108256251, "CT", "C", ""
+    )
+    rows = _HEADER + _RSID_ROW + ",11,108256251,CT,C,C/CT,risk,del,ATM\n"
+    spec = _spec(tmp_path, rows, loci, "rs1057516393")
+    result = compile_module(spec, tmp_path / "out", strict=True)
+    assert result.success, result.errors
+    assert _placed(tmp_path / "out") == [
+        (None, 108256251, "CT", ("C",), "del"),
+        ("rs1057516393", 108256251, "C", ("CT",), "ins"),
+    ]
+    (said,) = [w for w in result.warnings if "which picks that event (RM449)" in w]
+    assert "11:108256251:CT:C" in said
+
+
+_EXAMPLE = Path(__file__).resolve().parents[2] / "reference_examples" / "pathogenic_clinvar"
+
+
+@pytest.mark.skipif(not _EXAMPLE.is_dir(), reason="the pathogenic_clinvar example is not in this checkout")
+def test_pathogenic_clinvar_with_its_placement_verdicts_stripped_compiles_strict_and_laps(
+    tmp_path: Path,
+) -> None:
+    """The table an older enricher or an offline run writes: no witness, no verdict. The restored coordinate
+    row `11:5226762 C>CAAAG` still picks its event over `rs80356821`'s expansion, and the lap holds."""
+    spec = tmp_path / "pathogenic_clinvar"
+    shutil.copytree(_EXAMPLE, spec)
+    data = (spec / "resolution.csv").read_bytes()
+    newline = b"\r\n" if b"\r\n" in data else b"\n"
+    header, *body = data.split(newline)
+    columns = header.split(b",")
+    blank = {columns.index(b"placement_witness"), columns.index(b"placement_verdict")}
+    out = [header]
+    for line in body:
+        if not line:
+            out.append(line)
+            continue
+        cells = next(csv.reader(io.StringIO(line.decode("utf-8"))))
+        cells = ["" if k in blank else cell for k, cell in enumerate(cells)]
+        buffer = io.StringIO()
+        csv.writer(buffer, lineterminator="").writerow(cells)
+        out.append(buffer.getvalue().encode("utf-8"))
+    (spec / "resolution.csv").write_bytes(newline.join(out))
+    first = compile_module(spec, tmp_path / "a1", strict=True)
+    assert first.success, first.errors
+    reverse_module(tmp_path / "a1", tmp_path / "rev1")
+    second = compile_module(tmp_path / "rev1", tmp_path / "a2", strict=True)
+    assert second.success, second.errors
+    assert first.manifest.artifact.digest == second.manifest.artifact.digest
+    assert reconstructed_projection(first.manifest) == reconstructed_projection(second.manifest)
