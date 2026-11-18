@@ -2463,7 +2463,7 @@ records it
 
 ## RM448 — the placement witness reads another ALT of a multi-allelic indel site as a disagreement, so the whole placement is withheld and the rsID is left with no row
 
-**Severity** high · **Status** open — **a patch on `main`, `unattended` (about 1 hour), for 0.8.9** · **Owner** enricher (`placement.compare_placements`, `events.counterparts`) ·
+**Severity** high · **Status** open — **a patch, built on `main` 2026-11-18, uncut, for 0.8.9** · **Owner** enricher (`placement.compare_placements`, `events.counterparts`) ·
 **Motivating case** S158's second question (the registry, 2026-11-17/18): 12 rsIDs of the production `pathogenic` module, and `rs1452575772` in `cardio`, re-derived with no `resolution.csv` row, so strict refuses them as unresolved · *related* RM267, RM375, RM381
 
 **Reproduced on `main` (`5ff00802`, 2026-11-18)** with this machine's caches (Ensembl split snapshot
@@ -2501,7 +2501,23 @@ where ClinVar holds a subset of the ALTs.
 since RM449 is the silent one, and cut with it as 0.8.9; the registry then re-derives the 13 rsIDs online. On `0.9`
 the merge carries it like RM446.
 
-**Residuals** none yet.
+**Built (triage, 2026-11-18).** The shape above. `compare_placements` judges every (placed allele, witness
+counterpart) pair once. A witness allele that is the same event as any of the rsID's placed alleles is accounted
+for, and is dropped from the other alleles' counterparts. An allele left with no counterpart reads `unplaced`. All
+calls stay inside `compare_placements`, so the judge-caller registry (`test_authored_event`) does not move. Tests
+in `test_placement_witness.py`:
+
+- S158's four sites (`rs1452575772`, `rs1212793496`, `rs1362830842`, `rs1175404096`) at their real places, with
+  GRCh38 windows read from Ensembl REST on 2026-11-18 behind a multi-window proxy, so the minter mints the real
+  ids and the judge reaches the verdict the online run did. Each gives no disagreement and an `unplaced` row.
+- RM381's per-ALT pieces, where the witnessed `A>AC` reads `same_event` and `A>AT` beside it `unplaced`.
+
+All five fail on the code before the fix with S158's own `PlacementDisagreement`. The real one-ALT disagreement,
+S117's `rs8176719`, still withholds (`test_s117_is_withheld_…`, unchanged and green).
+
+**Residuals** won't fix — an authority's single ALT beside a witness's different ALT of the same length at one
+position (no third allele to account for it) still reads as a disagreement. Whether that is a different allele
+or a disputed placement is RM267's own question, not this item's; no report has met it
 
 ## RM449 — an rsID row's indel genotype is hosted by an insertion and a deletion at one position, so its claim lands on both events
 

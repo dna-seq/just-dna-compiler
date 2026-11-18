@@ -41,6 +41,20 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md). The `0.8` branch merged into `main` at the 0.8.0 cut (2026-11-05).
 
+## 2026-11-18 — RM448: a witness holding one ALT of a multi-allelic indel site no longer withholds the site (patch, on `main`)
+
+Online with the reference read (`verify_ref`), the placement witness (RM267) compared ClinVar's one ALT of a
+multi-allelic indel site with Ensembl's other ALT of the same kind and length. Ensembl places `rs1452575772`
+as `A>AC,AT` and ClinVar as `A>AC`, so `A>AT` was judged "a different event". The whole locus was withheld,
+`A>AC` with it, and the rsID was left with no `resolution.csv` row. The registry's re-derived `pathogenic`
+module lost 12 rsIDs this way and `cardio` one (S158). RM267's rule says a different allele is `unplaced`,
+never a disagreement. A witness allele that is already the same event as one of the rsID's placed alleles is
+now accounted for, and is no counterpart of the others. Those read `unplaced`, and the locus is written. A
+witness allele that matches none of the rsID's alleles still withholds, as S117's `rs8176719` does. Offline
+runs never hit this, since nothing judges an indel offline. Enricher only; no column, code or vocabulary
+moves. A table re-derived online before this release may lack those rows: a plain `enrich` on this
+release asks again only for subjects with no row.
+
 ## 2026-11-18 — RM449: an rsID row's indel genotype is filled on the spelling a second source witnessed, not on both (patch, a declared corrected derivation, on `main`)
 
 **A correction, declared (P3).** At one position an insertion and a deletion hold the same allele strings:

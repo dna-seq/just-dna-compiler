@@ -1210,3 +1210,100 @@ def test_rm398_a_run_using_rest_as_link_asks_rest_nothing_as_a_witness(
     witnessed = [r for r in result.rows if r.placement_witness == "dbsnp"]
     assert [r.rsid for r in witnessed] == ["rs77944059"]
     assert captured["dbsnp"] == [None]
+
+
+# ── a witness holding one ALT of a multi-allelic site (RM448) ───────────────────────────────────
+
+#: GRCh38 bases around S158's four sites, each 1-based and inclusive from the first key, read from Ensembl REST
+#: on 2026-11-18. The centre base of each is the site's `ref`.
+_S158_WINDOWS = {
+    ("16", 1772759): "AGGCGGCTGCAGGGGCGGGGTGCGGACGGGGTGCACGCACCTGCGCCGTGTAGTCGGGCCGCACCCGCGTGAGGCGCCAGT",
+    ("5", 34945733): "TGACATTTCGATTTATATTTGCTCTTAGGCTTTCTAAAAAACAGAAGAAAAAGAAACAGAAACCAGCACAGGTATGTTAGA",
+    ("7", 157009938): "GCCAGGCCCCCAGCGGCGGCGGCGGCGGCGGCGGCGGCGGCAGCGGCCGCTGCGCCCGGATGCGCGTGGTGGTGGGGCCCC",
+    ("7", 150946909): "GGGGGCTGACGGGCAACAGCGGGGATGTGGAAGTGGGGCCAGGCCCCGGGGTGGTCACAGCACTGTAGGCGGGCGGGACCA",
+}
+
+
+def _s158_read(chrom: str, start: int, end: int) -> str | None:
+    """1-based inclusive bases from the window holding `[start, end]`, clipped at its left edge, as `read`."""
+    for (contig, first), bases in _S158_WINDOWS.items():
+        if contig == chrom and first <= end <= first + len(bases) - 1:
+            return bases[max(start, first) - first : end - first + 1]
+    return None
+
+
+class _S158Bases(_DataProxy):
+    """`_RecordedBases` over S158's windows, several on one contig: a read outside them raises."""
+
+    def get_sequence(self, identifier: str, start: int | None = None, end: int | None = None) -> str:
+        for (chrom, first), bases in _S158_WINDOWS.items():
+            if f"ga4gh:{refget_accession(chrom)}" != identifier:
+                continue
+            lo, hi = int(start or 0) - (first - 1), int(end or 0) - (first - 1)
+            if 0 <= lo <= hi <= len(bases):
+                return bases[lo:hi]
+        raise ValueError(f"{identifier}:[{start},{end}) is outside the recorded windows")
+
+    def get_metadata(self, identifier: str) -> dict:
+        return {"length": 10**9, "aliases": [identifier], "alphabet": "ACGT"}
+
+
+class _S158Sequences(SequenceProxy):
+    def proxy(self) -> _DataProxy:
+        return _S158Bases()
+
+    def subsequence(self, accession: str, start: int, end: int) -> str | None:
+        chrom = next((c for c, _ in _S158_WINDOWS if refget_accession(c) == accession), None)
+        return None if chrom is None else _s158_read(chrom, start + 1, end)
+
+
+#: S158's sites as the split snapshot and the ClinVar snapshot place them (`ensembl-variation-2026_07_13-vep116.0`
+#: per ALT; `clinvar_2026-11-15`): ClinVar holds one ALT, or two, of the site Ensembl places whole.
+_S158_SITES = {
+    "rs1452575772": ("7", 150946949, "A", "AC,AT", "AC"),
+    "rs1212793496": ("16", 1772799, "C", "CTACA,CTACT", "CTACT"),
+    "rs1362830842": ("5", 34945773, "A", "AG,AT", "AG"),
+    "rs1175404096": ("7", 157009978, "C", "CGGCGG,CGGCGGA,CGGCGGG,CGGCGGT", "CGGCGG,CGGCGGT"),
+}
+
+
+@pytest.mark.parametrize("rsid", sorted(_S158_SITES))
+def test_a_witness_holding_one_alt_of_the_site_agrees_and_is_silent_about_the_others(rsid: str) -> None:
+    """Every pair S158 met: the witness's ALT is one of Ensembl's, so nothing is withheld and the row reads `unplaced`.
+
+    Before RM448 the witness's ALT was a counterpart of Ensembl's OTHER one-length insertion, judged a
+    different event with the reference read, and the whole locus was withheld, so the rsID got no row.
+    """
+    chrom, start, ref, alts, theirs = _S158_SITES[rsid]
+    placed = {rsid: [{"chrom": chrom, "start": start, "ref": ref, "alts": alts}]}
+    witness = {"clinvar": {rsid: [{"chrom": chrom, "start": start, "ref": ref, "alts": theirs}]}}
+    check = compare_placements(
+        placed,
+        {rsid: "ensembl"},
+        witness,
+        mint=_mint(VrsMinter(sequences=_S158Sequences())),
+        read_window=_s158_read,
+    )
+    assert check.disagreements == [] and check.withheld_loci == set()
+    assert check.row_columns(rsid, placed[rsid][0]) == ("clinvar", "unplaced")
+
+
+def test_the_allele_both_place_reads_same_event_when_the_locus_holds_it_alone() -> None:
+    """The per-ALT pieces RM381 writes: `A>AC` witnessed, `A>AT` beside it at the same site and unplaced."""
+    placed = {
+        "rs1452575772": [
+            {"chrom": "7", "start": 150946949, "ref": "A", "alts": "AC"},
+            {"chrom": "7", "start": 150946949, "ref": "A", "alts": "AT"},
+        ]
+    }
+    witness = {"clinvar": {"rs1452575772": [{"chrom": "7", "start": 150946949, "ref": "A", "alts": "AC"}]}}
+    check = compare_placements(
+        placed,
+        {"rs1452575772": "ensembl"},
+        witness,
+        mint=_mint(VrsMinter(sequences=_S158Sequences())),
+        read_window=_s158_read,
+    )
+    assert check.disagreements == []
+    assert check.row_columns("rs1452575772", placed["rs1452575772"][0]) == ("clinvar", "same_event")
+    assert check.row_columns("rs1452575772", placed["rs1452575772"][1]) == ("clinvar", "unplaced")

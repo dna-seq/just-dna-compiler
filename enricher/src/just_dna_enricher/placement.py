@@ -73,7 +73,16 @@ from just_dna_enricher.civic_build import GRCH38_REFSEQ_ACCESSIONS
 from just_dna_enricher.clingen_allele import anchor_indel
 from just_dna_enricher.clinvar_gkm import ClinVarGkmWitness
 from just_dna_enricher.eutils import is_missing
-from just_dna_enricher.events import Mint, ReadWindow, _kind, alleles_of, counterparts, kleene_any, same_event
+from just_dna_enricher.events import (
+    Allele,
+    Mint,
+    ReadWindow,
+    _kind,
+    alleles_of,
+    counterparts,
+    kleene_any,
+    same_event,
+)
 from just_dna_enricher.sequences import per_alt_loci
 from just_dna_enricher.verification import examples
 
@@ -311,19 +320,38 @@ def compare_placements(
         )
         witnessed_by: set[str] = set()
         theirs = {witness: alleles_of(witnesses[witness].get(rsid, ())) for witness in asked}
+        # A witness allele that IS one of this rsID's placed alleles is accounted for, and says nothing
+        # about the others (RM448): at a multi-allelic site where the witness holds `A>AC` and the
+        # authority `A>AC` and `A>AT`, `A>AC` is a counterpart of `A>AT` by kind and length, and judging
+        # it against `A>AT` read "a different allele" as a disagreement, which RM267 decided it is not.
+        ours_all = alleles_of(loci)
+        # Every (placed allele, witness counterpart) pair judged once, read twice: to account for the
+        # witness's alleles and to judge each placed allele.
+        judged: dict[tuple[Allele, Allele], bool | None] = {
+            (a, w): same_event(a, w, mint=mint, read_window=read_window)
+            for witness in asked
+            for a in ours_all
+            for w in counterparts(a, theirs[witness])
+        }
+        accounted = {
+            witness: {w for w in theirs[witness] if any(judged.get((a, w)) is True for a in ours_all)}
+            for witness in asked
+        }
         per_locus: dict[tuple[str, int, str, str], list[bool | None | str]] = {}
         for locus in loci:
             verdicts: list[bool | None | str] = []
             for allele in alleles_of([locus]):
                 answers: list[bool | None] = []
                 for witness in asked:
-                    matches = counterparts(allele, theirs[witness])
+                    matches = [
+                        w
+                        for w in counterparts(allele, theirs[witness])
+                        if w not in accounted[witness] or judged[(allele, w)] is True
+                    ]
                     if not matches:
                         continue
                     witnessed_by.add(witness)
-                    answer = kleene_any(
-                        same_event(allele, w, mint=mint, read_window=read_window) for w in matches
-                    )
+                    answer = kleene_any(judged[(allele, w)] for w in matches)
                     answers.append(answer)
                     if answer is False:
                         check.disagreements.append(
