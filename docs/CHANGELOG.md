@@ -41,6 +41,25 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md). The `0.8` branch merged into `main` at the 0.8.0 cut (2026-11-05).
 
+## 2026-11-18 — RM449: an rsID row's indel genotype is filled on the spelling a second source witnessed, not on both (patch, a declared corrected derivation, on `main`)
+
+**A correction, declared (P3).** At one position an insertion and a deletion hold the same allele strings:
+`C/CT` is one inserted T on `C>CT` and one deleted T on `CT>C`. The string hosting rule accepted both, so
+the fill put an rsID row's claim on both events. Alone, the row compiled under `--strict`, and the claim sat
+silently on the event it is not about. Beside an authored coordinate row for the other event, `--strict`
+refused with `Duplicate (variant, genotype)`. S158 (the registry) hit 21 such refusals in `cardio`, 25 or more
+in `cancer` and 14 or more in `pathogenic`. Its lead found 2 of its 69 published modules carrying the silent
+claim (`superhuman@2.4.1` `rs766212849`, `thrombophilia@2.0.1` `rs1572088853`). The fill now reads
+`ResolutionRow.placement_verdict` at such a site. It fills the spellings a second source placed as
+`same_event` and not the others. Both witnessed: both stay, and a new warning, `rsid_genotype_reads_as_two_events`, says so once
+per rsID, in both modes. Neither witnessed: neither is filled, and the row is left unpositioned
+(`--strict` refuses it as unresolved). Every arm carries that one code, and none is escalated in 0.8.
+**What moves:** an artifact compiled before this may hold the claim on both spellings. The reference
+examples move two rows (`pathogenic_clinvar`: `rs80356821` and `rs193922563` now fill only the witnessed
+deletion). The ClinVar drafter now writes an indel record with its coordinate, never its rsID alone, so a
+new draft cannot pose the question. A re-draft names an older rsID-only indel row as one no current draft
+would write. New warning code: `rsid_genotype_reads_as_two_events` (format's `VALID_WARNING_CODES`, 85).
+
 ## 2026-11-17 — RM446: a reused client's earlier 410 no longer tells a later run's outage to upgrade (patch, on `main`)
 
 A withholding client (`EnsemblResolver`, `CrossrefClient`, the PMC clients, `Grch37Client`,

@@ -195,6 +195,7 @@ attached, and the rejected repair is usually the one that looks obvious from the
 - A non-nucleotide allele is a *spelling* defect — diagnose it, never grammar-check `alts`, never expand `Y`. `@non-nucleotide-spelling`
 - Symbolic alleles: VCF's five types, length inside the token; schema accepts lengthless, compiler drops it. `@symbolic-alleles`
 - Hosting is three-valued; raw comparison first, and the confident negative is about event size. `@hosting-tri-state`
+- A mirrored insertion and deletion at one position read one genotype as opposite events: the witnessed spelling fills (RM449). `@hosting-tri-state`
 - An rsID is position-level — identity is `variant_key` + genotype, and back-fill is allele-aware. `@rsid-not-per-allele`
 - `absent` means typo *or* withdrawn: name both readings. `VALID_RSID_STATUS` has four members. `@rsid-absent-two-readings`
 - NCBI, not Ensembl, is the oracle for rsID merge status. `@ncbi-merge-oracle`

@@ -2505,7 +2505,7 @@ the merge carries it like RM446.
 
 ## RM449 — an rsID row's indel genotype is hosted by an insertion and a deletion at one position, so its claim lands on both events
 
-**Severity** high · **Status** open — **a patch on `main`, a declared corrected derivation, `unattended` (about 2 hours, built first), for 0.8.9** · **Owner** compiler (the positional fill and `hosting_verdict`), enricher (the ClinVar drafter) ·
+**Severity** high · **Status** open — **a patch, a declared corrected derivation, built on `main` 2026-11-18, uncut, for 0.8.9** · **Owner** compiler (the positional fill and `hosting_verdict`), enricher (the ClinVar drafter) ·
 **Motivating case** S158's first question (the registry, 2026-11-17/18): 21 `post-resolution: Duplicate (variant, genotype)` refusals in `cardio`, 25 or more in `cancer` and 14 or more in `pathogenic`, all indels · *related* RM31, RM267, RM274, RM381
 
 **Reproduced on `main` (`5ff00802`, 2026-11-18)**, two cases with this machine's caches, enriched online with
@@ -2580,11 +2580,51 @@ on both `A>AAACTT`, where it is the reference homozygote, and `AAACTT>A`, where 
 polygon's `thrombophilia@2.0.1` `rs1572088853` (`C/CC`). Of 69 latest versions compiled by 0.8.x, these are the 2
 that carry a claim on the other spelling (the registry's lead, 2026-11-18).
 
-**Residuals** none yet.
+**Built (triage, 2026-11-18).** Candidate (1) as the pm's B, plus (3).
+
+- **The fill** (`resolution._settle_mirrored_spellings`, called in `resolve_from_table` right after
+  `_hostable_loci`). Among an rsID row's hosting loci, a position holding both an insertion and a deletion is
+  settled by `placement_verdict`. The spellings witnessed `same_event` are filled and the rest are not. Witnessed
+  both ways, both stay, and one `rsid_genotype_reads_as_two_events` sentence per rsID names both events and says
+  a coordinate row picks one. Witnessed neither way, neither is filled and the row stays unpositioned. Every arm
+  warns under that one new code, in both modes, never escalated. A, refusing the both-ways site, is rejected for
+  the patch and left to a minor that would escalate this warning (the pm, `c172667a`). Other positions (a
+  paralog, a PAR partner) and non-mirrored sites keep `@membership-union`'s expansion. A mirror needs each
+  spelling to host the genotype on its own: a compound het in a padded frame (`G/GTTT` on `GTT>G` and `G>GT`)
+  names one allele of each, no locus hosts it alone, and it keeps both pieces (`test_split_snapshot_per_alt`
+  caught the first draft, which settled it).
+- **The drafter.** `clinvar_draft.is_indel_record` sends every indel record through the coordinate identity, as
+  `multi_allelic_rsids` already did for a multi-allelic rsID. Its study row follows it, and a re-draft names an
+  older rsID-only indel row through `_superseded_rsid_rows`.
+- **Tests.** `test_a_mirrored_indel_genotype_names_one_event.py` has eight tests:
+  - S158's silent and loud cases;
+  - the registry's two published cases at their real places (`superhuman@2.4.1` `rs766212849` `A/A`, and
+    `thrombophilia@2.0.1` `rs1572088853` `C/CC`, where ClinVar files only the deletion);
+  - the neither case under strict;
+  - the both-ways case and its once-per-rsID sentence;
+  - a compile-reverse-compile lap with equal `artifact.digest` and `content_signature`.
+
+  Five of them fail on the code before the fix. A drafter test drafts S158's pair. The MLH1 re-draft test now
+  also turns the indel rule off for its stale draft.
+- **The reference-examples sweep, every row that moves.** All 22 examples were compiled before and after. Two rows
+  move, both in `pathogenic_clinvar`: `rs80356821` (`C/CAAAG`) and `rs193922563` (a 25-base `C/C…A`). Each is
+  now filled on the deletion ClinVar witnessed and no longer on the mirrored insertion. The 11 other mirrored
+  sites in `pathogenic_clinvar` and `hboc_palb2` are witnessed both ways and keep their expansion, now with the
+  warning. Every test reading the examples is green.
+- **For the pm's read before the cut.** `pathogenic_clinvar`'s README ("One authored edit") records that the
+  coordinate-only row `11:5226762 C>CAAAG` was removed, because the `rs80356821` row's expansion collided with it
+  and "the rsID row now carries both events". After this item the rsID row no longer carries the insertion, so
+  the example states nothing about `C>CAAAG`. Restoring the removed row, with its `studies.csv` row, would bring
+  the claim back without a collision. That moves `content_signature` and needs the module closed again, so it is
+  left as a decision, not done here.
+
+**Residuals** won't fix — a site witnessed both ways is not refused in 0.8 (the pm: refusing it is a minor's
+question, by escalating `rsid_genotype_reads_as_two_events`) · won't fix — an authored coordinate row winning over
+the expansion (S158's option 2) silences only the loud case
 
 ## RM450 — a snapshot pull takes no lock on the cache directory, so two pulls into one cache share their `.part` names and the pull record
 
-**Severity** low · **Status** a patch, parked · **Owner** enricher (`download._provision_snapshot`, `ensure_snapshot`, `cache pull`) ·
+**Severity** low · **Status** open — **a patch, parked** · **Owner** enricher (`download._provision_snapshot`, `ensure_snapshot`, `cache pull`) ·
 **Motivating case** the pm's check request from RM437 on `0.9` (2026-11-17): the groups' pull record is rewritten without a lock, "as the core's is" · *related* RM437, RM445, RM231
 
 **Checked on `main` (`5ff00802`).** `download.py` takes no lock of any kind. The one `flock` in the enricher is

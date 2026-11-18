@@ -237,6 +237,16 @@ serve an older dbSNP build than the snapshot (REST at Ensembl 116 serves dbSNP 1
 asks REST again. The comparison is also made
 against the **union** of every locus a key resolves to, never per-expanded-row, for the same reason.
 
+**A mirrored insertion and deletion are settled by the witness, not by the strings (RM449, 0.8.9).** At one
+position, `C>CT` and `CT>C` both hold the strings `C` and `CT`, so an rsID row's `C/CT` is hosted by both,
+yet it means an inserted T on one and a deleted T on the other. The fill reads `ResolutionRow.placement_verdict`
+there: the spellings a second source placed as `same_event` are filled, and the others are not. If both are
+witnessed, the rsID names both events, so both stay, and `rsid_genotype_reads_as_two_events` says so once
+per rsID in both modes. If neither is, neither is filled, and the row is left unpositioned, so `--strict`
+refuses it as unresolved. Each outcome is a `rsid_genotype_reads_as_two_events` warning; none is escalated
+in 0.8. A positional row was already left unplaced where two loci host it. It is a corrected derivation:
+an artifact compiled before 0.8.9 may hold the claim on both spellings. S158 is the report.
+
 **"Exactly one of those rows can match" is a statement about matching, and a reader does more than
 match (S33).** The sentence above is right and the expansion is staying, but it was written in the
 authoring/validation frame, where an unmatchable row is inert. It is not inert to a consumer *reading*
@@ -2089,7 +2099,7 @@ actionable, which is `vocab.ACTIONABLE_WARNING_CODES`, derived by subtraction:
   `positional_identity_contradicted`, `positional_rows_unjoinable`, `rsid_unresolved`,
   `rsid_without_resolution_label`, `rsid_expanded_to_multiple_loci`, `rsid_ambiguous`,
   `rsid_coordinate_disagrees`, `rsid_placements_disagree`, `locus_hosting_undecidable`,
-  `locus_cannot_host_genotype`, `rsid_no_hosting_locus`
+  `locus_cannot_host_genotype`, `rsid_no_hosting_locus`, `rsid_genotype_reads_as_two_events`
 - **VRS** — `vrs_id_unverifiable`, `vrs_coverage_incomplete`, `vrs_version_differs`
 - **`variants.csv` coherence** — `weight_sign_disagrees_with_effect`, `genotype_allele_not_at_locus`,
   `effect_allele_not_at_locus`, `genotype_coverage_gap`, `conclusion_names_other_genotype`,

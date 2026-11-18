@@ -24,6 +24,7 @@ from just_dna_enricher.clinvar_draft import (
     _study_rows,
     _superseded_rsid_rows,
     draft_gene_panel,
+    is_indel_record,
     multi_allelic_rsids,
     sole_expressible_genotype,
 )
@@ -612,7 +613,8 @@ def _drafted_signatures(records: list[dict]) -> list[tuple]:
     ambiguous = multi_allelic_rsids(records)
     out = []
     for record in records:
-        cells = _row_cells(record, force_coordinate=(record.get("rsid") or "").strip() in ambiguous)
+        rsid = (record.get("rsid") or "").strip()
+        cells = _row_cells(record, force_coordinate=rsid in ambiguous or is_indel_record(record))
         out.append(_signature(cells) if cells is not None else None)
     return out
 
@@ -833,12 +835,14 @@ def test_a_real_re_draft_reports_every_row_the_fix_supersedes(tmp_path: Path) ->
     fresh_dir.mkdir()
     kwargs = {"snapshot": _SNAPSHOT, "min_review_stars": 2, "max_citations": 0}
 
-    original = module.multi_allelic_rsids
+    # The drafter before S41 and before RM449: an indel record was drafted by rsID too.
+    original, original_indel = module.multi_allelic_rsids, module.is_indel_record
     module.multi_allelic_rsids = _old_multi_allelic_rsids
+    module.is_indel_record = lambda record: False
     try:
         draft_gene_panel(stale_dir, ["MLH1"], **kwargs)
     finally:
-        module.multi_allelic_rsids = original
+        module.multi_allelic_rsids, module.is_indel_record = original, original_indel
 
     draft_gene_panel(fresh_dir, ["MLH1"], **kwargs)
     result = draft_gene_panel(stale_dir, ["MLH1"], **kwargs)
@@ -1196,3 +1200,48 @@ def test_both_stub_lists_name_a_row_the_same_way(tmp_path: Path) -> None:
     assert _state_labels(dry) == _state_labels(again) == _state_labels(first), (
         "and a dry run is not a second answer"
     )
+
+
+# ── an indel record is drafted with its coordinate (RM449) ──────────────────────────────────────
+
+#: S158's pair, as ClinVar files it: the insertion under the rsID (VCV 370313) and the deletion at the same
+#: position under none (VCV 3653980). Drafted rsID-only, the insertion's `C/CT` was filled on both events.
+_S158 = [
+    _panel_record(
+        rsid="rs1057516393",
+        chrom="11",
+        start=108256251,
+        ref="C",
+        alt="CT",
+        gene="ATM",
+        genes="ATM",
+        variation_id="370313",
+    ),
+    _panel_record(
+        rsid="",
+        chrom="11",
+        start=108256251,
+        ref="CT",
+        alt="C",
+        gene="ATM",
+        genes="ATM",
+        variation_id="3653980",
+    ),
+]
+
+
+def test_an_indel_record_is_drafted_with_its_own_coordinate_and_a_substitution_keeps_its_rsid(
+    tmp_path: Path,
+) -> None:
+    spec = _spec_dir(tmp_path)
+    records = [*_S158, _panel_record()]
+    result = draft_gene_panel(spec, ["ATM", "PALB2"], snapshot=_snapshot_of(tmp_path, records))
+    rows = _rows(spec / "variants.csv")
+    identities = sorted((r["rsid"], r["chrom"], r["start"], r["ref"], r["alts"]) for r in rows)
+    assert identities == [
+        ("", "11", "108256251", "C", "CT"),
+        ("", "11", "108256251", "CT", "C"),
+        ("rs118203998", "", "", "", ""),
+    ]
+    assert any("1 indel rsID(s) (rs1057516393)" in w and "(RM449)" in w for w in result.warnings)
+    assert is_indel_record(_S158[0]) and is_indel_record(_S158[1]) and not is_indel_record(_panel_record())

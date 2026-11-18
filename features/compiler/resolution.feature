@@ -147,6 +147,20 @@ Feature: Resolution from the injected table
 
   # source: compiler/src/just_dna_compiler/resolution.py
   # anchor: resolve_from_table
+  @code:rsid_genotype_reads_as_two_events @actionable @both_modes
+  Scenario: an rsID row's indel genotype reads as an insertion and as a deletion at one position
+    Given an rsID-only row whose genotype "C/CT" is hosted by both "C>CT" and "CT>C" at one position
+    When the module is compiled
+    Then a warning says the two are "opposite events spelled with the same strings"
+    And only the spellings a second source placed as "same_event" are filled
+    And with none placed so, "neither is filled and the position remains unset"
+    And with both placed so, both are filled and one sentence for the rsID says "a second source places both under this rsID"
+    # RM449, from S158: string hosting relies on a two-allele genotype carrying its own frame, and a
+    # mirrored insertion and deletion break that. The witnessed spelling settles it; a site witnessed both
+    # ways keeps the expansion and is never silent. Never escalated under strict in 0.8.
+
+  # source: compiler/src/just_dna_compiler/resolution.py
+  # anchor: resolve_from_table
   @code:rsid_no_hosting_locus @actionable @both_modes
   Scenario: every candidate locus contradicts the genotype
     Given an rsID all of whose loci reject the authored genotype

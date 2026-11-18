@@ -146,11 +146,25 @@ def multi_allelic_rsids(records: Sequence[dict]) -> set[str]:
     return {rsid for rsid, events in events_by_rsid.items() if len(events) > 1}
 
 
+def is_indel_record(record: dict) -> bool:
+    """Whether a ClinVar record is an insertion or a deletion: its `ref` and `alt` differ in length (RM449).
+
+    Such a row is written with its coordinate, never its rsID alone: an rsID row's genotype names no
+    frame, and an insertion and a deletion mirrored at one position read the same genotype strings as
+    opposite events (S158: `C/CT` is one inserted T on `C>CT` and one deleted T on `CT>C`), so the fill
+    could not tell which one the drafted claim was about. The record's own spelling is the answer the
+    drafter already holds.
+    """
+    ref, alt = (record.get("ref") or "").strip(), (record.get("alt") or "").strip()
+    return bool(ref and alt) and len(ref) != len(alt)
+
+
 def _identity_cells(record: dict, *, force_coordinate: bool = False) -> dict | None:
     """The identity half of a row: the rsID, else the whole coordinate. Never a mixture.
 
     `force_coordinate` is set for an rsID that names several alts here — the rsID is true of the row
-    but cannot *identify* it, and an identity that does not identify is worse than a longer one.
+    but cannot *identify* it, and an identity that does not identify is worse than a longer one — and
+    for every indel record (`is_indel_record`, RM449), whose genotype an rsID alone cannot frame.
 
     Returns `None` when the record carries neither, which the caller reports rather than writing a
     row that cannot be keyed."""
@@ -554,7 +568,8 @@ def _study_rows(
         # variant was written with a coordinate because its rsID names several alleles, the study has
         # to be too — the compiler's orphan check found this the first time a real panel was drafted.
         rsid = (record.get("rsid") or "").strip() or None
-        if rsid in coordinate_only:
+        if rsid in coordinate_only or is_indel_record(record):
+            # An indel is drafted with its coordinate too (RM449), so its study follows it.
             rsid = None
         coordinate = (
             {}
@@ -680,12 +695,30 @@ def draft_gene_panel(
             f"({examples(sorted(ambiguous))}) — written with their full coordinate, since an rsID "
             f"alone cannot say which allele the row is about."
         )
+    framed = sorted(
+        {
+            rsid
+            for record in records
+            if (rsid := (record.get("rsid") or "").strip())
+            and rsid not in ambiguous
+            and is_indel_record(record)
+        }
+    )
+    if framed:
+        warnings.append(
+            f"{len(framed)} indel rsID(s) ({examples(framed)}) written with their full coordinate, since an "
+            f"rsID row's genotype names no frame and an insertion and a deletion at one position read it as "
+            f"opposite events (RM449)."
+        )
     record_by_signature: dict[tuple[str, ...], dict] = {}
     # signature -> the columns this run left for a human, so the reports below read the *decision*
     # `PartialRow` was given rather than restating which columns a stub can land in.
     stubbed_by_signature: dict[tuple[str, ...], tuple[str, ...]] = {}
     for record in records:
-        cells = _row_cells(record, force_coordinate=(record.get("rsid") or "").strip() in ambiguous)
+        cells = _row_cells(
+            record,
+            force_coordinate=(record.get("rsid") or "").strip() in ambiguous or is_indel_record(record),
+        )
         if cells is None:
             unkeyable += 1
             continue
@@ -744,7 +777,8 @@ def draft_gene_panel(
         before_commit=commit_licence,
     )
     reports = [report]
-    warnings.extend(_superseded_rsid_rows(report.path, ambiguous))
+    # An rsid-only indel row a draft before RM449 wrote is one no current draft would produce either.
+    warnings.extend(_superseded_rsid_rows(report.path, ambiguous | set(framed)))
 
     # Grounding evidence, from ClinVar's own literature links. Without this a drafted panel could not
     # compile at all — `studies.csv` is mandatory and the VCF carries no PMIDs — so the provider

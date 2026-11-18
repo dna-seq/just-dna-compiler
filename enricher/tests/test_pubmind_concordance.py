@@ -381,8 +381,10 @@ def _fill_genotypes(spec: Path, snapshot: Path) -> None:
     rows = list(csv.DictReader(io.StringIO(path.read_text(encoding="utf-8"))))
     for row in rows:
         # Alphabetically sorted, which is what an unphased genotype must be — the loader refuses the
-        # other order, so build it the way the format spells it.
-        row["genotype"] = "/".join(sorted(alleles[(row["rsid"], row["clin_sig"])]))
+        # other order, so build it the way the format spells it. An indel row is drafted with its own
+        # coordinate since RM449, so it carries its alleles.
+        pair = alleles[(row["rsid"], row["clin_sig"])] if row["rsid"] else (row["ref"], row["alts"])
+        row["genotype"] = "/".join(sorted(pair))
     buffer = io.StringIO()
     writer = csv.DictWriter(buffer, fieldnames=list(rows[0]))
     writer.writeheader()

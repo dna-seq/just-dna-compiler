@@ -445,8 +445,10 @@ def _fill_genotypes(spec: Path, snapshot: Path, genes: list[str]) -> None:
     def decide(rows: list[dict]) -> None:
         for row in rows:
             # Alphabetically sorted, which is what an unphased genotype must be — the model says so
-            # and the loader refuses the other order, so build it the way the format spells it.
-            row["genotype"] = "/".join(sorted(alleles[(row["rsid"], row["clin_sig"])]))
+            # and the loader refuses the other order, so build it the way the format spells it. An
+            # indel row is drafted with its own coordinate since RM449, so it carries its alleles.
+            pair = alleles[(row["rsid"], row["clin_sig"])] if row["rsid"] else (row["ref"], row["alts"])
+            row["genotype"] = "/".join(sorted(pair))
 
     _rewrite_variants(spec, decide)
 
