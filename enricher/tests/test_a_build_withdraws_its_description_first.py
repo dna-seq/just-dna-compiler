@@ -41,6 +41,7 @@ from just_dna_enricher import (
     constraint_build,
     cpic_build,
     drug_labels_build,
+    ensembl_rsid_index_build,
     mane_build,
     mitomap_build,
     mitomap_miss_build,
@@ -227,6 +228,9 @@ _RUNS: dict[str, Callable[[Path, Path, pytest.FixtureRequest], object]] = {
     "cpic_build": lambda i, o, r: cpic_build.build_snapshot(o, client=_cpic_client()),
     "drug_labels_build": lambda i, o, r: drug_labels_build.build_drug_label_snapshot(
         _zip(_ASSETS / "clinpgx_drug_labels_slice", i / "drugLabels.zip"), o
+    ),
+    "ensembl_rsid_index_build": lambda i, o, r: ensembl_rsid_index_build.build_rsid_index(
+        r.getfixturevalue("ensembl_split_core")(i / "ensembl_variations"), o
     ),
     "mane_build": lambda i, o, r: mane_build.build_snapshot(
         {

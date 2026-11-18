@@ -1048,3 +1048,82 @@ def httpfs() -> None:
     """Skip a test that reads over HTTP through duckdb when `httpfs` is not installed (RM430)."""
     if not _httpfs_loads():
         pytest.skip(HTTPFS_MISSING)
+
+
+# ── a split Ensembl core attested by its manifest (RM431's rsID index) ─────────────────────────
+
+#: The release RM381's slice was copied from (its README): the label a split core fixture states.
+ENSEMBL_SPLIT_RELEASE = "ensembl-variation-2026_07_13-vep116.0"
+_SPLIT_SLICE = (
+    Path(__file__).resolve().parents[2]
+    / "assets"
+    / "ensembl_split_multialt"
+    / "split"
+    / "data"
+    / "homo_sapiens-split.parquet"
+)
+#: Rows added to RM381's slice, from `test_ensembl_non_nucleotide.py`'s snapshot (real records): an
+#: empty alt, a lengthless symbolic alt, and `rs1603142144` at two loci (an N-masked chrY row and a
+#: placeable chrX one), so an rsID with no nucleotide allele and an rsID at two places are both covered.
+_SPLIT_EXTRA_ROWS = (
+    ("1", 2651767, "T", "", "rs2100212723"),
+    ("1", 13191002, "AAAGAA", "<.>", "rs1553186440"),
+    ("Y", 10277, "C" + "N" * 40, "CCC", "rs1603142144"),
+    ("X", 10277, "C", "CCC", "rs1603142144"),
+)
+
+
+@pytest.fixture
+def ensembl_split_core() -> Callable[..., Path]:
+    """A factory: a split Ensembl core at `root`, one file per chromosome, attested by a `manifest.json`.
+
+    RM381's real slice plus `_SPLIT_EXTRA_ROWS`, typed as the published files are (`start` and `row_idx`
+    `UINTEGER`), with the manifest's per-file size and sha256 and its `release_id` (`release`, by default
+    the slice's own); `drop` removes an rsID's rows. A pull record is not written: an unrecorded cache is
+    the one a reader takes as is.
+    """
+
+    def build(
+        root: Path,
+        *,
+        release: str = ENSEMBL_SPLIT_RELEASE,
+        drop: tuple[str, ...] = (),
+    ) -> Path:
+        data = Path(root) / "data"
+        data.mkdir(parents=True)
+        con = duckdb.connect()
+        try:
+            added = ", ".join(
+                f"('{chrom}', {start}, '{ref}', '{alt}', '{rsid}', {900000000 + i})"
+                for i, (chrom, start, ref, alt, rsid) in enumerate(_SPLIT_EXTRA_ROWS)
+            )
+            con.execute(
+                f"CREATE TABLE core AS SELECT chrom, start, ref, alt, id, row_idx FROM read_parquet('{_SPLIT_SLICE}') "
+                f"UNION ALL SELECT c, CAST(s AS UINTEGER), r, a, i, CAST(x AS UINTEGER) FROM (VALUES {added}) "
+                "AS t(c, s, r, a, i, x)"
+            )
+            if drop:
+                con.execute("DELETE FROM core WHERE id IN (" + ", ".join(f"'{d}'" for d in drop) + ")")
+            files = []
+            for (chrom,) in con.execute("SELECT DISTINCT chrom FROM core ORDER BY 1").fetchall():
+                target = data / f"homo_sapiens-chr{chrom}.parquet"
+                con.execute(
+                    f"COPY (SELECT * FROM core WHERE chrom = '{chrom}' ORDER BY start, row_idx) TO '{target}' "
+                    "(FORMAT parquet)"
+                )
+                payload = target.read_bytes()
+                files.append(
+                    {
+                        "path": f"data/{target.name}",
+                        "group": "core",
+                        "chrom": chrom,
+                        "bytes": len(payload),
+                        "sha256": hashlib.sha256(payload).hexdigest(),
+                    }
+                )
+        finally:
+            con.close()
+        (Path(root) / "manifest.json").write_text(json.dumps({"release_id": release, "files": files}))
+        return Path(root)
+
+    return build

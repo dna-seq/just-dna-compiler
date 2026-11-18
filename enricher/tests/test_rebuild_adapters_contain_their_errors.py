@@ -23,6 +23,7 @@ from just_dna_enricher import (
     cpic,
     cpic_build,
     drug_labels_build,
+    ensembl_rsid_index_build,
     mane_build,
     mitomap,
     mitomap_build,
@@ -59,6 +60,9 @@ _FAILURES: dict[str, list[tuple[object, str, Exception]]] = {
         (clinvar_gkm_build, "download_and_build", clinvar_gkm.ClinVarGkmMismatch("x")),
     ],
     "opentargets": [(opentargets_build, "download_release", opentargets_build.OpenTargetsUnavailable("x"))],
+    "ensembl_rsid_index": [
+        (ensembl_rsid_index_build, "build_rsid_index", ensembl_rsid_index_build.RsidIndexError("x"))
+    ],
 }
 
 _ADAPTED = {lane.name: lane for lane in CACHE_LANES if lane.rebuild is not None}
@@ -97,7 +101,11 @@ def test_a_failing_builder_is_a_failed_outcome_never_a_raise(
         # the call under test is the build, and a pin would reach the network first.
         pin=None if lane_name == "clinvar_gkm" else ("2026-01-01" if lane_name != "mane" else "1.4"),
         source=workbook if lane_name == "acmg" else None,
-        parents={"mitomap": tmp_path / "mitomap", "clinvar": tmp_path / "clinvar"},
+        parents={
+            "mitomap": tmp_path / "mitomap",
+            "clinvar": tmp_path / "clinvar",
+            "ensembl": tmp_path / "ensembl",
+        },
     )
     outcome = _ADAPTED[lane_name].rebuild(request)
     assert outcome.built is False, outcome

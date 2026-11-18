@@ -212,6 +212,13 @@ ALPHAGENOME_AVI_SUBDIR: str = "alphagenome_avi"
 #: public-domain ClinVar, so it may be published.
 CLINVAR_GKM_SUBDIR: str = "clinvar_gkm"
 
+#: The second **derived** cache (0.9, RM431 ask 4): the Ensembl split core's rsIDs, each with the
+#: `(chrom, start)` it sits at, sorted by rsID so a lookup by rsID reads a row group or two instead of
+#: the core's whole `id` column (about 6.1 GB, which no row group prunes). Built from the core on disk by
+#: `cache rebuild --only ensembl_rsid_index`, never pulled and never published: its `release.json` pins
+#: the core it indexes, and `resolver.lookup_loci` reads it only beside that core.
+ENSEMBL_RSID_INDEX_SUBDIR: str = "ensembl_rsid_index"
+
 
 # ── The override variables, one per lane, plus the shared base ──────────────────────────────────
 # Named here rather than as a literal inside each resolver (S89, RM184), so `caches.CACHE_LANES`
@@ -239,6 +246,7 @@ MITOMAP_MISS_CACHE_VAR: str = "JUST_DNA_MITOMAP_MISS_CACHE"
 ALPHAGENOME_AVI_CACHE_VAR: str = "JUST_DNA_ALPHAGENOME_AVI_CACHE"
 CLINVAR_GKM_CACHE_VAR: str = "JUST_DNA_CLINVAR_GKM_CACHE"
 OPENTARGETS_CACHE_VAR: str = "JUST_DNA_OPENTARGETS_CACHE"
+ENSEMBL_RSID_INDEX_CACHE_VAR: str = "JUST_DNA_ENSEMBL_RSID_INDEX_CACHE"
 
 
 _PARQUET_MAGIC = b"PAR1"
@@ -1262,6 +1270,28 @@ def resolve_clinvar_gkm_reference(
         clinvar_gkm_cache,
         CLINVAR_GKM_CACHE_VAR,
         default_clinvar_gkm_cache_dir(load_dotenv_file=load_dotenv_file),
+        load_dotenv_file=load_dotenv_file,
+    )
+
+
+def default_ensembl_rsid_index_cache_dir(*, load_dotenv_file: bool = True) -> Path:
+    """The `<base>/ensembl_rsid_index` directory — see `ENSEMBL_RSID_INDEX_SUBDIR`."""
+    return _cache_dir(ENSEMBL_RSID_INDEX_SUBDIR, load_dotenv_file=load_dotenv_file)
+
+
+def resolve_ensembl_rsid_index_reference(
+    ensembl_rsid_index_cache: Path | None = None, *, load_dotenv_file: bool = True
+) -> Path | None:
+    """Locate a built Ensembl rsID index (`$JUST_DNA_ENSEMBL_RSID_INDEX_CACHE`), without building one.
+
+    Present says the index is on disk, never that it indexes a given core: `resolver.lookup_loci` reads
+    it only when its `release.json` pins the core it was handed (`ensembl_rsid_index_build.core_pin`),
+    and scans otherwise.
+    """
+    return _resolve_parquet_cache(
+        ensembl_rsid_index_cache,
+        ENSEMBL_RSID_INDEX_CACHE_VAR,
+        default_ensembl_rsid_index_cache_dir(load_dotenv_file=load_dotenv_file),
         load_dotenv_file=load_dotenv_file,
     )
 

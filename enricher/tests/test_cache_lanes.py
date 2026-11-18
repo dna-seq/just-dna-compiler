@@ -1340,7 +1340,11 @@ def test_provisioning_closure_is_parents_first_in_registry_order() -> None:
         if not lane.parents:
             assert closure == [lane], lane.name
     derived = [lane for lane in CACHE_LANES if lane.parents]
-    assert [lane.name for lane in derived] == ["mitomap_miss"]
+    assert [lane.name for lane in derived] == ["ensembl_rsid_index", "mitomap_miss"]
+    assert [m.name for m in provisioning_closure(LANES_BY_NAME["ensembl_rsid_index"])] == [
+        "ensembl",
+        "ensembl_rsid_index",
+    ]
     assert [m.name for m in provisioning_closure(LANES_BY_NAME["mitomap_miss"])] == [
         "clinvar",
         "mitomap",

@@ -391,6 +391,10 @@ READERS: dict[str, Callable[[Path], dict[str, set[Spelling]]]] = {
 NOT_READERS: dict[str, str] = {
     "clinvar._clin_sig_over": "allele-exact join on ClinVar's own per-record caller spelling; regroups nothing",
     "clinvar.select_by_gene": "drafts one row per ClinVar record, in ClinVar's own per-record spelling",
+    "resolver._rsid_rows": (
+        "the rows half of `resolver._lookup_positions_by_rsid` (RM431, the rsID index): returns the "
+        "snapshot's rows as read, and that reader spells them"
+    ),
 }
 
 
@@ -456,6 +460,7 @@ def test_every_snapshot_reader_is_registered() -> None:
         "ensembl._loci_from_rest",  # a payload parser, no SQL
         "gnomad._loci_from_variant_ids",  # a payload parser, no SQL
         "resolver._lookup_rsids_by_position",  # reads through `_lookup_rsid_candidates` since RM438
+        "resolver._lookup_positions_by_rsid",  # reads through `_rsid_rows` since RM431
     }
     assert _snapshot_sql_functions() == (set(READERS) - unsql) | set(NOT_READERS)
 

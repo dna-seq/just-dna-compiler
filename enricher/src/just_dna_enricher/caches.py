@@ -57,6 +57,7 @@ from just_dna_enricher import (
     constraint_build,
     cpic_build,
     drug_labels_build,
+    ensembl_rsid_index_build,
     mane_build,
     mitomap,
     mitomap_build,
@@ -116,6 +117,8 @@ from just_dna_enricher.locations import (
     DRUG_LABELS_CACHE_VAR,
     DRUG_LABELS_SUBDIR,
     ENSEMBL_CACHE_VAR,
+    ENSEMBL_RSID_INDEX_CACHE_VAR,
+    ENSEMBL_RSID_INDEX_SUBDIR,
     ENSEMBL_SUBDIR,
     MANE_CACHE_VAR,
     MANE_SUBDIR,
@@ -143,6 +146,7 @@ from just_dna_enricher.locations import (
     default_cpic_cache_dir,
     default_drug_labels_cache_dir,
     default_ensembl_cache_dir,
+    default_ensembl_rsid_index_cache_dir,
     default_mane_cache_dir,
     default_mitomap_cache_dir,
     default_mitomap_miss_cache_dir,
@@ -163,6 +167,7 @@ from just_dna_enricher.locations import (
     resolve_cpic_reference,
     resolve_drug_labels_reference,
     resolve_ensembl_reference,
+    resolve_ensembl_rsid_index_reference,
     resolve_mane_reference,
     resolve_mitomap_miss_reference,
     resolve_mitomap_reference,
@@ -902,6 +907,26 @@ def _rebuild_mitomap_miss(request: RebuildRequest) -> RebuildOutcome:
     )
 
 
+def _rebuild_ensembl_rsid_index(request: RebuildRequest) -> RebuildOutcome:
+    """The rsID index of the Ensembl core on disk (RM431). `rebuild_lane`'s parent guard has run.
+
+    Only this route and `cache prepare` build it: no `ensure` does, so a pull and `enrich(download=True)`
+    pay nothing for it.
+    """
+    request.out_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        result = ensembl_rsid_index_build.build_rsid_index(request.parents["ensembl"], request.out_dir)
+    except (ensembl_rsid_index_build.RsidIndexError, OSError) as exc:
+        return RebuildOutcome("ensembl_rsid_index", False, str(exc))
+    return RebuildOutcome(
+        "ensembl_rsid_index",
+        True,
+        f"{result.rows:,} rsID loci of {result.parent['release_id']}, {result.size_bytes / 1e6:,.0f} MB in "
+        f"{result.seconds:,.0f} s",
+        result.out_dir,
+    )
+
+
 def _rebuild_clinvar_gkm(request: RebuildRequest) -> RebuildOutcome:
     """Download ClinVar-GKM's two Parquet inputs whole, verify them, cut the indel witness (RM305).
 
@@ -977,6 +1002,28 @@ CACHE_LANES: list[CacheLane] = [
         ),
         # The split release states its release only in `manifest.json` (RM372).
         release_label=ensembl_release_label,
+    ),
+    CacheLane(
+        name="ensembl_rsid_index",
+        approx_mb=6100,
+        build_command="cache rebuild --only ensembl_rsid_index",
+        subdir=ENSEMBL_RSID_INDEX_SUBDIR,
+        env_var=ENSEMBL_RSID_INDEX_CACHE_VAR,
+        serves="rsID → (chrom, start) over the Ensembl core, so lookup_loci by rsID prunes (RM431)",
+        resolve=resolve_ensembl_rsid_index_reference,
+        default_dir=default_ensembl_rsid_index_cache_dir,
+        rebuild=_rebuild_ensembl_rsid_index,
+        ensure=None,
+        publish_repo=None,
+        terms=None,
+        # Local only by the registry's answer (the pm, 2026-11-16): both proxy boxes hold the Ensembl lane
+        # and build their own, and a pulled index would pin a core its holder may not have.
+        unpublished=(
+            "derived, and local only: the index of the Ensembl core on this machine, pinned to that core's "
+            "release and files, so a pulled copy would index somebody else's. Build it from the core with "
+            "`cache rebuild --only ensembl_rsid_index`"
+        ),
+        parents=("ensembl",),
     ),
     CacheLane(
         name="clinvar",

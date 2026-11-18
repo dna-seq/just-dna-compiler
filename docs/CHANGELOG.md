@@ -167,6 +167,17 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   and a re-pull or skip gated by the recorded use rather than the call's logs `under the use recorded for it,
   <use>, declared <when>; this call states none`. A call stating its own use records a new time; a record
   without the key says the time is not stated (`download.DECLARED_AT_UNRECORDED`).
+- **The Ensembl rsID index, a derived local lane** (RM431 ask 4, S145, RM405's local half): `ensembl_rsid_index`,
+  rsID → (chrom, start) over the split core, sorted by rsID (`data/ensembl_rsid_index-<bucket>.parquet`, columns
+  `rs`, `chrom`, `start`). Built by `cache rebuild --only ensembl_rsid_index` (and `cache prepare`) through
+  `ensembl_rsid_index_build.build_rsid_index`, never by a pull, so `enrich(download=True)` pays nothing; not
+  published and not remote-eligible. Its `release.json` pins the core (`parents.ensembl`: the manifest's
+  `release_id` and a digest of its attested files, `core_pin`). `resolver.lookup_loci` by rsID reads it first when
+  it pins the core it was handed, then reads the core only at the positions found; an index of another core is
+  refused with a warning naming the rebuild, and the core is scanned. Measured on the 2026-07-13 release: 6,074 MB,
+  2,524 s to build; one rsID in 0.15 s against 6.2 s scanned. New: `locations.ENSEMBL_RSID_INDEX_SUBDIR`,
+  `ENSEMBL_RSID_INDEX_CACHE_VAR` (`$JUST_DNA_ENSEMBL_RSID_INDEX_CACHE`), `resolve_ensembl_rsid_index_reference`,
+  `default_ensembl_rsid_index_cache_dir`.
 
 ## 2026-11-17 — RM446: a reused client's earlier 410 no longer tells a later run's outage to upgrade (patch, on `main`)
 

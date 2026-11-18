@@ -178,7 +178,14 @@ def test_every_remote_lane_is_a_published_lane_and_the_excluded_ones_are_not_rem
         "civic",
         "clinvar_gkm",
     }
-    assert not set(REMOTE_LANES) & {"mitomap", "strchive", "alphagenome_avi", "pharmvar", "pubmind"}
+    assert not set(REMOTE_LANES) & {
+        "mitomap",
+        "strchive",
+        "alphagenome_avi",
+        "pharmvar",
+        "pubmind",
+        "ensembl_rsid_index",
+    }
     assert [name for name, lane in REMOTE_LANES.items() if lane.needs_position] == ["ensembl"]
     assert {lane.name for lane in CACHE_LANES} >= set(REMOTE_LANES)
 

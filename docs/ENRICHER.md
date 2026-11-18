@@ -407,7 +407,7 @@ core was ported, not depended on, dropping `fastmcp`/`eliot`). In the workspace:
 |---|---|---|
 | `enrich` | A package since RM260 — `__init__` re-exports every name `enrich.py` carried; the code is in `subjects`, `outcome`, `build_declaration`, `orchestration`, `verification_records` and `resolution_csv`. Orchestration: `enrich()` runs the resolver chain, writes `resolution.csv` | compiler `_load_csv_rows`, format `ResolutionRow` |
 | `transaction` | **0.7** (RM128): the run's durability — staged answers beside the target, the advisory `flock` over the read-modify-write window, and the `(done, total)` progress unit | format `atomic_writer`, stdlib `fcntl` |
-| `resolver` | the DuckDB rsid↔coord resolver (moved from the compiler in 0.5) | `duckdb`, format |
+| `resolver` | the DuckDB rsid↔coord resolver (moved from the compiler in 0.5); since 0.9 `lookup_loci` by rsID reads the `ensembl_rsid_index` lane first when it pins the core (RM431) | `duckdb`, format, `ensembl_rsid_index_build` |
 | `events` | **0.8** (RM375): the one tri-state judge of whether two spellings of a position name one event (`same_event`, `names_event`; `covers`, one direction, since RM394), asked by the placement check, the rsid↔coordinate check, `--rederive`'s respelling test and the `authored_event` stamp | `sequences`, format |
 | `clinvar` | the DuckDB ClinVar resolver link (`lookup_loci`) + the annotation reader (`lookup_clin_sig`) | `duckdb`, format |
 | `clinical` | the `clin_sig` cross-check over the ClinVar snapshot (offline, reports only) | format |
@@ -488,6 +488,7 @@ core was ported, not depended on, dropping `fastmcp`/`eliot`). In the workspace:
 | `strchive_build` | RM165 builder: download `STRchive-loci.json` + `release.json`. Core `httpx` only, no parquet and no `[dev]` extra | `httpx` |
 | `strchive_draft` | RM165: STRchive → `repeat_alleles.csv` **partial** rows — identity only, bands left to a human | `strchive`, compiler `draft` |
 | `ensembl` | live Ensembl REST (the beta GraphQL leg was retired on 2026-11-04), tenacity | `httpx`, `tenacity` |
+| `ensembl_rsid_index_build` | **0.9** (RM431 ask 4): the Ensembl rsID index, rsID → (chrom, start) sorted by rsID, built in duckdb from the split core on disk (`build_rsid_index`), and `core_pin`, what an index pins of its core (the manifest's `release_id` and a digest of its attested `data/` files). A derived lane, local only; `resolver.lookup_loci` reads it | `duckdb`, `locations` |
 | `upload` | publisher surface — push a compiled module or a reference snapshot to HF (`[dev]`) | `huggingface_hub` (lazy) |
 | `litvar` | RM167: LitVar2/PubTator3 literature coverage per locus, **with the tier that answered** (allele node / position node / absent). Reports only; writes no row and no `SourceRow` | `httpx`, `tenacity`, `clingen_allele` |
 | `drug_labels` | RM166: five regulators' drug labels — the `(gene[, allele], drug)` cross-check at two join tiers (offline, reports only, writes no `SourceRow`) | `duckdb`, format `pgx`, compiler `load_csv_rows` |
@@ -1737,6 +1738,7 @@ service* below). Pre-provisioning is therefore a deployment step, not an optimiz
 | Cache | Subdir | Override | `ensure_*` | Published at | Serves |
 |---|---|---|---|---|---|
 | **Ensembl** | `ensembl_variations/` | `$JUST_DNA_ENSEMBL_CACHE` | `ensure_snapshot` | `just-dna-seq/ensembl_variations_split` (since 0.8; built by prepare-annotations) | rsID → coordinate (`enrich`) |
+| **Ensembl rsID index** ⛓ | `ensembl_rsid_index/` | `$JUST_DNA_ENSEMBL_RSID_INDEX_CACHE` | **none — derived** | **not published, deliberately** (local only, RM431) | rsID → (chrom, start) over the Ensembl core, so `lookup_loci` by rsID reads a row group or two (`cache rebuild --only ensembl_rsid_index`) |
 | **ClinVar** | `clinvar/` | `$JUST_DNA_CLINVAR_CACHE` | `ensure_clinvar_snapshot` | `just-dna-seq/clinvar` | records + `citations/` (`enrich`, `draft-panel`) |
 | **gnomAD constraint** | `gnomad_constraint/` | `$JUST_DNA_GNOMAD_CONSTRAINT_CACHE` | `ensure_constraint_snapshot` | `just-dna-seq/gnomad_constraint` | v4.1 gene constraint (`gene-metrics`) |
 | **ClinPGx** 🔒 | `clinpgx/` | `$JUST_DNA_CLINPGX_CACHE` | `ensure_clinpgx_snapshot` | `just-dna-seq/clinpgx` | clinical annotations (`clinpgx check`) |
@@ -1806,6 +1808,48 @@ public domain, MITOMAP is CC BY 3.0 — so nothing in the licensing bars it. Wha
 artifact *is*: a pulled copy would carry a currency check its holder cannot run, having neither
 parent. Rebuilding it locally is seconds against caches the machine already has, and it cannot be
 stale by construction.
+
+### The second derived lane: the Ensembl rsID index (RM431, 0.9)
+
+`ensembl_rsid_index` is rsID → `(chrom, start)` over the split Ensembl core, sorted by rsID. It exists
+because the core's files are one per chromosome, sorted by position: a lookup by position prunes to a row
+group, and a lookup by rsID pruned nothing (every row group's `id` spans rs1 to rs9…), so
+`resolver.lookup_loci` by rsID read the whole `id` column, about 6.1 GB, in 9 to 14 s (RM405).
+
+- **Shape.** `data/ensembl_rsid_index-<bucket>.parquet` (`ensembl_rsid_index_build.INDEX_GLOB`), one file
+  per 100 M rsID numbers (`INDEX_BUCKET_WIDTH`), so name order is rsID order; three columns, `rs` (the rsID's
+  number, `UBIGINT`, so it sorts and prunes as a range), `chrom`, `start`, one row per distinct triple,
+  sorted by all three, zstd, 262,144 rows a group. An `id` that is not `rs` + digits is not indexed (none
+  in the 2026-07-13 release) and is scanned for when asked.
+- **Its one parent is a field** (`parents=("ensembl",)`), and its `release.json` pins it:
+  `parents.ensembl` holds `ensembl_rsid_index_build.core_pin(core)`, the core manifest's `release_id` and
+  `files_sha256`, a digest of the manifest's `data/` attestations (path, size, sha256), beside the core's
+  path. A label alone is not a core: one label has been seen over two sets of bytes (RM445), and a test
+  slice states the real release's label. A core whose manifest names no release cannot be indexed.
+  `dataset` is the core's release, so `cache status` prints which release the index is of.
+- **Built, never pulled.** `cache rebuild --only ensembl_rsid_index` (and `cache prepare`, which builds a
+  missing derived lane from its parents) builds it; no `ensure` does, so `cache pull`,
+  `ensure_snapshot` and `enrich(download=True)` pay nothing for it. The build runs in duckdb with an
+  8 GB ceiling and 4 threads, in two passes so nothing holds the whole index in memory (one global
+  `DISTINCT … ORDER BY` ran out of that ceiling): each core file's distinct rows go into rsID buckets,
+  then each bucket is sorted into its file, all under a hidden staging directory inside the output. It
+  refuses a core whose chromosome spans two files, since de-duplication is per file. **Measured on
+  2026-11-18** over the 2026-07-13 release (1,391,478,689 core rows): 1,172,660,304 index rows in 24
+  files, 6,074 MB, built in 2,524 s under `nice -n 19` on a shared 16-core workstation, with about 11 GB of
+  staged parts on the output's disk at the peak. One rsID then answers in 0.15 s (0.08 s warm) against
+  6.2 s scanned, twenty in 1.2 s against 11.8 s, the same answers.
+- **Local only**, by the registry's answer: both proxy boxes hold the Ensembl lane and build their own,
+  so nothing is published, and the lane is not remote-eligible (Ensembl by rsID is never sent remotely).
+- **The reader.** `resolver.lookup_loci` (and `enrich`, through it) finds the index as the lane's
+  resolver does from the process environment (`$JUST_DNA_ENSEMBL_RSID_INDEX_CACHE`, else
+  `<base>/ensembl_rsid_index`; it loads no `.env`) and reads it only when its pin equals the core it was
+  handed. It then locates each asked rsID in the index and reads the core only at those positions, as
+  literals, with the `id` filter still deciding the rows, so the answer is the scan's (a test pins the
+  equality over a multi-ALT site, a miss, an rsID at two loci and an rsID with no nucleotide allele).
+  An index pinning another core is refused once per process with a warning naming both and
+  `cache rebuild --only ensembl_rsid_index`, and the core is scanned; a core with no manifest is scanned
+  silently. `cache prepare` leaves a present index alone, a stale one included: rebuilding it is
+  `cache rebuild`.
 
 **MANE's ❓ is an unestablished permission, and the third column says so.** MANE's bytes carry a
 *policy* — NCBI places no restrictions on use or distribution and, in the same paragraph, declines to
@@ -6283,6 +6327,7 @@ caller and `except` order never matters. RM310 was the list shape failing: `cach
 | `clingen_allele` | `ClingenAlleleError` | — |
 | `cpic` | `CpicError` | `CpicRetired` |
 | `ensembl` | `EnsemblError` | — |
+| `ensembl_rsid_index_build` | `RsidIndexError` | — |
 | `eutils` | `EutilsError` | `EutilsRateLimitedError`, `EutilsRetired` |
 | `gene_spans` | `GeneSpanError` | — |
 | `gnomad` | `GnomadError` | `RateLimitedError`, `GnomadRetired` |
