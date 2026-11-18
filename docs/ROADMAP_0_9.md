@@ -79,8 +79,10 @@ reviewed by nobody: each is a few lines, and its test is shown failing on the co
   be fetched".
 - **E, in part:** a text passed to `_warn_once` is a warning and joins the pinned-text walk. Exception texts stay out
   of the walk, as confirmed for round 1's (8): a caller catches an exception by its type, not its words.
-- **F:** `served_from` goes through the same withholding rule as `release` and `revision`, so replies that are
-  `local` and unstated give `None`, never `local`.
+- **F:** `served_from` withholds when any reply leaves it unstated, so replies that are `local` and unstated give
+  `None`, never `local`. **Flipped after the build (the pm, 2026-11-18):** when every reply states its place and
+  they differ (`local` and `remote:<repo>`), the places are joined in sorted order, as before. Both served the answer,
+  and a set of places is a true answer where a single release is not.
 - **H:** a manifest entry with no size gets its own reason, which names the snapshot's publisher as the remedy,
   since a re-pull cannot clear it.
 - **I:** the shared sequence proxy's log line says what happens: the build is retried at the next read, nothing is
@@ -646,7 +648,15 @@ Left as residuals: a group's currency is checked by size at read time and by sha
 core's is; the pull record is rewritten without a lock, as the core's is, so concurrent pulls into one cache are
 the core's question first (`@flock-not-a-lockfile`), and triage checks it on `main`.
 
-**Residuals** none yet.
+**Round 2's last readings, placed (the pm, 2026-11-18; merged as 9afaa39a).** D also reaches known issue C: currency
+is judged against the cache's manifest, so during a hub release move a current group is gated after the core
+refresh. It is still refused, and none of its bytes move. The upgrade notes add it to C.
+
+**Residuals** won't fix in 0.9, parked: a manifest entry with no size, or with a size but no `sha256` and the file
+missing, gets remedies that cannot clear it. The pull downloads it and `_fetch_parquet` refuses it ("re-run the
+pull"), then the reader says the pull did not finish; the core path has the same shape. The root fix is to refuse such
+an entry before any download. Latent: the snapshot builder writes both fields on every entry, and no published
+manifest lacks them. Unparks when one does, or when a manifest someone else publishes is read.
 
 ## RM404 — `enrich()` builds its own NCBI client and sequence proxy, so a host cannot pace them with the rest
 
