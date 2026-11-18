@@ -1,4 +1,4 @@
-**Where it stands** (2026-11-17). The current release is **0.8.8** (enricher only, on PyPI since 2026-11-17). The next
+**Where it stands** (2026-11-18). The current release is **0.8.8** (enricher only, on PyPI since 2026-11-17). The next
 two minors are scoped small: 0.9 teaches the enricher to read reference data wherever it lives, and 0.10 is four small
 schema additions right after.
 
@@ -22,7 +22,10 @@ schema additions right after.
   where an anonymous client also runs out of requests after a few large lookups.
 
 **Next**
-1. ⏳ 0.9 — building on the `0.9` branch: four of six items in (RM443, RM412, RM404, RM437), plus the groundwork;
-   RM430 next, then RM431, as the account's limits allow.
-2. ❓ Three items you placed in 0.9 by name were parked by the small cut: parked, a 0.11, or 0.10 (desk #347).
-3. ❓ One question on the maintainer's desk: linking the project's memory to its new folder name.
+1. ⏳ 0.9 — building on the `0.9` branch: five of six items in (RM443, RM412, RM404, RM437, RM430), plus the groundwork;
+   RM430's follow-up, then RM431.
+2. ⏳ 0.8.9 — two high fixes found by the registry's re-derivation of its production modules: an indel genotype
+   annotated on both an insertion and a deletion at one position (silent), and rsIDs at multi-allelic indel sites
+   left unplaced online. Both on `main`, then a patch.
+3. ❓ Three items you placed in 0.9 by name were parked by the small cut: parked, a 0.11, or 0.10 (desk #347).
+4. ❓ One question on the maintainer's desk: linking the project's memory to its new folder name.
