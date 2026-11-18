@@ -58,7 +58,9 @@ use polars only in builders (`@duckdb-vs-polars`).
   polars-bio 0.37.0 on 2026-11-12 (its 9d588c2); just-vcf is moving now (its RM288, 2026-11-16; its lock still
   polars 1.44.2, polars-bio 0.36.0). **Its new cap is `<2.2`:** a polars 2.2 release holds both again until
   polars-bio widens, so a polars 2.2 is read against polars-bio's cap the day it appears. polars-bio's releases
-  wake this seat through the upstream-index watcher since 2026-11-16. (The 2026-11-04 text here said 0.36.2 with
+  wake this seat through the upstream-index watcher since 2026-11-16. **0.38.0 (2026-11-17, read 2026-11-18):** the polars
+  cap unchanged (`>=1.40.0,<2.2`); DataFusion's floor moved 53 -> 55 (`datafusion>=55.0.0,<56`); new `seq_*` sequence
+  operations, a progress-bar session option, and a fix to a cached `config_meta` accessor. Nothing for polars 2.x. (The 2026-11-04 text here said 0.36.2 with
   #478 open; it went stale for nine days while the notes held the 0.37.0 fact, and the seat answered the person
   from it on 2026-11-16.)
 - **Our own consumers' caps (read from each remote's `main`, 2026-11-16):** just-module-creator (a8d425a)

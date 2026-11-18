@@ -31,7 +31,7 @@ house algebra: an unknown is never written as a no).
 | Lane | Available (source) | Built (this machine) | Published (HF) | Behind? |
 | --- | --- | --- | --- | --- |
 | `ensembl` | Ensembl **116** (REST `/info/data`; FTP tops at `release-116`) | `ensembl-variation-2026_07_13-vep116.0` | `ensembl-variation-2026_07_13-vep116.0` (`ensembl_variations_split`, `manifest.json`; that repo has no `release.json`) | no |
-| `clinvar` | weekly **`clinvar_20261115.vcf.gz`** (2026-11-17; was 20261101 on 2026-11-07) | `clinvar_2026-11-01` (pulled 2026-11-08) | `clinvar_2026-11-01` (published 2026-11-07) | **yes, two weeklies** (2026-11-17) |
+| `clinvar` | weekly **`clinvar_20261115.vcf.gz`** (2026-11-17; was 20261101 on 2026-11-07) | `clinvar_2026-11-15` (rebuilt by the lead 2026-11-17) | `clinvar_2026-11-15` (published 2026-11-17) | no (2026-11-18; behind two weeklies on 2026-11-17) |
 | `constraint` | gnomAD **v4.1.2** (`release/4.1.2/constraint/` exists; so does 4.1.1) | `gnomad_v4.1.2_constraint` (`/data/just-dna-cache/gnomad_constraint/`, pulled 2026-11-09 by the lead, RM420) | `gnomad_v4.1.2_constraint` (published 2026-11-08, builder 0.8.2, 19,511 genes) | no (RM410 moved the builder's default to 4.1.2, `constraint_build.py:61`) |
 | `clinpgx` | unchecked: the archive's `Last-Modified` reads 2025-07-05, older than the label we built, so that header is not the release date | `clinpgx_2026-08-05` | `clinpgx_2026-08-05` | unchecked |
 | `cpic` | unchecked: the label is a hash of the API's answer, so only a rebuild says whether it moved | `cpic_snapshot_b0ffd4c6f010` | `cpic_snapshot_b0ffd4c6f010` | unchecked |
@@ -40,7 +40,7 @@ house algebra: an unknown is never written as a no).
 | `pubmind` | `hg38_pubmind_db.txt.gz` modified 2026-08-24 | `pubmind_ca224ebf5ef3` (a hash) | none (no repo) | unchecked: a hash label cannot be compared with a date |
 | `civic` | monthly **01-Nov-2026** (`/downloads/01-Nov-2026/` answered 200 on 2026-11-07, 403 to `curl` on 2026-11-17; `01-Dec-2026` 404) | `civic_01-Nov-2026` (pulled 2026-11-08) | `civic_01-Nov-2026` (published 2026-11-07) | no |
 | `strchive` | **v2.28.0** (GitHub release, 2026-10-08) | `strchive_v2.26.0` | `strchive_v2.28.0` (published 2026-11-07) | published: no. This machine's cache: behind; it has no pull record, so `cache pull` leaves it (RM420's residual: one move-aside, left to the maintainer) |
-| `mitomap` | `mitomap.dump.sql.gz` modified **2026-11-11** (2026-11-17; was 2026-11-06) | `mitomap_2026-11-05+2026-11-03` (pulled 2026-11-08) | `mitomap_2026-11-05+2026-11-03` (published 2026-11-07) | **yes**: the dump moved after the build (2026-11-17) |
+| `mitomap` | `mitomap.dump.sql.gz` modified **2026-11-17 06:01Z** (read 2026-11-18; was 2026-11-11, 2026-11-06) | `mitomap_2026-11-09+2026-11-03` (rebuilt by the lead 2026-11-17) | `mitomap_2026-11-09+2026-11-03` (published 2026-11-17, built 03:58Z from the 2026-11-11 dump) | **by `Last-Modified`, yes**: the dump moved again at 06:01Z on 2026-11-17; whether its tables did is known only from a rebuild. It moves about weekly (11-06, 11-11, 11-17), so it is re-checked with the bump, not chased mid-week |
 | `mitomap_miss` | derived from `mitomap` and `clinvar` | no label (`release.json` carries counts only) | none (no repo) | follows its parents |
 | `mane` | **v1.5** (`release_1.5/` is the newest directory) | `mane_grch38_v1.5` | none (no repo) | no |
 | `acmg` | unchecked: the list is a journal supplement, with no index to poll | SF **v3.3** (DOI 10.1016/j.gim.2025.101454) | none (no repo) | unchecked |
