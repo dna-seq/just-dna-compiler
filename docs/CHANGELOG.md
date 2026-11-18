@@ -162,6 +162,11 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   position or under an rsID, keyed as asked; an absent or unreadable slice raises `ClinVarGkmError`.
   `clinvar_gkm` is now remote-eligible (table `clinvar_gkm-indels`, by `chrom` + `start` or `rsid`), one SQL body
   over the local file and a remote answer's rows. The VRS id stays a local key: it is not one of the registry's.
+- **A group re-pulled under its recorded declaration says which one** (RM437 follow-up, the pm's reading 1): the
+  pull record keeps when each group's use was declared (`declared_at`, `download.PULL_RECORD_DECLARED_AT_KEY`),
+  and a re-pull or skip gated by the recorded use rather than the call's logs `under the use recorded for it,
+  <use>, declared <when>; this call states none`. A call stating its own use records a new time; a record
+  without the key says the time is not stated (`download.DECLARED_AT_UNRECORDED`).
 
 ## 2026-11-17 — RM446: a reused client's earlier 410 no longer tells a later run's outage to upgrade (patch, on `main`)
 

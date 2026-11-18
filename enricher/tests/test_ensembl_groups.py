@@ -252,7 +252,9 @@ def test_a_named_group_is_pulled_attested_and_recorded_beside_the_core(install_h
     for path in cadd:
         assert (cache / path).read_bytes() == published[path]
     entry = pulled_groups(cache)["cadd"]
+    declared_at = entry.pop("declared_at")
     assert entry == {"release_id": _OLD, "files": cadd, "declared_use": "non_commercial"}
+    assert isinstance(declared_at, str) and declared_at.endswith("Z"), "when the use was declared, in UTC"
     assert _record(cache)["files"] == core  # the core's own list carries no group file
     assert ensembl_group_dir(cache, "cadd") == cache / "groups" / "cadd"
     assert not (cache / "groups" / "consequence").exists()
@@ -419,6 +421,80 @@ def test_a_moved_core_re_pulls_the_recorded_groups_without_naming_them(install_h
     assert pulled_groups(cache)["cadd"]["declared_use"] == "non_commercial"
     assert "groups/cadd/homo_sapiens-chrMT.parquet" not in hub.fetched  # the new release has none
     assert not (cache / "groups/cadd/homo_sapiens-chrMT.parquet").exists()  # the old one's was ours
+
+
+def test_a_re_pull_under_the_recorded_use_names_that_use_and_when_it_was_declared(
+    install_hub, tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The pm's RM437 reading 1: an operator whose use changed sees which declaration admitted the new release."""
+    cache = tmp_path / "ensembl"
+    install_hub(_published(0, _OLD))
+    dl.ensure_snapshot(cache, groups=["cadd"], declared_use="non_commercial")
+    declared_at = pulled_groups(cache)["cadd"]["declared_at"]
+    install_hub(_published(1, _NEW))
+    with caplog.at_level("INFO", logger="just_dna_enricher.download"):
+        dl.ensure_snapshot(cache, _follow_hub=dl._FollowHub(ensembl_release_label))
+    assert (
+        f"under the use recorded for it, non_commercial, declared {declared_at}; this call states none"
+        in caplog.text
+    )
+    assert pulled_groups(cache)["cadd"]["declared_at"] == declared_at, (
+        "a re-pull under it does not re-declare"
+    )
+
+
+def test_a_re_pull_under_the_calls_own_use_records_a_new_declaration_and_says_nothing_of_the_old(
+    install_hub, tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    cache = tmp_path / "ensembl"
+    install_hub(_published(0, _OLD))
+    dl.ensure_snapshot(cache, groups=["cadd"], declared_use="non_commercial")
+    first = pulled_groups(cache)["cadd"]["declared_at"]
+    install_hub(_published(1, _NEW))
+    with caplog.at_level("INFO", logger="just_dna_enricher.download"):
+        dl.ensure_snapshot(
+            cache, declared_use="non_commercial", _follow_hub=dl._FollowHub(ensembl_release_label)
+        )
+    assert "recorded for it" not in caplog.text
+    entry = pulled_groups(cache)["cadd"]
+    assert entry["release_id"] == _NEW and entry["declared_at"] >= first
+
+
+def test_a_recorded_use_with_no_time_says_the_time_is_not_recorded(
+    install_hub, tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A pull record written before 0.9's follow-up states the use and no time: the time is never invented."""
+    cache = tmp_path / "ensembl"
+    install_hub(_published(0, _OLD))
+    dl.ensure_snapshot(cache, groups=["cadd"], declared_use="non_commercial")
+    record = _record(cache)
+    del record["groups"]["cadd"]["declared_at"]
+    (cache / PULL_RECORD_FILENAME).write_text(json.dumps(record))
+    install_hub(_published(1, _NEW))
+    with caplog.at_level("INFO", logger="just_dna_enricher.download"):
+        dl.ensure_snapshot(cache, _follow_hub=dl._FollowHub(ensembl_release_label))
+    assert (
+        "under the use recorded for it, non_commercial, declared at a time the pull record does not state"
+        in caplog.text
+    )
+    assert "declared_at" not in pulled_groups(cache)["cadd"], "no time is written for a declaration not seen"
+
+
+def test_a_skip_under_the_recorded_use_names_it_too(
+    install_hub, tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    cache = tmp_path / "ensembl"
+    install_hub(_published(0, _OLD))
+    dl.ensure_snapshot(cache, groups=["cadd"], declared_use="non_commercial")
+    record = _record(cache)
+    record["groups"]["cadd"]["declared_use"] = "unstated"
+    record["groups"]["cadd"]["declared_at"] = "2026-11-01T00:00:00Z"
+    (cache / PULL_RECORD_FILENAME).write_text(json.dumps(record))
+    install_hub(_published(1, _NEW))
+    with caplog.at_level("INFO", logger="just_dna_enricher.download"):
+        dl.ensure_snapshot(cache, _follow_hub=dl._FollowHub(ensembl_release_label))
+    assert "Ensembl group cadd: skipped" in caplog.text
+    assert "under the use recorded for it, unstated, declared 2026-11-01T00:00:00Z" in caplog.text
 
 
 def test_an_explicit_commercial_use_outranks_the_recorded_declaration(install_hub, tmp_path: Path) -> None:

@@ -26,6 +26,7 @@ from pathlib import Path
 
 import httpx
 from just_dna_format.layout import atomic_write_text
+from just_dna_format.normalize import now_utc_iso
 from just_dna_format.vocab import VALID_DECLARED_USE, check_vocab
 
 from just_dna_enricher.clinvar import ClinVarReferenceError
@@ -1410,11 +1411,43 @@ def _named_groups(groups: Sequence[str]) -> tuple[str, ...]:
 
 def _effective_group_use(declared_use: str, entry: dict | None) -> str:
     """The declaration a group is gated by: the caller's when it states one, else the one the group was admitted under."""
+    return _group_use(declared_use, entry)[0]
+
+
+#: The pull-record key beside a group's `declared_use`: when that use was declared (0.9, the pm's RM437
+#: reading 1), so a re-pull under it can say which declaration admitted the new release.
+PULL_RECORD_DECLARED_AT_KEY = "declared_at"
+#: What a re-pull under a recorded use says when the record states no time (one written before the key).
+DECLARED_AT_UNRECORDED = "at a time the pull record does not state"
+
+
+def _group_use(declared_use: str, entry: dict | None) -> tuple[str, bool]:
+    """`(the use a group is gated by, whether it is the recorded one rather than the call's)`."""
     stated = check_vocab(declared_use, VALID_DECLARED_USE, "declared_use") or declared_use
     if stated != "unstated":
-        return stated
+        return stated, False
     recorded = entry.get("declared_use") if entry is not None else None
-    return recorded if isinstance(recorded, str) and recorded in VALID_DECLARED_USE else "unstated"
+    if isinstance(recorded, str) and recorded in VALID_DECLARED_USE:
+        return recorded, True
+    return "unstated", False
+
+
+def _declaration(entry: dict | None, from_record: bool) -> dict[str, str]:
+    """The `declared_at` a group's entry keeps: the recorded one under the recorded use, else now.
+
+    A record that states no time keeps stating none: a time is never written for a declaration this
+    call did not see.
+    """
+    if not from_record:
+        return {PULL_RECORD_DECLARED_AT_KEY: now_utc_iso()}
+    recorded = entry.get(PULL_RECORD_DECLARED_AT_KEY) if entry is not None else None
+    return {PULL_RECORD_DECLARED_AT_KEY: recorded} if isinstance(recorded, str) and recorded else {}
+
+
+def _recorded_use_note(use: str, declaration: dict[str, str]) -> str:
+    """The words a re-pull gated by the recorded use logs: the use, and when it was declared."""
+    at = declaration.get(PULL_RECORD_DECLARED_AT_KEY) or DECLARED_AT_UNRECORDED
+    return f"under the use recorded for it, {use}, declared {at}; this call states none"
 
 
 def _selection_manifest(cache_dir: Path, named: tuple[str, ...]) -> SnapshotManifest:
@@ -1551,10 +1584,12 @@ def _pull_one_group(
     if entry is not None and entry.get("release_id") == release and whole:
         # Nothing is taken, so nothing is gated (`@acquisition-gate-is-not-a-read-gate`).
         return _with_strays(cache_dir, group, manifest, "current")
-    use = _effective_group_use(declared_use, entry)
+    use, from_record = _group_use(declared_use, entry)
+    declaration = _declaration(entry, from_record)
+    note = _recorded_use_note(use, declaration) if from_record else None
     reason = check_declared_use(snapshot_group_terms(group, record.licence), use)
     if reason is not None:
-        logger.warning("Ensembl group %s: skipped — %s", group, reason)
+        logger.warning("Ensembl group %s: skipped — %s%s", group, reason, f" ({note})" if note else "")
         return f"skipped — {reason}"
     coverage = manifest_coverage(cache_dir)
     if snapshot_record_missing(cache_dir) != [] or coverage is None or not coverage.whole:
@@ -1576,8 +1611,18 @@ def _pull_one_group(
     # Recorded as under way before the first byte moves, so an interrupted pull is never read as current.
     # The earlier release's files stay named beside the new ones until they are removed, or a resumed
     # pull would no longer know they were this lane's to remove.
-    _record_group(cache_dir, group, {"release_id": None, "files": [*paths, *stale], "declared_use": use})
-    logger.info("Pulling the Ensembl %s group (%d file(s)) for %s ...", group, len(entries), release)
+    _record_group(
+        cache_dir,
+        group,
+        {"release_id": None, "files": [*paths, *stale], "declared_use": use, **declaration},
+    )
+    logger.info(
+        "Pulling the Ensembl %s group (%d file(s)) for %s%s ...",
+        group,
+        len(entries),
+        release,
+        f" {note}" if note else "",
+    )
     for e in entries:
         local = cache_dir / e.path
         if manifest_attests(manifest, e.path, local):
@@ -1608,7 +1653,9 @@ def _pull_one_group(
         logger.info(
             "Removed %s: an earlier release's %s file the release %s does not name.", relative, group, release
         )
-    _record_group(cache_dir, group, {"release_id": release, "files": paths, "declared_use": use})
+    _record_group(
+        cache_dir, group, {"release_id": release, "files": paths, "declared_use": use, **declaration}
+    )
     return _with_strays(cache_dir, group, manifest, "pulled")
 
 

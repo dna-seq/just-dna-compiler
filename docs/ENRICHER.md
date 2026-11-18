@@ -2290,7 +2290,8 @@ prevent, and a stale group joins to the wrong variants silently.
 - **Attested and recorded.** Each group file is renamed into place only if the manifest attests it by
   size and sha256, as a core file is. The pull record gains `groups` (`locations.PULL_RECORD_GROUPS_KEY`):
   per group, the `release_id` its files were attested against (`null` while its pull is under way), its
-  files, and the declaration it was admitted under. `locations.pulled_groups(cache)` reads it.
+  files, the declaration it was admitted under, and since the pm's follow-up when that use was declared
+  (`declared_at`, `download.PULL_RECORD_DECLARED_AT_KEY`, UTC). `locations.pulled_groups(cache)` reads it.
 - **The one path, with the check.** `locations.ensembl_group_dir(cache, group)` returns
   `<cache>/groups/<group>` (`ENSEMBL_GROUPS_DIRNAME`) only when the group's recorded release is the
   core's (`manifest.json`'s `release_id`) and the directory holds exactly the files the manifest attests
@@ -2307,7 +2308,12 @@ prevent, and a stale group joins to the wrong variants silently.
   new release does not name a file for is removed only where this lane's earlier pull put it. A recorded
   group is gated by the call's `declared_use` when that states one, else by its recorded declaration
   (`effective_declared_use`'s rule, applied to a cache); `cache pull` and `cache prepare` pass their
-  `--use`. A recorded group the caller did not name never raises, whatever went wrong: it is logged,
+  `--use`. A re-pull or a skip gated by the recorded declaration says so in its log line, naming the use and
+  when it was declared (`under the use recorded for it, non_commercial, declared 2026-11-18T01:21:30Z; this
+  call states none`), so an operator whose use changed sees which declaration admitted the new release; the
+  re-pull keeps that `declared_at`, and a call stating its own use records a new one. A record written before
+  the key states no time, and the line says `declared at a time the pull record does not state`
+  (`download.DECLARED_AT_UNRECORDED`), never an invented one. A recorded group the caller did not name never raises, whatever went wrong: it is logged,
   `cache pull` prints it, and it stays at its old release, which `ensembl_group_dir` refuses. A named
   group's failure raises once every group has been tried. No group is pulled beside a core that is not a
   finished pull its manifest attests whole. A warm cache whose groups are current reads no hub.
