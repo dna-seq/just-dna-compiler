@@ -2717,6 +2717,15 @@ stripped. RM449 is a defect of this build until it passes; the half-day fallback
 Confirmed: the corrected derivation's reach is stated by `compilation.expanded_keys` in the release record, and RM451
 is declared an addition whose reach is unstated where a header-only `resolution.csv` leaves `expanded_keys` null.
 
+**Cut now, with one offline case stated (the pm, 2026-11-18, from the lead at b9b4f8c7).** A real
+`enrich --offline` of `pathogenic_clinvar` writes no `undecided`; 12 of its 13 mirrored sites match the online table,
+but `rs80356821` comes out `unplaced` on both spellings where online places the deletion `same_event`, so strict
+refuses that row under "witnessed neither". Offline nothing can judge an indel, so a definite `unplaced` there is
+likely the offline witness answering where it could not ask (`@unreachable-not-absent`), a placement defect RM449
+exposed rather than made. 0.8.9 is cut now: it fixes a silent wrong annotation in production modules, and this case
+is loud, names its rsID, needs an offline re-derivation of a mirrored indel site, and an online one clears it. The cut
+entry says so. Triage files the offline placement as its own item, a patch for 0.8.10.
+
 **Residuals** won't fix — a site witnessed both ways is not refused in 0.8 (the pm: refusing it is a minor's
 question, by escalating `rsid_genotype_reads_as_two_events`) · won't fix — an authored coordinate row winning over
 the expansion (S158's option 2) silences only the loud case
