@@ -65,6 +65,44 @@ last.** It reads the fixes, and the areas round 1 left unread: RM437's group pro
 `SequenceProxy`'s lock and per-run memo, `cache rebuild --rehearse-download`, and the CHANGELOG's claim that `enrich`
 with neither new argument writes the same bytes as before. That claim gets a test if none exists.
 
+**Review round 2, the last, sorted (the pm, 2026-11-18).** It reviewed `main...0.9` at 4a238152. **No blocker**; 10 of
+round 1's 11 fixes held. The eleventh (A, a repaired pull record that read as a finished pull) is fixed at 77c37ff1,
+and `mitomap_miss`'s stale reason is in at 31b5bae4. No third round follows (trial rule 2). So a fix built now is
+reviewed by nobody: each is a few lines, and its test is shown failing on the code before the fix, as A's was.
+
+**Built before the cut:**
+
+- **D, RM437 decision 4 holds: a group already current is not gated again.** The declared-use gate guards a fetch,
+  not a read (`@acquisition-gate-is-not-a-read-gate`), and a current group fetches nothing. A module built from the
+  group still meets its terms at the compile gate, through its licence rows. The currency check moves ahead of the
+  gate, and `ensure_snapshot`'s docstring says "a named group whose terms refuse the stated use raises when it must
+  be fetched".
+- **E, in part:** a text passed to `_warn_once` is a warning and joins the pinned-text walk. Exception texts stay out
+  of the walk, as confirmed for round 1's (8): a caller catches an exception by its type, not its words.
+- **F:** `served_from` goes through the same withholding rule as `release` and `revision`, so replies that are
+  `local` and unstated give `None`, never `local`.
+- **H:** a manifest entry with no size gets its own reason, which names the snapshot's publisher as the remedy,
+  since a re-pull cannot clear it.
+- **I:** the shared sequence proxy's log line says what happens: the build is retried at the next read, nothing is
+  skipped.
+- **G is as decided, so it gets a test, not a fix.** Ensembl is asked remotely by position only, never by rsID (RM431,
+  ask 4), and a read bounded to one position cannot say every locus a multi-place rsID has. So the remote Ensembl
+  link withholds the rsID's placement and the next link (ClinVar) is asked. A test pins this, and ENRICHER.md says it.
+- **B becomes a measurement before the cut.** The bytes test compares 0.9 with itself offline, so it cannot fail.
+  The lead runs 0.8.9 and 0.9 `enrich` online, cache warm, on the same five examples, compares the bytes (clocks
+  aside), and the release record states the result. A test with golden outputs recorded from 0.8 is the next minor.
+
+**Known issues in INTEGRATION_0_9, filed for 0.10:**
+
+- **C:** during an Ensembl release transition, the group preflight and the provisioning can read different manifests.
+  A group is then refused after the core was refreshed, not before any download. It is loud, never silent: a refusal,
+  not wrong data. The fix is a release-transition matrix asserting that the preflight reads the manifest it
+  provisions.
+- With the proxy set and Hugging Face off, gene lookups on clinpgx, cpic, drug_labels and civic answer could-not-ask
+  (the RM430 follow-up), until the registry reads `KEY_COMPARES` (its S36).
+
+The trial rules end here. The pm reports how they went after the cut.
+
 **Earlier sizings, for the record.** The file opened on 2026-11-03, when the maintainer scoped 0.8 and sent "the rest"
 to 0.9; the pm re-sized it on 2026-11-05 after the 0.8.0 cut ("'Auto-next minor' was a policy when we didn't have a
 dedicated decision maker for this"), parking 22 items into ROADMAP.md. Everything here is **additive under Principles
