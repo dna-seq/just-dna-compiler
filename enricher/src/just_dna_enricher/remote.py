@@ -694,7 +694,7 @@ class RemoteSnapshots:
             route=RemoteRoute(
                 route=ROUTE_PROXY,
                 release=_agreed(lane, "releases", [reply.release for reply in replies]),
-                served_from=_agreed(lane, "served_from values", [reply.served_from for reply in replies]),
+                served_from=_places([reply.served_from for reply in replies]),
                 revision=_agreed(lane, "revisions", [reply.revision for reply in replies]),
             ),
         )
@@ -1019,6 +1019,18 @@ def _error_code(response: httpx.Response) -> str | None:
 
 def _said(response: httpx.Response) -> str:
     return response.text.strip()[:400] or "(empty body)"
+
+
+def _places(values: Sequence[str | None]) -> str | None:
+    """Where the replies to one lookup were served from: every place stated, joined in sorted order, else `None`.
+
+    A reply stating none is the unknown arm and withholds the answer (`local` beside it is no answer). Places that
+    differ are joined, not withheld as `_agreed` withholds a release: each reply served its part, so the set of places
+    is a true answer where two releases are no single one (the pm, dfd94ccf).
+    """
+    if not values or any(not v for v in values):
+        return None
+    return ", ".join(sorted({str(v) for v in values}))
 
 
 def _agreed(lane: str, what: str, values: Sequence[Any]) -> str | None:

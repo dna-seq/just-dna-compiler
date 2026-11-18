@@ -1302,24 +1302,21 @@ def test_two_proxy_replies_stating_two_releases_withhold_it_and_say_so(
 
 
 @pytest.mark.parametrize(
-    ("stated", "said"),
+    ("stated", "served_from"),
     [
-        (["local", None], []),
-        (
-            ["local", "remote:just-dna-seq/clinvar"],
-            [
-                "clinvar: the proxy's replies to one lookup state 2 served_from values "
-                "(local, remote:just-dna-seq/clinvar); withheld"
-            ],
-        ),
+        (["local", None], None),
+        (["local", "remote:just-dna-seq/clinvar"], "local, remote:just-dna-seq/clinvar"),
+        (["remote:just-dna-seq/clinvar", "local"], "local, remote:just-dna-seq/clinvar"),
+        (["local", "local"], "local"),
     ],
-    ids=["one unstated", "two stated"],
+    ids=["one unstated", "two stated", "two stated, other order", "one place"],
 )
-def test_served_from_is_withheld_unless_every_reply_states_the_same(
-    caplog: pytest.LogCaptureFixture, stated: list[str | None], said: list[str]
+def test_served_from_is_withheld_when_a_reply_leaves_it_unstated_and_joined_when_all_state_it(
+    caplog: pytest.LogCaptureFixture, stated: list[str | None], served_from: str | None
 ) -> None:
-    """Review round 2, F: `served_from` goes through the rule `release` and `revision` do. A reply stating none
-    is the unknown arm, so `local` beside it is no answer; it was `local`, and two values were joined."""
+    """Review round 2, F, as the pm placed it (dfd94ccf): a reply stating none is the unknown arm, so `local` beside
+    it is no answer (it was `local`). Where every reply states its place and they differ, both served the answer, so
+    the places are joined in sorted order: a set of places is true where a single release is not. Nothing is said."""
     replies = iter(stated)
 
     def proxy(request: httpx.Request) -> httpx.Response:
@@ -1331,8 +1328,8 @@ def test_served_from_is_withheld_unless_every_reply_states_the_same(
         _with_proxy(RemoteSnapshots(proxy_url=PROXY, huggingface=False), proxy) as holder,
     ):
         answer = holder.lookup("clinvar", "clinvar", {"rsid": rsids})
-    assert answer.route == RemoteRoute("proxy", None, None, None)
-    assert _remote_log(caplog) == said
+    assert answer.route == RemoteRoute("proxy", None, served_from, None)
+    assert _remote_log(caplog) == []
 
 
 def test_an_unreadable_hub_manifest_attests_no_file_and_says_so(

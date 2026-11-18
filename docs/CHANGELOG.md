@@ -340,11 +340,12 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   warnings. It reads it now, and since the helper is new in 0.9, every call of it in any module must carry a
   fragment the list names, older module or not; the three it makes today were already listed and pinned.
   Exception texts stay out of the walk: a caller catches an exception by its type, not its words.
-- **A proxy answer's `served_from` is withheld unless every reply states the same one** (review round 2, F, RM430,
-  the house algebra): it joined the values its replies stated and dropped the replies stating none, so `local`
-  beside an unstated reply read as `local`, a definite source from an unknown. It now goes through the rule
-  `release` and `revision` do: an unstated reply, or two differing values, give `None`, the second said in the
-  log. It reaches `VariantHint.routes` on every lookup the proxy answers in more than one request.
+- **A proxy answer's `served_from` is withheld when any reply leaves it unstated** (review round 2, F, RM430, the
+  house algebra): it joined the values its replies stated and dropped the replies stating none, so `local` beside
+  an unstated reply read as `local`, a definite source from an unknown. It is now `None` there. Where every reply
+  states its place and they differ, the places are still joined in sorted order (the pm, dfd94ccf): each served
+  its part, so a set of places is true where a single release is not. It reaches `VariantHint.routes` on every
+  lookup the proxy answers in more than one request.
 - **The remote Ensembl link withholds the rsID's placement, as decided, and a test says so** (review round 2, G,
   RM431 ask 4): Ensembl is asked remotely by position only, and one position cannot say every locus a
   multi-place rsID has, so its rows there give rsID candidates and no locus, and ClinVar, asked next by rsID,

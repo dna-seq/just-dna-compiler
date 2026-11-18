@@ -2538,10 +2538,11 @@ with RemoteSnapshots(declared_use="non_commercial") as snapshots:      # proxy f
   trace the rows), with no coercion (`"false"` is no bool) and fields it does not read ignored. A reply missing `truncated`, a row that is not an object, or a reply for another
   lane or table is `a 200 that is not a lane reply (…)` or `a 200 that is not the reply asked for: …`,
   never a whole answer and never an `AttributeError` out of `lookup_variant`. A proxy answer's `release`,
-  `revision` and `served_from` are what its replies state (registry S34), each only when every reply states
-  the same one: a reply stating none, or two stating different ones, withholds it (`None`), the second said in
-  a warning (`the proxy's replies to one lookup state 2 served_from values (…); withheld`). `served_from` was
-  joined until review round 2 (F), so `local` beside an unstated reply read as `local`.
+  `revision` are what its replies state (registry S34), each only when every reply states the same one: a reply
+  stating none, or two stating different ones, withholds it (`None`), the second said in a warning (`the proxy's
+  replies to one lookup state 2 releases (…); withheld`). `served_from` is withheld when any reply leaves it
+  unstated, so `local` beside an unstated reply is `None` (review round 2, F); when every reply states its place
+  and they differ, the places are joined in sorted order (`local, remote:<repo>`), since each served its part.
 - **Hugging Face** is read through duckdb's `httpfs`, never through `hf://` (duckdb resolves that to
   `huggingface.co` itself, past `hf_base_url` and the test fence, and a glob over plain HTTP is
   refused). The first read of a lane in a holder asks `GET {hub}/api/datasets/{repo}/revision/main` for
