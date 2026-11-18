@@ -2663,6 +2663,12 @@ its, and RM449 follows as 0.8.10. A re-close after the restore needs an enrich p
   the four round-trip tests then pass on the restored example. Every remedy sentence now says to re-run the
   enricher after authoring the coordinate.
 
+**Both resolved (the pm, 2026-11-18, 84a256ef).** (1) was RM449's: an offline ClinVar fill records no verdict, and
+no verdict was read as witnessed by neither. Not asked is not witnessed-neither (`@unreachable-not-absent`), so a
+mirrored site with no verdict anywhere keeps its expansion, under the same warning. (2) predates RM449 and is RM451:
+one offline enrich pass files the restored row and the four round-trip tests pass, so 0.8.9 waits for neither.
+The warning's remedy now says "and re-run the enricher".
+
 **Residuals** won't fix — a site witnessed both ways is not refused in 0.8 (the pm: refusing it is a minor's
 question, by escalating `rsid_genotype_reads_as_two_events`) · won't fix — an authored coordinate row winning over
 the expansion (S158's option 2) silences only the loud case
@@ -2695,7 +2701,7 @@ about 30 minutes, and RM437's groups on `0.9` inherit it.
 
 ## RM451 — reverse writes a resolution row from the cells of a coordinate row the table never filed, so `compile → reverse → compile` moves `resolution_signature`
 
-**Severity** low · **Status** open — **a patch; the pm sizes** · **Owner** compiler (`compiler/reverse._write_resolution_csv`, the cell rebuild) ·
+**Severity** low · **Status** open — **a patch on `main`, `unattended` (about 45 minutes, triage); in 0.8.9 if ready, never holding it** · **Owner** compiler (`compiler/reverse._write_resolution_csv`, the cell rebuild) ·
 **Motivating case** the lead's 0.8.9 run (2026-11-18): restoring `pathogenic_clinvar`'s coordinate row `11:5226762 C>CAAAG` (RM449's remedy) broke `test_reference_example_round_trips_to_a_fixed_point[pathogenic_clinvar]` · *related* RM364, RM380, RM449
 
 **What was seen, and that it is not RM449's.** The restored row validates and compiles under `--strict`, but a lap moves
@@ -2715,6 +2721,9 @@ two-row module above, one lap, projection equal.
 
 **Class.** A patch: no schema, column or vocabulary moves (P3). Severity low: the artifact's digest and
 `content_signature` hold, only the table's signature moves, and an enrich pass (which closing needs anyway) removes it.
+
+**Sized (the pm, 2026-11-18).** Agreed that it predates RM449: a module whose table files every coordinate row is
+a fixed point, and closing needs that enrich pass anyway. The builder's shape and test above.
 
 **Residuals** none yet.
 
