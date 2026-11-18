@@ -216,6 +216,10 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   takes the holder's lock, refuses every lookup from then on with `ValueError` (`remote.HOLDER_CLOSED`), and closes
   its clients and connections only once the lookups already running have finished. Before, a `close()` racing a
   lookup closed the proxy's client under it and the lookup's next request leaked `httpx`'s `RuntimeError`.
+- **An AST walk holds that only `remote.remote_url` hands duckdb a URL** (RM430 follow-up, the pm's 2026-11-18
+  finding): the test fence's duckdb case wraps that one function, so the walk is the fence's own guard. No duckdb
+  call in the enricher carries a URL literal, no module but `remote` loads `httpfs`, and in `remote` every
+  `read_parquet` binds files that `_file_url` built through `remote_url`. Each rule is shown failing on a sample.
 
 ## 2026-11-18 — RM453: a mirrored site where no spelling was witnessed keeps both spellings (patch, a declared corrected derivation, on `main`)
 

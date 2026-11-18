@@ -2593,6 +2593,10 @@ with RemoteSnapshots(declared_use="non_commercial") as snapshots:      # proxy f
     and not remotely; a strict `xfail` pins the first with the slice's `VKORC1`.
 - **`remote_url(base, *parts)`** builds every URL a holder asks; the root `conftest.py` wraps it, so a
   test that would hand duckdb a host other than this machine is refused and recorded like a socket reach.
+  The fence holds only while nothing else builds a URL duckdb opens, so an AST walk
+  (`test_the_network_is_fenced.py`) holds that: no duckdb call in the enricher carries a URL literal, no
+  module but `remote` loads `httpfs`, and in `remote` every `read_parquet` binds its files as a parameter
+  built by `_file_url`, which returns `remote_url(...)`.
 
 `caches.lane_status(locations=…)` takes local paths only. Handed a URL, a `Path` collapses it
 (`hf://datasets/a/b` becomes `hf:/datasets/a/b`), the lane's resolver finds no directory there, and the
