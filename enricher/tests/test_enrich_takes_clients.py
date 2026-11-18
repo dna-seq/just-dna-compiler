@@ -17,6 +17,8 @@ network up (S157). What these tests pin, each against the real run:
 """
 
 import logging
+import re
+import shutil
 import threading
 from collections.abc import Iterator, Sequence
 from pathlib import Path
@@ -24,6 +26,7 @@ from pathlib import Path
 import httpx
 import pytest
 from just_dna_enricher.clients import LookupClients
+from just_dna_enricher.clinvar_build import build_snapshot as build_clinvar
 from just_dna_enricher.enrich import enrich
 from just_dna_enricher.enrich.orchestration import OFFLINE_OUTRANKS_SEQUENCES, _RecordedEutils
 from just_dna_enricher.ensembl import BatchResolver, EnsemblResolver, EnsemblSettings, RsidAnswer
@@ -42,6 +45,10 @@ _YAML = (
 )
 #: rs1801133 is rsID-only, so the live link is asked about it; rs429358 authors both halves.
 _PLACED = {"rs1801133": ("1", 11796321, "G", "A")}
+
+
+_ASSETS = Path(__file__).resolve().parents[2] / "assets"
+_REFERENCE_EXAMPLES = Path(__file__).resolve().parents[2] / "reference_examples"
 
 
 def _spec(root: Path) -> Path:
@@ -623,3 +630,50 @@ def test_a_host_resolver_with_the_public_capability_is_asked_in_a_batch(tmp_path
     assert resolver.batches == [["rs1801133"]]
     placed = {row.rsid: (row.chrom, row.start) for row in result.rows}
     assert placed["rs1801133"] == ("1", 11796321)
+
+
+# ── with neither new argument a run writes the same bytes as before (the CHANGELOG's claim, round 2) ──
+
+
+def _written(root: Path) -> dict[str, bytes]:
+    """Every file under `root` by relative path, the verification record's two clock fields masked."""
+    out: dict[str, bytes] = {}
+    for path in sorted(p for p in root.rglob("*") if p.is_file()):
+        data = path.read_bytes()
+        if path.name == "verification.json":
+            data = re.sub(rb'"(produced_at|checked_at)": "[^"]*"', rb'"\1": "<clock>"', data)
+        out[path.relative_to(root).as_posix()] = data
+    return out
+
+
+@pytest.mark.usefixtures("no_ambient_caches")
+@pytest.mark.parametrize("example", ["hfe_hemochromatosis", "pathogenic_clinvar"])
+def test_enrich_with_neither_new_argument_writes_what_a_call_naming_each_as_none_writes(
+    example: str, ensembl_split_core, tmp_path: Path
+) -> None:
+    """A reference example enriched through the real path, offline, against a manifest-attested Ensembl core (so
+    the rsID-index ladder runs and scans) and a ClinVar snapshot built from the slice, once with `clients`,
+    `sequences` and `rsid_index` left out and once with each passed as `None`: every written file is the same
+    bytes, `verification.json`'s clock fields aside. This cannot fail by construction while the defaults are
+    `None`; it holds that they stay so. A true 0.8 baseline is another release's code and cannot run inside a
+    test: it was measured at the build instead (the branch's report)."""
+    core = ensembl_split_core(tmp_path / "ensembl_variations")
+    clinvar = build_clinvar(_ASSETS / "clinvar_GRCh38_slice.vcf.gz", tmp_path / "clinvar").out_dir
+    written: list[dict[str, bytes]] = []
+    for side, extra in (("default", {}), ("named", {"clients": None, "sequences": None, "rsid_index": None})):
+        target = tmp_path / side
+        shutil.copytree(_REFERENCE_EXAMPLES / example, target)
+        (target / "resolution.csv").unlink()
+        result = enrich(
+            target,
+            offline=True,
+            ensembl_cache=core,
+            clinvar_cache=clinvar,
+            download=False,
+            use_gnomad=False,
+            **extra,
+        )
+        assert result.rows, "the run resolved rows, so equal bytes are not two empty runs"
+        written.append(_written(target))
+    assert "resolution.csv" in written[0]
+    assert written[0] == written[1]

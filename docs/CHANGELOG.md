@@ -105,7 +105,7 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   passed proxy is the only GRCh38 reference source the run reads (the reference check, left-alignment, the minter
   and the anchor base of the resolver the run builds; a resolver the caller gives keeps its own, and the
   wrong-build diagnosis reads GRCh37 through `grch37`). Under `offline=True` it is not used, and the run warns once
-  (`orchestration.OFFLINE_OUTRANKS_SEQUENCES`). With neither argument a run writes the same bytes as before.
+  (`orchestration.OFFLINE_OUTRANKS_SEQUENCES`). With neither argument a run writes the same bytes as before: measured against `main`'s 0.8 code on five reference examples offline (only `verification.json`'s clock differs), and held by a test that a call naming each new argument as `None` writes what a call leaving them out does.
 - **`ensembl.BatchResolver` and `ensembl.RsidAnswer`** (RM404, RM401's capability published): an injected resolver
   with `resolve_rsids_batched(rsids)` is asked in batches. The 0.8 line's private `_BatchResolver`, its
   `_resolve_rsids` and `_Answer` are gone; `_RestBatchWitness` stays private. **`EnsemblSettings.batch_size`**
