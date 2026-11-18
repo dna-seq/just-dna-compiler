@@ -2641,6 +2641,16 @@ example now states nothing about the insertion. The row and its `studies.csv` ro
 RM449's warning names (a coordinate row picks the event); the README's 0.8 paragraph says why, and the module is
 closed again. `content_signature` moves on a reference example that nothing publishes.
 
+**0.8.9 waits for both build defects (the pm, 2026-11-18, from the lead's full suite).** (1) One enricher test
+fails on the block and passes without it (`test_clinvar.py::test_a_record_the_genotype_cannot_host_is_left_out_of_the_table`:
+`rs777` left unresolved under strict). (2) The restored example is not a fixed point: with the coordinate row back,
+compile, reverse, compile moves `resolution_signature` and `vrs_alleles` (531 to 532). Before RM449 that row was
+refused as a duplicate, so the instability is RM449's, and its own warning recommends exactly that row. Both are
+defects of this build, so RM449 is not done until both pass, and the restored `pathogenic_clinvar` row is the P7
+fixture for the second. If the lap fix outgrows half a day, RM448 ships alone as 0.8.9 once (1) is shown not to be
+its, and RM449 follows as 0.8.10. A re-close after the restore needs an enrich pass first, since `close` drops
+`verification.json`'s enrich records when the module hash moves.
+
 **Residuals** won't fix — a site witnessed both ways is not refused in 0.8 (the pm: refusing it is a minor's
 question, by escalating `rsid_genotype_reads_as_two_events`) · won't fix — an authored coordinate row winning over
 the expansion (S158's option 2) silences only the loud case
