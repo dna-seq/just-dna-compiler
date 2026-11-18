@@ -67,7 +67,7 @@ yield are merged in, and every existing row is kept. A key that did not join the
 import csv
 import json
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -81,6 +81,7 @@ from just_dna_format.locus_genes import ColocalisationRow, LocusToGeneRow
 from just_dna_format.normalize import now_utc_iso
 from just_dna_format.resolution import ResolutionRow
 from just_dna_format.snapshot import SnapshotRelease, read_release
+from just_dna_format.vrs import normalize_chrom
 from pydantic import BaseModel
 
 from just_dna_enricher.licensing import (
@@ -100,7 +101,7 @@ from just_dna_enricher.opentargets_build import (
     OPENTARGETS_DATASETS,
     VARIANTS_FILE,
 )
-from just_dna_enricher.resolver import probe_table
+from just_dna_enricher.resolver import _typed_rows_connection, probe_table
 
 logger = logging.getLogger(__name__)
 
@@ -203,18 +204,24 @@ def _quoted(path: Path) -> str:
     return str(path).replace("'", "''")
 
 
-def _connect(snapshot: Path) -> duckdb.DuckDBPyConnection:
-    """Views over the snapshot's tables. The paths are our own cache's, quoted defensively."""
-    data = snapshot / "data"
+#: Each view the pass and the keyed functions query, and the snapshot file (or glob) it is over.
+_VIEWS: dict[str, str] = {
+    "variants": VARIANTS_FILE,
+    "consequences": CONSEQUENCES_GLOB,
+    "credible_sets": CREDIBLE_SETS_FILE,
+    "members": MEMBERS_GLOB,
+    "l2g": L2G_FILE,
+    "coloc": COLOC_GLOB,
+}
+
+
+def _connect(snapshot: Path, views: Sequence[str] = tuple(_VIEWS)) -> duckdb.DuckDBPyConnection:
+    """Views over the snapshot's tables (every one unless `views` names some). The paths are our own
+    cache's, quoted defensively; a table the snapshot cannot be read for raises `OpenTargetsError`."""
+    data = Path(snapshot) / "data"
     con = duckdb.connect(":memory:")
-    for view, name in (
-        ("variants", VARIANTS_FILE),
-        ("consequences", CONSEQUENCES_GLOB),
-        ("credible_sets", CREDIBLE_SETS_FILE),
-        ("members", MEMBERS_GLOB),
-        ("l2g", L2G_FILE),
-        ("coloc", COLOC_GLOB),
-    ):
+    for view in views:
+        name = _VIEWS[view]
         try:
             con.execute(f"CREATE VIEW {view} AS SELECT * FROM read_parquet('{_quoted(data / name)}')")
         except duckdb.Error as exc:
@@ -908,6 +915,204 @@ def _licence(
         )
 
     return _commit_licence
+
+
+# ── the keyed functions (0.9, RM431 ask 6) ──────────────────────────────────────────────────────
+#
+# One SQL body per question, over a connection exposing the view it names: the local reader runs it over
+# the snapshot's files, and a remote answer's rows (`remote.RemoteSnapshots.lookup`, the tables below) run
+# it through `_variants_from_rows` / `_consequences_from_rows`, so a key reads alike on every route.
+
+#: The allele table's columns `lookup_variants` answers, typed for a remote answer's rows.
+_VARIANT_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("variant_id", "VARCHAR"),
+    ("chrom", "VARCHAR"),
+    ("position", "BIGINT"),
+    ("ref", "VARCHAR"),
+    ("alt", "VARCHAR"),
+    ("rs_ids", "VARCHAR[]"),
+)
+#: The per-transcript consequence columns, and the credible-set membership columns.
+_CONSEQUENCE_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("variant_id", "VARCHAR"),
+    ("transcript", "VARCHAR"),
+    ("gene_id", "VARCHAR"),
+    ("gene", "VARCHAR"),
+    ("consequence_so_ids", "VARCHAR"),
+    ("impact", "VARCHAR"),
+    ("mane_select", "VARCHAR"),
+    ("canonical", "BOOLEAN"),
+)
+_MEMBER_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("study_locus_id", "VARCHAR"),
+    ("variant_id", "VARCHAR"),
+    ("posterior_probability", "DOUBLE"),
+)
+#: The tables a remote route names (`remote.table_name` of the snapshot's files), and the `table` value
+#: each row of `lookup_consequences` carries to say which one it is.
+REMOTE_VARIANTS_TABLE = "variants"
+REMOTE_CONSEQUENCES_TABLE = "consequences"
+REMOTE_MEMBERS_TABLE = "credible_set_members"
+
+
+def _select_list(con: duckdb.DuckDBPyConnection, view: str, columns: Sequence[tuple[str, str]]) -> str:
+    """`columns` as a select list over `view`; one the view lacks reads as a typed `NULL`.
+
+    A snapshot built before the allele table carried `rs_ids` still answers, with that cell `None`, so
+    a row has the same keys on every snapshot and on every route.
+    """
+    present = {d[0] for d in con.execute(f"SELECT * FROM {view} LIMIT 0").description}
+    return ", ".join(
+        f'"{name}"' if name in present else f'CAST(NULL AS {sql_type}) AS "{name}"'
+        for name, sql_type in columns
+    )
+
+
+def _wanted_positions(positions: Sequence[tuple[str, int]]) -> dict[tuple[str, int], list[tuple[str, int]]]:
+    """`(chrom, position)` as the release spells it (`normalize_chrom`: no `chr`, `MT`) → the keys asked so."""
+    wanted: dict[tuple[str, int], list[tuple[str, int]]] = {}
+    for chrom, position in positions:
+        bare = normalize_chrom(str(chrom))
+        if bare is None:
+            raise ValueError(f"{chrom!r} names no chromosome")
+        asked = (chrom, int(position))
+        keys = wanted.setdefault((bare, int(position)), [])
+        if asked not in keys:
+            keys.append(asked)
+    return wanted
+
+
+def _variant_keys(positions: Sequence[tuple[str, int]]) -> dict[str, list]:
+    """The keys a remote route is asked for `positions`: `chrom` and `start` paired, as the release spells them."""
+    wanted = list(_wanted_positions(positions))
+    return {"chrom": [chrom for chrom, _ in wanted], "start": [position for _, position in wanted]}
+
+
+def _variants_over(
+    con: duckdb.DuckDBPyConnection, positions: Sequence[tuple[str, int]]
+) -> dict[tuple[str, int], list[dict]]:
+    """`lookup_variants`' query over a connection exposing `variants`: the one copy."""
+    wanted = _wanted_positions(positions)
+    if not wanted:
+        return {}
+    probe_table(con, "_wanted_positions", [("chrom", "VARCHAR"), ("position", "BIGINT")], list(wanted))
+    # The positions and chromosomes as literals too: a join alone prunes no row group of the allele
+    # table, and a bound integer prunes none either (RM430's measurement). The table is sorted by chrom
+    # then position, so the two together leave about one row group per position (0.03 s against 0.08 s
+    # for position alone, on 26.09's 128). `int()` and the quote escape make each literal safe.
+    starts = ", ".join(str(int(position)) for _, position in wanted)
+    chroms = ", ".join("'" + chrom.replace("'", "''") + "'" for chrom in sorted({c for c, _ in wanted}))
+    cursor = con.execute(
+        f"SELECT v.* FROM (SELECT {_select_list(con, 'variants', _VARIANT_COLUMNS)} FROM variants "
+        f"WHERE position IN ({starts}) AND chrom IN ({chroms})) v "
+        "JOIN _wanted_positions w ON v.chrom = w.chrom AND v.position = w.position "
+        "ORDER BY v.chrom, v.position, v.ref, v.alt, v.variant_id"
+    )
+    columns = [d[0] for d in cursor.description]
+    answer: dict[tuple[str, int], list[dict]] = {}
+    for values in cursor.fetchall():
+        row = dict(zip(columns, values, strict=True))
+        for asked in wanted[(str(row["chrom"]), int(row["position"]))]:
+            answer.setdefault(asked, []).append(dict(row))
+    return answer
+
+
+def lookup_variants(
+    reference: Path, positions: Sequence[tuple[str, int]]
+) -> dict[tuple[str, int], list[dict]]:
+    """`(chrom, position)` → every allele the release's allele table states there, as plain dicts (RM431).
+
+    Joins on chrom + position, never on `variant_id`, whose string prunes no row group of the allele
+    table (about 55 MB read for one lookup, the registry's measurement). A position is keyed as it was
+    asked (`chr6` and `6` are two keys with the same rows) and compared as the release spells it
+    (`normalize_chrom`). Each row is the allele table's own columns: `variant_id`, `chrom`, `position`,
+    `ref`, `alt`, `rs_ids` (a list; `None` on a snapshot built before the table carried it). A position
+    the release states nothing at is not a key; a snapshot that cannot be read raises
+    `OpenTargetsError`, never an empty answer. Read-only, and it never fetches.
+    """
+    if not positions:
+        return {}
+    con = _connect(reference, ("variants",))
+    try:
+        return _variants_over(con, positions)
+    finally:
+        con.close()
+
+
+def _variants_from_rows(
+    rows: Sequence[Mapping[str, object]], positions: Sequence[tuple[str, int]]
+) -> dict[tuple[str, int], list[dict]]:
+    """`lookup_variants`' answer over a remote answer's rows of `REMOTE_VARIANTS_TABLE`."""
+    con = _typed_rows_connection(("variants", _VARIANT_COLUMNS, rows))
+    try:
+        return _variants_over(con, positions)
+    finally:
+        con.close()
+
+
+def _variant_ids(variant_ids: Sequence[str]) -> list[str]:
+    return list(dict.fromkeys(str(v).strip() for v in variant_ids if str(v).strip()))
+
+
+def _consequences_over(con: duckdb.DuckDBPyConnection, variant_ids: Sequence[str]) -> dict[str, list[dict]]:
+    """`lookup_consequences`' queries over a connection exposing `consequences` and `members`: the one copy."""
+    ids = _variant_ids(variant_ids)
+    if not ids:
+        return {}
+    marks = ", ".join("?" for _ in ids)
+    answer: dict[str, list[dict]] = {}
+    for view, table, columns, order in (
+        ("consequences", REMOTE_CONSEQUENCES_TABLE, _CONSEQUENCE_COLUMNS, "variant_id, transcript"),
+        (
+            "members",
+            REMOTE_MEMBERS_TABLE,
+            _MEMBER_COLUMNS,
+            "variant_id, study_locus_id, posterior_probability",
+        ),
+    ):
+        cursor = con.execute(
+            f"SELECT {_select_list(con, view, columns)} FROM {view} WHERE variant_id IN ({marks}) ORDER BY {order}",
+            ids,
+        )
+        names = [d[0] for d in cursor.description]
+        for values in cursor.fetchall():
+            row = dict(zip(names, values, strict=True))
+            answer.setdefault(str(row["variant_id"]), []).append({"table": table, **row})
+    return {variant_id: answer[variant_id] for variant_id in ids if variant_id in answer}
+
+
+def lookup_consequences(reference: Path, variant_ids: Sequence[str]) -> dict[str, list[dict]]:
+    """`variant_id` → its per-transcript consequences, then its GWAS credible-set memberships (RM431).
+
+    The ids are the release's own (`lookup_variants` answers them). Each row is a plain dict carrying
+    `table`, `"consequences"` (the columns of `consequences.csv`'s source: `transcript`, `gene_id`,
+    `gene`, `consequence_so_ids`, `impact`, `mane_select`, `canonical`) or `"credible_set_members"`
+    (`study_locus_id`, `posterior_probability`), so the two tables' rows stay apart in one list:
+    consequences first, by transcript, then memberships, by study locus. An id the release holds neither
+    for is not a key; a snapshot that cannot be read raises `OpenTargetsError`. Read-only.
+    """
+    if not variant_ids:
+        return {}
+    con = _connect(reference, ("consequences", "members"))
+    try:
+        return _consequences_over(con, variant_ids)
+    finally:
+        con.close()
+
+
+def _consequences_from_rows(
+    consequences: Sequence[Mapping[str, object]],
+    members: Sequence[Mapping[str, object]],
+    variant_ids: Sequence[str],
+) -> dict[str, list[dict]]:
+    """`lookup_consequences`' answer over a remote answer's rows of the two tables."""
+    con = _typed_rows_connection(
+        ("consequences", _CONSEQUENCE_COLUMNS, consequences), ("members", _MEMBER_COLUMNS, members)
+    )
+    try:
+        return _consequences_over(con, variant_ids)
+    finally:
+        con.close()
 
 
 def summarise(result: OpenTargetsResult) -> dict:

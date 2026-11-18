@@ -144,6 +144,13 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   remote answer's rows (`lookup_loci` and `lookup_clin_sig` keep their signatures and stay local). A route that
   could not be asked is a `warning` finding, never an empty answer; `lookup.py` catches
   `SnapshotRouteUnavailable` before `duckdb.Error`, held by an AST walk.
+- **`opentargets.lookup_variants` and `opentargets.lookup_consequences`** (RM431 ask 6, S145): Open Targets'
+  public keyed functions. `lookup_variants(reference, positions)` reads the allele table by chrom + position (never
+  by `variant_id`) and answers `{(chrom, position) as asked: [rows]}`; `lookup_consequences(reference,
+  variant_ids)` answers each id's consequences and credible-set memberships, every row tagged with its `table`.
+  Plain dicts, in duckdb; an unreadable snapshot raises `OpenTargetsError`. `opentargets` is now remote-eligible
+  (`remote.REMOTE_LANES`): tables `variants` (by `chrom` + `start`), `consequences` and `credible_set_members` (by
+  `variant_id`), and the same SQL reads a remote answer's rows as the local files.
 
 ## 2026-11-17 — RM446: a reused client's earlier 410 no longer tells a later run's outage to upgrade (patch, on `main`)
 

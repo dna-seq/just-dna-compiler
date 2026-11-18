@@ -167,7 +167,15 @@ def _with_proxy(holder: RemoteSnapshots, proxy: Callable[[httpx.Request], httpx.
 
 def test_every_remote_lane_is_a_published_lane_and_the_excluded_ones_are_not_remote() -> None:
     assert set(REMOTE_LANES) <= set(SNAPSHOT_REPO_IDS) & set(LANES_BY_NAME)
-    assert set(REMOTE_LANES) == {"ensembl", "clinvar", "constraint", "clinpgx", "cpic", "drug_labels"}
+    assert set(REMOTE_LANES) == {
+        "ensembl",
+        "clinvar",
+        "constraint",
+        "clinpgx",
+        "cpic",
+        "drug_labels",
+        "opentargets",
+    }
     assert not set(REMOTE_LANES) & {"mitomap", "strchive", "alphagenome_avi", "pharmvar", "pubmind"}
     assert [name for name, lane in REMOTE_LANES.items() if lane.needs_position] == ["ensembl"]
     assert {lane.name for lane in CACHE_LANES} >= set(REMOTE_LANES)

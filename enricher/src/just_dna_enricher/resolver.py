@@ -8,6 +8,7 @@ into `just-dna-pipelines` and never downloads anything — provisioning the refe
 caller's responsibility (the marketplace pins one reference for the whole ecosystem).
 """
 
+import json
 import logging
 import re
 from collections import defaultdict
@@ -396,6 +397,36 @@ def _rows_connection(
     """
     con = duckdb.connect(":memory:")
     probe_table(con, name, columns, [tuple(row.get(column) for column, _ in columns) for row in rows])
+    return con
+
+
+def _typed_rows_connection(
+    *tables: tuple[str, Sequence[tuple[str, str]], Sequence[Mapping[str, object]]],
+) -> duckdb.DuckDBPyConnection:
+    """`_rows_connection` for tables with list, boolean or floating-point columns (RM431).
+
+    Each of `tables` is `(name, columns, rows)`. `probe_table` renders every cell as an integer or a
+    quoted string, which is right for the scalar columns RM430's readers read and wrong for Open
+    Targets' `rs_ids` (a list) or its `canonical` (a boolean). Here a table's rows go to duckdb as one
+    JSON document, typed by `from_json` against `columns`, so a list stays a list and a `NULL` a
+    `NULL`; one bound string, where a bound list of structs costs about 15 s per 20,000 rows in
+    duckdb's Python binding (measured). A column a row lacks is `NULL`.
+    """
+    con = duckdb.connect(":memory:")
+    try:
+        for name, columns, rows in tables:
+            shape = json.dumps(dict(columns)).replace("'", "''")
+            document = json.dumps(
+                [{column: row.get(column) for column, _ in columns} for row in rows], default=str
+            )
+            con.execute(
+                f"CREATE TABLE {name} AS SELECT s.* FROM "
+                f"(SELECT unnest(from_json(?::JSON, '[{shape}]')) AS s)",
+                [document],
+            )
+    except BaseException:
+        con.close()
+        raise
     return con
 
 

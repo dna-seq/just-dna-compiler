@@ -430,7 +430,7 @@ core was ported, not depended on, dropping `fastmcp`/`eliot`). In the workspace:
 | `gwas` | RM90: the GWAS Catalog REST API (v2 since RM354) → `gwas_effects.csv` (published effect sizes **with their units**). Fills no `weight` | `httpx`, format |
 | `expression` | RM194/RM200: the Atlas `ListDenseVariantScores` RNA_SEQ interval → `expression_effects.csv` (per-gene direction, **with the distance beside it**). Non-commercial, so an undeclared run writes nothing | `atlas_client`, `gene_spans`, format |
 | `ld_pairs` | **0.8** (RM331): Ensembl REST pairwise LD → `ld_pairs.csv`, r² between each study's `proxy_rsid` and its lead in the study's one superpopulation. Online only | `httpx`, `tenacity`, format |
-| `opentargets` | **0.8** (RM333/RM239/RM236): the Open Targets snapshot → `locus_to_gene.csv`, `colocalisations.csv`, `consequences.csv`, and the fine-mapping posterior on `gwas_effects.csv`. Reads only the snapshot; coordinates from `resolution.csv` | `duckdb`, `opentargets` lane, format |
+| `opentargets` | **0.8** (RM333/RM239/RM236): the Open Targets snapshot → `locus_to_gene.csv`, `colocalisations.csv`, `consequences.csv`, and the fine-mapping posterior on `gwas_effects.csv`. Reads only the snapshot; coordinates from `resolution.csv`. **0.9** (RM431): the keyed functions `lookup_variants` (chrom + position) and `lookup_consequences` (`variant_id`) | `duckdb`, `opentargets` lane, format |
 | `gene_spans` | RM194: gene symbol → GRCh38 span, out of the operator-built MANE snapshot. A module with a plain name rather than a private helper, so the second caller can find it. RM259 added the reverse, `genes_covering`: a GRCh38 position → every gene whose span plus the 512 kb attribution horizon covers it, a **query hint** for a row with no authored `gene`, never an attribution (50 candidates at HFE H63D, 34 at APOE) | `polars`, `mane` lane |
 | `atlas_client` | RM192: the AlphaGenome Atlas gRPC client — `ListDenseVariantScores` and the interval RPCs, on `[atlas]` (grpcio + protobuf, 19 MB measured) rather than the 550 MB upstream wheel | `grpcio`, `protobuf` (extra) |
 | `atlas_protos` | RM192/RM196: fetch the Apache-2.0 `.proto` sources at a pinned commit and generate the bindings. The repository carries the **pin** — a commit id and a sha256 per file — and neither the sources nor the generated code | `grpc_tools` (extra) |
@@ -2379,8 +2379,8 @@ with RemoteSnapshots(declared_use="non_commercial") as snapshots:      # proxy f
   `clinvar`, `gnomad_constraint`, `annotations`, `genes`, `drug_labels`).
 - **Lanes** (`remote.REMOTE_LANES`): `ensembl` (by `chrom` + `start` only: an rsID alone is refused
   before any route, since about 10.7 GB would be read on the Hub), `clinvar`, `constraint`, `clinpgx`,
-  `cpic`, `drug_labels`. Not `mitomap`, `strchive` or `alphagenome_avi`; `opentargets`, `civic` and
-  `clinvar_gkm` join with their keyed functions (RM431). PharmVar and PubMind have no published repo.
+  `cpic`, `drug_labels`, and since RM431 `opentargets` (each by its keyed function's keys, below). Not
+  `mitomap`, `strchive` or `alphagenome_avi`. PharmVar and PubMind have no published repo.
 - **The proxy** (`POST {proxy}/api/v1/lanes/{lane}/{table}`, the registry's §§ 46–47): one keep-alive
   `httpx` client, a 3 s connect and 10 s read timeout, at most 100 key values a request and one
   chromosome per request. A reply with `truncated: true` is halved and asked again, down to one key; one
@@ -2432,6 +2432,24 @@ with RemoteSnapshots(declared_use="non_commercial") as snapshots:      # proxy f
   empty`), never an empty answer; so is a request a route refuses as wrong (a table the repo no longer
   names, a closed holder), which `lookup` raises as `ValueError` and a lookup reports, and a remote miss names what was searched (`rsN: not in the ClinVar
   snapshot read over hf (release …)`).
+- **The keyed functions (RM431).** A lane RM431 made eligible is asked by the keys of its keyed function, and
+  that function's SQL runs over the rows a route answers exactly as over the local files (one body per question,
+  `_…_over`; the remote half is `_…_from_rows`, private, as RM430's are). No public function takes a holder in
+  0.9: a host asks `RemoteSnapshots.lookup` with the table and keys below and gets the rows.
+  - `opentargets.lookup_variants(reference, positions: Sequence[tuple[str, int]]) -> dict[tuple[str, int],
+    list[dict]]`: every allele the release's allele table states at each position, keyed as asked (`chr6` and
+    `6` are two keys with the same rows), compared as the release spells it (`normalize_chrom`). A row is the
+    table's own columns: `variant_id`, `chrom`, `position`, `ref`, `alt`, `rs_ids` (a list). Remotely: table
+    `variants`, keys `chrom` + `start` (the holder reads `position` for `start`). It joins on chrom + position,
+    never on `variant_id` (about 55 MB read for one lookup, the registry's measurement); locally one position
+    reads in about 0.1 s on 26.09.
+  - `opentargets.lookup_consequences(reference, variant_ids: Sequence[str]) -> dict[str, list[dict]]`: each
+    id's per-transcript consequences, then its GWAS credible-set memberships, in one list; every row carries
+    `table`, `"consequences"` or `"credible_set_members"`, so the two tables' rows stay apart. Remotely: tables
+    `consequences` and `credible_set_members`, key `variant_id`. Over the Hub this reads the footer of every
+    part (25 and 200 files), so it costs many requests of the anonymous quota.
+  - Both return plain dicts, as `lookup_clin_sig` does; a key the release holds nothing for is not in the
+    answer, and a snapshot that cannot be read raises `OpenTargetsError`, never an empty answer.
 - **`remote_url(base, *parts)`** builds every URL a holder asks; the root `conftest.py` wraps it, so a
   test that would hand duckdb a host other than this machine is refused and recorded like a socket reach.
 

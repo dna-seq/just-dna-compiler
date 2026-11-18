@@ -216,7 +216,8 @@ class RemoteLane:
 #: The lanes a holder reads remotely. Each needs a published repo; a lane without one (PharmVar and
 #: PubMind are operator-built) stays local. Not here on purpose: `mitomap` and `strchive` (no keyed
 #: reader; STRchive's catalogue is one small file), `alphagenome_avi` (its one reader is a writing pass,
-#: which stays local). `opentargets`, `civic` and `clinvar_gkm` join with their keyed functions (RM431).
+#: which stays local). `opentargets` joined with its keyed functions (RM431): `variants` by chrom +
+#: start, `consequences` and `credible_set_members` by `variant_id`.
 REMOTE_LANES: dict[str, RemoteLane] = {
     lane.name: lane
     for lane in (
@@ -226,6 +227,7 @@ REMOTE_LANES: dict[str, RemoteLane] = {
         RemoteLane("clinpgx"),
         RemoteLane("cpic"),
         RemoteLane("drug_labels"),
+        RemoteLane("opentargets"),
     )
 }
 
