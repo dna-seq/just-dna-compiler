@@ -688,11 +688,15 @@ def test_prepare_picks_each_lanes_route_from_the_registry(
     outcomes = caches.prepare_caches(lanes)
 
     by_name = {o.lane: o for o in outcomes}
+    # A lane built only when named is never built by prepare, named or not (RM431).
+    builds = {
+        x.name for x in CACHE_LANES if x.ensure is None and x.rebuild is not None and x.named_only is None
+    }
     for lane in CACHE_LANES:
-        expected = "pulled" if lane.ensure is not None else ("built" if lane.rebuild else "none")
+        expected = "pulled" if lane.ensure is not None else ("built" if lane.name in builds else "none")
         assert by_name[lane.name].route == expected, lane.name
     assert set(pulled) == {x.name for x in CACHE_LANES if x.ensure is not None}
-    assert set(built) == {x.name for x in CACHE_LANES if x.ensure is None and x.rebuild is not None}
+    assert set(built) == builds
 
 
 def test_prepare_leaves_a_present_cache_alone(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

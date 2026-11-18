@@ -162,6 +162,18 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   position or under an rsID, keyed as asked; an absent or unreadable slice raises `ClinVarGkmError`.
   `clinvar_gkm` is now remote-eligible (table `clinvar_gkm-indels`, by `chrom` + `start` or `rsid`), one SQL body
   over the local file and a remote answer's rows. The VRS id stays a local key: it is not one of the registry's.
+- **`clinpgx.lookup_rsids` and `clinpgx.lookup_genes`** (RM431 ask 5, the pm's reading 4, S145): ClinPGx's keyed
+  functions, in duckdb, beside `load_snapshot` (which stays the whole-table loader): every annotation row under an
+  rsID or naming a gene (a member of the `;`-joined `gene` cell, by `gene_key`), keyed as asked; an absent or
+  unreadable snapshot raises `ClinPgxEnrichmentError`. One SQL body over the local file and a remote answer's rows
+  (table `annotations`, by `rsid` or `gene`). Known divergence: a remote route compares the whole cell, so a gene
+  in another case or inside a multi-gene cell is answered locally only.
+- **`drug_labels.lookup_genes`** (RM431 ask 5, the pm's reading 4, S145): the drug labels' keyed function, in
+  duckdb, beside `load_drug_labels` (unchanged): every label naming a gene (a member of the `genes` cell, by
+  `gene_key`), keyed as asked, every column; an absent snapshot raises `DrugLabelUnavailable`, an unreadable one
+  `DrugLabelError`. One SQL body over the local file and a remote answer's rows (table `drug_labels`, by
+  `genes`). Known divergence: a remote route compares the whole cell, so a gene on a label naming several
+  (a quarter of the labels) is answered locally only.
 - **A group re-pulled under its recorded declaration says which one** (RM437 follow-up, the pm's reading 1): the
   pull record keeps when each group's use was declared (`declared_at`, `download.PULL_RECORD_DECLARED_AT_KEY`),
   and a re-pull or skip gated by the recorded use rather than the call's logs `under the use recorded for it,
@@ -170,7 +182,7 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   (`download.DECLARED_AT_UNRECORDED`).
 - **The Ensembl rsID index, a derived local lane** (RM431 ask 4, S145, RM405's local half): `ensembl_rsid_index`,
   rsID → (chrom, start) over the split core, sorted by rsID (`data/ensembl_rsid_index-<bucket>.parquet`, columns
-  `rs`, `chrom`, `start`). Built by `cache rebuild --only ensembl_rsid_index` (and `cache prepare`) through
+  `rs`, `chrom`, `start`). Built only by `cache rebuild --only ensembl_rsid_index` through
   `ensembl_rsid_index_build.build_rsid_index`, never by a pull, so `enrich(download=True)` pays nothing; not
   published and not remote-eligible. Its `release.json` pins the core (`parents.ensembl`: the manifest's
   `release_id` and a digest of its attested files, `core_pin`). `resolver.lookup_loci` by rsID reads it first when
@@ -179,6 +191,19 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   2,524 s to build; one rsID in 0.15 s against 6.2 s scanned. New: `locations.ENSEMBL_RSID_INDEX_SUBDIR`,
   `ENSEMBL_RSID_INDEX_CACHE_VAR` (`$JUST_DNA_ENSEMBL_RSID_INDEX_CACHE`), `resolve_ensembl_rsid_index_reference`,
   `default_ensembl_rsid_index_cache_dir`.
+- **The rsID index is built only when named** (RM431, the pm's reading 2): `cache rebuild --only
+  ensembl_rsid_index`. A bare `cache rebuild` (and `rebuild_caches(lanes=None)`) reports it *not run*, and
+  `cache prepare` never builds it, named or not, its line naming the build where the lane is read; neither
+  pays about 42 minutes and 6 GB unasked. New: `CacheLane.named_only` (the reason, `None` on every other lane)
+  and `RebuildRequest.named` (default `True`); `cache status` says it of an absent index.
+- **A lookup that scans for want of the rsID index says so once** (RM431, the pm's reading 2): the first rsID
+  lookup of a process that finds no index where it looks logs, at `info`, that an index exists and the command
+  that builds one there (`No rsID index was found at <place>, so rsIDs in the Ensembl core at <core> are looked
+  up by scanning…`). A core with no manifest, which no index could be built from, says nothing.
+- **`resolver.lookup_loci(..., *, rsid_index=None)`** (RM431, the pm's reading 5): a host that passes its lanes'
+  paths explicitly (the registry's proxy, S154) hands over the rsID index's directory beside the core's. Given,
+  it is the only place looked in, never the environment; the index is still read only when it pins the core, and
+  the note and the stale refusal name the place passed and say to pass the rebuilt one, not to export a variable.
 
 ## 2026-11-18 — RM453: a mirrored site where no spelling was witnessed keeps both spellings (patch, a declared corrected derivation, on `main`)
 

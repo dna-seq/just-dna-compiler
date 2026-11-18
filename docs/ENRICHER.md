@@ -469,7 +469,7 @@ core was ported, not depended on, dropping `fastmcp`/`eliot`). In the workspace:
 | `cpic_notation` | CPIC's `DEL<bases>`/`INS<bases>`/`UNIT(n)` → a VCF-anchored, left-normalized REF/ALT (RM253); never reads on its own, the caller passes the reference reader | `sequences` |
 | `pgx` | pass 5: cross-check star-allele tables, write the licence table | the three above |
 | `clinpgx_build` | `[dev]`: `summaryAnnotations.zip` → snapshot parquet + pinned `LICENSE.txt`; refuses the retired `clinicalAnnotations.zip` by name | `polars`, `httpx` |
-| `clinpgx` | pass 6: evidence-level cross-check over the snapshot (offline) | `duckdb` (core, not polars) |
+| `clinpgx` | pass 6: evidence-level cross-check over the snapshot (offline). **0.9** (RM431): the keyed functions `lookup_rsids` and `lookup_genes` | `duckdb` (core, not polars) |
 | `gnomad` | live gnomAD GraphQL: batched + paced rsid resolution, frequency, gene constraint | `httpx`, `tenacity` |
 | `frequencies` | pass 2: `resolution.csv` → `frequencies.csv` (per-ancestry-group AC/AN) | compiler `load_csv_rows`, format |
 | `gene_metrics` | pass 3: the module's genes → `gene_metrics.csv` (snapshot first, live API second) | `duckdb`, format |
@@ -491,7 +491,7 @@ core was ported, not depended on, dropping `fastmcp`/`eliot`). In the workspace:
 | `ensembl_rsid_index_build` | **0.9** (RM431 ask 4): the Ensembl rsID index, rsID → (chrom, start) sorted by rsID, built in duckdb from the split core on disk (`build_rsid_index`), and `core_pin`, what an index pins of its core (the manifest's `release_id` and a digest of its attested `data/` files). A derived lane, local only; `resolver.lookup_loci` reads it | `duckdb`, `locations` |
 | `upload` | publisher surface — push a compiled module or a reference snapshot to HF (`[dev]`) | `huggingface_hub` (lazy) |
 | `litvar` | RM167: LitVar2/PubTator3 literature coverage per locus, **with the tier that answered** (allele node / position node / absent). Reports only; writes no row and no `SourceRow` | `httpx`, `tenacity`, `clingen_allele` |
-| `drug_labels` | RM166: five regulators' drug labels — the `(gene[, allele], drug)` cross-check at two join tiers (offline, reports only, writes no `SourceRow`) | `duckdb`, format `pgx`, compiler `load_csv_rows` |
+| `drug_labels` | RM166: five regulators' drug labels — the `(gene[, allele], drug)` cross-check at two join tiers (offline, reports only, writes no `SourceRow`). **0.9** (RM431): the keyed function `lookup_genes` | `duckdb`, format `pgx`, compiler `load_csv_rows` |
 | `drug_labels_build` | **`[dev]`** builder (0.7, RM166): ClinPGx's `drugLabels.zip` → one parquet + `LICENSE.txt` + its own `release.json`, dated from the archive's own `CREATED_*.txt` | `polars` (lazy), `httpx` |
 | `caches` | The cache registry (`CACHE_LANES`) and the rebuild adapters behind `cache rebuild` — one entry per lane carrying its three stages and, for each stage it lacks, the reason as a field. Walked by a test against the `*_build` modules on disk (RM176) | — |
 | `cli` | A package since RM260 — `__init__` assembles the app and re-exports every name `cli.py` carried, one `*_commands` submodule per command group. Typer app: the runtime commands (`enrich`, `frequencies`, `gene-metrics`, `gene-validity`, `assertions`, `enrich-and-compile`), the authoring ones (`hint`, `draft-*`, the `check-*` family), `upload`, `cache status`/`pull`/`rebuild`/`prune`, `vrs mint`, and **one builder group per `CACHE_LANES` lane carrying a `build_command`** — a `publish` exists exactly where the lane names a `publish_repo`, and `pubmind publish` is the one that exists in order to refuse with its reason. The per-command flag tables are `--help` and the dated listing in [audit/](audit/README.md); a hand-kept copy here would be the second thing to update | `typer` |
@@ -1845,9 +1845,16 @@ group, and a lookup by rsID pruned nothing (every row group's `id` spans rs1 to 
   path. A label alone is not a core: one label has been seen over two sets of bytes (RM445), and a test
   slice states the real release's label. A core whose manifest names no release cannot be indexed.
   `dataset` is the core's release, so `cache status` prints which release the index is of.
-- **Built, never pulled.** `cache rebuild --only ensembl_rsid_index` (and `cache prepare`, which builds a
-  missing derived lane from its parents) builds it; no `ensure` does, so `cache pull`,
-  `ensure_snapshot` and `enrich(download=True)` pay nothing for it. The build runs in duckdb with an
+- **Built, never pulled, and only when named** (the pm's reading 2, 2026-11-18). `cache rebuild --only
+  ensembl_rsid_index` builds it; no `ensure` does, so `cache pull`, `ensure_snapshot` and
+  `enrich(download=True)` pay nothing for it, and neither does a provisioning run or a nightly rebuild:
+  the lane's `CacheLane.named_only` states why (about 42 minutes and 6 GB), and a bare `cache rebuild`
+  (`rebuild_caches(lanes=None)`, which passes `RebuildRequest(named=False)`) reports it *not run* with
+  that reason. `cache prepare` never builds it, named or not: an absent index is *unavailable*, and a
+  present one is left alone. Its line, and `cache status`'s for an absent index, name the build where the
+  lane's resolver reads it (`$JUST_DNA_ENSEMBL_RSID_INDEX_CACHE`, else the default): `cache rebuild --only
+  ensembl_rsid_index --out <base>` for a place named `ensembl_rsid_index`, else `--out <dir>` and the
+  variable to point at `<dir>/ensembl_rsid_index`. The build runs in duckdb with an
   8 GB ceiling and 4 threads, in two passes so nothing holds the whole index in memory (one global
   `DISTINCT … ORDER BY` ran out of that ceiling): each core file's distinct rows go into rsID buckets,
   then each bucket is sorted into its file, all under a hidden staging directory inside the output. It
@@ -1867,7 +1874,20 @@ group, and a lookup by rsID pruned nothing (every row group's `id` spans rs1 to 
   An index pinning another core is refused once per process with a warning naming both and
   `cache rebuild --only ensembl_rsid_index`, and the core is scanned; a core with no manifest is scanned
   silently. `cache prepare` leaves a present index alone, a stale one included: rebuilding it is
-  `cache rebuild`.
+  `cache rebuild`. **With no index where it looked**, the core is scanned and the first such lookup of the
+  process says so at `info` (once per process, the pm's reading 2): `No rsID index was found at <place>, so
+  rsIDs in the Ensembl core at <core> are looked up by scanning…`, naming the lane and ending in the command
+  that builds an index there (`just-dna-enricher cache rebuild --only ensembl_rsid_index --out <base>`).
+  `info`, because a scan is the normal state of a host that never named the index: the answers are the
+  same, only slower.
+- **A host that passes its lanes' paths hands the index over too** (the pm's reading 5; the registry's proxy,
+  S154): `resolver.lookup_loci(reference, rsids, positions, non_nucleotide=None, *, rsid_index=None)`.
+  `rsid_index` is the lane's directory, beside the core's `reference`; given, it is the only place looked in,
+  never the environment, and an index there is read only when it pins `reference`, as above. With no index
+  there, or a stale one, the note and the refusal name the place passed, and an instruction for a place not
+  named `ensembl_rsid_index` says to pass `<dir>/ensembl_rsid_index` as `rsid_index` rather than to export
+  `$JUST_DNA_ENSEMBL_RSID_INDEX_CACHE`. `None` keeps the ladder above. `lookup_variant` and `enrich` take no
+  such path in 0.9: they read the index from the environment.
 
 **MANE's ❓ is an unestablished permission, and the third column says so.** MANE's bytes carry a
 *policy* — NCBI places no restrictions on use or distribution and, in the same paragraph, declines to
@@ -2096,6 +2116,11 @@ published, build if not.
 - **In Python:** `caches.prepare_caches(...)`, which the command calls. `caches.rebuild_caches(...)` is
   its sibling. Both return one outcome per lane in registry order, so a caller can zip against
   `CACHE_LANES` without matching on names.
+- **A lane built only when named** (0.9, RM431: `CacheLane.named_only`, the reason as a field, `None` for
+  every other lane) is never built by `cache prepare`, and a bare `cache rebuild` reports it *not run*;
+  `cache rebuild --only <lane>` builds it. `RebuildRequest.named` (default `True`: a caller of
+  `rebuild_lane` has named its lane) is what the loops over every lane set to `False`.
+  `ensembl_rsid_index` is the one such lane.
 
 **Every bulk download goes through one body, and a failed one is a failed lane (RM187).** Each
 builder streams its source's file through `net.stream_to_file`, which is atomic (`.part`, renamed only
@@ -2520,8 +2545,8 @@ with RemoteSnapshots(declared_use="non_commercial") as snapshots:      # proxy f
     answer, and a snapshot that cannot be read raises `OpenTargetsError`, never an empty answer.
   - Each table a remote route is asked for is a module constant beside its keyed function:
     `opentargets.REMOTE_VARIANTS_TABLE`, `REMOTE_CONSEQUENCES_TABLE`, `REMOTE_MEMBERS_TABLE` (also the
-    `table` values `lookup_consequences` tags its rows with), `civic_draft.REMOTE_CIVIC_TABLE` and
-    `clinvar_gkm.REMOTE_WITNESS_TABLE`.
+    `table` values `lookup_consequences` tags its rows with), `civic_draft.REMOTE_CIVIC_TABLE`,
+    `clinvar_gkm.REMOTE_WITNESS_TABLE`, `clinpgx.REMOTE_ANNOTATIONS_TABLE` and `drug_labels.REMOTE_LABELS_TABLE`.
   - `civic_draft.lookup_genes(reference, genes) -> dict[str, list[dict]]` and `civic_draft.lookup_rsids(reference,
     rsids) -> dict[str, list[dict]]`: every snapshot row under each gene (compared by `gene_key`: case and
     surrounding space make no second gene) or rsID (lower case, `rs` prefixed: `334` is `rs334`), keyed as asked,
@@ -2540,6 +2565,28 @@ with RemoteSnapshots(declared_use="non_commercial") as snapshots:      # proxy f
     wrong*. Remotely: table `clinvar_gkm-indels`, keys `chrom` + `start` (the holder reads `pos`) and `rsid`.
     The VRS id is not a key: it is not one of `remote.KEY_COLUMNS`, the registry's list, so it stays local
     (`by_vrs_id`).
+  - `clinpgx.lookup_rsids(reference, rsids) -> dict[str, list[dict]]` and `clinpgx.lookup_genes(reference, genes)
+    -> dict[str, list[dict]]` (the pm's reading 4): every annotation row (one per annotation and genotype) under
+    each rsID (lower case, `rs` prefixed; only an annotation whose subject is an rsID carries one) or naming each
+    gene, keyed as asked, every column of `annotations.parquet`, in one total order. A gene is a member of the
+    `;`-joined `gene` cell (`KLC1;XRCC3` names both, as `draft-clinpgx --gene` reads it), compared by
+    `gene_key`. `load_snapshot` stays the whole-table loader; an absent or unreadable snapshot raises
+    `ClinPgxEnrichmentError`. Remotely (lane `clinpgx`, eligible since RM430, gated by ClinPGx's no-sale terms):
+    table `annotations`, keys `rsid` (as the snapshot spells it) and `gene` (each as given, stripped). **Known
+    divergence:** a remote route compares the whole `gene` cell exactly, so a gene asked in another case, and a
+    gene inside a multi-gene cell (399 of 16,117 rows on the 2026-08 snapshot), are answered locally and not
+    remotely. A strict `xfail` pins the case half; the slice holds no multi-gene cell, so that half is pinned
+    locally only.
+  - `drug_labels.lookup_genes(reference, genes) -> dict[str, list[dict]]` (the pm's reading 4): every
+    regulator's label naming each gene, keyed as asked, every column of `drug_labels.parquet` (`LABEL_COLUMNS`,
+    unparsed), in one total order. A label names a gene when a member of its `genes` cell does (`CYP2C9; VKORC1`
+    names both, split on `CELL_SEPARATOR` as `load_drug_labels` splits it), compared by `gene_key`; a label naming
+    two asked genes is under both. `load_drug_labels` stays the loader the check reads. An absent snapshot raises
+    `DrugLabelUnavailable`, an unreadable one `DrugLabelError`. Remotely (lane `drug_labels`, eligible since
+    RM430, gated by ClinPGx's no-sale terms): table `drug_labels`, key `genes` (each gene as given, stripped).
+    **Known divergence:** a remote route compares the whole `genes` cell exactly, so a gene on a label naming
+    several (361 of 1,433 labels on the 2026-08 snapshot), and a gene asked in another case, are answered locally
+    and not remotely; a strict `xfail` pins the first with the slice's `VKORC1`.
 - **`remote_url(base, *parts)`** builds every URL a holder asks; the root `conftest.py` wraps it, so a
   test that would hand duckdb a host other than this machine is refused and recorded like a socket reach.
 

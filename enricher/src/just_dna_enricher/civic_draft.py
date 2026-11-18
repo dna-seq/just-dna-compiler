@@ -53,7 +53,7 @@ from just_dna_enricher.drafting import DRAFT_PROVIDERS, licence_commit, record_d
 from just_dna_enricher.drafting import identity_refused_by_model as scaffold_identity_refused
 from just_dna_enricher.licensing import CIVIC_TERMS, CLINGEN_ALLELE_REGISTRY_TERMS
 from just_dna_enricher.locations import resolve_civic_reference
-from just_dna_enricher.resolver import _asked_rsids, _typed_rows_connection
+from just_dna_enricher.resolver import _asked_genes, _asked_rsids, _typed_rows_connection
 from just_dna_enricher.sequences import SequenceProxy, _held_by_one_run, _left_align
 from just_dna_enricher.verification import examples
 
@@ -247,15 +247,6 @@ def _select_civic(con: duckdb.DuckDBPyConnection, where: str, params: list[str])
     cursor = con.execute(f"SELECT {names} FROM civic WHERE {where} ORDER BY ALL", params)
     columns = [d[0] for d in cursor.description]
     return [dict(zip(columns, values, strict=True)) for values in cursor.fetchall()]
-
-
-def _asked_genes(genes: Sequence[str]) -> dict[str, list[str]]:
-    """`gene_key` → the genes asked under it, in order: `Vhl` and `VHL` are one gene (RM351)."""
-    asked: dict[str, list[str]] = {}
-    for gene in genes:
-        if gene.strip() and gene not in asked.setdefault(gene_key(gene), []):
-            asked[gene_key(gene)].append(gene)
-    return {key: spellings for key, spellings in asked.items() if spellings}
 
 
 def _civic_gene_keys(genes: Sequence[str]) -> dict[str, list[str]]:

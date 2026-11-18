@@ -7,11 +7,21 @@ must equal the local reader's over the same snapshot: same keys, same rows, one 
 
 import hashlib
 import json
+import zipfile
 from pathlib import Path
 
 import duckdb
 import pytest
-from just_dna_enricher import civic_draft, clinvar_gkm, opentargets, remote
+from just_dna_enricher import (
+    civic_draft,
+    clinpgx,
+    clinpgx_build,
+    clinvar_gkm,
+    drug_labels,
+    drug_labels_build,
+    opentargets,
+    remote,
+)
 from just_dna_enricher.civic_build import CIVIC_PARQUET, build_snapshot
 from just_dna_enricher.clinvar_gkm import ALLELE_FILE, VARIATION_FILE, WITNESS_PARQUET, parse_manifest
 from just_dna_enricher.clinvar_gkm_build import build_snapshot as build_witness
@@ -22,6 +32,8 @@ _ASSETS = Path(__file__).resolve().parents[2] / "assets"
 OPENTARGETS_SLICE = _ASSETS / "opentargets_slice"
 CIVIC_SLICE = _ASSETS / "civic_slice"
 GKM_SLICE = _ASSETS / "clinvar_gkm_slice"
+CLINPGX_SLICE = _ASSETS / "clinpgx_annotations_slice"
+LABELS_SLICE = _ASSETS / "clinpgx_drug_labels_slice"
 COMMIT = "c" * 40
 
 
@@ -169,3 +181,149 @@ def test_clinvar_gkm_answers_remotely_by_position_and_by_rsid_as_the_local_reade
     local_rsids = clinvar_gkm.lookup_rsids(gkm_root, rsids)
     assert len(local_rsids) == 2
     assert clinvar_gkm._rsids_from_rows(by_rsid.rows, rsids) == local_rsids
+
+
+# ── ClinPGx (the pm's reading 4) ────────────────────────────────────────────────────────────────
+
+
+def _zipped(directory: Path, archive: Path) -> Path:
+    with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as handle:
+        for path in sorted(directory.iterdir()):
+            handle.write(path, path.name)
+    return archive
+
+
+@pytest.fixture(scope="module")
+def clinpgx_root(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    tmp = tmp_path_factory.mktemp("clinpgx")
+    archive = _zipped(CLINPGX_SLICE, tmp / "summaryAnnotations.zip")
+    return clinpgx_build.build_snapshot(
+        archive, tmp / "snap", source_url="file://clinpgx_annotations_slice"
+    ).out_dir
+
+
+def _parquet_values(path: Path, column: str) -> list[str]:
+    quoted = str(path).replace("'", "''")
+    return [
+        str(value)
+        for (value,) in duckdb.sql(
+            f"SELECT DISTINCT {column} FROM read_parquet('{quoted}') WHERE {column} IS NOT NULL ORDER BY 1"
+        ).fetchall()
+    ]
+
+
+def test_the_annotations_table_is_named_as_a_remote_route_names_it() -> None:
+    assert remote.table_name("data/annotations.parquet") == clinpgx.REMOTE_ANNOTATIONS_TABLE
+
+
+def test_clinpgx_answers_remotely_by_rsid_and_by_gene_as_the_local_reader_does(
+    httpfs, loopback_hub, clinpgx_root: Path
+) -> None:
+    """ClinPGx's terms forbid sale, so the holder states a use they admit, or nothing is asked."""
+    assert "clinpgx" in REMOTE_LANES
+    loopback_hub.publish(SNAPSHOT_REPO_IDS["clinpgx"], clinpgx_root, COMMIT)
+    parquet = clinpgx_root / "data" / "annotations.parquet"
+    held = _parquet_values(parquet, "rsid")
+    rsids = [*held, held[0].removeprefix("rs"), "1"]
+    genes = [*_parquet_values(parquet, "gene"), "NOT_A_GENE"]
+    with RemoteSnapshots(hf_base_url=loopback_hub.base_url, declared_use="non_commercial") as holder:
+        by_rsid = holder.lookup("clinpgx", clinpgx.REMOTE_ANNOTATIONS_TABLE, clinpgx._rsid_keys(rsids))
+        by_gene = holder.lookup("clinpgx", clinpgx.REMOTE_ANNOTATIONS_TABLE, clinpgx._gene_keys(genes))
+    local_rsids = clinpgx.lookup_rsids(clinpgx_root, rsids)
+    assert len(local_rsids) == len(held) + 1, (
+        "every rsID held, and one asked bare, so an empty answer cannot pass"
+    )
+    assert clinpgx._rsids_from_rows(by_rsid.rows, rsids) == local_rsids
+    local_genes = clinpgx.lookup_genes(clinpgx_root, genes)
+    assert len(local_genes) == len(genes) - 1
+    assert clinpgx._genes_from_rows(by_gene.rows, genes) == local_genes
+
+
+@pytest.mark.xfail(
+    strict=True,
+    raises=AssertionError,
+    reason=(
+        "RM431 follow-up: a remote route compares the whole `gene` cell exactly and the local reader each "
+        "member by gene_key, so a gene asked in another case than ClinPGx stores it (and a gene inside a "
+        "`;`-joined cell, 399 of 16,117 rows on the 2026-08 snapshot) is answered locally only. The holder's "
+        "comparison is RM430's; this marker turns into a failure the day a remote route folds case, so it is "
+        "removed then."
+    ),
+)
+def test_a_clinpgx_gene_asked_in_another_case_answers_alike_on_both_routes(
+    httpfs, loopback_hub, clinpgx_root: Path
+) -> None:
+    loopback_hub.publish(SNAPSHOT_REPO_IDS["clinpgx"], clinpgx_root, COMMIT)
+    genes = [_parquet_values(clinpgx_root / "data" / "annotations.parquet", "gene")[0].lower()]
+    with RemoteSnapshots(hf_base_url=loopback_hub.base_url, declared_use="non_commercial") as holder:
+        answer = holder.lookup("clinpgx", clinpgx.REMOTE_ANNOTATIONS_TABLE, clinpgx._gene_keys(genes))
+    assert clinpgx._genes_from_rows(answer.rows, genes) == clinpgx.lookup_genes(clinpgx_root, genes)
+
+
+# ── the drug labels (the pm's reading 4) ────────────────────────────────────────────────────────
+
+
+@pytest.fixture(scope="module")
+def labels_root(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    tmp = tmp_path_factory.mktemp("drug-labels")
+    archive = _zipped(LABELS_SLICE, tmp / "drugLabels.zip")
+    return drug_labels_build.build_drug_label_snapshot(
+        archive, tmp / "snap", source_url="file://clinpgx_drug_labels_slice"
+    ).out_dir
+
+
+def _label_genes(root: Path) -> tuple[list[str], list[str]]:
+    """The genes of the slice's labels: those that are a whole cell, and those only inside a multi-gene one."""
+    cells = _parquet_values(root / "data" / drug_labels.LABELS_PARQUET, "genes")
+    whole = [cell for cell in cells if drug_labels.CELL_SEPARATOR not in cell]
+    inside = sorted(
+        {member for cell in cells for member in drug_labels._split(cell) if len(drug_labels._split(cell)) > 1}
+        - set(whole)
+    )
+    return whole, inside
+
+
+def test_the_labels_table_is_named_as_a_remote_route_names_it() -> None:
+    assert remote.table_name(f"data/{drug_labels.LABELS_PARQUET}") == drug_labels.REMOTE_LABELS_TABLE
+
+
+def test_drug_labels_answer_remotely_by_a_gene_named_alone_as_the_local_reader_does(
+    httpfs, loopback_hub, labels_root: Path
+) -> None:
+    assert "drug_labels" in REMOTE_LANES
+    loopback_hub.publish(SNAPSHOT_REPO_IDS["drug_labels"], labels_root, COMMIT)
+    whole, _ = _label_genes(labels_root)
+    cells = _parquet_values(labels_root / "data" / drug_labels.LABELS_PARQUET, "genes")
+    beside = {
+        member for cell in cells if len(drug_labels._split(cell)) > 1 for member in drug_labels._split(cell)
+    }
+    # Genes no label names beside another: the divergence on a multi-gene label is the strict xfail's.
+    alone = [gene for gene in whole if gene not in beside]
+    assert alone, "the slice names DPYD and SLCO1B1 only on their own"
+    genes = [*alone, "NOT_A_GENE"]
+    with RemoteSnapshots(hf_base_url=loopback_hub.base_url, declared_use="non_commercial") as holder:
+        answer = holder.lookup("drug_labels", drug_labels.REMOTE_LABELS_TABLE, drug_labels._gene_keys(genes))
+    local = drug_labels.lookup_genes(labels_root, genes)
+    assert len(local) == len(alone), "every gene is on a label in the slice, so an empty answer cannot pass"
+    assert drug_labels._genes_from_rows(answer.rows, genes) == local
+
+
+@pytest.mark.xfail(
+    strict=True,
+    raises=AssertionError,
+    reason=(
+        "RM431 follow-up: a remote route compares the whole `genes` cell exactly and the local reader each "
+        "member by gene_key, so a gene on a label naming several (`CYP2C9; VKORC1`, 361 of 1,433 labels on "
+        "the 2026-08 snapshot) is answered locally only. The holder's comparison is RM430's; this marker "
+        "turns into a failure the day a remote route reads a cell's members, so it is removed then."
+    ),
+)
+def test_a_gene_inside_a_multi_gene_label_answers_alike_on_both_routes(
+    httpfs, loopback_hub, labels_root: Path
+) -> None:
+    loopback_hub.publish(SNAPSHOT_REPO_IDS["drug_labels"], labels_root, COMMIT)
+    _, inside = _label_genes(labels_root)
+    assert inside, "the slice names VKORC1 only beside CYP2C9"
+    with RemoteSnapshots(hf_base_url=loopback_hub.base_url, declared_use="non_commercial") as holder:
+        answer = holder.lookup("drug_labels", drug_labels.REMOTE_LABELS_TABLE, drug_labels._gene_keys(inside))
+    assert drug_labels._genes_from_rows(answer.rows, inside) == drug_labels.lookup_genes(labels_root, inside)
