@@ -157,6 +157,11 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   `gene_key`, an rsID as the snapshot spells it. `civic` is now remote-eligible (table `civic`, by `gene` or
   `rsid`), one SQL body over the local file and a remote answer's rows. Known divergence: a remote route compares
   a gene exactly, so `brca1` is answered locally and not remotely.
+- **`clinvar_gkm.lookup_variants` and `clinvar_gkm.lookup_rsids`** (RM431 ask 5, S145): ClinVar-GKM's keyed
+  functions, in duckdb, beside `ClinVarGkmWitness.load` (which stays the polars loader): every placement at a
+  position or under an rsID, keyed as asked; an absent or unreadable slice raises `ClinVarGkmError`.
+  `clinvar_gkm` is now remote-eligible (table `clinvar_gkm-indels`, by `chrom` + `start` or `rsid`), one SQL body
+  over the local file and a remote answer's rows. The VRS id stays a local key: it is not one of the registry's.
 
 ## 2026-11-17 — RM446: a reused client's earlier 410 no longer tells a later run's outage to upgrade (patch, on `main`)
 

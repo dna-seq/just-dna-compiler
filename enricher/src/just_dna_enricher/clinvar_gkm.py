@@ -43,11 +43,12 @@ comparison uses on every row; the caller supplies it left-normalized, since the 
 import json
 import logging
 import re
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 
+import duckdb
 import httpx
 from just_dna_format.base import coordinate_key
 from just_dna_format.snapshot import SNAPSHOT_DATA_DIRNAME, SnapshotRelease, read_release
@@ -65,6 +66,7 @@ from just_dna_enricher.net import (
     raise_if_retired,
     retry_if_transient,
 )
+from just_dna_enricher.resolver import _typed_rows_connection
 
 try:  # the one guarded optional import (CLAUDE.md): polars reads the slice
     import polars as pl
@@ -598,3 +600,181 @@ class ClinVarGkmWitness:
         raise ValueError(
             f"{key!r} is not a VRS id, an rsID or a one-ALT coordinate key (chrom:start:ref:alt)"
         )
+
+
+# ── the keyed functions (0.9, RM431 ask 5) ──────────────────────────────────────────────────────
+#
+# Beside `ClinVarGkmWitness.load`, which reads the whole slice with polars and stays as it is. These read
+# in duckdb (a runtime pass, `@duckdb-vs-polars`), one SQL body per key over a connection exposing
+# `witness`: the local reader runs it over the slice's parquet, and a remote answer's rows
+# (`remote.RemoteSnapshots.lookup`, table `REMOTE_WITNESS_TABLE`) run it through `_variants_from_rows` /
+# `_rsids_from_rows`. The VRS id is not a key here: it is not one of the keys a remote route answers
+# (`remote.KEY_COLUMNS`), and `ClinVarGkmWitness.by_vrs_id` answers it locally.
+
+#: The slice's columns, typed for a remote answer's rows. Held equal to `clinvar_gkm_build`'s
+#: `_witness_schema()` by a test rather than derived from it: that schema is polars'.
+_WITNESS_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("vrs_id", "VARCHAR"),
+    ("chrom", "VARCHAR"),
+    ("pos", "BIGINT"),
+    ("ref", "VARCHAR"),
+    ("alt", "VARCHAR"),
+    ("gnomad", "VARCHAR"),
+    ("spdi", "VARCHAR"),
+    ("state_type", "VARCHAR"),
+    ("clinvar_variation_id", "VARCHAR"),
+    ("rsid", "VARCHAR"),
+)
+#: The table a remote route names for the slice (`remote.table_name` of `data/clinvar_gkm-indels.parquet`).
+REMOTE_WITNESS_TABLE = "clinvar_gkm-indels"
+
+
+def _witness_connection(reference: Path) -> duckdb.DuckDBPyConnection:
+    """A connection exposing the slice as `witness`, or `ClinVarGkmError` naming what could not be read."""
+    path = Path(reference) / SNAPSHOT_DATA_DIRNAME / WITNESS_PARQUET
+    if not path.is_file():
+        raise ClinVarGkmError(f"{reference} holds no {SNAPSHOT_DATA_DIRNAME}/{WITNESS_PARQUET}")
+    con = duckdb.connect(":memory:")
+    try:
+        # A local path from the caller's own cache, quoted defensively: a view cannot bind a parameter.
+        quoted = str(path).replace("'", "''")
+        con.execute(f"CREATE VIEW witness AS SELECT * FROM read_parquet('{quoted}')")
+        con.execute("SELECT * FROM witness LIMIT 0")
+    except duckdb.Error as exc:
+        con.close()
+        raise ClinVarGkmError(f"{path} could not be read: {exc}") from exc
+    return con
+
+
+def _select_witness(con: duckdb.DuckDBPyConnection, where: str, params: list) -> list[dict]:
+    """The placements matching `where`, every column, in one total order both routes reproduce."""
+    names = ", ".join(f'"{name}"' for name, _ in _WITNESS_COLUMNS)
+    cursor = con.execute(f"SELECT {names} FROM witness WHERE {where} ORDER BY ALL", params)
+    columns = [d[0] for d in cursor.description]
+    return [dict(zip(columns, values, strict=True)) for values in cursor.fetchall()]
+
+
+def _asked_positions(positions: Sequence[tuple[str, int]]) -> dict[tuple[str, int], list[tuple[str, int]]]:
+    """`(chrom, pos)` as the witness spells it (`normalize_chrom`) → the keys asked so, in order."""
+    asked: dict[tuple[str, int], list[tuple[str, int]]] = {}
+    for chrom, pos in positions:
+        key = (chrom, int(pos))
+        spelled = asked.setdefault((normalize_chrom(str(chrom)), int(pos)), [])
+        if key not in spelled:
+            spelled.append(key)
+    return asked
+
+
+def _variant_keys(positions: Sequence[tuple[str, int]]) -> dict[str, list]:
+    """The keys a remote route is asked for `positions`: `chrom` and `start` paired, as the witness spells them."""
+    wanted = list(_asked_positions(positions))
+    return {"chrom": [chrom for chrom, _ in wanted], "start": [pos for _, pos in wanted]}
+
+
+def _variants_over(
+    con: duckdb.DuckDBPyConnection, positions: Sequence[tuple[str, int]]
+) -> dict[tuple[str, int], list[dict]]:
+    """`lookup_variants`' query over a connection exposing `witness`: the one copy."""
+    asked = _asked_positions(positions)
+    if not asked:
+        return {}
+    # Literals for the positions, as the remote route renders them: a bound integer prunes no row group.
+    starts = ", ".join(str(int(pos)) for _, pos in asked)
+    chroms = sorted({chrom for chrom, _ in asked})
+    rows = _select_witness(
+        con, f"pos IN ({starts}) AND chrom IN ({', '.join('?' for _ in chroms)})", list(chroms)
+    )
+    answer: dict[tuple[str, int], list[dict]] = {}
+    for row in rows:
+        for key in asked.get((str(row["chrom"]), int(row["pos"])), ()):
+            answer.setdefault(key, []).append(dict(row))
+    return {key: answer[key] for keys in asked.values() for key in keys if key in answer}
+
+
+def lookup_variants(
+    reference: Path, positions: Sequence[tuple[str, int]]
+) -> dict[tuple[str, int], list[dict]]:
+    """`(chrom, pos)` → every placement the witness holds there, as plain dicts (RM431).
+
+    Compared as the witness spells a contig (`normalize_chrom`: no `chr`, `M` read as `MT`) and keyed as
+    asked; each row is the slice's own columns. A position the witness holds nothing at is not a key, and
+    is **not witnessed**, never *placed wrong* (the class docstring's reading). A slice that is absent or
+    cannot be read raises `ClinVarGkmError`. Read-only, and it never fetches.
+    """
+    if not positions:
+        return {}
+    con = _witness_connection(reference)
+    try:
+        return _variants_over(con, positions)
+    finally:
+        con.close()
+
+
+def _variants_from_rows(
+    rows: Sequence[Mapping[str, object]], positions: Sequence[tuple[str, int]]
+) -> dict[tuple[str, int], list[dict]]:
+    """`lookup_variants`' answer over a remote answer's rows of `REMOTE_WITNESS_TABLE`."""
+    con = _typed_rows_connection(("witness", _WITNESS_COLUMNS, rows))
+    try:
+        return _variants_over(con, positions)
+    finally:
+        con.close()
+
+
+def _rsid_token(rsid: str) -> str:
+    """An rsID as the slice spells it, as `ClinVarGkmWitness.by_rsid` reads one: lower case, `rs` prefixed."""
+    token = rsid.strip().lower()
+    return token if token.startswith("rs") else f"rs{token}"
+
+
+def _asked_rsids(rsids: Sequence[str]) -> dict[str, list[str]]:
+    asked: dict[str, list[str]] = {}
+    for rsid in rsids:
+        if rsid.strip() and rsid not in asked.setdefault(_rsid_token(rsid), []):
+            asked[_rsid_token(rsid)].append(rsid)
+    return {token: spellings for token, spellings in asked.items() if spellings}
+
+
+def _rsid_keys(rsids: Sequence[str]) -> dict[str, list[str]]:
+    """The keys a remote route is asked for `rsids`: each as the slice spells it, as the local SQL compares."""
+    return {"rsid": list(_asked_rsids(rsids))}
+
+
+def _rsids_over(con: duckdb.DuckDBPyConnection, rsids: Sequence[str]) -> dict[str, list[dict]]:
+    """`lookup_rsids`' query over a connection exposing `witness`: the one copy."""
+    asked = _asked_rsids(rsids)
+    if not asked:
+        return {}
+    tokens = list(asked)
+    rows = _select_witness(con, f"rsid IN ({', '.join('?' for _ in tokens)})", tokens)
+    answer: dict[str, list[dict]] = {}
+    for row in rows:
+        for spelling in asked[str(row["rsid"])]:
+            answer.setdefault(spelling, []).append(dict(row))
+    return {rsid: answer[rsid] for spellings in asked.values() for rsid in spellings if rsid in answer}
+
+
+def lookup_rsids(reference: Path, rsids: Sequence[str]) -> dict[str, list[dict]]:
+    """An rsID → every placement the witness holds under it, as plain dicts (RM431).
+
+    Compared as `ClinVarGkmWitness.by_rsid` compares (lower case, `rs` prefixed) and keyed as asked. An
+    rsID naming two alleles answers both and picks neither (`@multiplicity-is-a-finding`); about 29% of the
+    indels carry no rsID, so an absent key is not witnessed, not absent from ClinVar. A slice that is
+    absent or cannot be read raises `ClinVarGkmError`. Read-only, and it never fetches.
+    """
+    if not any(rsid.strip() for rsid in rsids):
+        return {}
+    con = _witness_connection(reference)
+    try:
+        return _rsids_over(con, rsids)
+    finally:
+        con.close()
+
+
+def _rsids_from_rows(rows: Sequence[Mapping[str, object]], rsids: Sequence[str]) -> dict[str, list[dict]]:
+    """`lookup_rsids`' answer over a remote answer's rows of `REMOTE_WITNESS_TABLE`."""
+    con = _typed_rows_connection(("witness", _WITNESS_COLUMNS, rows))
+    try:
+        return _rsids_over(con, rsids)
+    finally:
+        con.close()

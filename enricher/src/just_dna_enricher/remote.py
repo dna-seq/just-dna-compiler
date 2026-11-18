@@ -217,8 +217,8 @@ class RemoteLane:
 #: PubMind are operator-built) stays local. Not here on purpose: `mitomap` and `strchive` (no keyed
 #: reader; STRchive's catalogue is one small file), `alphagenome_avi` (its one reader is a writing pass,
 #: which stays local). Joined with their keyed functions (RM431): `opentargets` (`variants` by chrom +
-#: start, `consequences` and `credible_set_members` by `variant_id`) and `civic` (`civic` by `gene` or
-#: `rsid`).
+#: start, `consequences` and `credible_set_members` by `variant_id`), `civic` (`civic` by `gene` or
+#: `rsid`) and `clinvar_gkm` (`clinvar_gkm-indels` by chrom + start or `rsid`; its VRS id is no key).
 REMOTE_LANES: dict[str, RemoteLane] = {
     lane.name: lane
     for lane in (
@@ -230,6 +230,7 @@ REMOTE_LANES: dict[str, RemoteLane] = {
         RemoteLane("drug_labels"),
         RemoteLane("opentargets"),
         RemoteLane("civic"),
+        RemoteLane("clinvar_gkm"),
     )
 }
 

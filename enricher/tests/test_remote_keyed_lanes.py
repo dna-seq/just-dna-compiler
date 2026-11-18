@@ -5,18 +5,23 @@ the keys the keyed function derives, and its rows go through the keyed function'
 must equal the local reader's over the same snapshot: same keys, same rows, one SQL body.
 """
 
+import hashlib
+import json
 from pathlib import Path
 
 import duckdb
 import pytest
-from just_dna_enricher import civic_draft, opentargets, remote
+from just_dna_enricher import civic_draft, clinvar_gkm, opentargets, remote
 from just_dna_enricher.civic_build import CIVIC_PARQUET, build_snapshot
+from just_dna_enricher.clinvar_gkm import ALLELE_FILE, VARIATION_FILE, WITNESS_PARQUET, parse_manifest
+from just_dna_enricher.clinvar_gkm_build import build_snapshot as build_witness
 from just_dna_enricher.locations import SNAPSHOT_REPO_IDS
 from just_dna_enricher.remote import REMOTE_LANES, RemoteSnapshots
 
 _ASSETS = Path(__file__).resolve().parents[2] / "assets"
 OPENTARGETS_SLICE = _ASSETS / "opentargets_slice"
 CIVIC_SLICE = _ASSETS / "civic_slice"
+GKM_SLICE = _ASSETS / "clinvar_gkm_slice"
 COMMIT = "c" * 40
 
 
@@ -117,3 +122,50 @@ def test_a_gene_asked_in_another_case_answers_alike_on_both_routes(
     with RemoteSnapshots(hf_base_url=loopback_hub.base_url) as holder:
         answer = holder.lookup("civic", civic_draft.REMOTE_CIVIC_TABLE, civic_draft._civic_gene_keys(genes))
     assert civic_draft._genes_from_rows(answer.rows, genes) == civic_draft.lookup_genes(civic_root, genes)
+
+
+# ── ClinVar-GKM ─────────────────────────────────────────────────────────────────────────────────
+
+
+@pytest.fixture(scope="module")
+def gkm_root(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    raw = json.loads((GKM_SLICE / "manifest.json").read_text(encoding="utf-8"))
+    for entry in raw["files"]:
+        path = {ALLELE_FILE: GKM_SLICE / ALLELE_FILE, VARIATION_FILE: GKM_SLICE / VARIATION_FILE}.get(
+            entry["name"]
+        )
+        if path is not None:
+            entry["size"] = path.stat().st_size
+            entry["sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
+    out = tmp_path_factory.mktemp("clinvar_gkm")
+    build_witness(
+        GKM_SLICE / ALLELE_FILE, GKM_SLICE / VARIATION_FILE, out, manifest=parse_manifest(json.dumps(raw))
+    )
+    return out
+
+
+def test_the_witness_table_is_named_as_a_remote_route_names_it() -> None:
+    assert remote.table_name(f"data/{WITNESS_PARQUET}") == clinvar_gkm.REMOTE_WITNESS_TABLE
+
+
+def test_clinvar_gkm_answers_remotely_by_position_and_by_rsid_as_the_local_reader_does(
+    httpfs, loopback_hub, gkm_root: Path
+) -> None:
+    assert "clinvar_gkm" in REMOTE_LANES
+    loopback_hub.publish(SNAPSHOT_REPO_IDS["clinvar_gkm"], gkm_root, COMMIT)
+    # rs72613567's insertion (a `chr` spelling), rs77944059's deletion, and a position holding nothing.
+    positions = [("chr4", 87310240), ("2", 166204470), ("4", 1)]
+    rsids = ["rs1003713657", "77944059", "rs8176719"]
+    with RemoteSnapshots(hf_base_url=loopback_hub.base_url) as holder:
+        by_position = holder.lookup(
+            "clinvar_gkm", clinvar_gkm.REMOTE_WITNESS_TABLE, clinvar_gkm._variant_keys(positions)
+        )
+        by_rsid = holder.lookup(
+            "clinvar_gkm", clinvar_gkm.REMOTE_WITNESS_TABLE, clinvar_gkm._rsid_keys(rsids)
+        )
+    local_positions = clinvar_gkm.lookup_variants(gkm_root, positions)
+    assert len(local_positions) == 2, "both indels are in the slice, so an empty answer cannot pass"
+    assert clinvar_gkm._variants_from_rows(by_position.rows, positions) == local_positions
+    local_rsids = clinvar_gkm.lookup_rsids(gkm_root, rsids)
+    assert len(local_rsids) == 2
+    assert clinvar_gkm._rsids_from_rows(by_rsid.rows, rsids) == local_rsids

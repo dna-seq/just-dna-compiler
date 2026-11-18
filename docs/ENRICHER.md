@@ -456,7 +456,7 @@ core was ported, not depended on, dropping `fastmcp`/`eliot`). In the workspace:
 | `mitomap` | RM171: MITOMAP's published `pg_dump` reader, and the **two-token grammar** its `status` column is written in | `duckdb` |
 | `mitomap_build` | RM171 builder: the 63 MB gzipped SQL dump → snapshot parquet + `release.json`. CC BY 3.0 with commercial use stated free, so a deployment may publish it | `polars` (lazy), `httpx` |
 | `mitomap_miss_build` | RM171: the **derived** lane — MITOMAP minus the ClinVar cache, recomputed from both parents rather than frozen as a diff | `polars` (lazy), `mitomap` + `clinvar` lanes |
-| `clinvar_gkm` | **0.8** (RM305): ClinGen's ClinVar-GKM as an indel-placement **witness**: the manifest/index client, the release label, the three-arm `lane_currency`, and `ClinVarGkmWitness`, the lookup by VRS id, VCF spelling or rsID a check calls. Runs no check of its own | `httpx`, `tenacity`, `polars` |
+| `clinvar_gkm` | **0.8** (RM305): ClinGen's ClinVar-GKM as an indel-placement **witness**: the manifest/index client, the release label, the three-arm `lane_currency`, and `ClinVarGkmWitness`, the lookup by VRS id, VCF spelling or rsID a check calls. Runs no check of its own. **0.9** (RM431): the keyed functions `lookup_variants` and `lookup_rsids`, in duckdb | `httpx`, `tenacity`, `polars`, `duckdb` |
 | `clinvar_gkm_build` | RM305 builder: `allele.parquet` + `variation.parquet` downloaded whole and verified against the set's `manifest.json`, cut to the GRCh38 net insertions and deletions, joined to ClinVar variation and rsID | `polars` (lazy), `httpx` |
 | `_rcrs` | RM273: the revised Cambridge Reference Sequence (NC_012920.1, GRCh38's chrM) as a vendored constant, so `mitomap_miss_build` left-aligns both sides' indels without a fetch | none |
 | `mitomap_draft` | RM171: the rated misses → `variants.csv` + `studies.csv`. Only the rated ones; the photocopies and `VUS*` are each refused for their own stated reason | `mitomap_miss`, compiler `draft` |
@@ -2379,7 +2379,7 @@ with RemoteSnapshots(declared_use="non_commercial") as snapshots:      # proxy f
   `clinvar`, `gnomad_constraint`, `annotations`, `genes`, `drug_labels`).
 - **Lanes** (`remote.REMOTE_LANES`): `ensembl` (by `chrom` + `start` only: an rsID alone is refused
   before any route, since about 10.7 GB would be read on the Hub), `clinvar`, `constraint`, `clinpgx`,
-  `cpic`, `drug_labels`, and since RM431 `opentargets` and `civic` (each by its keyed function's keys, below). Not
+  `cpic`, `drug_labels`, and since RM431 `opentargets`, `civic` and `clinvar_gkm` (each by its keyed function's keys, below). Not
   `mitomap`, `strchive` or `alphagenome_avi`. PharmVar and PubMind have no published repo.
 - **The proxy** (`POST {proxy}/api/v1/lanes/{lane}/{table}`, the registry's §§ 46–47): one keep-alive
   `httpx` client, a 3 s connect and 10 s read timeout, at most 100 key values a request and one
@@ -2460,6 +2460,14 @@ with RemoteSnapshots(declared_use="non_commercial") as snapshots:      # proxy f
     remotely; no guessed spelling is sent in its place, since HGNC symbols are not all upper case (`C9orf72`).
     Every symbol of the 01-Nov-2026 snapshot is stored upper case. A strict `xfail` in
     `test_remote_keyed_lanes.py` pins it until a remote route folds case.
+  - `clinvar_gkm.lookup_variants(reference, positions) -> dict[tuple[str, int], list[dict]]` and
+    `clinvar_gkm.lookup_rsids(reference, rsids) -> dict[str, list[dict]]`: every placement the witness holds at
+    each position (contig as `clinvar_gkm.normalize_chrom` spells it) or under each rsID (as `by_rsid` reads
+    one), keyed as asked, every column of the slice. `ClinVarGkmWitness.load` stays the polars loader. An
+    absent or unreadable slice raises `ClinVarGkmError`; an absent key is *not witnessed*, never *placed
+    wrong*. Remotely: table `clinvar_gkm-indels`, keys `chrom` + `start` (the holder reads `pos`) and `rsid`.
+    The VRS id is not a key: it is not one of `remote.KEY_COLUMNS`, the registry's list, so it stays local
+    (`by_vrs_id`).
 - **`remote_url(base, *parts)`** builds every URL a holder asks; the root `conftest.py` wraps it, so a
   test that would hand duckdb a host other than this machine is refused and recorded like a socket reach.
 
