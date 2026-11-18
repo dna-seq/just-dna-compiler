@@ -39,6 +39,11 @@ The lead's working state, rewritten to the present before each reset. Last rewri
 
 ## In flight
 
+- 0.8.9 cut 2026-11-18, awaiting the publish: cut commit 13b3be36 (format, compiler, enricher 0.8.9; format moves for the
+  release record alone), merged into main (48aa8ae3, then RM453 in 19a7cdb0, which is 0.8.10's). Dists built from
+  13b3be36 into the root `dist/`, twine check passed. After the publish: tag `v0.8.9` on 13b3be36, GitHub release from
+  scratchpad/release_notes_0_8_9.md, README.md:94 and CLAUDE.md:84 to name 0.8.9. Branches cut/v0.8.9 (superseded)
+  and land/v0.8.9 are the person's to delete.
 - Lanes behind source (liaison, 2026-11-17): done 2026-11-18. clinvar_2026-11-15 and mitomap_2026-11-09+2026-11-03
   published by the person (the classifier refused the seat, kit #529), pulled here; mitomap_miss rebuilt, the old copy
   moved to `/data/just-dna-cache/mitomap_miss.before-2026-11-18` (the person's to delete).
