@@ -2784,6 +2784,31 @@ declares the byte change.
 
 **Residuals** none
 
+## RM452 — a NULL `start` raises `TypeError` in the Ensembl rsID scan and in the position back-fill
+
+**Severity** low · **Status** open — **a patch, built on `main` 2026-11-18, uncut** · **Owner** enricher (`resolver._lookup_positions_by_rsid`, `resolver._lookup_rsid_candidates`) ·
+**Motivating case** the RM431 builder on `0.9` (recorded under RM431, `08a83122`; the pm, 2026-11-18: "predates 0.9, a patch on main, triage's") · *related* RM271, RM381
+
+**What was seen.** A synthetic split-core row `("1", NULL, "A", "G", "rs2100212723")` made `lookup_loci` raise
+`TypeError: int() argument must be … not 'NoneType'` at `_lookup_positions_by_rsid`'s `int(start)`. The back-fill
+`_lookup_rsid_candidates` has the same read for a probe: it drops a probe with no start from the query
+(`concrete`), but its result loop still calls `int(start)` when the probe has a chrom. So it raises whenever
+another probe in the call is whole. No published Ensembl release on this machine carries a NULL start
+(`ensembl-variation-2026_07_13-vep116.0`: 0 rows, read 2026-11-18), so this guards against a defect in the data,
+and no module has met it.
+
+**Built (triage, 2026-11-18).** The scan leaves a row with no chrom or start out of the answer. An rsID named only on
+such rows is said in one warning and never read as an answer, so the chain asks its next link, which an absence
+must not foreclose (`@unreachable-not-absent`). The back-fill gives a probe with no start no candidates, as it
+already gave one with no chrom. Tests in `test_a_null_start_places_nothing.py`: the builder's repro as it ran, a
+placed row beside an unplaced one, and the back-fill's probe. All three fail on `origin/main` (`dae4e0c8`) with the
+reported `TypeError`.
+
+**Class.** A patch: no schema, column, code or vocabulary moves (P3). Severity low: no real snapshot carries the
+shape.
+
+**Residuals** none
+
 # Not format scope
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.
