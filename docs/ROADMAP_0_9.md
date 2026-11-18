@@ -329,6 +329,33 @@ build time are measured by its builder, not by a separate trial.
   remote form would have no caller. It returns as a new item if a lookup ever reads AlphaGenome scores.
 - **RM412, the lead's default agreed:** `--rehearse-download` without `--dry-run` or `--publish` is refused.
 
+**The builder's readings, placed (the pm, 2026-11-18).** RM431 built at 823cf7c6: keyed functions for Open Targets,
+CIViC and ClinVar-GKM, one SQL body each for the local and remote routes, and the three lanes remote-eligible (live
+Hub 2 to 4 s each, the same rows as local). The rsID index: 1.17e9 rows, 6.07 GB, a 2,524 s build (about 11 GB of
+staging at peak); one rsID in 0.15 s with it against 6.15 s scanned.
+
+1. **CIViC by gene goes with cpic's fix:** the remote route takes the local case folding, in the RM430 follow-up that
+   already covers RM431's lanes; the strict xfail becomes a passing test.
+2. **The index is built only when named**, `cache rebuild --only ensembl_rsid_index`, as ask 4 decided ("rebuild-only,
+   like `mitomap_miss`"): neither `cache prepare` nor a bare `cache rebuild` pays 42 minutes and 6 GB on every host.
+   Where an rsID lookup scans without it, the log says once that the index exists and how to build it.
+3. **Confirmed:** a moved parent does not rebuild it (a 42-minute build inside a lookup is no answer); a stale index is
+   refused with a warning naming the rebuild command, and the lookup scans (`@a-derived-lane-has-parents-...`: a
+   moved parent is reported).
+4. **The ClinPGx and drug-label keyed functions are part of RM431** (ask 5 named four loaders), built before the review
+   round.
+5. **A host that passes lane paths explicitly can hand over the index too.** The registry's proxy, which the index was
+   decided for, passes its paths (S154, RM443), so an environment-only seam misses its one named user. The builder
+   picks the seam beside the Ensembl path `lookup_loci` already takes; part of RM431.
+6. **The proxy leg is tested over every remote lane**, one test parametrized over `REMOTE_LANES` through an
+   `httpx.MockTransport`, so a lane added later is covered by the walk rather than by memory
+   (`@registry-completeness`). In the RM430 follow-up.
+
+Of the deferred: the spill-directory fix gets its test in this item (every fix owes one: assert the build points
+duckdb's temporary directory at the staging directory); the `TypeError` on a `NULL` start in the scan predates 0.9
+and is triage's patch on `main`; a prebuilt `.duckdb` beside the core against the index's parquet pin is a residual
+of this entry (the path is deprecated and retired at 1.0).
+
 **Residuals** none yet.
 
 ## RM443 — `lane_status` resolves every lane from the environment, so a host that passes its lanes' paths explicitly cannot ask it about them
