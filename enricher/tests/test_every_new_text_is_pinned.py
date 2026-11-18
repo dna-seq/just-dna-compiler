@@ -5,11 +5,12 @@ item 2; `@warning-text-is-api`).
 or a `warnings` list, found by an AST walk over both sides of every changed module when this file was written,
 and each with the fragment of it that does not move with its arguments. Three checks hold it:
 
-* **the fragment is still the module's**: it is part of a string literal there, so rewording the text turns
-  this walk red, as well as the test that pins it;
-* **a test pins it**: the fragment is inside an `assert` (or a `pytest.raises(match=…)`) of another test
-  file, or the entry names the module constant the text is and a test asserts that constant. A string that
-  only appears in a test file pins nothing;
+* **the fragment is still the module's**: it is part of a string literal there (a `%s` in it is the module's
+  own placeholder, matched in an assert by whatever the test rendered), so rewording the text turns this walk
+  red, as well as the test that pins it;
+* **a test pins it**: the fragment is inside an `assert` (or a `pytest.raises(match=…)`) of the test file the
+  entry names, or the entry names the module constant the text is and an assert there references it. A string
+  that only appears in a test file pins nothing, and an assert in another file about other words pins nothing;
 * **a module wholly new in 0.9 has no text outside the list**: every emission in `NEW_MODULES` contains a
   fragment registered for it, so a new log line there owes an entry and a pin.
 
@@ -18,6 +19,7 @@ is shallow); such a text is caught at review, and this list is where it then goe
 """
 
 import ast
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -31,55 +33,57 @@ _LEVELS = {"debug", "info", "warning", "error", "exception", "critical"}
 
 @dataclass(frozen=True)
 class Text:
-    """One text 0.9 added: its module (dotted, under `just_dna_enricher`), its stable fragment, and the module
-    constant it is when it is one (a test may assert the constant rather than the words)."""
+    """One text 0.9 added: its module (dotted, under `just_dna_enricher`), its stable fragment, the test file
+    whose asserts pin it, and the module constant it is when it is one (a test may assert the constant)."""
 
     module: str
     fragment: str
+    pinned_in: str
     constant: str | None = None
 
 
 NEW_TEXTS: tuple[Text, ...] = (
-    # clinvar / lookup: a remote miss names what was searched
-    Text("clinvar", ": not in "),
-    Text("lookup", "the ClinVar snapshot read over "),
-    Text("lookup", " answered over two routes in one lookup: "),
-    Text("lookup", ": no local snapshot, and an rsID alone is never asked remotely"),
-    Text("lookup", "ClinVar could not be asked remotely, clin_sig unchecked: "),
-    Text("lookup", "could not be asked remotely, so its answer is unchecked rather than empty"),
-    # download: the Ensembl groups (RM437)
-    Text("download", "Pulling the Ensembl "),
-    Text("download", "Ensembl group "),
-    Text("download", ": skipped — "),
-    Text("download", "an earlier release's "),
-    Text("download", "selected by an earlier pull, was not re-pulled"),
-    # enrich: offline outranks a passed proxy (RM404)
+    Text("clinvar", ": not in ", "test_remote_snapshots.py"),
+    Text("lookup", "the ClinVar snapshot read over ", "test_remote_snapshots.py"),
+    Text("lookup", " answered over two routes in one lookup: ", "test_remote_snapshots.py"),
+    Text(
+        "lookup", ": no local snapshot, and an rsID alone is never asked remotely", "test_remote_snapshots.py"
+    ),
+    Text("lookup", "ClinVar could not be asked remotely, clin_sig unchecked: ", "test_remote_snapshots.py"),
+    Text(
+        "lookup",
+        "could not be asked remotely, so its answer is unchecked rather than empty",
+        "test_remote_snapshots.py",
+    ),
+    Text("download", "Pulling the Ensembl ", "test_ensembl_groups.py"),
+    Text("download", "Ensembl group ", "test_ensembl_groups.py"),
+    Text("download", "Ensembl group %s: skipped — ", "test_ensembl_groups.py"),
+    Text("download", "an earlier release's ", "test_ensembl_groups.py"),
+    Text("download", "selected by an earlier pull, was not re-pulled", "test_ensembl_groups.py"),
     Text(
         "enrich.orchestration",
         "does not use the sequence proxy passed as `sequences`",
+        "test_enrich_takes_clients.py",
         "OFFLINE_OUTRANKS_SEQUENCES",
     ),
-    # the rsID index (RM431)
-    Text("ensembl_rsid_index_build", "Sorted "),
-    Text("ensembl_rsid_index_build", "Built the rsID index of "),
-    Text("ensembl_rsid_index_build", "rsID index, pass 1: "),
-    Text("ensembl_rsid_index_build", "rsID index, pass 2: bucket "),
-    Text("resolver", "No rsID index was found at "),
-    Text("resolver", " was not built from the Ensembl core at "),
-    Text("resolver", " could not be read ("),
-    # the manifest's group records (review round 1, item 3)
-    Text("locations", "groups are not a map of name to record"),
-    Text("locations", " group is not an object; read with nothing stated"),
-    Text("locations", " do not fit; read as unstated."),
-    # the remote holder (RM430)
-    Text("remote", " row(s) over "),
-    Text("remote", ": pinned "),
-    Text("remote", "the proxy's replies to one lookup state "),
-    Text("remote", "; asking Hugging Face"),
-    Text("remote", "could not be read; it attests no file"),
-    Text("remote", "the proxy could not answer ("),
-    Text("remote", "the registry's proxy compares a whole cell exactly"),
-    Text("remote", "the registry's proxy answers at most "),
+    Text("ensembl_rsid_index_build", " rsID loci of ", "test_ensembl_rsid_index.py"),
+    Text("ensembl_rsid_index_build", "Built the rsID index of ", "test_ensembl_rsid_index.py"),
+    Text("ensembl_rsid_index_build", "rsID index, pass 1: ", "test_ensembl_rsid_index.py"),
+    Text("ensembl_rsid_index_build", "rsID index, pass 2: bucket ", "test_ensembl_rsid_index.py"),
+    Text("resolver", "No rsID index was found at ", "test_ensembl_rsid_index.py"),
+    Text("resolver", " was not built from the Ensembl core at ", "test_ensembl_rsid_index.py"),
+    Text("resolver", "; scanning the core.", "test_ensembl_rsid_index.py"),
+    Text("locations", "groups are not a map of name to record", "test_ensembl_groups.py"),
+    Text("locations", " group is not an object; read with nothing stated", "test_ensembl_groups.py"),
+    Text("locations", " do not fit; read as unstated.", "test_ensembl_groups.py"),
+    Text("remote", " row(s) over ", "test_remote_snapshots.py"),
+    Text("remote", ": pinned ", "test_remote_snapshots.py"),
+    Text("remote", "the proxy's replies to one lookup state ", "test_remote_snapshots.py"),
+    Text("remote", "; asking Hugging Face", "test_remote_snapshots.py"),
+    Text("remote", "could not be read; it attests no file", "test_remote_snapshots.py"),
+    Text("remote", "the proxy could not answer (", "test_remote_snapshots.py"),
+    Text("remote", "the registry's proxy compares a whole cell exactly", "test_remote_snapshots.py"),
+    Text("remote", "the registry's proxy answers at most ", "test_remote_snapshots.py"),
 )
 
 #: The modules wholly new in 0.9: every text they emit is one `NEW_TEXTS` names.
@@ -130,24 +134,21 @@ def _emissions(tree: ast.Module) -> list[tuple[int, list[str]]]:
     return found
 
 
-def _pinned() -> tuple[list[str], set[str]]:
-    """Every string literal inside a test's `assert` or `match=`, and every name an `assert` references."""
+def _pins(test_file: str) -> tuple[list[str], set[str]]:
+    """Every string literal inside an `assert` or a `match=` of `test_file`, and every name its asserts reference.
+
+    Looked for in the one file the entry names, never across the suite: a short fragment is otherwise "pinned" by
+    an unrelated test's assert, and deleting the real pin would leave this green."""
     literals: list[str] = []
     names: set[str] = set()
-    for path in sorted(_TESTS.glob("test_*.py")):
-        if path.resolve() == Path(__file__).resolve():
-            continue
-        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
-            if isinstance(node, ast.Assert):
-                literals.extend(_literals(node))
-                names.update(n.id for n in ast.walk(node) if isinstance(n, ast.Name))
-                names.update(n.attr for n in ast.walk(node) if isinstance(n, ast.Attribute))
-            elif isinstance(node, ast.keyword) and node.arg == "match":
-                literals.extend(_literals(node.value))
+    for node in ast.walk(ast.parse((_TESTS / test_file).read_text(encoding="utf-8"))):
+        if isinstance(node, ast.Assert):
+            literals.extend(_literals(node))
+            names.update(n.id for n in ast.walk(node) if isinstance(n, ast.Name))
+            names.update(n.attr for n in ast.walk(node) if isinstance(n, ast.Attribute))
+        elif isinstance(node, ast.keyword) and node.arg == "match":
+            literals.extend(_literals(node.value))
     return literals, names
-
-
-_PINS = _pinned()
 
 
 @pytest.mark.parametrize("text", NEW_TEXTS, ids=lambda t: f"{t.module}:{t.fragment}")
@@ -158,10 +159,13 @@ def test_the_fragment_is_still_its_modules_words(text: Text) -> None:
 
 @pytest.mark.parametrize("text", NEW_TEXTS, ids=lambda t: f"{t.module}:{t.fragment}")
 def test_a_test_asserts_the_fragment(text: Text) -> None:
-    literals, names = _PINS
+    assert text.pinned_in != Path(__file__).name
+    literals, names = _pins(text.pinned_in)
     by_constant = text.constant is not None and text.constant in names
-    assert by_constant or any(text.fragment in piece for piece in literals), (
-        f"no test asserts {text.fragment!r} ({text.module})"
+    # A `%s` in a fragment is the module's own placeholder: in an assert it is whatever the test rendered there.
+    rendered = re.compile(".+?".join(re.escape(part) for part in text.fragment.split("%s")))
+    assert by_constant or any(rendered.search(piece) for piece in literals), (
+        f"no assert in {text.pinned_in} says {text.fragment!r} ({text.module})"
     )
 
 

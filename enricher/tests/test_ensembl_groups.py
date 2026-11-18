@@ -629,7 +629,7 @@ def test_a_skip_under_the_recorded_use_names_it_too(
     install_hub(_published(1, _NEW))
     with caplog.at_level("INFO", logger="just_dna_enricher.download"):
         dl.ensure_snapshot(cache, _follow_hub=dl._FollowHub(ensembl_release_label))
-    assert "Ensembl group cadd: skipped" in caplog.text
+    assert "Ensembl group cadd: skipped — " in caplog.text
     assert "under the use recorded for it, unstated, declared 2026-11-01T00:00:00Z" in caplog.text
 
 

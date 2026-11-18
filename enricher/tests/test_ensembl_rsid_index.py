@@ -369,7 +369,11 @@ def test_an_index_that_cannot_be_read_is_no_answer_and_the_core_is_scanned(
     monkeypatch.setenv(locations.ENSEMBL_RSID_INDEX_CACHE_VAR, str(index))
     with caplog.at_level(logging.WARNING, logger="just_dna_enricher.resolver"):
         assert _lookup(core) == scanned
-    assert any("could not be read" in r.getMessage() for r in caplog.records)
+    assert any(
+        r.getMessage().startswith(f"The rsID index {index / 'data' / INDEX_GLOB} could not be read (")
+        and r.getMessage().endswith("); scanning the core.")
+        for r in caplog.records
+    ), [r.getMessage() for r in caplog.records]
 
 
 def test_the_refusal_names_a_rebuild_into_the_place_the_reader_looks(tmp_path: Path) -> None:
