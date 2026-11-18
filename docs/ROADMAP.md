@@ -2634,6 +2634,13 @@ that carry a claim on the other spelling (the registry's lead, 2026-11-18).
   the claim back without a collision. That moves `content_signature` and needs the module closed again, so it is
   left as a decision, not done here.
 
+**The example's removed row comes back in 0.8.9 (the pm, 2026-11-18).** `pathogenic_clinvar` removed the
+coordinate row `11:5226762 C>CAAAG` (ClinVar Variation 3572115, the pathogenic HBB insertion) at the 0.8 regeneration,
+because `rs80356821`'s expansion collided with it. After RM449 that rsID fills only the witnessed deletion, so the
+example now states nothing about the insertion. The row and its `studies.csv` row are restored, which is the remedy
+RM449's warning names (a coordinate row picks the event); the README's 0.8 paragraph says why, and the module is
+closed again. `content_signature` moves on a reference example that nothing publishes.
+
 **Residuals** won't fix — a site witnessed both ways is not refused in 0.8 (the pm: refusing it is a minor's
 question, by escalating `rsid_genotype_reads_as_two_events`) · won't fix — an authored coordinate row winning over
 the expansion (S158's option 2) silences only the loud case
