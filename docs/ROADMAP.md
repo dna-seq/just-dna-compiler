@@ -2828,6 +2828,45 @@ shape.
 
 **Residuals** none
 
+## RM453 — offline, the placement witness reads a merged rsID's ClinVar record as no record, so RM449's "witnessed neither" leaves `rs80356821` unpositioned
+
+**Severity** medium · **Status** open — **a patch, for 0.8.10; the pm sizes** · **Owner** enricher (`placement.compare_placements`, the ClinVar witness's rsID key) and compiler (RM449's neither arm, `resolution._settle_mirrored_spellings`) ·
+**Motivating case** the lead's 0.8.9 run (2026-11-18): `pathogenic_clinvar` enriched offline compiles strict except one row; the 0.8.9 cut states it (`c8f3f3ed`) · *related* RM267, RM398, RM449
+
+**What was seen.** An `enrich --offline` of `pathogenic_clinvar` (the table deleted, ClinVar `clinvar_2026-11-15`, the
+release the committed table records) writes `placement_verdict=unplaced` on both spellings of `rs80356821` at
+`11:5226762`, the insertion `C>CAAAG` and the deletion `CAAAG>C`. The committed online table has the deletion
+`same_event`. RM449 reads "a witness was asked and placed neither" and fills neither, so `--strict` refuses the
+row as unresolved. 12 of the 13 mirrored sites agree between the two runs.
+
+**Why, read 2026-11-18 04:21 UTC.** It is not an indel the offline run could not normalize: the pm's first
+hypothesis does not hold here. ClinVar `clinvar_2026-11-15` files the deletion `11:5226762 CAAAG>C` as VCV 15417
+under `rs281864900` and holds nothing under `rs80356821`. dbSNP merged `rs281864900` into `rs80356821`
+(`/variation/v0/refsnp/281864900`: `merged_into: [80356821]`). ClinVar's label is the retired id. The witness is keyed
+by rsID (`load_witnesses(…, fresh_rsids)`), so offline it holds no record for `rs80356821`, no allele has a
+counterpart, and both rows read `unplaced`. That is the witness's honest answer for "nothing filed under this id".
+It is not "the witness placed the rsID elsewhere". Online, the merge check (RM398's dbSNP record) is available and
+the deletion reads `same_event`; which leg supplies it is to be confirmed, since the row names `clinvar`.
+
+**Where the defect is, two candidates (the builder decides).**
+
+1. **RM449's neither arm.** `unplaced` conflates "the witness holds this rsID at other alleles" with "the witness
+   holds nothing under this rsID". Only the first is a witness that placed neither spelling. The second is closer
+   to "not asked", and RM449's not-asked arm keeps the expansion. The compiler sees only the row's verdict, so
+   telling them apart needs the enricher to say which.
+2. **The witness's key.** ClinVar's records under a retired rsID are invisible to the witness offline. The Ensembl
+   snapshot carries synonyms (`rs281864900` among `rs80356821`'s?), which could let the offline witness follow the
+   merge without the network.
+
+The first is the safer patch, and the second changes what the witness compares. Neither changes a published value
+beyond un-refusing the row.
+
+**Class.** A patch: no schema, column or vocabulary moves (P3). Severity medium: a module enriched offline (or by
+an older enricher) can refuse under `--strict` on a mirrored indel site whose ClinVar record carries a merged
+rsID. It is loud and names its rsID, and an online re-derivation clears it.
+
+**Residuals** none yet.
+
 # Not format scope
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.
