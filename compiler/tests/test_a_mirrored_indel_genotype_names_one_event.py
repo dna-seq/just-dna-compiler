@@ -25,9 +25,8 @@ _PHRASE = "opposite events spelled with the same strings"
 
 
 def _locus(rsid: str, index: int, start: int, ref: str, alt: str, verdict: str, chrom: str = "11") -> str:
-    return (
-        f"{rsid},{rsid},{chrom},{start},{ref},{alt},GRCh38,{index},cache,ensembl,resolved,clinvar,{verdict}\n"
-    )
+    witness = "clinvar" if verdict else ""  # who was asked and what they answered are written together
+    return f"{rsid},{rsid},{chrom},{start},{ref},{alt},GRCh38,{index},cache,ensembl,resolved,{witness},{verdict}\n"
 
 
 def _spec(root: Path, variants: str, resolution: str, rsid: str) -> Path:
@@ -162,3 +161,19 @@ def test_the_settled_fill_is_a_fixed_point_of_compile_reverse_compile(tmp_path: 
     assert _placed(tmp_path / "a1") == _placed(tmp_path / "a2")
     assert first.manifest.artifact.digest == second.manifest.artifact.digest
     assert first.manifest.content_signature == second.manifest.content_signature
+
+
+def test_a_site_no_second_source_was_asked_about_keeps_the_expansion_and_says_so(tmp_path: Path) -> None:
+    """Not asked is not witnessed-neither: an offline run, a ClinVar fill and a pre-0.8 table record no verdict.
+
+    `test_clinvar`'s `rs777`, a ClinVar fill offline, compiled under strict before RM449 and must still.
+    """
+    loci = _locus("rs1057516393", 0, 108256251, "C", "CT", "") + _locus(
+        "rs1057516393", 1, 108256251, "CT", "C", ""
+    )
+    spec = _spec(tmp_path, _HEADER + _RSID_ROW, loci, "rs1057516393")
+    result = compile_module(spec, tmp_path / "out", strict=True)
+    assert result.success, result.errors
+    assert len(_placed(tmp_path / "out")) == 2
+    (said,) = [w for w in result.warnings if "no second source was asked" in w]
+    assert "so both are filled as before (RM449)" in said

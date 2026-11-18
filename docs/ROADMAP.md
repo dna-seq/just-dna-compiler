@@ -2651,6 +2651,18 @@ fixture for the second. If the lap fix outgrows half a day, RM448 ships alone as
 its, and RM449 follows as 0.8.10. A re-close after the restore needs an enrich pass first, since `close` drops
 `verification.json`'s enrich records when the module hash moves.
 
+**The two build defects the lead's run found (2026-11-18), and what each was.**
+
+- `test_clinvar`'s `rs777`: a ClinVar fill, offline, records no `placement_verdict`, and the first build read "no
+  verdict" as "witnessed neither" and left the row unpositioned. Not asked is not witnessed-neither. A mirrored
+  site with no verdict anywhere now keeps the expansion it had before, and says so once per rsID (same code,
+  "no second source was asked"). Neither is filled only where a witness was asked and placed neither. There is
+  a test for it.
+- The lap that broke on the restored `pathogenic_clinvar` row is not this item's: it is a coordinate row the
+  table never filed, and it breaks a lap with no mirror anywhere. Filed as RM451. An enrich pass removes it, and
+  the four round-trip tests then pass on the restored example. Every remedy sentence now says to re-run the
+  enricher after authoring the coordinate.
+
 **Residuals** won't fix — a site witnessed both ways is not refused in 0.8 (the pm: refusing it is a minor's
 question, by escalating `rsid_genotype_reads_as_two_events`) · won't fix — an authored coordinate row winning over
 the expansion (S158's option 2) silences only the loud case
@@ -2678,6 +2690,31 @@ That is why the severity is low and the status asks the pm whether to keep it. I
 to have failed this way. **Unparks when** a pull is seen to leave a wrong file or record, or a host reports running
 two pulls into one cache at once (the registry's proxy hosts are the likely first). The fix is then the shape above,
 about 30 minutes, and RM437's groups on `0.9` inherit it.
+
+**Residuals** none yet.
+
+## RM451 — reverse writes a resolution row from the cells of a coordinate row the table never filed, so `compile → reverse → compile` moves `resolution_signature`
+
+**Severity** low · **Status** open — **a patch; the pm sizes** · **Owner** compiler (`compiler/reverse._write_resolution_csv`, the cell rebuild) ·
+**Motivating case** the lead's 0.8.9 run (2026-11-18): restoring `pathogenic_clinvar`'s coordinate row `11:5226762 C>CAAAG` (RM449's remedy) broke `test_reference_example_round_trips_to_a_fixed_point[pathogenic_clinvar]` · *related* RM364, RM380, RM449
+
+**What was seen, and that it is not RM449's.** The restored row validates and compiles under `--strict`, but a lap moves
+`resolution_signature` and `vrs_alleles` 531 → 532. Reverse wrote a row keyed `11:5226762:C:CAAAG`, rebuilt from the
+row's own cells, that the injected table did not have, and lap 2 read it. The example's table was enriched before the
+row came back, so nothing filed it: its parquet row carries no `resolution_loci`, and `_write_resolution_csv` falls
+back to the cell rebuild meant for a parquet compiled before RM364. The same happens with no mirrored site at all. A
+two-row module (an rsID row the table files, and `,1,1000,C,T,C/T` it does not) fails `reconstructed_projection`
+equality across one lap, and reverse's table gains `ga4gh:VA.pPch…`. After one offline `enrich` pass the table files
+the restored row and all four `pathogenic_clinvar` round-trip tests pass (checked on a scratch copy, 2026-11-18).
+Every reference example is enriched, which is why the suite never met it.
+
+**Shape of a fix (the builder decides).** A parquet compiled since RM364 says what the table filed under each key; an
+empty `resolution_loci` there means "the table filed nothing", not "compiled before the column". Reverse should
+then write nothing for that key, and fall back to the cell rebuild only for a parquet without the column. Test: the
+two-row module above, one lap, projection equal.
+
+**Class.** A patch: no schema, column or vocabulary moves (P3). Severity low: the artifact's digest and
+`content_signature` hold, only the table's signature moves, and an enrich pass (which closing needs anyway) removes it.
 
 **Residuals** none yet.
 

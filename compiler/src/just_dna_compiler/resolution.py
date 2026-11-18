@@ -167,6 +167,7 @@ def resolve_from_table(
     # rsID → its mirrored sites a second source witnessed both ways (RM449), in first-seen order, one
     # sentence per rsID however many authored rows carry it.
     both_ways: dict[str, dict[str, None]] = {}
+    unasked: dict[str, dict[str, None]] = {}
     for v in variants:
         rows = resolution.get(v.variant_key or "")
         loci = usable_loci(rows, genome_build)
@@ -195,6 +196,8 @@ def resolve_from_table(
                 )
                 for site in settled.both_ways:
                     both_ways.setdefault(v.rsid, {}).setdefault(site, None)
+                for site in settled.unasked:
+                    unasked.setdefault(v.rsid, {}).setdefault(site, None)
                 kept_ids = {id(lo) for lo in settled.kept}
                 undecided = [lo for lo in undecided if id(lo) in kept_ids]
                 usable = settled.kept
@@ -348,7 +351,19 @@ def resolve_from_table(
                 f"{rsid}: its row's genotype reads as an insertion and as a deletion at {'; '.join(sites)}, "
                 f"and a second source places both under this rsID, so the row's one claim is filled on two "
                 f"opposite events (RM449). If it is about one of them, replace the rsID row with a row "
-                f"authoring that event's coordinate",
+                f"authoring that event's coordinate, and re-run the enricher so the table files it",
+            )
+        )
+
+    for rsid, sites in unasked.items():
+        warnings.append(
+            CodedWarning(
+                "rsid_genotype_reads_as_two_events",
+                f"{rsid}: its row's genotype reads as an insertion and as a deletion at {'; '.join(sites)}, "
+                f"and no second source was asked where either is placed (`placement_verdict` is empty: an "
+                f"offline run, a ClinVar fill, or a table written before 0.8), so both are filled as before "
+                f"(RM449). If the row is about one of them, replace it with a row authoring that event's "
+                f"coordinate and re-run the enricher so the table files it; an online run records the witness",
             )
         )
 
@@ -1144,6 +1159,8 @@ class MirroredSettlement:
     withheld_all: bool = False
     #: `chrom:start (spellings)` of each mirrored site a second source witnessed both ways: kept, and said.
     both_ways: list[str] = field(default_factory=list)
+    #: The same, for a mirrored site no second source was asked about: kept as before, and said.
+    unasked: list[str] = field(default_factory=list)
 
 
 def _settle_mirrored_spellings(rsid: str, genotype: str, usable: list[ResolutionRow]) -> MirroredSettlement:
@@ -1164,7 +1181,9 @@ def _settle_mirrored_spellings(rsid: str, genotype: str, usable: list[Resolution
     `both_ways` and the fill says so once per rsID (`rsid_genotype_reads_as_two_events`, both modes,
     never escalated in 0.8; refusing it is a minor's question). Where it placed none, nothing settles
     which was meant: none at that position is filled, and the row is left unpositioned rather than
-    given a guess. Loci at other positions (a paralog, a PAR partner) are untouched, and so is every
+    given a guess. Where no second source was asked at all (`placement_verdict` empty everywhere at
+    the site), "not asked" is not "witnessed neither": the expansion stays as before 0.8.9, returned in
+    `unasked` and said once per rsID. Loci at other positions (a paralog, a PAR partner) are untouched, and so is every
     site that is not such a mirror (a homozygote over several insertions keeps its expansion).
     """
     sites: dict[tuple[str | None, int | None], list[ResolutionRow]] = {}
@@ -1173,6 +1192,7 @@ def _settle_mirrored_spellings(rsid: str, genotype: str, usable: list[Resolution
     dropped: set[int] = set()
     sentences: list[str] = []
     both_ways: list[str] = []
+    unasked: list[str] = []
     for (chrom, start), at_site in sites.items():
         # Only a locus that hosts the genotype on its own reads it as its own event. A compound het
         # spelled in a padded frame (`G/GTTT` on `GTT>G` and `G>GT`) names one allele of each, so no
@@ -1183,6 +1203,11 @@ def _settle_mirrored_spellings(rsid: str, genotype: str, usable: list[Resolution
         if len(loci) < 2 or not {"insertion", "deletion"} <= directions:
             continue
         spelled = ", ".join(f"{lo.ref}>{lo.alts}" for lo in loci)
+        if not any(getattr(lo, "placement_verdict", None) for lo in loci):
+            # No second source was asked (an offline run, a ClinVar fill, a table written before 0.8):
+            # "not asked" is not "witnessed neither", so the expansion stays as it was, and is said.
+            unasked.append(f"{chrom}:{start} ({spelled})")
+            continue
         witnessed = [lo for lo in loci if getattr(lo, "placement_verdict", None) == PLACED_SAME_EVENT]
         if len(witnessed) == len(loci):
             both_ways.append(f"{chrom}:{start} ({spelled})")
@@ -1204,11 +1229,15 @@ def _settle_mirrored_spellings(rsid: str, genotype: str, usable: list[Resolution
                 f"{rsid}: the genotype {genotype} reads as an insertion and as a deletion at {chrom}:{start} "
                 f"({spelled}), opposite events spelled with the same strings, and no locus there was "
                 f"witnessed as the same event (`placement_verdict`), so neither is filled and the position "
-                f"remains unset; author the coordinate of the event the row means (RM449)"
+                f"remains unset; author the coordinate of the event the row means and re-run the enricher (RM449)"
             )
     kept_loci = [lo for lo in usable if id(lo) not in dropped]
     return MirroredSettlement(
-        kept=kept_loci, sentences=sentences, withheld_all=bool(usable) and not kept_loci, both_ways=both_ways
+        kept=kept_loci,
+        sentences=sentences,
+        withheld_all=bool(usable) and not kept_loci,
+        both_ways=both_ways,
+        unasked=unasked,
     )
 
 

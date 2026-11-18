@@ -243,7 +243,8 @@ yet it means an inserted T on one and a deleted T on the other. The fill reads `
 there: the spellings a second source placed as `same_event` are filled, and the others are not. If both are
 witnessed, the rsID names both events, so both stay, and `rsid_genotype_reads_as_two_events` says so once
 per rsID in both modes. If neither is, neither is filled, and the row is left unpositioned, so `--strict`
-refuses it as unresolved. Each outcome is a `rsid_genotype_reads_as_two_events` warning; none is escalated
+refuses it as unresolved. If no second source was asked at all (`placement_verdict` empty at the site), both
+stay as before 0.8.9, and the warning says so. Each outcome is a `rsid_genotype_reads_as_two_events` warning; none is escalated
 in 0.8. A positional row was already left unplaced where two loci host it. It is a corrected derivation:
 an artifact compiled before 0.8.9 may hold the claim on both spellings. S158 is the report.
 
