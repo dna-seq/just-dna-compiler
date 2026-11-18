@@ -358,8 +358,9 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 - **The sequence proxy's failed-build warning says what happens** (review round 2, I, RM404): it said
   sequence-dependent work "is skipped this run", but a proxy remembers no failure, so read outside a run's view
   it builds again at its next read. It now reads `Could not reach the sequence service at <uri> (<error>); this
-  read returns no bases, and the build is retried at the proxy's next read.`, the same prefix, pinned with
-  the 0.9 texts. A run's view still asks a failed build once per run.
+  read returns no bases, and the build is retried at the proxy's next read.`, then what the missing bases cost
+  (an indel's VRS id unminted, the reference-allele check not made) and that a run's view asks for the build
+  once per run; the same prefix, pinned with the 0.9 texts.
 
 ## 2026-11-18 — RM455: the pre-0.9 instances of four classes 0.9 fixed in its own code (patch, enricher only, on `main`)
 

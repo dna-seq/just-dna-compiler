@@ -462,7 +462,9 @@ def test_a_failed_build_says_it_is_retried_at_the_next_read(
         said
         == [
             f"Could not reach the sequence service at {shared.uri} (seqrepo is down); this read returns no bases, "
-            "and the build is retried at the proxy's next read."
+            "and the build is retried at the proxy's next read. Without bases an indel's VRS id is left unminted "
+            "and the reference-allele check is not made; a run reading through its own view asks for the build "
+            "once per run."
         ]
         * 2
     )
