@@ -204,10 +204,12 @@ def test_a_module_new_in_0_9_emits_no_text_the_list_does_not_name(module: str) -
     assert not unnamed, f"{module} emits texts no entry names: {unnamed}"
 
 
-def _calls_to(tree: ast.AST, name: str) -> list[int]:
-    """The lines of every call to `name`, by its bare name or as an attribute."""
+def _calls_to(tree: ast.AST, name: str) -> list[tuple[int, list[str]]]:
+    """`(line, literal pieces of the first argument)` of every call to `name`, by its bare name or as an attribute.
+
+    Each call keeps its own pieces, so two calls on one line are two entries, never one."""
     return sorted(
-        node.lineno
+        (node.lineno, _literal(node.args[0]) or [ast.unparse(node.args[0])] if node.args else [])
         for node in ast.walk(tree)
         if isinstance(node, ast.Call)
         and (
@@ -222,23 +224,23 @@ def test_every_text_said_once_is_an_emission_the_list_names() -> None:
     helper is new in 0.9, so every call of it, in any module, is a 0.9 text that owes an entry and a pin, which
     the third check cannot ask of a module older than 0.9. Exception texts stay out: a caller catches an
     exception by its type, never by its words."""
-    calls: dict[str, list[int]] = {}
+    calls: dict[str, list[tuple[int, list[str]]]] = {}
     unseen, unnamed = [], []
     for path in sorted(_PACKAGE.rglob("*.py")):
         tree = ast.parse(path.read_text(encoding="utf-8"))
-        lines = _calls_to(tree, "_warn_once")
-        if not lines:
+        said_once = _calls_to(tree, "_warn_once")
+        if not said_once:
             continue
         parts = path.relative_to(_PACKAGE).with_suffix("").parts
         module = ".".join(parts[:-1] if parts[-1] == "__init__" else parts)
-        calls[module] = lines
-        emitted = dict(_emissions(tree))
+        calls[module] = said_once
+        emitted = _emissions(tree)
         fragments = [text.fragment for text in NEW_TEXTS if text.module == module]
-        for line in lines:
-            if line not in emitted:
+        for line, pieces in said_once:
+            if (line, pieces) not in emitted:
                 unseen.append((module, line))
-            elif not any(fragment in piece for fragment in fragments for piece in emitted[line]):
-                unnamed.append((module, line, emitted[line]))
+            elif not any(fragment in piece for fragment in fragments for piece in pieces):
+                unnamed.append((module, line, pieces))
     assert calls, "no call of `_warn_once` was found, so this walk reads nothing"
     assert not unseen, f"the emission walk does not see these `_warn_once` calls: {unseen}"
     assert not unnamed, f"texts said once that no entry names: {unnamed}"
