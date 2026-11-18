@@ -243,6 +243,10 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   `KeyCompare.predicate(column, negated=True)` is true only where a stated cell answers to no key, as cpic's
   `lower(gene) <> ?` read it before the shared predicate. `CpicSnapshotClient.partner_genes` no longer lists `None` as a
   partner when a recommendation row states no gene.
+- **`SCHEMAS.md` says one thing of a mistyped `release.json` key** (review round 1, item 9): `read_release`'s
+  paragraph said such a key made the record `None`, beside the 0.9 sentence that it is dropped. The code drops the
+  key and reads the rest (`test_parse_release_drops_a_mistyped_key_with_a_warning_as_read_release_does`); both
+  sentences now say so.
 
 ## 2026-11-18 — RM453: a mirrored site where no spelling was witnessed keeps both spellings (patch, a declared corrected derivation, on `main`)
 
