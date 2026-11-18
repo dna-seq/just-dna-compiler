@@ -102,14 +102,15 @@ the manifest of every module that triggers it, and an uncoded sentence cannot sh
 part-classified channel). Each RM449 sentence takes the existing code of what the row became: no position written
 is `rsid_no_hosting_locus`; one or more loci filled (both spellings kept, or one dropped as unwitnessed or under an
 authored coordinate row) is `rsid_expanded_to_multiple_loci`, which is carried. The text and its pinned phrases are
-RM449's own. Until 0.9, a site narrowed to one locus is counted in `warnings_summary` as an expansion. 0.9 adds
+RM449's own. Until 0.9, a site narrowed to one locus is counted in `warnings_summary` as an expansion, and the
+filled arms' sentences sit in `compilation.carried` although an authored coordinate row clears them. 0.9 adds
 `rsid_genotype_reads_as_two_events` and moves these sentences to it. `just-dna-format` stays 0.8.6.
 **A recorded `undecided` reads as no verdict (before the cut, the pm).** Where a mirrored site's only recorded
 `placement_verdict` is `undecided` (the witness was asked and could not judge, as a run with no reference sequence
 writes), both spellings stay, as for a site nobody was asked about, under their own sentence (pinned: "could not
-decide whether either is the same event"). Could not judge is not witnessed-neither, so an offline re-derivation
-never turns a module that compiled into a strict refusal. `undecided` beside `unplaced` reads as an empty cell
-beside `unplaced`: neither is filled.
+decide whether either is the same event"). Could not judge is not witnessed-neither, so a recorded `undecided` no
+longer turns a module that compiled into a strict refusal. `undecided` beside `unplaced` reads as an empty cell
+beside `unplaced`: neither is filled. An `unplaced` answer is a witness's, offline too, and still fills neither.
 
 ## 2026-11-17 — RM446: a reused client's earlier 410 no longer tells a later run's outage to upgrade (patch, on `main`)
 

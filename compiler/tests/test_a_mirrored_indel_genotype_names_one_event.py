@@ -368,7 +368,8 @@ def test_a_filled_mirrored_site_is_counted_as_an_expansion_until_0_9(tmp_path: P
         (said,) = [w for w in result.manifest.compilation.warnings if phrase in w]
         assert said in carried, name
         assert "rsid_genotype_reads_as_two_events" not in summary
-        assert summary.get("rsid_expanded_to_multiple_loci", 0) >= 1
+        # The RM449 sentence, plus the ordinary expansion sentence where two loci are filled.
+        assert summary["rsid_expanded_to_multiple_loci"] == (1 if name == "one" else 2), name
 
 
 def test_an_unpositioned_mirrored_site_is_counted_as_no_hosting_locus_until_0_9(tmp_path: Path) -> None:
