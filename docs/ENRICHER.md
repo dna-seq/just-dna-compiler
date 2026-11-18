@@ -1724,8 +1724,10 @@ non-empty and holds no snapshot (a build that failed after its downloads, a payl
 `absent`, which sends an operator to run a pull that `prepare` is going to refuse, since provisioning
 never deletes. `stale` (0.9, review round 1) is a derived lane on disk whose parents moved under it:
 its `CacheLane.stale_reason` (each parent's path as this call resolved it, the call's `locations`
-included) says why, in `LaneStatus.stale`. Only `ensembl_rsid_index` states one, the verdict its reader
-refuses the index by (an index of another core), so `cache status` prints `stale` with the reason and the
+included) says why, in `LaneStatus.stale`. Every lane with `parents` states one, which a walk holds:
+`mitomap_miss` by `mitomap_miss_build.stale_parents`, the verdict `draft --source mitomap-miss` warns by (a
+parent whose pin moved; a parent that is gone is no moved parent), and `ensembl_rsid_index` by the verdict its
+reader refuses the index by (an index of another core), so `cache status` prints `stale` with the reason and the
 rebuild where a reader looks, and `cache prepare` leaves it as it is, *unavailable* (`ready=None`, route
 `none`, `stale: …`), never `present`. A core on disk that cannot be pinned (no manifest, a file of unstated
 sha256) is stale too, since no index is read beside it; a core that is gone is no moved parent, and the

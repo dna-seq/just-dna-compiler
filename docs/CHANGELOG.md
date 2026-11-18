@@ -276,6 +276,12 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   `present`. The reader's refusal now logs that same reason, where it said "it pins R; the core is R" of a core
   of one release over other files. `cache status` prints every state in
   its own word, which a walk over `LANE_STATES` holds.
+- **`mitomap_miss` is called stale over a moved parent too, and every derived lane must say so** (RM431, placed by
+  the pm, 757f5e32): the increment declared its parents but no `stale_reason`, so `cache status` called it present
+  while `draft` warned its ClinVar or MITOMAP parent had moved. It now states `stale_parents`'s verdict ("the clinvar
+  parent has moved since this increment was built (pinned …, now …); rebuild it with `just-dna-enricher mitomap
+  miss`"); a parent that is gone leaves it present. A walk over `CACHE_LANES` holds that every lane with `parents`
+  declares a `stale_reason`.
 - **A pull record present but unreadable is refused, never read as no groups** (review round 1, item 3, RM437):
   `locations.pulled_groups` answered `{}` for a record that was not JSON, not an object or held a malformed
   `groups`, so the next pull rewrote it without them and the sticky selection ended unsaid, and a record that was

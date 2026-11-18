@@ -321,8 +321,9 @@ class CacheLane:
     #: For a derived lane, why the snapshot at a path no longer matches its parents (each parent's path as
     #: this machine resolves it, `None` when absent), or `None` when it does or cannot be compared (0.9,
     #: review round 1, item 11). `lane_status` then says `stale` and `prepare_lane` leaves it unready,
-    #: never `present`: a moved parent is reported (`@a-derived-lane-has-parents-…`). `ensembl_rsid_index`
-    #: states it, with the verdict its reader refuses the index by.
+    #: never `present`: a moved parent is reported (`@a-derived-lane-has-parents-…`). Every lane with
+    #: `parents` states it (a walk holds that): `ensembl_rsid_index` with the verdict its reader refuses the
+    #: index by, `mitomap_miss` with `stale_parents`.
     stale_reason: Callable[[Path, Mapping[str, Path | None]], str | None] | None = None
     #: How this lane's snapshot names the release it holds (RM180). The default is the format
     #: tier's `snapshot.release_label`, `release.json`'s `dataset`, and since RM303 every lane uses it:
@@ -940,6 +941,27 @@ def _rebuild_mitomap_miss(request: RebuildRequest) -> RebuildOutcome:
     )
 
 
+def _mitomap_miss_stale(miss: Path, parents: Mapping[str, Path | None]) -> str | None:
+    """`CacheLane.stale_reason` for the MITOMAP increment: `stale_parents`, the verdict `draft` warns by.
+
+    A parent that is absent here is left out, as `stale_parents` leaves out one that is gone: a parent that
+    cannot be compared did not move (`@a-derived-lane-has-parents-…`).
+    """
+    located = {name: path for name, path in parents.items() if path is not None}
+    moved = mitomap_miss_build.stale_parents(miss, parents=located)
+    if not moved:
+        return None
+
+    def label(pin: dict) -> str:
+        return pin.get("dataset") or pin.get("clinvar_file_date") or "unlabelled"
+
+    said = "; ".join(
+        f"the {name} parent has moved since this increment was built (pinned {label(pinned)}, now {label(current)})"
+        for name, (pinned, current) in sorted(moved.items())
+    )
+    return f"{said}; rebuild it with `just-dna-enricher mitomap miss`"
+
+
 def _rsid_index_stale(index: Path, parents: Mapping[str, Path | None]) -> str | None:
     """`CacheLane.stale_reason` for the rsID index: the reader's own verdict against the core beside it."""
     core = parents.get("ensembl")
@@ -1256,6 +1278,7 @@ CACHE_LANES: list[CacheLane] = [
             "publishing it, the pin is what makes it pointless"
         ),
         parents=("mitomap", "clinvar"),
+        stale_reason=_mitomap_miss_stale,
     ),
     CacheLane(
         name="mane",
