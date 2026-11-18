@@ -37,6 +37,8 @@ from typer.testing import CliRunner
 
 #: The release RM381's slice was copied from (its README), which the fixture core states.
 ENSEMBL_SPLIT_RELEASE = "ensembl-variation-2026_07_13-vep116.0"
+#: A later release's label, for a core the index was not built from.
+_NEXT_RELEASE = "ensembl-variation-2026_10_01-vep117.0"
 #: Every rsID the fixture core holds, by kind, plus one it does not (a miss) and one not of the `rs` form.
 MULTI_ALT = "rs1555461597"  # GTT>G, GTT>GT, GTT>GTTT at 16:23635706
 TWO_LOCI = "rs1603142144"  # X:10277 and an N-masked Y:10277
@@ -267,7 +269,7 @@ def test_a_moved_parent_never_rebuilds_the_index_it_is_refused_once_and_the_core
     assert after == before, "nothing rebuilt the index"
 
 
-@pytest.mark.parametrize("arm", ["current", "moved", "unpinnable", "gone"])
+@pytest.mark.parametrize("arm", ["current", "moved", "another release", "unpinnable", "gone"])
 def test_lane_status_calls_a_stale_index_stale_as_the_reader_refuses_it(
     no_ambient_caches, ensembl_split_core, tmp_path: Path, arm: str
 ) -> None:
@@ -277,7 +279,10 @@ def test_lane_status_calls_a_stale_index_stale_as_the_reader_refuses_it(
     parent (`@a-derived-lane-has-parents-…`): the index stays `present`, and there is nothing to read it beside."""
     built_from = tmp_path / "ensembl_variations"
     index = build_rsid_index(ensembl_split_core(built_from), tmp_path / "ensembl_rsid_index").out_dir
-    core = built_from if arm != "moved" else ensembl_split_core(tmp_path / "moved", drop=(MULTI_ALT,))
+    core = {
+        "moved": lambda: ensembl_split_core(tmp_path / "moved", drop=(MULTI_ALT,)),
+        "another release": lambda: ensembl_split_core(tmp_path / "next", release=_NEXT_RELEASE),
+    }.get(arm, lambda: built_from)()
     if arm == "unpinnable":
         manifest = json.loads((core / "manifest.json").read_text())
         del next(e for e in manifest["files"] if e["path"].startswith("data/"))["sha256"]
@@ -294,6 +299,12 @@ def test_lane_status_calls_a_stale_index_stale_as_the_reader_refuses_it(
         assert status.state == "stale"
         assert status.stale == (
             f"it pins release {ENSEMBL_SPLIT_RELEASE} over other files than the Ensembl core at {core} holds"
+        )
+    elif arm == "another release":
+        assert status.state == "stale"
+        assert (
+            status.stale
+            == f"it pins {ENSEMBL_SPLIT_RELEASE}, and the Ensembl core at {core} is {_NEXT_RELEASE}"
         )
     elif arm == "unpinnable":
         assert status.state == "stale"
@@ -326,6 +337,21 @@ def test_a_named_index_is_judged_before_an_unnamed_lane_loads_the_env(
     )
     assert os.environ[locations.ENSEMBL_CACHE_VAR] == str(moved), "the unnamed lane did export it"
     assert (statuses[1].state, statuses[1].stale) == ("present", None), "judged before the export"
+
+
+def test_an_index_directory_holding_no_index_file_is_refused_saying_so(
+    no_ambient_caches, core: Path, index: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Its pin matches, and it holds a parquet that is not the index's: no `ensembl_rsid_index-*` file to read."""
+    for path in (index / "data").glob(INDEX_GLOB):
+        path.rename(path.with_name(f"other-{path.name}"))
+    resolver._REFUSED_INDEXES.clear()
+    with caplog.at_level(logging.WARNING, logger="just_dna_enricher.resolver"):
+        assert resolver._rsid_index_beside(core, index) is None
+    (said,) = [r.getMessage() for r in caplog.records if r.name == "just_dna_enricher.resolver"]
+    assert said.startswith(
+        f"The rsID index at {index} was not built from the Ensembl core at {core} (it holds no index file), so "
+    )
 
 
 def test_cache_status_prints_a_stale_index_as_stale_with_its_rebuild(

@@ -73,6 +73,15 @@ NEW_TEXTS: tuple[Text, ...] = (
     Text("resolver", "No rsID index was found at ", "test_ensembl_rsid_index.py"),
     Text("resolver", " was not built from the Ensembl core at ", "test_ensembl_rsid_index.py"),
     Text("resolver", "; scanning the core.", "test_ensembl_rsid_index.py"),
+    Text("resolver", "it holds no index file", "test_ensembl_rsid_index.py"),
+    Text(
+        "ensembl_rsid_index_build", "over other files than the Ensembl core at ", "test_ensembl_rsid_index.py"
+    ),
+    Text("ensembl_rsid_index_build", ", and the Ensembl core at ", "test_ensembl_rsid_index.py"),
+    Text("ensembl_rsid_index_build", " cannot be pinned: ", "test_ensembl_rsid_index.py"),
+    Text("remote", "a 200 that is not a lane reply (", "test_remote_snapshots.py"),
+    Text("remote", "a 200 that is not the reply asked for: it answers ", "test_remote_snapshots.py"),
+    Text("remote", "holds only blanks", "test_remote_snapshots.py"),
     Text("locations", "groups are not a map of name to record", "test_ensembl_groups.py"),
     Text("locations", " group is not an object; read with nothing stated", "test_ensembl_groups.py"),
     Text("locations", " do not fit; read as unstated.", "test_ensembl_groups.py"),

@@ -306,12 +306,13 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   remotely; the equal-answers walk could not see it, since it asked the holder through the readers' private key
   builders, which did the reading. New: `KeyCompare.rsid` and `KeyCompare.cell_exact`; the holder reads each key
   as its compare does before any route, so the proxy, which compares a cell exactly, is still asked for an rsID.
-  The three readers build their rsID SQL from the registry, the private key builders are gone, and the walk asks
+  The three readers read an asked rsID through the registry's compare (the cell still compared with a plain `IN`,
+  which prunes), the private key builders are gone, and the walk asks
   the holder with raw keys.
 - **Every warning and log text 0.9 adds is pinned by its stable fragment** (review round 1, item 2,
   `@warning-text-is-api`): one walk (`test_every_new_text_is_pinned.py`) over the 30 texts the diff added to a
   logger, a `Finding` or a `warnings` list holds that each module still says its fragment, that an `assert` in
-  another test says it, and that `remote`, `key_compare`, `ensembl_rsid_index_build` and `clients` emit nothing
+  the test file each entry names says it, and that `remote`, `key_compare`, `ensembl_rsid_index_build` and `clients` emit nothing
   the list does not name. Fifteen were unpinned, each now asserted where it is emitted: the holder's pin, answer,
   pass-over and fall-through lines, two replies stating two releases, an unreadable Hub manifest, the clinical
   call that could not be asked remotely, the group pull's, removal's and failed re-pull's lines, the rsID index

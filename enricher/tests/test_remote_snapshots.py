@@ -1110,6 +1110,13 @@ def test_a_malformed_proxy_reply_is_could_not_ask_on_every_lane(lane: str, fault
     assert str(failed.value).startswith(
         f"{lane}: the registry's proxy could not be asked: a 200 that is not "
     )
+    if fault in ("another lane", "another table"):
+        answered = f"{lane}_other/t" if fault == "another lane" else f"{lane}/t_other"
+        assert str(failed.value).endswith(
+            f"a 200 that is not the reply asked for: it answers {answered}, not {lane}/t"
+        )
+    else:
+        assert "a 200 that is not a lane reply (" in str(failed.value)
 
 
 def test_provenance_of_another_kind_is_withheld_never_a_malformed_reply() -> None:
@@ -1308,3 +1315,17 @@ def test_a_clinical_call_that_could_not_be_asked_remotely_is_a_finding_naming_it
         )
         for m in said
     ), said
+
+
+def test_a_key_of_only_blanks_is_a_wrong_request_once_read_as_its_column_compares() -> None:
+    """`RS334` is read as `rs334` before any route; a cell of only blanks reads as nothing, which is a request
+    that names a key and asks nothing, refused as an empty one is (review round 1, item 5)."""
+    with (
+        RemoteSnapshots(huggingface=False, declared_use="non_commercial") as holder,
+        pytest.raises(ValueError) as wrong,
+    ):
+        holder.lookup("civic", "civic", {"rsid": ["  "]})
+    assert (
+        str(wrong.value)
+        == "civic: a remote lookup needs a value for every key it names; rsid holds only blanks"
+    )
