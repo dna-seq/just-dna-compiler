@@ -18,6 +18,7 @@ from just_dna_enricher.caches import (
     CacheLane,
     RebuildOutcome,
     RebuildRequest,
+    _ensure_declaration,
     _gate,
     _named_only_detail,
     _rebuild_blocked,
@@ -257,7 +258,11 @@ def cache_pull_(
         follow = _FollowHub(lane.release_label)
         # The Ensembl lane's groups (RM437): the named ones, and the declaration a recorded one is
         # re-pulled under when this run states one.
-        extra = {"groups": named_groups, "declared_use": declared} if lane.name == "ensembl" else {}
+        extra = {
+            **_ensure_declaration(lane, declared),
+            # Only the Ensembl lane runs when groups are named (`GROUPS_NEED_ENSEMBL_ONLY`, refused above).
+            **({"groups": named_groups} if named_groups else {}),
+        }
         try:
             path = lane.ensure(_follow_hub=follow, **extra)
         except LicenseRefusal as exc:

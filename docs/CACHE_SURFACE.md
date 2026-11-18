@@ -47,6 +47,7 @@ having said it.
 | `unpublished` / `unbuilt` | — | stated iff the stage is absent |
 | `release_label` | — | override only if `release.json`'s `dataset` is not the label. **No lane overrides it** since RM303: write `dataset` through `SnapshotRelease` instead |
 | `named_only` | — | the reason a lane is built **only when named** (`cache rebuild --only <lane>`): `cache prepare` never builds it and a bare `cache rebuild` reports it *not run*. Such a lane has a `rebuild`, no `ensure`, and that `--only` as its `build_command` (`test_ensembl_rsid_index.py::test_a_lane_built_only_when_named_is_rebuild_only_and_states_why`) |
+| `ensure_takes_declared_use` | — | `True` when the lane's `ensure` takes `declared_use=`, which `cache prepare` and `cache pull` then pass it (0.9; `ensembl` alone). Never a name compare in a provisioner (`test_cache_lanes.py::test_a_lane_whose_ensure_takes_the_declared_use_says_so_in_a_field`) |
 | `parents` | — | for a derived lane; an absent parent is *could not run*, never an empty result. Also a **cost** fact: `provisioning_closure` prices the lane by its parents |
 | `approx_mb` | ✅ | the provisioned size as an order of magnitude in whole MB, rounded up (`1` = at most a megabyte). Measured, never guessed; a test re-measures it against every snapshot the box holds (RM229) |
 

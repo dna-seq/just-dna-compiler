@@ -67,7 +67,13 @@ from just_dna_enricher.locations import (
 )
 from just_dna_enricher.net import dedupe
 from just_dna_enricher.pubmind_draft import PubMindDraftError, select_by_positions
-from just_dna_enricher.remote import RemoteAnswer, RemoteRoute, RemoteSnapshots, SnapshotRouteUnavailable
+from just_dna_enricher.remote import (
+    REMOTE_LANES,
+    RemoteAnswer,
+    RemoteRoute,
+    RemoteSnapshots,
+    SnapshotRouteUnavailable,
+)
 from just_dna_enricher.resolver import lookup_loci
 
 logger = logging.getLogger(__name__)
@@ -402,19 +408,19 @@ def _remote_loci(
     """
     chrom, start = (positions[0][0], positions[0][1]) if positions else (None, None)
     position_key = {"chrom": [chrom], "start": [start]} if positions else None
-    if label == "ensembl":
-        if position_key is None:
-            if rsid:
-                hint.findings.append(
-                    Finding(
-                        None,
-                        None,
-                        "info",
-                        "ensembl: no local snapshot, and an rsID alone is never asked remotely (it needs "
-                        "chrom + start)",
-                    )
+    if REMOTE_LANES[label].needs_position and position_key is None:
+        if rsid:
+            hint.findings.append(
+                Finding(
+                    None,
+                    None,
+                    "info",
+                    f"{label}: no local snapshot, and an rsID alone is never asked remotely (it needs "
+                    "chrom + start)",
                 )
-            return None
+            )
+        return None
+    if label == "ensembl":
         answer = _ask_remote(remote, label, position_key)
         _record_route(hint, label, answer)
         return resolver._loci_from_rows(answer.rows, [], positions)

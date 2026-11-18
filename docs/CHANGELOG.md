@@ -257,6 +257,14 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   sizes but not in bytes pinned alike and an index of one was read beside the other. It now answers `None` for such
   a manifest (a core it cannot pin is scanned), and `build_rsid_index` refuses naming the files. A fully stated
   manifest pins exactly as before, so an index already built stays current.
+- **Every hand-kept typed column list is held to its builder's schema** (review round 1, item 4,
+  `@registry-completeness`): the lists a remote answer's rows are typed by (Open Targets' three, ClinVar's and
+  Ensembl's read subsets, beside CIViC's, ClinPGx's, ClinVar-GKM's and the drug labels') are found by an AST walk
+  over their call sites and each is compared with what its builder writes; `lookup`'s table per link is held to
+  `remote.table_name` of the lane's files. New: **`CacheLane.ensure_takes_declared_use`** (`True` for `ensembl`
+  only), which `cache prepare` and `cache pull` read to pass `declared_use=` to `ensure`, where both compared
+  `lane.name == "ensembl"`; `lookup_variant` skips an rsID-only remote ask by `RemoteLane.needs_position`. No
+  behaviour moves.
 
 ## 2026-11-18 — RM453: a mirrored site where no spelling was witnessed keeps both spellings (patch, a declared corrected derivation, on `main`)
 

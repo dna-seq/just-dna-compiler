@@ -310,6 +310,11 @@ class CacheLane:
     #: with this reason), and a bare `cache rebuild` reports it *not run*. `ensembl_rsid_index` alone:
     #: its build takes about 42 minutes and 6 GB from the Ensembl core, which no host should pay unasked.
     named_only: str | None = None
+    #: Whether this lane's `ensure` takes the run's declared use (`declared_use=`), which the provisioners
+    #: then pass it (0.9, review round 1, item 4): `ensembl` alone, whose recorded groups are re-pulled under
+    #: the run's `--use` when it states one (RM437). A field rather than a name compare in the provisioner,
+    #: and a test holds it equal, lane by lane, to whether `ensure` has that parameter.
+    ensure_takes_declared_use: bool = False
     #: How this lane's snapshot names the release it holds (RM180). The default is the format
     #: tier's `snapshot.release_label`, `release.json`'s `dataset`, and since RM303 every lane uses it:
     #: ClinVar's builder used to write `clinvar_file_date` and no `dataset`, so `cache status` printed
@@ -369,12 +374,12 @@ class CacheLane:
 
 
 def _ensure_declaration(lane: CacheLane, declared_use: str) -> dict[str, str]:
-    """The declaration a lane's `ensure` takes beyond the hub intent: the Ensembl lane's alone (RM437).
+    """The declaration a lane's `ensure` takes beyond the hub intent, for a lane whose field says it takes one.
 
-    Its recorded groups are re-pulled under the run's `--use` when that states one, else under the one
-    each was admitted with; no other lane's `ensure` takes a declaration.
+    Only the Ensembl lane does (`CacheLane.ensure_takes_declared_use`, RM437): its recorded groups are
+    re-pulled under the run's `--use` when that states one, else under the one each was admitted with.
     """
-    return {"declared_use": declared_use} if lane.name == "ensembl" else {}
+    return {"declared_use": declared_use} if lane.ensure_takes_declared_use else {}
 
 
 def _gate(terms: SourceTerms | None, declared_use: str, lane: str) -> RebuildOutcome | None:
@@ -1016,6 +1021,8 @@ CACHE_LANES: list[CacheLane] = [
         ),
         # The split release states its release only in `manifest.json` (RM372).
         release_label=ensembl_release_label,
+        # Its recorded groups are re-pulled under the run's use (RM437).
+        ensure_takes_declared_use=True,
     ),
     CacheLane(
         name="ensembl_rsid_index",

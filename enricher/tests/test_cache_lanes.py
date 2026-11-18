@@ -34,7 +34,7 @@ from just_dna_enricher.caches import (
     rebuild_lane,
     snapshot_bytes,
 )
-from just_dna_enricher.cli import app
+from just_dna_enricher.cli import app, cache_commands
 from just_dna_enricher.clinvar import clinvar_dataset_label
 from just_dna_enricher.licensing import CLINPGX_TERMS
 from just_dna_format.snapshot import release_label as snapshot_release_label
@@ -162,6 +162,19 @@ def test_every_lanes_pull_is_a_public_function_of_download() -> None:
         name = lane.ensure.__name__
         assert not name.startswith("_"), f"{lane.name} is pulled through a private name, {name}"
         assert getattr(download, name) is lane.ensure, f"{lane.name}'s ensure is not download.{name}"
+
+
+def test_a_lane_whose_ensure_takes_the_declared_use_says_so_in_a_field() -> None:
+    """`CacheLane.ensure_takes_declared_use` is the field the provisioners read (`cache prepare`'s
+    `_ensure_declaration`, `cache pull`), never `lane.name == "ensembl"` (review round 1, item 4). It equals,
+    lane by lane, whether the lane's `ensure` has a `declared_use` parameter."""
+    assert {lane.name: lane.ensure_takes_declared_use for lane in CACHE_LANES} == {
+        lane.name: lane.ensure is not None and "declared_use" in inspect.signature(lane.ensure).parameters
+        for lane in CACHE_LANES
+    }
+    assert any(lane.ensure_takes_declared_use for lane in CACHE_LANES), "the walk is not vacuous"
+    source = inspect.getsource(caches) + inspect.getsource(cache_commands)
+    assert 'lane.name == "ensembl"' not in source
 
 
 def test_every_lane_can_name_the_release_its_snapshot_holds(tmp_path: Path) -> None:

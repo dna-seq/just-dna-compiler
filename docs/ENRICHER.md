@@ -2130,6 +2130,10 @@ published, build if not.
   `cache rebuild --only <lane>` builds it. `RebuildRequest.named` (default `True`: a caller of
   `rebuild_lane` has named its lane) is what the loops over every lane set to `False`.
   `ensembl_rsid_index` is the one such lane.
+- **A lane whose `ensure` takes the run's declared use** says so in a field (0.9, review round 1:
+  `CacheLane.ensure_takes_declared_use`, `False` by default), which `cache prepare` and `cache pull` read
+  to pass `declared_use=` on; `ensembl` is the one such lane (its recorded groups, RM437). A test holds it
+  equal to whether `ensure` has that parameter.
 
 **Every bulk download goes through one body, and a failed one is a failed lane (RM187).** Each
 builder streams its source's file through `net.stream_to_file`, which is atomic (`.part`, renamed only
@@ -2541,7 +2545,10 @@ with RemoteSnapshots(declared_use="non_commercial") as snapshots:      # proxy f
 - **The keyed functions (RM431).** A lane RM431 made eligible is asked by the keys of its keyed function, and
   that function's SQL runs over the rows a route answers exactly as over the local files (one body per question,
   `_…_over`; the remote half is `_…_from_rows`, private, as RM430's are). No public function takes a holder in
-  0.9: a host asks `RemoteSnapshots.lookup` with the table and keys below and gets the rows.
+  0.9: a host asks `RemoteSnapshots.lookup` with the table and keys below and gets the rows. The rows are typed
+  by a hand-kept `(column, duckdb type)` list per table (ClinVar's and Ensembl's read subsets included), and
+  `test_typed_read_columns_are_the_snapshots.py` finds every such list at its call site and holds each to the
+  schema its builder writes, so a list added without a source fails that walk.
   - `opentargets.lookup_variants(reference, positions: Sequence[tuple[str, int]]) -> dict[tuple[str, int],
     list[dict]]`: every allele the release's allele table states at each position, keyed as asked (`chr6` and
     `6` are two keys with the same rows), compared as the release spells it (`normalize_chrom`). A row is the
