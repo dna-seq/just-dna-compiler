@@ -343,6 +343,10 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   beside an unstated reply read as `local`, a definite source from an unknown. It now goes through the rule
   `release` and `revision` do: an unstated reply, or two differing values, give `None`, the second said in the
   log. It reaches `VariantHint.routes` on every lookup the proxy answers in more than one request.
+- **The remote Ensembl link withholds the rsID's placement, as decided, and a test says so** (review round 2, G,
+  RM431 ask 4): Ensembl is asked remotely by position only, and one position cannot say every locus a
+  multi-place rsID has, so its rows there give rsID candidates and no locus, and ClinVar, asked next by rsID,
+  places it. No code changed; the test is red if the link passes the rsID to its reader.
 
 ## 2026-11-18 — RM455: the pre-0.9 instances of four classes 0.9 fixed in its own code (patch, enricher only, on `main`)
 

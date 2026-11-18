@@ -2573,6 +2573,10 @@ with RemoteSnapshots(declared_use="non_commercial") as snapshots:      # proxy f
   where the local snapshot would have been, before live Ensembl REST, and never under `offline=True`:
   Ensembl by the question's position only (an rsID-only question skips it with an `info` finding saying
   so), ClinVar by rsID and by position, and ClinVar again for the clinical calls at the resolved alleles.
+  **The remote Ensembl link never places the rsID** (RM431, ask 4; review round 2, G, by decision): a read
+  bounded to one position cannot say every locus a multi-place rsID has, so even when Ensembl's rows there name
+  the rsID it gives no locus, only the rsID candidates at that position, and ClinVar, asked next by rsID, places
+  it. The local Ensembl snapshot is read by rsID and places it.
   The rows go through the reader's own SQL (`resolver`/`clinvar` run one body over their glob and over a
   remote answer's rows), so a remote answer reads exactly as a local one. `VariantHint.routes` maps
   each lane answered remotely to its `RemoteRoute`, and stays `None` when none was; a lane answered over
