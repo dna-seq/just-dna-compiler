@@ -300,7 +300,9 @@ def _rsids_over(con: duckdb.DuckDBPyConnection, rsids: Sequence[str]) -> dict[st
     asked = _asked_rsids(rsids)
     if not asked:
         return {}
-    rows = _select_civic(con, _RSID.predicate("rsid"), [_RSID.parameter(list(asked))])
+    # Each key read as `_RSID` reads it, then the cell compared whole with `IN`, which prunes row groups.
+    tokens = _RSID.parameter(list(asked))
+    rows = _select_civic(con, f"rsid IN ({', '.join('?' for _ in tokens)})", tokens)
     answer: dict[str, list[dict]] = {}
     for row in rows:
         for spelling in asked[str(row["rsid"])]:

@@ -802,8 +802,10 @@ class RemoteSnapshots:
                 clauses.append(f'"{position}" IN ({", ".join(str(int(v)) for v in values)})')
                 continue
             compare = REMOTE_LANES[lane].compare(table, column)
-            if not compare.exact:
-                # The lane's local compare, the same object its keyed function's SQL is built from.
+            if not compare.cell_exact:
+                # The lane's local compare, the same object its keyed function's SQL is built from. A compare
+                # that reads only the key (an rsID) takes the plain `IN` below: `_read_as_compared` has read
+                # each value already, and `IN` over the column prunes row groups where a function does not.
                 clauses.append(compare.predicate(column))
                 params.append(compare.parameter(values))
                 continue

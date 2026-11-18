@@ -55,7 +55,7 @@ from just_dna_format.snapshot import SNAPSHOT_DATA_DIRNAME, SnapshotRelease, rea
 from just_dna_format.vrs import vrs_spec_release
 from tenacity import retry
 
-from just_dna_enricher.key_compare import lane_compare
+from just_dna_enricher.key_compare import _rsid_token, lane_compare
 from just_dna_enricher.net import (
     EndpointRetired,
     PacingGate,
@@ -560,8 +560,7 @@ class ClinVarGkmWitness:
         return self._rows(pl.col("vrs_id") == vrs_id.strip())
 
     def by_rsid(self, rsid: str) -> list[WitnessPlacement]:
-        token = rsid.strip().lower()
-        return self._rows(pl.col("rsid") == (token if token.startswith("rs") else f"rs{token}"))
+        return self._rows(pl.col("rsid") == _rsid_token(rsid))
 
     def by_rsids(self, rsids: Iterable[str]) -> dict[str, list[WitnessPlacement]]:
         """`by_rsid` over many rsIDs in one filter, keyed by the rsID as asked; an absent one is absent.
@@ -569,7 +568,7 @@ class ClinVarGkmWitness:
         One pass over the slice rather than one per rsID: a module asks about every rsID it places
         (RM267), and the slice is every ClinVar indel.
         """
-        asked = {(t if (t := r.strip().lower()).startswith("rs") else f"rs{t}"): r for r in rsids}
+        asked = {_rsid_token(r): r for r in rsids}
         found: dict[str, list[WitnessPlacement]] = {}
         for row in self._rows(pl.col("rsid").is_in(list(asked))):
             found.setdefault(asked[str(row.rsid)], []).append(row)
@@ -730,7 +729,9 @@ def _rsids_over(con: duckdb.DuckDBPyConnection, rsids: Sequence[str]) -> dict[st
     asked = _asked_rsids(rsids)
     if not asked:
         return {}
-    rows = _select_witness(con, _RSID.predicate("rsid"), [_RSID.parameter(list(asked))])
+    # Each key read as `_RSID` reads it, then the cell compared whole with `IN`, which prunes row groups.
+    tokens = _RSID.parameter(list(asked))
+    rows = _select_witness(con, f"rsid IN ({', '.join('?' for _ in tokens)})", tokens)
     answer: dict[str, list[dict]] = {}
     for row in rows:
         for spelling in asked[str(row["rsid"])]:
