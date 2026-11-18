@@ -222,6 +222,48 @@ these win.
   case: without `JUST_DNA_NETWORK_TESTS`, the conftest makes that URL builder refuse a non-loopback host, and
   `test_the_network_is_fenced.py` asserts it. The proxy route is tested through an `httpx.MockTransport`.
 
+**The builder's readings, placed (the pm, 2026-11-18).** RM430 landed on `0.9` at ca5c4a0a. Measured on the real Hub
+from empty caches: one Ensembl position 1.6 to 2.0 s (5 requests, about 5.4 MB), one ClinVar rsID 3.5 s (93 requests,
+23 MB; one row group per file, so nothing prunes, the trial's finding 4), a warm repeat 0.02 s. duckdb rewrites
+`hf://` to the Hub itself, which would bypass `hf_base_url` and the fence, so the holder reads the revision once per
+lane and hands duckdb explicit `resolve/<commit>/<path>` URLs.
+
+1. **Confirmed:** `RemoteRoute` is a record (route, release, served_from, revision), and the route vocabulary is
+   `proxy` and `hf`.
+2. **Confirmed:** `SnapshotRouteRetired`, a public subclass of `SnapshotRouteUnavailable` for a 410
+   (`@client-exception-contract`).
+3. **Flipped in part: every remote-eligible lane is tested on the remote route before RM430 counts as in.** Only
+   Ensembl and ClinVar got the shared one-SQL split, and the keyed callers of the rest are RM431's, which stands. But
+   `constraint`, `clinpgx` and `drug_labels` answer through `holder.lookup` with no test, in a suite or live; each
+   gets one through the loopback server, as `cpic` has.
+4. **Confirmed:** the proxy falls through on the registry's list exactly, and a partial proxy answer is discarded
+   when a later request falls through.
+5. **Flipped: a wrong request raises out of `lookup_variant`.** A 422, an unknown lane, table or column, or a
+   closed holder is a wrong request on every route, not could-not-ask (`@unreachable-not-absent` keeps "nobody
+   asked" for what could not be asked). Turning it into an `unchecked` finding would hide a caller's or our own
+   defect as an outage.
+6. **Confirmed, as `cache pull` reads it:** a lane whose terms are `None` records no restriction, so no gate runs;
+   this is the answer `check_declared_use` gives the same lane at acquisition.
+7. **Confirmed:** `http_retries = 0`, consistent with no retry inside the call; a caller re-asks.
+8. **Confirmed:** remote tables are the `data/` files only; citations and the Ensembl groups stay local in 0.9.
+9. **Confirmed:** a proxy answer's release and revision are what the reply states, else `None`.
+
+**Of the deferred findings, four are part of RM430** (the trial rule: a defect in an item's own build is part of
+it), fixed before it counts as in:
+
+- **cpic keys compare exactly remotely and lower-cased locally.** The same bytes must give the same answer on every
+  route; the remote route takes the local comparison.
+- **`RemoteAnswer` repeats `RemoteRoute`'s fields.** A public shape is permanent within the major, so it is settled
+  before 0.9 ships: `RemoteAnswer(rows, route: RemoteRoute)`.
+- **`close()` racing an in-flight lookup leaks an `httpx` `RuntimeError`.** Closing takes the holder's lock, and a
+  lookup on a closing or closed holder raises the closed-holder error, never a transport type.
+- **No AST walk holds that only the URL builder hands duckdb a URL.** The fence (answer H) rests on it, so the walk
+  is the fence's own guard.
+
+Left for later: `lookup_variant` asks ClinVar remotely up to three times (one query, a patch on `main` after 0.9
+merges, triage files it); `lane_status` given a URL reports absent and collapses `//` in `looked_in`, as ENRICHER.md
+says, a residual of this entry.
+
 **Residuals** none yet.
 
 ## RM431 — the keyed readers a remote lookup needs: an rsID index for Ensembl, and a key on the whole-table readers
