@@ -288,7 +288,8 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   not UTF-8 raised `UnicodeDecodeError` past the documented type. It now raises `EnsemblGroupReleaseError`
   naming the record and the remedy, through `ensembl_group_dir` too; an absent record is still `{}`. A pull
   repairs it rather than stopping: `ensure_snapshot` moves it aside under a dated name, writes a fresh record
-  naming the lane's repository, and pulls with this call's groups, warning that the selection is lost and which
+  naming the lane's repository and the core files the cache's manifest attests (review round 2: an empty list
+  read as a finished pull and returned a short cache whole), and pulls with this call's groups, warning that the selection is lost and which
   repository it assumes (the pm, cf12e864; without a record the cache read as a local build, never pulled again). **The manifest's group records are read group
   by group and field by field**: a group field of a kind not typed here (`default: "auto"`) failed the whole
   `manifest.json`, losing the core's release, coverage and rsID-index pin; now that field reads as unstated with a

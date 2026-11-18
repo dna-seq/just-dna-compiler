@@ -349,7 +349,8 @@ def _carried_groups(cache_dir: Path) -> dict[str, object]:
 def _set_aside_unreadable_record(cache_dir: Path, repo: str, unreadable: Exception) -> Path:
     """Move an unreadable pull record aside and write a fresh one naming `repo` (review round 1, item 3).
 
-    The fresh record names `repo` with no files' release digest and no groups, so `_pulled_by_this_repo`
+    The fresh record names `repo`, the core files the cache's manifest attests (none without one), no release
+    digest and no groups, so `_pulled_by_this_repo`
     takes the cache for a pull of it and a refresh may run; without one, a cache with a `release.json`
     reads as a local build and is never pulled again. The old record is kept under a dated name (no `:`,
     which an NTFS mount refuses), and the warning names it, the selection it loses, and the repository
@@ -363,7 +364,17 @@ def _set_aside_unreadable_record(cache_dir: Path, repo: str, unreadable: Excepti
         n += 1
         aside = cache_dir / f"{PULL_RECORD_FILENAME}.unreadable-{stamp}-{n}"
     record.rename(aside)
-    atomic_write_text(record, json.dumps({"repo": repo, "files": []}, indent=2) + "\n")
+    # The file list is the core the cache's manifest attests, never `[]` (review round 2, class A): an empty
+    # list reads as a pull that finished with nothing missing, so a short cache was returned whole. Listing
+    # what the manifest attests makes an attested file that is absent or short an unfinished pull, which the
+    # provisioner fetches. With no manifest nothing says which files a pull took: no list, the unknown arm.
+    manifest = read_snapshot_manifest(cache_dir / SNAPSHOT_MANIFEST_FILENAME)
+    attested = (
+        [entry.path for entry in manifest.files if entry.path.startswith(f"{SNAPSHOT_DATA_DIRNAME}/")]
+        if manifest is not None and manifest.files
+        else None
+    )
+    atomic_write_text(record, json.dumps({"repo": repo, "files": attested}, indent=2) + "\n")
     reason = str(unreadable).split(" could not be read (", 1)[-1].split("), so nothing says", 1)[0]
     logger.warning(
         "The pull record at %s could not be read (%s); moved it to %s, and any group selection it held is "

@@ -936,3 +936,27 @@ def test_cache_pull_refuses_a_group_selection_before_any_lane_runs(
     assert result.exit_code == 2, cli_text(result)
     assert refusal in cli_text(result)
     assert not base.exists()
+
+
+def test_the_fresh_record_claims_no_finished_pull_so_a_short_cache_is_completed(
+    install_hub, tmp_path: Path
+) -> None:
+    """Review round 2, class A: a fresh record with an empty file list read as a pull that finished, so a cache
+    missing a file was returned as whole by a caller that does not follow the hub. The unreadable record it
+    replaces said nothing about the files; the fresh one says nothing either, and the pull completes the cache."""
+    cache = tmp_path / "ensembl"
+    published = _published(0, _OLD)
+    install_hub(published)
+    dl.ensure_snapshot(cache)
+    gone = min((cache / "data").glob("*.parquet"))
+    gone.unlink()
+    (cache / SNAPSHOT_MANIFEST_FILENAME).unlink()  # the manifest's coverage would otherwise catch it
+    (cache / PULL_RECORD_FILENAME).write_bytes(b"{")
+    install_hub(published)
+
+    dl.ensure_snapshot(cache)
+
+    assert gone.read_bytes() == published[f"data/{gone.name}"], (
+        "the missing file is fetched, not taken as absent"
+    )
+    assert gone.name in " ".join(_record(cache)["files"]), "the pull that finished recorded its files"

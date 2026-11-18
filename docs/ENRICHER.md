@@ -2412,7 +2412,8 @@ prevent, and a stale group joins to the wrong variants silently.
   the readers refuse (review round 1): read as no groups, it ended the sticky selection unsaid. A pull
   repairs it instead of refusing: `ensure_snapshot` moves the record aside under a dated name
   (`pull-record.json.unreadable-<UTC stamp>`, never deleted), writes a fresh one naming the lane's repository
-  with no groups and no release digest, and pulls with this call's groups, keeping every file the manifest
+  and the core files the cache's manifest attests (no list without one; never an empty list, which reads as a
+  finished pull), with no groups and no release digest, and pulls with this call's groups, keeping every file the manifest
   attests by sha256. Its warning names the moved file, says any group selection it held is lost, and names
   the repository it assumes. Without the fresh record the cache would read as a local build and never be
   pulled again; a local build writes no pull record, so a corrupt one came from a pull.
