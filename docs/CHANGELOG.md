@@ -333,6 +333,11 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   `LicenseRefusal` though nothing would be taken. The currency check (recorded at the manifest's release, every
   attested file there at its size) now comes first, in the preflight and the pull alike; a named group that must be
   fetched under a use its terms refuse still raises before any download.
+- **A text said once is a warning the pinned-text walk sees** (review round 2, E): the walk read logger calls,
+  `Finding`s and `warnings` lists, not `locations._warn_once`, the helper 0.9 added for the manifest's group
+  warnings. It reads it now, and since the helper is new in 0.9, every call of it in any module must carry a
+  fragment the list names, older module or not; the three it makes today were already listed and pinned.
+  Exception texts stay out of the walk: a caller catches an exception by its type, not its words.
 
 ## 2026-11-18 — RM455: the pre-0.9 instances of four classes 0.9 fixed in its own code (patch, enricher only, on `main`)
 

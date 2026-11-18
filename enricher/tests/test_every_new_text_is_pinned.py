@@ -15,7 +15,10 @@ and each with the fragment of it that does not move with its arguments. Three ch
   fragment registered for it, so a new log line there owes an entry and a pin.
 
 The third check cannot see a new text in a module older than 0.9, since no test may read git (CI's checkout
-is shallow); such a text is caught at review, and this list is where it then goes.
+is shallow); such a text is caught at review, and this list is where it then goes. One helper is the exception:
+`locations._warn_once` is new in 0.9, so every text passed to it, in any module, is a 0.9 warning the list
+must name (review round 2, E). Exception texts stay out of the walk: a caller catches an exception by its type,
+never by its words.
 """
 
 import ast
@@ -119,13 +122,18 @@ def _literals(tree: ast.AST) -> list[str]:
 
 
 def _emissions(tree: ast.Module) -> list[tuple[int, list[str]]]:
-    """`(line, literal pieces)` of every logger call, `Finding`, and `warnings` append or warn in `tree`."""
+    """`(line, literal pieces)` of every logger call, `_warn_once`, `Finding`, and `warnings` append or warn in
+    `tree`. `locations._warn_once` is a logger warning said once per process (review round 2, E)."""
     found = []
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
             continue
         func, text = node.func, None
-        if isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name):
+        if (isinstance(func, ast.Name) and func.id == "_warn_once") or (
+            isinstance(func, ast.Attribute) and func.attr == "_warn_once"
+        ):
+            text = node.args[0] if node.args else None
+        elif isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name):
             if (
                 func.attr in _LEVELS
                 and func.value.id in ("logger", "logging")
@@ -189,3 +197,43 @@ def test_a_module_new_in_0_9_emits_no_text_the_list_does_not_name(module: str) -
         if not any(fragment in piece for fragment in fragments for piece in pieces)
     ]
     assert not unnamed, f"{module} emits texts no entry names: {unnamed}"
+
+
+def _calls_to(tree: ast.AST, name: str) -> list[int]:
+    """The lines of every call to `name`, by its bare name or as an attribute."""
+    return sorted(
+        node.lineno
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and (
+            (isinstance(node.func, ast.Name) and node.func.id == name)
+            or (isinstance(node.func, ast.Attribute) and node.func.attr == name)
+        )
+    )
+
+
+def test_every_text_said_once_is_an_emission_the_list_names() -> None:
+    """Review round 2, E: a text passed to `locations._warn_once` is a warning, so the walk sees it as one. The
+    helper is new in 0.9, so every call of it, in any module, is a 0.9 text that owes an entry and a pin, which
+    the third check cannot ask of a module older than 0.9. Exception texts stay out: a caller catches an
+    exception by its type, never by its words."""
+    calls: dict[str, list[int]] = {}
+    unseen, unnamed = [], []
+    for path in sorted(_PACKAGE.rglob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        lines = _calls_to(tree, "_warn_once")
+        if not lines:
+            continue
+        parts = path.relative_to(_PACKAGE).with_suffix("").parts
+        module = ".".join(parts[:-1] if parts[-1] == "__init__" else parts)
+        calls[module] = lines
+        emitted = dict(_emissions(tree))
+        fragments = [text.fragment for text in NEW_TEXTS if text.module == module]
+        for line in lines:
+            if line not in emitted:
+                unseen.append((module, line))
+            elif not any(fragment in piece for fragment in fragments for piece in emitted[line]):
+                unnamed.append((module, line, emitted[line]))
+    assert calls, "no call of `_warn_once` was found, so this walk reads nothing"
+    assert not unseen, f"the emission walk does not see these `_warn_once` calls: {unseen}"
+    assert not unnamed, f"texts said once that no entry names: {unnamed}"
