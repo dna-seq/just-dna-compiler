@@ -286,7 +286,7 @@ def snapshot_record_missing(cache_dir: Path) -> list[str] | None:
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
         files = payload["files"]
-    except (OSError, json.JSONDecodeError, KeyError, TypeError) as exc:
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError) as exc:
         logger.warning("Could not read %s (%s); treating the cache as unrecorded.", path, exc)
         return None
     if not isinstance(files, list) or not all(isinstance(f, str) for f in files):
@@ -348,7 +348,7 @@ def pull_record_repo(cache_dir: Path) -> str | None:
         return None
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
         return None
     if not isinstance(payload, dict):
         return None

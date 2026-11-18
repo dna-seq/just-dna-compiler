@@ -38,6 +38,7 @@ from just_dna_enricher.net import (
     _service_gate,
     attempt_floor,
     batched,
+    check_batch_size,
     dedupe,
     raise_if_retired,
     retry_if_transient,
@@ -104,6 +105,11 @@ class EutilsSettings:
             self.email = env_value("JUST_DNA_CONTACT_EMAIL") or None
         if self.min_request_interval is None:
             self.min_request_interval = _KEYED_INTERVAL if self.api_key else _UNKEYED_INTERVAL
+        self._check()
+
+    def _check(self) -> None:
+        """Refuse a `batch_size` below 1, here and again where `esummary` reads it (RM455)."""
+        check_batch_size(type(self).__name__, self.batch_size)
 
     def identity_params(self) -> dict[str, str]:
         """`tool`/`email`/`api_key`, omitting whatever is genuinely unknown."""
@@ -205,6 +211,7 @@ class EutilsClient:
         is the answer both callers came for, and discarding it would turn a detectable absence into an
         indistinguishable silence. Use `is_missing` to read it.
         """
+        self.settings._check()  # a field may have been set since the settings were built (RM455)
         wanted = dedupe(i for i in ids if i)
         out: dict[str, dict[str, Any]] = {}
         for batch in batched(wanted, self.settings.batch_size):

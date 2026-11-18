@@ -33,7 +33,7 @@ from just_dna_enricher.caches import (
 from just_dna_enricher.cli._shared import _use
 from just_dna_enricher.download import SnapshotNotPublished, _FollowHub, _named_groups
 from just_dna_enricher.licensing import LicenseRefusal, check_declared_use
-from just_dna_enricher.locations import CACHES_DIRNAME, RELEASE_FILENAME, STRCHIVE_CATALOGUE_FILENAME
+from just_dna_enricher.locations import CACHES_DIRNAME, RELEASE_FILENAME
 
 #: Why `cache rebuild --rehearse-download` is refused without `--dry-run` and `--publish` (RM412). Pinned
 #: by a test, because a refusal's reason is what the operator acts on (`@warning-text-is-api`). The
@@ -651,7 +651,7 @@ def _dry_run(
             continue
         typer.echo(f"      published at {lane.publish_repo}: {_published_release(lane.publish_repo)}")
         built = request.out_dir
-        if not holds_snapshot_payload(built, payload_filename=_payload(lane)):
+        if not holds_snapshot_payload(built, payload_filename=lane.payload_filename):
             typer.echo(
                 f"      the upload's checks need the built bytes: run without --publish to build into "
                 f"{built}, then again with --publish --dry-run to rehearse it"
@@ -751,17 +751,12 @@ def _build_plan(request: RebuildRequest) -> str:
     return f"{release}, {origin}, into {request.out_dir}"
 
 
-def _payload(lane: CacheLane) -> str | None:
-    """The root-file payload a lane's snapshot is made of, or `None` for `data/*.parquet`."""
-    return STRCHIVE_CATALOGUE_FILENAME if lane.name == "strchive" else None
-
-
 def _rehearse_upload(lane: CacheLane, built: Path, *, built_by: str) -> None:
     """Rehearse the upload of the snapshot at `built` to the lane's repo: the plan and the orphan check, nothing sent."""
     from just_dna_enricher.upload import PublishRefused, rehearse_reference_snapshot
 
     try:
-        plan = rehearse_reference_snapshot(built, lane.publish_repo, payload=_payload(lane))
+        plan = rehearse_reference_snapshot(built, lane.publish_repo, payload=lane.payload_filename)
     except (PublishRefused, PermissionError, ImportError) as exc:
         typer.secho(f"      WOULD BE REFUSED: {exc}", fg=typer.colors.RED, err=True)
         return
@@ -810,7 +805,7 @@ def _publish_rebuilt(lane: CacheLane, outcome: RebuildOutcome) -> None:
         )
         return
     try:
-        plan = publish_reference_snapshot(snapshot_dir, lane.publish_repo, payload=_payload(lane))
+        plan = publish_reference_snapshot(snapshot_dir, lane.publish_repo, payload=lane.payload_filename)
     except (PublishRefused, PermissionError, ImportError) as exc:
         typer.secho(f"    PUBLISH FAILED: {exc}", fg=typer.colors.RED, err=True)
         return

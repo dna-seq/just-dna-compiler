@@ -381,7 +381,7 @@ def _pull_record(cache_dir: Path) -> dict | None:
     """The pull record's payload, or `None` when there is none or it does not read as an object."""
     try:
         payload = json.loads((cache_dir / PULL_RECORD_FILENAME).read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
         return None
     return payload if isinstance(payload, dict) else None
 

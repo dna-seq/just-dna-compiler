@@ -467,6 +467,12 @@ of this entry (the path is deprecated and retired at 1.0).
    older than 0.9 and is not this item's.
 4. **The `;`-joined cell is RM430's**, placed there.
 
+**`mitomap_miss` takes the stale state too (the pm, 2026-11-18).** Round 1's class 11 made status call a stale index
+stale, but `mitomap_miss` is a derived lane with `stale_parents` and no stale reason, so status still calls it present
+over moved parents. The stale state exists only on 0.9, so this is part of this item: a `stale_reason` on the
+`mitomap_miss` lane, built with round 2's fixes, and a test that walks every derived lane with parents to check it
+declares one. Triage found it while building RM455, which names it in its residuals.
+
 **Residuals** none yet.
 
 ## RM443 — `lane_status` resolves every lane from the environment, so a host that passes its lanes' paths explicitly cannot ask it about them

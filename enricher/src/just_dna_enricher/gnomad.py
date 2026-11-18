@@ -49,6 +49,7 @@ from just_dna_enricher.net import (
     _log_retry,
     attempt_floor,
     batched,
+    check_batch_size,
     dedupe,
     raise_if_retired,
     retry_if_transient,
@@ -171,6 +172,13 @@ class GnomadSettings:
     #: Seconds between requests — 6.0 is exactly gnomAD's stated 10-per-60s budget.
     min_request_interval: float = 6.0
     timeout: float = 30.0
+
+    def __post_init__(self) -> None:
+        self._check()
+
+    def _check(self) -> None:
+        """Refuse a `batch_size` below 1, here and again where the batched reads read it (RM455)."""
+        check_batch_size(type(self).__name__, self.batch_size)
 
 
 def _alias(index: int) -> str:
@@ -442,6 +450,7 @@ class GnomadClient:
         variant id, and the alleles are aggregated into one locus. An rsID that returns nothing at all
         is simply absent from the result (the caller falls through to "not found").
         """
+        self.settings._check()  # a field may have been set since the settings were built (RM455)
         wanted = dedupe(r for r in rsids if r)
         if not wanted:
             return {}
@@ -486,6 +495,7 @@ class GnomadClient:
         which names exactly one allele. Each population entry carries AC/AN — never a frequency, which
         the API does not expose per group and which we compute from the counts instead.
         """
+        self.settings._check()  # a field may have been set since the settings were built (RM455)
         wanted = dedupe(v for v in variant_ids if v)
         if not wanted:
             return {}
@@ -526,6 +536,7 @@ class GnomadClient:
         gene pass can fall back to the live API without the rate limit mattering, while the frequency
         pass cannot go the other way and ship an offline snapshot.
         """
+        self.settings._check()  # a field may have been set since the settings were built (RM455)
         wanted = dedupe(s for s in symbols if s)
         if not wanted:
             return {}
