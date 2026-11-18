@@ -1412,9 +1412,15 @@ def ensure_snapshot(
     `groups/<name>/` beside the core and read through `locations.ensembl_group_dir`, never by path. The
     valid names are the manifest's own `groups`; `core` is refused (`CORE_IS_NOT_A_GROUP`) and so is a
     name the manifest does not publish, both with `ValueError` and before any download. Each named
-    group is judged by `check_declared_use` against its licensor's terms (`snapshot_group_terms`)
-    before any download too: a forbidding licensor under `commercial` raises `LicenseRefusal`, and
-    under `unstated`, or with terms unknown, the group is skipped with the reason logged.
+    group that must be fetched is judged by `check_declared_use` against its licensor's terms
+    (`snapshot_group_terms`) before any download too: a named group whose terms refuse the stated use
+    raises `LicenseRefusal` when it must be fetched, and under `unstated`, or with terms unknown, the
+    group is skipped with the reason logged. A group already current (recorded at the manifest's
+    release, every file it attests there at its size) fetches nothing, so it is not gated again
+    (`@acquisition-gate-is-not-a-read-gate`; review round 2, D). **Except during a release transition**:
+    the gate judges currency against the cache's manifest, so a group current there while the hub has a
+    newer release is gated only by the pull after the core is refreshed. It is still refused before any
+    of its own bytes move, but the core has moved by then (0.9's known issue C).
 
     **The selection is sticky.** The pull record names every group a pull took, with the release its
     files were attested against and the declaration it was admitted under, and every later call
@@ -1562,16 +1568,37 @@ def _known_group(manifest: SnapshotManifest, group: str) -> SnapshotManifestGrou
     return known[group]
 
 
-def _admit_named_groups(cache_dir: Path, named: tuple[str, ...], declared_use: str) -> None:
-    """Refuse an unknown name or a forbidden use before any download, core included (RM437).
+def _group_is_current(
+    cache_dir: Path, entry: dict | None, release: str, entries: Sequence[SnapshotManifestFile]
+) -> bool:
+    """Whether a group needs no fetch: recorded at `release`, and every file `entries` attests there at its size."""
+    return (
+        bool(release)
+        and entry is not None
+        and entry.get("release_id") == release
+        and bool(entries)
+        and all(
+            (cache_dir / e.path).is_file()
+            and e.size is not None
+            and (cache_dir / e.path).stat().st_size == e.size
+            for e in entries
+        )
+    )
 
-    A skip is not decided here: `_provision_groups` decides it against the manifest the core's pull
-    leaves, and logs it once.
+
+def _admit_named_groups(cache_dir: Path, named: tuple[str, ...], declared_use: str) -> None:
+    """Refuse an unknown name, or a forbidden use of a group that must be fetched, before any download (RM437).
+
+    A group already current is not gated (review round 2, D): nothing is taken. A skip is not decided
+    here: `_provision_groups` decides it against the manifest the core's pull leaves, and logs it once.
     """
     manifest = _selection_manifest(cache_dir, named)
     records = [_known_group(manifest, group) for group in named]
     recorded = pulled_groups(cache_dir)
+    release = (manifest.release_id or "").strip()
     for group, record in zip(named, records, strict=True):
+        if _group_is_current(cache_dir, recorded.get(group), release, manifest.group_files(group)):
+            continue
         check_declared_use(
             snapshot_group_terms(group, record.licence),
             _effective_group_use(declared_use, recorded.get(group)),
@@ -1629,13 +1656,7 @@ def _pull_one_group(
         )
     entries = _group_entries(manifest, group)
     paths = [e.path for e in entries]
-    whole = all(
-        (cache_dir / e.path).is_file()
-        and e.size is not None
-        and (cache_dir / e.path).stat().st_size == e.size
-        for e in entries
-    )
-    if entry is not None and entry.get("release_id") == release and whole:
+    if _group_is_current(cache_dir, entry, release, entries):
         # Nothing is taken, so nothing is gated (`@acquisition-gate-is-not-a-read-gate`).
         return _with_strays(cache_dir, group, manifest, "current")
     use, from_record = _group_use(declared_use, entry)

@@ -725,12 +725,14 @@ def ensembl_group_dir(ensembl_cache: Path, group: str) -> Path:
 
     **The path and the check are one call**, so no reader spells the layout and none reads a group
     without the check. The core's release is its `manifest.json`'s `release_id`, the record that
-    attests the core's files; the group's is the one its pull recorded. Seven refusals, each its own
+    attests the core's files; the group's is the one its pull recorded. Eight refusals, each its own
     sentence (`@answered-is-not-absent`), all `EnsemblGroupReleaseError`: the pull record is there and
-    cannot be read (`pulled_groups`), it names no such group (absent, or placed by hand), the group's pull did not finish, the core states no release, the
-    two releases differ, an attested file is missing or of another size, and a parquet there is not one
-    the manifest names for the group (the last two compared by size, as the core is read). `core` itself
-    raises `ValueError` (`CORE_IS_NOT_A_GROUP`).
+    cannot be read (`pulled_groups`), it names no such group (absent, or placed by hand), the group's pull
+    did not finish, the core states no release, the two releases differ, the manifest states no size for
+    a file it attests for the group (the publisher's to fix: no pull can fetch such a file, review round 2,
+    H), an attested file is missing or of another size, and a parquet there is not one the manifest names
+    for the group (the last two compared by size, as the core is read). `core` itself raises `ValueError`
+    (`CORE_IS_NOT_A_GROUP`).
     """
     if group == ENSEMBL_CORE_GROUP:
         raise ValueError(CORE_IS_NOT_A_GROUP)
@@ -764,14 +766,25 @@ def ensembl_group_dir(ensembl_cache: Path, group: str) -> Path:
             f"`just-dna-enricher cache pull --only ensembl` to re-pull it."
         )
     # The directory as the manifest attests it, both directions and by size (a `stat`, as
-    # `manifest_coverage` reads the core). Two refusals with two remedies: an attested file missing or of
-    # another size is re-pulled; a parquet the manifest does not name is no pull's to remove, so it is
-    # moved aside (the core's foreign-file warning says the same). Either withholds the group whole.
+    # `manifest_coverage` reads the core). Three refusals with three remedies: a file the manifest states
+    # no size for is the publisher's (no pull can fetch it: `manifest_attests` attests nothing without a
+    # size); an attested file missing or of another size is re-pulled; a parquet the manifest does not
+    # name is no pull's to remove, so it is moved aside (the core's foreign-file warning says the same).
+    # Each withholds the group whole.
     attested = {f.path: f.size for f in manifest.group_files(group)} if manifest is not None else {}
+    unsized = sorted(relative for relative, size in attested.items() if size is None)
+    if unsized:
+        raise EnsemblGroupReleaseError(
+            f"The {group} group at {directory} is recorded as release {core}, but its "
+            f"{SNAPSHOT_MANIFEST_FILENAME} states no size for {len(unsized)} file(s) it attests "
+            f"({_named(tuple(unsized))}), so no reader can check them and no pull can fetch them: a re-pull "
+            f"cannot clear this. The snapshot's publisher must state each file's size (`bytes`) in its "
+            f"{SNAPSHOT_MANIFEST_FILENAME}."
+        )
     differing = [
         relative
         for relative, size in sorted(attested.items())
-        if size is None or not (cache / relative).is_file() or (cache / relative).stat().st_size != size
+        if not (cache / relative).is_file() or (cache / relative).stat().st_size != size
     ]
     if differing:
         raise EnsemblGroupReleaseError(

@@ -327,6 +327,43 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   call that could not be asked remotely, the group pull's, removal's and failed re-pull's lines, the rsID index
   build's progress, and the stale-index refusal's head. The holder no longer logs "asking Hugging Face" when
   Hugging Face is off.
+- **A named group already current is not gated again** (review round 2, D, RM437's reading 4,
+  `@acquisition-gate-is-not-a-read-gate`): the preflight ran `check_declared_use` before asking whether the group
+  needed a fetch, so `cache pull --only ensembl --groups cadd --use commercial` over a current CADD group raised
+  `LicenseRefusal` though nothing would be taken. The currency check (recorded at the manifest's release, every
+  attested file there at its size) now comes first, in the preflight and the pull alike; a named group that must be
+  fetched under a use its terms refuse still raises before any download, except during a release transition
+  (known issue C): current at the cache's release, it is gated by the pull after the core is refreshed, and still
+  refused before any of its own bytes move.
+- **A text said once is a warning the pinned-text walk sees** (review round 2, E): the walk read logger calls,
+  `Finding`s and `warnings` lists, not `locations._warn_once`, the helper 0.9 added for the manifest's group
+  warnings. It reads it now, and since the helper is new in 0.9, every call of it in any module must carry a
+  fragment the list names, older module or not; the three it makes today were already listed and pinned.
+  Exception texts stay out of the walk: a caller catches an exception by its type, not its words.
+- **A proxy answer's `served_from` is withheld unless every reply states the same one** (review round 2, F, RM430,
+  the house algebra): it joined the values its replies stated and dropped the replies stating none, so `local`
+  beside an unstated reply read as `local`, a definite source from an unknown. It now goes through the rule
+  `release` and `revision` do: an unstated reply, or two differing values, give `None`, the second said in the
+  log. It reaches `VariantHint.routes` on every lookup the proxy answers in more than one request.
+- **The remote Ensembl link withholds the rsID's placement, as decided, and a test says so** (review round 2, G,
+  RM431 ask 4): Ensembl is asked remotely by position only, and one position cannot say every locus a
+  multi-place rsID has, so its rows there give rsID candidates and no locus, and ClinVar, asked next by rsID,
+  places it. No code changed; the test is red if the link passes the rsID to its reader.
+- **A group file the manifest states no size for gets its own refusal, naming the publisher** (review round 2, H,
+  RM437, `@answered-is-not-absent`): `ensembl_group_dir` called it missing or of another size and said to re-pull,
+  but no pull can fetch a file the manifest attests no size for (`_fetch_parquet` refuses it), so the remedy
+  could not clear the refusal. It now says the manifest states no size for it, that a re-pull cannot clear this,
+  and that the snapshot's publisher must state each file's size: eight refusals, one sentence each. Latent:
+  the published manifest states every size. The reader's arm is reached only where the record says the group's
+  pull finished; a pull from a hub manifest stating no size still downloads the file, refuses it in
+  `_fetch_parquet` ("Re-run the pull"), and leaves the reader saying the pull did not finish, both remedies a
+  re-pull cannot meet. That pull-side half is left for 0.10.
+- **The sequence proxy's failed-build warning says what happens** (review round 2, I, RM404): it said
+  sequence-dependent work "is skipped this run", but a proxy remembers no failure, so read outside a run's view
+  it builds again at its next read. It now reads `Could not reach the sequence service at <uri> (<error>); this
+  read returns no bases, and the build is retried at the proxy's next read.`, then what the missing bases cost
+  (an indel's VRS id unminted, the reference-allele check not made) and that a run's view asks for the build
+  once per run; the same prefix, pinned with the 0.9 texts.
 
 ## 2026-11-18 — RM455: the pre-0.9 instances of four classes 0.9 fixed in its own code (patch, enricher only, on `main`)
 

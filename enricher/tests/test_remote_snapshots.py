@@ -917,6 +917,34 @@ def test_the_proxy_answers_a_lookup_and_its_route_says_so(
     assert hint.routes == {"clinvar": RemoteRoute("proxy", None, "local", None)}
 
 
+def test_the_remote_ensembl_link_withholds_the_rsids_placement_and_clinvar_is_asked(
+    no_ambient_caches, clinvar_root: Path, tmp_path: Path
+) -> None:
+    """Review round 2, G, as decided (RM431, ask 4): Ensembl is asked remotely by position only, and a read bounded
+    to one position cannot say every locus a multi-place rsID has. So even when its rows there name the rsID, the
+    remote Ensembl link places nothing, and the next link, ClinVar, is asked and places it."""
+    ensembl_root = tmp_path / "ensembl"
+    (ensembl_root / "data").mkdir(parents=True)
+    pl.DataFrame(
+        {"chrom": ["11"], "start": [5227002], "ref": ["T"], "alt": ["A"], "id": ["rs334"], "row_idx": [0]},
+        schema_overrides={"start": pl.UInt32, "row_idx": pl.UInt32},
+    ).write_parquet(ensembl_root / "data" / "homo_sapiens-chr11.parquet")
+    position = {"chrom": ["11"], "start": [5227002]}
+    assert [row["id"] for row in _registry_rows(ensembl_root, position)] == ["rs334"], (
+        "Ensembl's rows name it"
+    )
+    proxy = _Proxy({"clinvar": clinvar_root, "ensembl": ensembl_root})
+
+    with _with_proxy(RemoteSnapshots(proxy_url=PROXY, huggingface=False), proxy) as holder:
+        hint, _ensembl = _ask(tmp_path, holder, rsid="rs334", chrom="11", start=5227002)
+
+    assert [keys for lane, keys in proxy.asked if lane == "ensembl"] == [position], "by position only"
+    assert {"rsid": ["rs334"]} in [keys for lane, keys in proxy.asked if lane == "clinvar"]
+    assert set(hint.routes or {}) == {"ensembl", "clinvar"}
+    assert hint.loci == clinvar.lookup_loci(clinvar_root, ["rs334"], [])[0]["rs334"], "ClinVar places it"
+    assert "rs334" in hint.rsid_candidates, "Ensembl's rows still name the rsID at the position asked"
+
+
 def test_two_routes_in_one_lookup_are_both_said(
     httpfs, no_ambient_caches, loopback_hub, clinvar_root: Path, ensembl_root: Path, tmp_path: Path
 ) -> None:
@@ -1271,6 +1299,40 @@ def test_two_proxy_replies_stating_two_releases_withhold_it_and_say_so(
     assert _remote_log(caplog) == [
         "clinvar: the proxy's replies to one lookup state 2 releases (clinvar_2026-11-01, clinvar_2026-11-08); withheld"
     ]
+
+
+@pytest.mark.parametrize(
+    ("stated", "said"),
+    [
+        (["local", None], []),
+        (
+            ["local", "remote:just-dna-seq/clinvar"],
+            [
+                "clinvar: the proxy's replies to one lookup state 2 served_from values "
+                "(local, remote:just-dna-seq/clinvar); withheld"
+            ],
+        ),
+    ],
+    ids=["one unstated", "two stated"],
+)
+def test_served_from_is_withheld_unless_every_reply_states_the_same(
+    caplog: pytest.LogCaptureFixture, stated: list[str | None], said: list[str]
+) -> None:
+    """Review round 2, F: `served_from` goes through the rule `release` and `revision` do. A reply stating none
+    is the unknown arm, so `local` beside it is no answer; it was `local`, and two values were joined."""
+    replies = iter(stated)
+
+    def proxy(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={**_well_formed("clinvar", "clinvar"), "served_from": next(replies)})
+
+    rsids = [f"rs{i}" for i in range(1, remote.PROXY_MAX_KEY_VALUES + 2)]
+    with (
+        caplog.at_level(logging.WARNING, logger="just_dna_enricher.remote"),
+        _with_proxy(RemoteSnapshots(proxy_url=PROXY, huggingface=False), proxy) as holder,
+    ):
+        answer = holder.lookup("clinvar", "clinvar", {"rsid": rsids})
+    assert answer.route == RemoteRoute("proxy", None, None, None)
+    assert _remote_log(caplog) == said
 
 
 def test_an_unreadable_hub_manifest_attests_no_file_and_says_so(

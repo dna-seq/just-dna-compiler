@@ -2401,7 +2401,13 @@ prevent, and a stale group joins to the wrong variants silently.
   `check_declared_use`, as a gated lane does in `cache pull`: `--groups cadd` downloads under
   `non_commercial`, raises `LicenseRefusal` under `commercial` before any byte moves (core included),
   and is skipped under `unstated`; an unknown licensor is skipped under every use, the reason quoting the
-  licence. A group already current is not gated again: nothing is taken.
+  licence. A group already current (recorded at the manifest's release, every file it attests there at its
+  size) is not gated again, named or not: nothing is taken (review round 2, D). So `cache pull --only
+  ensembl --groups cadd --use commercial` over a current CADD group fetches nothing and reports it
+  `current`; the refusal comes when the group must be fetched, before any byte moves. **Except during a
+  release transition** (a known issue of 0.9, C): currency is judged against the cache's manifest, so a group
+  current there while the hub publishes a newer release is gated by the pull after the core is refreshed.
+  It is still refused, and none of its bytes are taken, but the core has moved by then.
 - **Attested and recorded.** Each group file is renamed into place only if the manifest attests it by
   size and sha256, as a core file is. The pull record gains `groups` (`locations.PULL_RECORD_GROUPS_KEY`):
   per group, the `release_id` its files were attested against (`null` while its pull is under way), its
@@ -2421,10 +2427,13 @@ prevent, and a stale group joins to the wrong variants silently.
   `<cache>/groups/<group>` (`ENSEMBL_GROUPS_DIRNAME`) only when the group's recorded release is the
   core's (`manifest.json`'s `release_id`) and the directory holds exactly the files the manifest attests
   for the group, at their sizes (a `stat`, as the core is read). Otherwise it raises
-  `EnsemblGroupReleaseError`, with its own sentence for each of seven causes: a pull record there and
+  `EnsemblGroupReleaseError`, with its own sentence for each of eight causes: a pull record there and
   unreadable (`The pull record at <path> is there and could not be read (…)`), not taken by a pull of this
   cache (absent, or placed by hand), a pull that did not finish, a core stating no release, two releases,
-  an attested file missing or of another size (re-pull it), and a parquet the manifest does not name for
+  a manifest stating no size for a file it attests for the group (`… states no size for N file(s) it
+  attests …: a re-pull cannot clear this`, the publisher's to fix, since no pull can fetch a file the
+  manifest attests no size for; review round 2, H), an attested file missing or of another size (re-pull
+  it), and a parquet the manifest does not name for
   the group (move it aside: no pull removes a file it did not put there, and a pull over such a directory
   reports the group as `current, but …` rather than plainly current). A reader takes a group's path from
   it and nowhere else.
@@ -2528,8 +2537,11 @@ with RemoteSnapshots(declared_use="non_commercial") as snapshots:      # proxy f
   `served_from`, `release` and `revision` text or absent (another kind is withheld, `None`, since they only
   trace the rows), with no coercion (`"false"` is no bool) and fields it does not read ignored. A reply missing `truncated`, a row that is not an object, or a reply for another
   lane or table is `a 200 that is not a lane reply (…)` or `a 200 that is not the reply asked for: …`,
-  never a whole answer and never an `AttributeError` out of `lookup_variant`. A proxy answer's `release` and `revision` are what its replies state
-  (registry S34), else `None`, withheld; `served_from` is kept.
+  never a whole answer and never an `AttributeError` out of `lookup_variant`. A proxy answer's `release`,
+  `revision` and `served_from` are what its replies state (registry S34), each only when every reply states
+  the same one: a reply stating none, or two stating different ones, withholds it (`None`), the second said in
+  a warning (`the proxy's replies to one lookup state 2 served_from values (…); withheld`). `served_from` was
+  joined until review round 2 (F), so `local` beside an unstated reply read as `local`.
 - **Hugging Face** is read through duckdb's `httpfs`, never through `hf://` (duckdb resolves that to
   `huggingface.co` itself, past `hf_base_url` and the test fence, and a glob over plain HTTP is
   refused). The first read of a lane in a holder asks `GET {hub}/api/datasets/{repo}/revision/main` for
@@ -2567,6 +2579,10 @@ with RemoteSnapshots(declared_use="non_commercial") as snapshots:      # proxy f
   where the local snapshot would have been, before live Ensembl REST, and never under `offline=True`:
   Ensembl by the question's position only (an rsID-only question skips it with an `info` finding saying
   so), ClinVar by rsID and by position, and ClinVar again for the clinical calls at the resolved alleles.
+  **The remote Ensembl link never places the rsID** (RM431, ask 4; review round 2, G, by decision): a read
+  bounded to one position cannot say every locus a multi-place rsID has, so even when Ensembl's rows there name
+  the rsID it gives no locus, only the rsID candidates at that position, and ClinVar, asked next by rsID, places
+  it. The local Ensembl snapshot is read by rsID and places it.
   The rows go through the reader's own SQL (`resolver`/`clinvar` run one body over their glob and over a
   remote answer's rows), so a remote answer reads exactly as a local one. `VariantHint.routes` maps
   each lane answered remotely to its `RemoteRoute`, and stays `None` when none was; a lane answered over
@@ -3294,9 +3310,13 @@ with indel minting so a run builds one proxy in total (or none, when the caller 
 is outside the lock, so a thread waits on another only for the dictionary. **The proxy memoizes answers
 only** (0.9, RM404): a failed build, a read that raised and a read that came back empty are held by the run
 that saw them, through a private view of the proxy for that run, so the run asks a failed read once and a
-failed build once, and its warning's "this run" is true (a REST seqrepo's data proxy is built without the
+failed build once (a REST seqrepo's data proxy is built without the
 network, so a service that is down is met once per distinct interval); the next run sharing the proxy asks again. Read
-directly, outside a run's view, the proxy asks again on every call. Its memo is bounded at 262,144 reads
+directly, outside a run's view, the proxy asks again on every call. A failed build's warning says so: `Could
+not reach the sequence service at <uri> (<error>); this read returns no bases, and the build is retried at the
+proxy's next read. Without bases an indel's VRS id is left unminted and the reference-allele check is not made;
+a run reading through its own view asks for the build once per run.` (review round 2, I; until then it said the
+work "is skipped this run", which the proxy, remembering no failure, does not do). Its memo is bounded at 262,144 reads
 (`sequences._MEMO_SIZE`), the least recently used evicted first, because a shared proxy may live as long as
 the service. An `EnsemblResolver` that builds its own anchor reader (no `_read_base` given) builds it once,
 lazily and under a lock of its own, so threads sharing one resolver wait for that build rather than each

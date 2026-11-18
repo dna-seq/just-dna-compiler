@@ -109,9 +109,13 @@ class SequenceProxy:
                 try:
                     self._proxy = create_dataproxy(self.uri)
                 except Exception as exc:
+                    # What happens, not a promise about a run (review round 2, I): this proxy remembers no
+                    # failure, so its next read builds again; a run's view is what stops asking (`_RunSequences`).
                     logger.warning(
-                        "Could not reach the sequence service at %s (%s); sequence-dependent work "
-                        "(indel VRS ids, the reference-allele check) is skipped this run.",
+                        "Could not reach the sequence service at %s (%s); this read returns no bases, and the "
+                        "build is retried at the proxy's next read. Without bases an indel's VRS id is left "
+                        "unminted and the reference-allele check is not made; a run reading through its own "
+                        "view asks for the build once per run.",
                         self.uri,
                         exc,
                     )

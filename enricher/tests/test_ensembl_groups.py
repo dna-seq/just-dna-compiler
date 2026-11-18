@@ -415,6 +415,65 @@ def test_a_commercial_use_refuses_cadd_before_any_download(install_hub, tmp_path
     assert not cache.exists()
 
 
+def test_a_named_group_already_current_is_not_gated_again(monkeypatch, install_hub, tmp_path: Path) -> None:
+    """Review round 2, D (RM437 reading 4): the gate guards a fetch, and a current group fetches nothing
+    (`@acquisition-gate-is-not-a-read-gate`). A use that would refuse it is no refusal while nothing is taken."""
+    cache = tmp_path / "ensembl"
+    install_hub(_published(0, _OLD))
+    dl.ensure_snapshot(cache, groups=["cadd"], declared_use="non_commercial")
+    before = pulled_groups(cache)["cadd"]
+    monkeypatch.setattr(huggingface_hub, "HfFileSystem", _explode)
+
+    dl.ensure_snapshot(cache, groups=["cadd"], declared_use="commercial")
+
+    assert pulled_groups(cache)["cadd"] == before, "nothing re-declared, nothing re-pulled"
+    assert ensembl_group_dir(cache, "cadd").is_dir()
+
+
+def test_a_named_group_that_must_be_fetched_is_still_refused_before_any_download(
+    install_hub, tmp_path: Path
+) -> None:
+    """The other half of D: recorded at the core's release but missing a file, the group must be fetched, so a
+    use its terms refuse raises before anything is downloaded, the core included."""
+    cache = tmp_path / "ensembl"
+    published = _published(0, _OLD)
+    install_hub(published)
+    dl.ensure_snapshot(cache, groups=["cadd"], declared_use="non_commercial")
+    min((cache / "groups" / "cadd").glob("*.parquet")).unlink()
+    hub = install_hub(published)
+
+    with pytest.raises(LicenseRefusal, match="nothing was fetched"):
+        dl.ensure_snapshot(cache, groups=["cadd"], declared_use="commercial")
+
+    assert hub.parquet_fetched() == []
+
+
+def test_a_group_current_at_the_caches_release_is_still_refused_when_the_core_moves(
+    install_hub, tmp_path: Path
+) -> None:
+    """D during a release transition (the known issue C): the preflight reads the cache's manifest, where CADD is
+    current, so the gate waits for the pull, which finds CADD behind the new core and refuses it there. The
+    refusal still comes, and no CADD byte is taken; it comes after the core is refreshed, not before."""
+    cache = tmp_path / "ensembl"
+    install_hub(_published(0, _OLD))
+    dl.ensure_snapshot(cache, groups=["cadd"], declared_use="non_commercial")
+    hub = install_hub(_published(1, _NEW))
+
+    with pytest.raises(LicenseRefusal, match="nothing was fetched"):
+        dl.ensure_snapshot(
+            cache,
+            groups=["cadd"],
+            declared_use="commercial",
+            _follow_hub=dl._FollowHub(ensembl_release_label),
+        )
+
+    assert not any(path.startswith("groups/") for path in hub.parquet_fetched())
+    assert any(path.startswith("data/") for path in hub.parquet_fetched()), "the core was refreshed first"
+    assert pulled_groups(cache)["cadd"]["release_id"] == _OLD
+    with pytest.raises(EnsemblGroupReleaseError, match=f"is release {_OLD} and the core beside it is {_NEW}"):
+        ensembl_group_dir(cache, "cadd")
+
+
 def test_an_unstated_use_pulls_the_core_and_skips_cadd_with_the_reason(install_hub, tmp_path: Path) -> None:
     cache = tmp_path / "ensembl"
     hub = install_hub(_published(0, _OLD))
@@ -778,6 +837,32 @@ def test_a_group_directory_the_manifest_does_not_attest_is_withheld_whole(
     assert "homo_sapiens-chrMT.parquet" in str(caught.value)
 
 
+def test_a_group_file_the_manifest_states_no_size_for_names_the_publisher_never_a_re_pull(
+    install_hub, tmp_path: Path
+) -> None:
+    """Review round 2, H: one reason per verdict arm (`@answered-is-not-absent`). An entry with no size cannot be
+    attested, so `_fetch_parquet` refuses its download and a re-pull cannot clear the refusal: the remedy is the
+    publisher's. The file there, at the size it was published at, changes nothing."""
+    cache = tmp_path / "ensembl"
+    install_hub(_published(0, _OLD))
+    dl.ensure_snapshot(cache, groups=["consequence"])
+    manifest = json.loads((cache / SNAPSHOT_MANIFEST_FILENAME).read_text(encoding="utf-8"))
+    unsized = "groups/consequence/homo_sapiens-chrMT.parquet"
+    for entry in manifest["files"]:
+        if entry["path"] == unsized:
+            del entry["bytes"]
+    (cache / SNAPSHOT_MANIFEST_FILENAME).write_text(json.dumps(manifest), encoding="utf-8")
+    assert (cache / unsized).is_file()
+
+    with pytest.raises(EnsemblGroupReleaseError) as caught:
+        ensembl_group_dir(cache, "consequence")
+
+    said = str(caught.value)
+    assert "states no size for 1 file(s) it attests" in said and unsized.rsplit("/", 1)[-1] in said
+    assert "a re-pull cannot clear this. The snapshot's publisher must state each file's size" in said
+    assert "missing there or of another size" not in said and "Re-run" not in said
+
+
 def test_a_group_the_cache_release_lacks_is_checked_against_the_hubs(install_hub, tmp_path: Path) -> None:
     """A newer published release may add a group; the refusal is only the cache's when the hub cannot say."""
     cache = tmp_path / "ensembl"
@@ -866,6 +951,19 @@ def test_cache_pull_refuses_cadd_under_a_commercial_use(install_hub, base: Path,
         cli_text(result)
     )
     assert hub.parquet_fetched() == [] and not (base / "ensembl_variations").exists()
+
+
+def test_cache_pull_reports_a_current_cadd_under_a_commercial_use_and_fetches_nothing(
+    install_hub, base: Path, cli_text
+) -> None:
+    """Review round 2, D: the command the review named, over a CADD group already current."""
+    install_hub(_published(0, _OLD))
+    assert _pull("--groups", "cadd", "--use", "non-commercial").exit_code == 0
+    hub = install_hub(_published(0, _OLD))
+    result = _pull("--groups", "cadd", "--use", "commercial")
+    assert result.exit_code == 0, cli_text(result)
+    assert "ensembl group cadd: current" in cli_text(result)
+    assert hub.parquet_fetched() == []
 
 
 def test_cache_pull_takes_cadd_under_a_research_use(install_hub, base: Path, cli_text) -> None:
