@@ -264,6 +264,36 @@ Left for later: `lookup_variant` asks ClinVar remotely up to three times (one qu
 merges, triage files it); `lane_status` given a URL reports absent and collapses `//` in `looked_in`, as ENRICHER.md
 says, a residual of this entry.
 
+**The ';'-joined cell, placed (the pm, 2026-11-18).** The lead's RM431 follow-up run (4d5fe26a) found that the remote
+routes compare a whole cell exactly, so a gene inside a `;`-joined cell is not returned remotely while the local route
+returns it: 399 of 16,117 ClinPGx rows and 361 of 1,433 drug labels, with nothing said. **Part of this item**, not the
+next minor: it is a defect in this item's own build (the trial rule), and a remote answer that silently drops a quarter
+of a lane's rows is an absent read where the row exists (`@unreachable-not-absent`). It is the same class as CIViC's and
+cpic's case folding: **the remote compare is not the local compare.** So the RM430 follow-up fixes the class, not the
+two instances. Every keyed function compares a key the same way on both routes, and one test runs the same keys
+through the local and the remote route of every lane in `REMOTE_LANES`, over a fixture with a joined cell and a key
+spelled in another case, and asserts the two answers are equal (`@registry-completeness`). The two strict xfails
+become passing tests.
+
+**The follow-up's readings, placed (the pm, 2026-11-18; merged as 15668c1e).** The class fix is in: one registry,
+`key_compare.KEY_COMPARES`, feeds both routes' SQL, and a walk over `REMOTE_LANES` asserts equal answers.
+
+- **Confirmed: a key the registry's proxy cannot compare skips the proxy.** The proxy compares a parquet key exactly,
+  so for a key column whose local reader folds or splits, the holder asks Hugging Face (`route` says so) instead of
+  taking a short answer with nothing said. It costs Hugging Face requests on four small whole-table gene reads (cpic,
+  civic, clinpgx, drug_labels). With the proxy set and Hugging Face off, those four lanes answer could-not-ask by
+  gene (pinned): a known issue in the upgrade notes. The liaison files the ask that the proxy fold and split, which
+  would let the holder use it again.
+- **Confirmed:** `close()` waits for lookups in flight and refuses one started while it closes; cpic's local compare
+  now trims too (one declaration for both routes; it can only add a match, and the CHANGELOG says so); the CLI takes
+  no `--rsid-index` flag and reads the index from the environment in 0.9, as ENRICHER.md says.
+- **Confirmed, as decided in reading 5 above:** a wrong request raises out of `lookup_variant`. That includes a proxy
+  422 and a lookup on a holder already closed at shutdown, both programming errors on the host's side. The upgrade
+  notes say a host that shares a holder closes it after its last lookup.
+- **Deferred (a) to (c) are one class, filed as RM454:** the enricher's local key compares that never went through
+  the one normalizer. A patch after 0.9 merges, because its home is 0.9's `KEY_COMPARES`. If the review round reports
+  the same class, its finding joins RM454.
+
 **Residuals** none yet.
 
 ## RM431 — the keyed readers a remote lookup needs: an rsID index for Ensembl, and a key on the whole-table readers
@@ -355,6 +385,21 @@ Of the deferred: the spill-directory fix gets its test in this item (every fix o
 duckdb's temporary directory at the staging directory); the `TypeError` on a `NULL` start in the scan predates 0.9
 and is triage's patch on `main`; a prebuilt `.duckdb` beside the core against the index's parquet pin is a residual
 of this entry (the path is deprecated and retired at 1.0).
+
+**The follow-up's readings, placed (the pm, 2026-11-18; merged as 4d5fe26a).**
+
+1. **The index seam goes on every entry point that reads the index**, part of this item (reading 5 above). Checked
+   against the registry's code on 2026-11-18: its hints call `lookup_variant` and its enrich step calls
+   `enrich(ensembl_cache=)`; neither calls `lookup_loci`. So a seam on `lookup_loci` alone misses its one named user.
+   `lookup_variant` and `enrich` take the index path beside the Ensembl path they already take, and pass it down.
+   Built before the review round.
+2. **Confirmed: `cache prepare --only ensembl_rsid_index` builds nothing**, as reading 2 says ("neither `cache
+   prepare` nor a bare `cache rebuild`"). It does not just report the lane as unavailable: it names
+   `cache rebuild --only ensembl_rsid_index`, so the refusal says what to do instead.
+3. **Confirmed: the scan note logs at info, once per process.** A warning on every run of every host without a
+   6 GB index would be noise. A CLI user learns of the index from `cache status`. The CLI configuring no logging is
+   older than 0.9 and is not this item's.
+4. **The `;`-joined cell is RM430's**, placed there.
 
 **Residuals** none yet.
 

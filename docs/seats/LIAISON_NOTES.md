@@ -105,6 +105,11 @@ from the index too: a polars-bio cap that holds both of us is raised with it fir
 `release_unreadable` on both lane replies, `revision` for remote reads. Relayed to the pm with their two corrections
 (a label would not have caught the ClinPGx copy, RM445's case; our pull record writes no revision).
 
+**S36 with the registry (2026-11-18): filed, open** (uncommitted in their inbox, their triage told in agent-chat
+641541806), for the lead's RM430 follow-up: their lane lookup compares a key cell exactly (`cast(String).is_in`,
+read at their e0129b8), so a folded gene key or a member of a `;`-joined cell comes back short. Our 0.9 reads Hugging
+Face for those columns meanwhile. When answered, tell the lead.
+
 **Push:** origin/main holds every liaison commit through 5611ea91; the notes commits after it wait for the lead's
 next push (a push of mine was refused by auto mode, kit #332). The liaison pushes only its own ledgers and notes, and only as a fast-forward that carries no other seat's
 commit.
