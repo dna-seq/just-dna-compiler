@@ -1601,4 +1601,149 @@ RELEASE_RECORDS: dict[str, ReleaseRecord] = {
             "manifest_fields 0/22, parquet_bytes 0/22, parquet_schema 0/22, warnings 0/22"
         ),
     ),
+    # Measured at the 0.8.9 cut (2026-11-18). `previous` is 0.8.6: 0.8.7 and 0.8.8 moved the enricher
+    # alone, so 0.8.6 is the newest published compiler. This entry is the only change to format in 0.8.9
+    # (no vocabulary or model moved), and format moves to 0.8.9 to carry it. BEFORE was compiled by
+    # compiler 0.8.6 (with format 0.8.6) from this tree's `reference_examples/`, pinned to the locked
+    # polars and Python: every module on both sides records polars 2.1.0 and Python 3.14.8, so no
+    # toolchain sweep. The lock moved since 0.8.6 (the 2026-11-17 dependency bump, duckdb among it), but
+    # not polars and not Python.
+    #
+    # Two measurements, and the record states both. The gate's sweep compiles this tree's 22 examples
+    # under both compilers; 0.8.6 refuses `pathogenic_clinvar` (RM449's restored coordinate row
+    # collides with the rsID row's expansion, the loud case), so the one example the correction reaches
+    # is unmeasured there. A second sweep, rooted at `v0.8.8`'s `pathogenic_clinvar` spec (before the
+    # restore) and compiled by the same two compilers, measures it: that is where the four manifest
+    # fields below come from, and why the gate notes them as declared and not seen. RM447 rewords a
+    # refusal only (a module refused writes no artifact); RM446, RM448 and RM452 are enricher-only.
+    "0.8.9": ReleaseRecord(
+        version="0.8.9",
+        previous="0.8.6",
+        axes={
+            "parquet_schema": False,
+            "parquet_bytes": True,
+            "content_signature": False,
+            "manifest_fields": True,
+            "warnings": True,
+        },
+        manifest_fields=[
+            "compilation.expanded_keys",
+            "compilation.expanded_rows",
+            "compilation.resolution_subjects",
+            "stats.weights_rows",
+        ],
+        declared=[
+            DeclaredChange(
+                axis="parquet_bytes",
+                target="weights.parquet",
+                kind="correction",
+                detail=(
+                    "RM449: at one position an insertion and a deletion hold the same allele strings "
+                    "(`C/CT` is one inserted T on `C>CT` and one deleted T on `CT>C`), and the fill put "
+                    "an rsID row's claim on both events. It now fills only the spellings a second source "
+                    "placed as `same_event` in `resolution.csv`; witnessed both ways, asked of no second "
+                    "source, or `undecided` on both, both stay as before. A CORRECTION: an artifact "
+                    "compiled earlier may "
+                    "carry the claim on the event it is not about, and a consumer holding that event "
+                    "matches it. Measured on `v0.8.8`'s `pathogenic_clinvar`: `rs80356821` and "
+                    "`rs193922563` lose the mirrored insertion, two `weights.parquet` rows fewer. The "
+                    "registry found it in 2 of 69 published modules (`superhuman@2.4.1` `rs766212849`, "
+                    "`thrombophilia@2.0.1` `rs1572088853`)."
+                ),
+                item="RM449",
+                # A necessary condition: the fill runs only where a resolution table with rows was
+                # applied, and `expanded_keys` is null wherever none was. The reach is narrower (an rsID
+                # row whose genotype one mirrored site hosts both ways).
+                requires=("compilation.expanded_keys",),
+            ),
+            DeclaredChange(
+                axis="manifest_fields",
+                target="stats.weights_rows",
+                kind="correction",
+                detail=(
+                    "RM449: the `weights.parquet` row count, which counted the rows the fill no longer "
+                    "writes. 338 to 336 on `v0.8.8`'s `pathogenic_clinvar`."
+                ),
+                item="RM449",
+                requires=("compilation.expanded_keys",),
+            ),
+            DeclaredChange(
+                axis="manifest_fields",
+                target="compilation.resolution_subjects",
+                kind="correction",
+                detail="RM449: counted after the expansion, so it moves with the rows above (338 to 336).",
+                item="RM449",
+                requires=("compilation.expanded_keys",),
+            ),
+            DeclaredChange(
+                axis="manifest_fields",
+                target="compilation.expanded_keys",
+                kind="correction",
+                detail=(
+                    "RM449: an rsID settled onto one spelling is no longer an expansion, so the count "
+                    "of expanded keys falls (11 to 9 on `v0.8.8`'s `pathogenic_clinvar`)."
+                ),
+                item="RM449",
+                requires=("compilation.expanded_keys",),
+            ),
+            DeclaredChange(
+                axis="manifest_fields",
+                target="compilation.expanded_rows",
+                kind="correction",
+                detail="RM449: the rows those keys became, 22 to 18 on the same module.",
+                item="RM449",
+                requires=("compilation.expanded_keys",),
+            ),
+            DeclaredChange(
+                axis="parquet_bytes",
+                target="weights.parquet and the positional tables' parquets:resolution_loci",
+                kind="addition",
+                detail=(
+                    "RM451: `resolution_loci` was null both where a row's own cells answer (RM364) and "
+                    "where the module's table files nothing under the row's key, and `reverse` read the "
+                    "second as the first and wrote a table row the table never had. A module that read "
+                    "a table now writes `[]` for a key with no positioned locus on its build. Declared "
+                    "an addition, as RM380's `weights.parquet` change in 0.8.0 was: no value a row "
+                    "states changes and reverse gives back the same table; the cell gains a state it "
+                    "could not express. Measured: `cyp2c9_warfarin_grch37`, 12 `pharm_variants` rows."
+                ),
+                item="RM451",
+                # Unstated, not `expanded_keys`: the cell is written wherever a table was read, a
+                # header-only one included, and such a module stamps `expanded_keys` null (measured at
+                # the cut: a header-only table writes `[]` beside `expanded_keys: null`).
+                requires=None,
+            ),
+            DeclaredChange(
+                axis="warnings",
+                target="compilation.warnings",
+                kind="addition",
+                detail=(
+                    "RM449's sentence, once per rsID at a mirrored site, in both modes and never "
+                    "escalated. No new code: each sentence borrows the existing code of what the row "
+                    "became, `rsid_no_hosting_locus` where no position is written and "
+                    "`rsid_expanded_to_multiple_loci` where one or more loci are filled, until 0.9 adds "
+                    "`rsid_genotype_reads_as_two_events`; meanwhile a site narrowed to one locus counts as "
+                    "an expansion in `warnings_summary`. Measured: `hboc_palb2` gains two sentences; on "
+                    "`v0.8.8`'s `pathogenic_clinvar` eleven replace two of the expansion sentences, and "
+                    "`warnings_summary`'s `rsid_expanded_to_multiple_loci` goes from 11 to 20."
+                ),
+                item="RM449",
+                requires=("compilation.expanded_keys",),
+            ),
+        ],
+        unmeasured=["pathogenic_clinvar"],
+        evidence=(
+            "22 reference module(s) compiled under 0.8.6 and 0.8.9 from one spec root, so the compiler "
+            "is the only variable; 21 measured on both sides, modules moved per axis: content_signature "
+            "0/21, manifest_fields 0/21, parquet_bytes 1/21 (cyp2c9_warfarin_grch37, RM451), "
+            "parquet_schema 0/21, warnings 1/21 (hboc_palb2, RM449). Unmeasured rather than unchanged: "
+            "pathogenic_clinvar, whose restored coordinate row 11:5226762 C>CAAAG 0.8.6 refuses as "
+            "`Duplicate (variant, genotype)` beside rs80356821's expansion (RM449's loud case). A second "
+            "sweep, the same two compilers over v0.8.8's pathogenic_clinvar spec (before the restore), "
+            "measures it: content_signature 0/1, manifest_fields 1/1 (compilation.expanded_keys 11 to 9, "
+            "compilation.expanded_rows 22 to 18, compilation.resolution_subjects 338 to 336, "
+            "stats.weights_rows 338 to 336), parquet_bytes 1/1, parquet_schema 0/1, warnings 1/1. The "
+            "record's manifest_fields and its manifest_fields axis come from that second sweep."
+        ),
+    ),
 }

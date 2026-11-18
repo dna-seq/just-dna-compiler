@@ -632,7 +632,11 @@ def test_absent_and_uncovered_are_both_unknown_but_not_the_same_answer() -> None
 
 
 def _manifest(tmp_path: Path, *, blocks: bool) -> ModuleManifest:
-    """A real manifest through the real constructor — with or without the two optional blocks."""
+    """A real manifest through the real constructor — with or without the two optional blocks.
+
+    `blocks` also decides the expansion counts, null where no resolution table was applied: 0.8.9's
+    RM449 corrections are scoped on `compilation.expanded_keys`.
+    """
     tmp_path.mkdir(parents=True, exist_ok=True)
     (tmp_path / "weights.parquet").write_bytes(b"w")
     return ModuleManifest(
@@ -644,7 +648,12 @@ def _manifest(tmp_path: Path, *, blocks: bool) -> ModuleManifest:
         ),
         display=Display(title="Reach probe", description="S90", report_title="Reach probe"),
         stats=Stats(variant_count=1, study_count=0, gene_count=1, genes=["PALB2"], categories=[]),
-        compilation=Compilation(compile_success=True, compiler_version="just-dna-compiler 0.6.1"),
+        compilation=Compilation(
+            compile_success=True,
+            compiler_version="just-dna-compiler 0.6.1",
+            expanded_keys=0 if blocks else None,
+            expanded_rows=0 if blocks else None,
+        ),
         artifact=build_artifact(tmp_path, ["weights.parquet"]),
         gene_metrics=GeneMetrics(row_count=1, genes=["PALB2"]) if blocks else None,
         gene_validity=GeneValidity(row_count=1, genes=["PALB2"]) if blocks else None,

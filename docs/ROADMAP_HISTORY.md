@@ -34,6 +34,469 @@ up.
 
 Patches on `main` after the 0.8.0 cut (2026-11-05), newest first.
 
+## RM452 — a NULL `start` raises `TypeError` in the Ensembl rsID scan and in the position back-fill
+
+**SHIPPED 2026-11-18 on `main`, cut 2026-11-18 as `v0.8.9` — a patch.** Severity low · **Owner** enricher (`resolver._lookup_positions_by_rsid`, `resolver._lookup_rsid_candidates`) ·
+**Motivating case** the RM431 builder on `0.9` (recorded under RM431, `08a83122`; the pm, 2026-11-18: "predates 0.9, a patch on main, triage's") · *related* RM271, RM381
+
+**What was seen.** A synthetic split-core row `("1", NULL, "A", "G", "rs2100212723")` made `lookup_loci` raise
+`TypeError: int() argument must be … not 'NoneType'` at `_lookup_positions_by_rsid`'s `int(start)`. The back-fill
+`_lookup_rsid_candidates` has the same read for a probe: it drops a probe with no start from the query
+(`concrete`), but its result loop still calls `int(start)` when the probe has a chrom. So it raises whenever
+another probe in the call is whole. No published Ensembl release on this machine carries a NULL start
+(`ensembl-variation-2026_07_13-vep116.0`: 0 rows, read 2026-11-18), so this guards against a defect in the data,
+and no module has met it.
+
+**Built (triage, 2026-11-18).** The scan leaves a row with no chrom or start out of the answer. An rsID named only on
+such rows is said in one warning and never read as an answer, so the chain asks its next link, which an absence
+must not foreclose (`@unreachable-not-absent`). The back-fill gives a probe with no start no candidates, as it
+already gave one with no chrom. Tests in `test_a_null_start_places_nothing.py`: the builder's repro as it ran, a
+placed row beside an unplaced one, and the back-fill's probe. All three fail on `origin/main` (`dae4e0c8`) with the
+reported `TypeError`.
+
+**Class.** A patch: no schema, column, code or vocabulary moves (P3). Severity low: no real snapshot carries the
+shape.
+
+**Residuals** none
+
+## RM451 — reverse writes a resolution row from the cells of a coordinate row the table never filed, so `compile → reverse → compile` moves `resolution_signature`
+
+**SHIPPED 2026-11-18 on `main`, cut 2026-11-18 as `v0.8.9` — a patch.** Severity low · **Owner** compiler (`compiler/reverse._write_resolution_csv`, the cell rebuild) ·
+**Motivating case** the lead's 0.8.9 run (2026-11-18): restoring `pathogenic_clinvar`'s coordinate row `11:5226762 C>CAAAG` (RM449's remedy) broke `test_reference_example_round_trips_to_a_fixed_point[pathogenic_clinvar]` · *related* RM364, RM380, RM449
+
+**What was seen, and that it is not RM449's.** The restored row validates and compiles under `--strict`, but a lap moves
+`resolution_signature` and `vrs_alleles` 531 → 532. Reverse wrote a row keyed `11:5226762:C:CAAAG`, rebuilt from the
+row's own cells, that the injected table did not have, and lap 2 read it. The example's table was enriched before the
+row came back, so nothing filed it: its parquet row carries no `resolution_loci`, and `_write_resolution_csv` falls
+back to the cell rebuild meant for a parquet compiled before RM364. The same happens with no mirrored site at all. A
+two-row module (an rsID row the table files, and `,1,1000,C,T,C/T` it does not) fails `reconstructed_projection`
+equality across one lap, and reverse's table gains `ga4gh:VA.pPch…`. After one offline `enrich` pass the table files
+the restored row and all four `pathogenic_clinvar` round-trip tests pass (checked on a scratch copy, 2026-11-18).
+Every reference example is enriched, which is why the suite never met it.
+
+**Shape of a fix (the builder decides).** A parquet compiled since RM364 says what the table filed under each key; an
+empty `resolution_loci` there means "the table filed nothing", not "compiled before the column". Reverse should
+then write nothing for that key, and fall back to the cell rebuild only for a parquet without the column. Test: the
+two-row module above, one lap, projection equal.
+
+**Class.** A patch: no schema, column or vocabulary moves (P3). Severity low: the artifact's digest and
+`content_signature` hold, only the table's signature moves, and an enrich pass (which closing needs anyway) removes it.
+
+**Sized (the pm, 2026-11-18).** Agreed that it predates RM449: a module whose table files every coordinate row is
+a fixed point, and closing needs that enrich pass anyway. The builder's shape and test above.
+
+**Built (triage, 2026-11-18).** The shape above, corrected on the way: an empty `resolution_loci` already meant
+"the cells answer" (RM364's saving) as well as "filed nothing", so the two had to be written apart, not read apart.
+`parquets.resolution_loci` returns `[]` when a table was read and the key holds no positioned locus on the module's
+build (a key filed only as `not_found` included, since reverse never writes one back). `table_read` is
+`InjectedResolution.consulted`, threaded through `_build_weights` and `with_resolution_loci`. It is never "the table
+has rows": reverse hands an empty table back header-only, and lap 2 must write `[]` where lap 1 did. The
+round-trip matrix's `not_found` and table-says-more cases caught a first draft that read it from the dict.
+`reverse._filed_nothing` skips such a row in both loops. Null still means the cells answer, and the cell rebuild
+still writes those. Tests in `test_an_unfiled_coordinate_row_round_trips.py`:
+
+- the two-row module laps to an equal projection, with nothing invented;
+- a module that read no table laps unchanged;
+- `pathogenic_clinvar` as the restore stood before its enrich pass (the committed example with the row's table
+  entry taken out) laps on digest, content and projection.
+
+The first and last fail on `aa5b88f7`. The example sweep moves one digest, `cyp2c9_warfarin_grch37`: its 12
+unfiled `pharm_variants` rows now say `[]`, reverse gives back the same five table rows, and the CHANGELOG
+declares the byte change.
+
+**Residuals** none
+
+## RM449 — an rsID row's indel genotype is hosted by an insertion and a deletion at one position, so its claim lands on both events
+
+**SHIPPED 2026-11-18 on `main`, cut 2026-11-18 as `v0.8.9` — a patch, a declared corrected derivation.** Severity high · **Owner** compiler (the positional fill and `hosting_verdict`), enricher (the ClinVar drafter) ·
+**Motivating case** S158's first question (the registry, 2026-11-17/18): 21 `post-resolution: Duplicate (variant, genotype)` refusals in `cardio`, 25 or more in `cancer` and 14 or more in `pathogenic`, all indels · *related* RM31, RM267, RM274, RM381
+
+**Reproduced on `main` (`5ff00802`, 2026-11-18)**, two cases with this machine's caches, enriched online with
+`verify_ref`.
+
+- **Loud.** `variants.csv` holds `rs1057516393 … C/CT` (rsID only, drafted from ClinVar VCV 370313, the
+  insertion) and `11,108256251,CT,C, C/CT` (a coordinate row, from VCV 3653980, the deletion). The rsID resolves to
+  two loci, `11:108256251 C>CT` (`placement_verdict=same_event`, ClinVar witnessed) and `CT>C` (`unplaced`).
+  `C/CT` is hosted at both, the fill expands the rsID row onto both, and the second expansion's key is the
+  coordinate row's: the strict compile refuses with `Duplicate (variant, genotype): (11:108256251:CT:C, C/CT)`.
+- **Silent.** The same rsID row alone, with a study row. The strict compile **succeeds**, and `weights.parquet`
+  holds the insertion's claim (`conclusion=ins`, pathogenic in the module) on both `C>CT` and `CT>C`. A consumer
+  carrying the heterozygous one-base deletion matches the insertion's annotation. Nothing warns.
+
+**Why, and which decision this reopens.** RM31's hosting rule (`@hosting-tri-state`) compares the raw strings first.
+It relies on "a genotype naming *two* alleles carries the frame", because an rsID row states no coordinate. Here
+both strings occur in both frames with opposite meanings. On `C>CT`, `C/CT` is one inserted T; on `CT>C` it is one
+deleted T. That premise fails for an insertion and a deletion mirrored at one position, so hosting answers "yes"
+twice for one authored event. ClinVar settles which one was meant: the rsID is on VCV 370313, the insertion, and the
+deletion's record carries no rsID.
+
+**The reporter's three candidates, weighed.** (2), an authored coordinate row winning over the expansion, silences
+only the loud case; the silent one stays. (3), the ClinVar drafter writing the coordinate for an indel rsID row,
+removes the ambiguity at the source for new drafts. It does nothing for modules already drafted, three of them in
+production. (1), treating a genotype hosted by both spellings at one position as ambiguous and taking the locus a
+witness placed as `same_event`, else neither, fixes both cases for existing modules. It withholds rather than
+guesses where no witness settles it. The recommendation is (1) with (3) beside it; the builder decides.
+
+**Class.** A corrected derivation (P3): the fill writes fewer rows for a module already compiled, so `artifact.digest`
+moves, and the release must declare the correction. RM31's raw-first rule says normalization may only add
+acceptances. This item removes one, on purpose, for a case that rule did not consider, and says so where the rule
+is written. The one-to-many reverse must stay a fixed point (P7): the expansion it drops must not come back on lap
+two. Severity high: a silent wrong annotation on an indel, in production modules.
+
+**Sized (the pm, 2026-11-18).** A patch on `main`: a corrected derivation may ship in any release, never silently
+(P3), so 0.8.9's notes declare it, readable offline, naming what moves (the fill writes no row on the locus a
+mirrored indel genotype was wrongly expanded onto, and `artifact.digest` moves for a module holding one). Candidate
+(1) with (3) beside it, the more complete reading:
+
+1. A genotype hosted by both an insertion and a deletion at one position is ambiguous. The fill takes the locus the
+   recorded `placement_verdict` says is `same_event`, else neither, with a warning naming the rsID and both events.
+   The verdict is read from `resolution.csv`, so the compile stays offline (P2). Its cost, stated in the notes: a
+   module enriched offline, where no indel is judged, loses such a row until it is enriched online.
+2. The ClinVar drafter writes the coordinate on an indel rsID row, so new drafts carry the frame.
+3. The rule's change is written where RM31's is (`@hosting-tri-state` in AGENT_NOTES.md and its CLAUDE.md line):
+   raw-first may now remove an acceptance, for this case only.
+
+Tests: the loud and the silent case above as fixtures; a reverse, recompile, reverse lap that is a fixed point (P7);
+and a sweep over `reference_examples/` listing every row whose expansion moves, read before the cut. Built first,
+before RM448: it is the silent wrong annotation.
+
+**The sweep's case, decided (the pm, 2026-11-18, from triage's build).** Every multi-locus expansion in
+`reference_examples/` is a mirrored insertion and deletion pair: 13 sites in `hboc_palb2` and `pathogenic_clinvar`.
+At 11 of them ClinVar files **both** spellings under the one rsID, each `same_event` (the HBB frameshifts both ways);
+at 2 only the deletion (`rs80356821`, `rs193922563`). "`same_event`, else neither", read literally, fills neither at
+the 11, so both examples would refuse under strict. Decided:
+
+1. **At a mirrored site the fill takes every witnessed spelling and drops the unwitnessed ones; none witnessed fills
+   neither** (triage's B). The two one-sided sites move, S158's `rs1057516393` and the registry's
+   `superhuman@2.4.1` `rs766212849` settle to the witnessed spelling, and a site witnessed both ways keeps both.
+2. **A site witnessed both ways is never silent.** The fill warns in both modes, once per rsID, naming both events and
+   saying that an rsID row there claims both and that a coordinate row picks one (`@unreachable-not-absent`'s "warn in
+   both modes"; `@warning-code-names-the-finding`). It does not escalate under strict in 0.8.9.
+3. **Rejected for 0.8.9: refusing a both-witnessed rsID row until it is re-authored with coordinates** (triage's A).
+   It is the stricter reading of `@rsid-not-per-allele`, but it would make modules that compile today refuse in a
+   patch, the two examples and at least one production module among them, while the drafter's coordinate (3 above)
+   fixes new drafts only. Escalating the warning of 2 is that change, and can be taken in a minor if the maintainer
+   wants it; the warning's count is the evidence for it.
+
+The registry's two published cases go into the tests: `superhuman@2.4.1` `rs766212849` (`A/A`, protective, compiled
+on both `A>AAACTT`, where it is the reference homozygote, and `AAACTT>A`, where it is a homozygous deletion) and the
+polygon's `thrombophilia@2.0.1` `rs1572088853` (`C/CC`). Of 69 latest versions compiled by 0.8.x, these are the 2
+that carry a claim on the other spelling (the registry's lead, 2026-11-18).
+
+**Built (triage, 2026-11-18).** Candidate (1) as the pm's B, plus (3).
+
+- **The fill** (`resolution._settle_mirrored_spellings`, called in `resolve_from_table` right after
+  `_hostable_loci`). Among an rsID row's hosting loci, a position holding both an insertion and a deletion is
+  settled by `placement_verdict`. The spellings witnessed `same_event` are filled and the rest are not. Witnessed
+  both ways, both stay, and one `rsid_genotype_reads_as_two_events` sentence per rsID names both events and says
+  a coordinate row picks one. Witnessed neither way, neither is filled and the row stays unpositioned. Every arm
+  warns under that one new code, in both modes, never escalated. A, refusing the both-ways site, is rejected for
+  the patch and left to a minor that would escalate this warning (the pm, `c172667a`). Other positions (a
+  paralog, a PAR partner) and non-mirrored sites keep `@membership-union`'s expansion. A mirror needs each
+  spelling to host the genotype on its own: a compound het in a padded frame (`G/GTTT` on `GTT>G` and `G>GT`)
+  names one allele of each, no locus hosts it alone, and it keeps both pieces (`test_split_snapshot_per_alt`
+  caught the first draft, which settled it).
+- **The drafter.** `clinvar_draft.is_indel_record` sends every indel record through the coordinate identity, as
+  `multi_allelic_rsids` already did for a multi-allelic rsID. Its study row follows it, and a re-draft names an
+  older rsID-only indel row through `_superseded_rsid_rows`.
+- **Tests.** `test_a_mirrored_indel_genotype_names_one_event.py` has eight tests:
+  - S158's silent and loud cases;
+  - the registry's two published cases at their real places (`superhuman@2.4.1` `rs766212849` `A/A`, and
+    `thrombophilia@2.0.1` `rs1572088853` `C/CC`, where ClinVar files only the deletion);
+  - the neither case under strict;
+  - the both-ways case and its once-per-rsID sentence;
+  - a compile-reverse-compile lap with equal `artifact.digest` and `content_signature`.
+
+  Five of them fail on the code before the fix. A drafter test drafts S158's pair. The MLH1 re-draft test now
+  also turns the indel rule off for its stale draft.
+- **The reference-examples sweep, every row that moves.** All 22 examples were compiled before and after. Two rows
+  move, both in `pathogenic_clinvar`: `rs80356821` (`C/CAAAG`) and `rs193922563` (a 25-base `C/C…A`). Each is
+  now filled on the deletion ClinVar witnessed and no longer on the mirrored insertion. The 11 other mirrored
+  sites in `pathogenic_clinvar` and `hboc_palb2` are witnessed both ways and keep their expansion, now with the
+  warning. Every test reading the examples is green.
+- **For the pm's read before the cut.** `pathogenic_clinvar`'s README ("One authored edit") records that the
+  coordinate-only row `11:5226762 C>CAAAG` was removed, because the `rs80356821` row's expansion collided with it
+  and "the rsID row now carries both events". After this item the rsID row no longer carries the insertion, so
+  the example states nothing about `C>CAAAG`. Restoring the removed row, with its `studies.csv` row, would bring
+  the claim back without a collision. That moves `content_signature` and needs the module closed again, so it is
+  left as a decision, not done here.
+
+**The example's removed row comes back in 0.8.9 (the pm, 2026-11-18).** `pathogenic_clinvar` removed the
+coordinate row `11:5226762 C>CAAAG` (ClinVar Variation 3572115, the pathogenic HBB insertion) at the 0.8 regeneration,
+because `rs80356821`'s expansion collided with it. After RM449 that rsID fills only the witnessed deletion, so the
+example now states nothing about the insertion. The row and its `studies.csv` row are restored, which is the remedy
+RM449's warning names (a coordinate row picks the event); the README's 0.8 paragraph says why, and the module is
+closed again. `content_signature` moves on a reference example that nothing publishes.
+
+**0.8.9 waits for both build defects (the pm, 2026-11-18, from the lead's full suite).** (1) One enricher test
+fails on the block and passes without it (`test_clinvar.py::test_a_record_the_genotype_cannot_host_is_left_out_of_the_table`:
+`rs777` left unresolved under strict). (2) The restored example is not a fixed point: with the coordinate row back,
+compile, reverse, compile moves `resolution_signature` and `vrs_alleles` (531 to 532). Before RM449 that row was
+refused as a duplicate, so the instability is RM449's, and its own warning recommends exactly that row. Both are
+defects of this build, so RM449 is not done until both pass, and the restored `pathogenic_clinvar` row is the P7
+fixture for the second. If the lap fix outgrows half a day, RM448 ships alone as 0.8.9 once (1) is shown not to be
+its, and RM449 follows as 0.8.10. A re-close after the restore needs an enrich pass first, since `close` drops
+`verification.json`'s enrich records when the module hash moves.
+
+**The two build defects the lead's run found (2026-11-18), and what each was.**
+
+- `test_clinvar`'s `rs777`: a ClinVar fill, offline, records no `placement_verdict`, and the first build read "no
+  verdict" as "witnessed neither" and left the row unpositioned. Not asked is not witnessed-neither. A mirrored
+  site with no verdict anywhere now keeps the expansion it had before, and says so once per rsID (same code,
+  "no second source was asked"). Neither is filled only where a witness was asked and placed neither. There is
+  a test for it.
+- The lap that broke on the restored `pathogenic_clinvar` row is not this item's: it is a coordinate row the
+  table never filed, and it breaks a lap with no mirror anywhere. Filed as RM451. An enrich pass removes it, and
+  the four round-trip tests then pass on the restored example. Every remedy sentence now says to re-run the
+  enricher after authoring the coordinate.
+- A third, from the lead's re-run after the restore (`aa5b88f7`, `test_reproduced_locus_compares_every_rebuilt_column`):
+  with the verdicts stripped, the not-asked arm expanded `rs80356821` onto the restored coordinate row again, and
+  `--strict` refused `Duplicate (variant, genotype)`. So the remedy refused wherever no verdict was recorded. Now an
+  authored coordinate row wins: an expansion member re-keyed onto its exact `(variant_key, genotype)` is not
+  filled, and `rsid_genotype_reads_as_two_events` names it (the pm, `05addf11`). Tests: S158's loud case with no
+  verdicts, and `pathogenic_clinvar` with every placement verdict stripped, compiled strict and lapped. Both fail
+  on `aa5b88f7`.
+  Scoped to a mirrored site, RM449's own (`_mirrored_sites`): an expansion colliding with an authored row
+  anywhere else, a paralog's other copy, still refuses as the duplicate it is, which `test_one_verdict` pins
+  (`expansion_collides_with_an_authored_row`). The first cut applied it to every expansion and that test caught it.
+
+**Both resolved (the pm, 2026-11-18, 84a256ef).** (1) was RM449's: an offline ClinVar fill records no verdict, and
+no verdict was read as witnessed by neither. Not asked is not witnessed-neither (`@unreachable-not-absent`), so a
+mirrored site with no verdict anywhere keeps its expansion, under the same warning. (2) predates RM449 and is RM451:
+one offline enrich pass files the restored row and the four round-trip tests pass, so 0.8.9 waits for neither.
+The warning's remedy now says "and re-run the enricher".
+
+**A third build defect, and 0.8.9 waits for it (the pm, 2026-11-18, from the lead's suite at aa5b88f7).** With the
+example's row restored, a table with no placement verdict (an older enricher's, an offline fill, a hand-written one;
+`test_a_version_with_no_id_survives_the_round_trip[pathogenic_clinvar]` strips the provenance columns) expands
+`rs80356821` onto the insertion again, and strict refuses `Duplicate (variant, genotype): (11:5226762:C:CAAAG,
+C/CAAAG)`. So the remedy RM449's warning names refuses whenever the verdict is absent. Decided: **an authored
+coordinate row wins over an rsID row's expansion onto its exact `(variant, genotype)` key.** The expansion is dropped
+there, and RM449's warning names it, so nothing is silent; the coordinate row is the author's narrower statement of
+that event, which is what the warning asked for. The test that failed is the fixture, plus a lap with the verdicts
+stripped. RM449 is a defect of this build until it passes; the half-day fallback above still stands.
+
+**Two calls before the 0.8.9 cut (the pm, 2026-11-18, from the lead's cut branch).**
+
+1. **The warning code waits for 0.9; the warning ships in 0.8.9 uncoded.** `warnings_summary` validates its keys
+   against the closed `VALID_WARNING_CODES`, so a reader on `just-dna-format` 0.8.6 refuses a 0.8.9 manifest that
+   carries `rsid_genotype_reads_as_two_events` (measured on `hboc_palb2`). Every code added in the 0.8 line was added
+   in the minor, where INTEGRATION_0_8 § 1 tells a consumer to raise its format floor with it; a patch carries no such
+   instruction, and `main` is patch scope only. The warning's text and its pinned phrase ship unchanged, and 0.9
+   adds the code and its INTEGRATION row. Rejected: shipping the code with a documented floor raise, which makes a
+   patch an old-reader break for every consumer reading a module that triggers it.
+   **Amended the same night (the lead's build):** an uncoded warning cannot ship, because `findings.classify` in
+   the format tier refuses a channel where some warnings carry no code, and every triggering module has coded ones.
+   So 0.8.9 borrows the nearest existing codes, the 0.8 line's "no new code" idiom, by what the row became: where
+   the fill writes no position, `rsid_no_hosting_locus` ("the position remains unset", word for word); where it
+   fills one or more loci (both spellings kept, or one dropped as unwitnessed or under an authored coordinate row),
+   `rsid_expanded_to_multiple_loci` ("one authored row became several, because the source says so"). The message
+   text is RM449's own in every arm. The cost, stated in the cut entry: until 0.9, a site narrowed to one locus is
+   counted in `warnings_summary` as an expansion. 0.9 adds `rsid_genotype_reads_as_two_events` and moves these
+   sentences to it. Rejected: one borrowed code for every arm (it miscounts the filled arms as unplaced), withholding
+   `warnings_summary` on a mixed channel, a partial summary, and the floor raise above.
+2. **A recorded `undecided` on both spellings reads as no verdict, fixed before the cut.** An offline run writes
+   `undecided`, which says the second source could not judge, not that it witnessed neither
+   (`@unreachable-not-absent`; the same reading as 84a256ef's for a missing verdict). Such a site keeps its expansion
+   under the warning, as the CHANGELOG already says, so an offline re-derivation never turns a module that compiled
+   into a strict refusal. The test: the example enriched offline, compiled strict.
+
+Confirmed: the corrected derivation's reach is stated by `compilation.expanded_keys` in the release record, and RM451
+is declared an addition whose reach is unstated where a header-only `resolution.csv` leaves `expanded_keys` null.
+
+**Cut now, with one offline case stated (the pm, 2026-11-18, from the lead at b9b4f8c7).** A real
+`enrich --offline` of `pathogenic_clinvar` writes no `undecided`; 12 of its 13 mirrored sites match the online table,
+but `rs80356821` comes out `unplaced` on both spellings where online places the deletion `same_event`, so strict
+refuses that row under "witnessed neither". Offline nothing can judge an indel, so a definite `unplaced` there is
+likely the offline witness answering where it could not ask (`@unreachable-not-absent`), a placement defect RM449
+exposed rather than made. 0.8.9 is cut now: it fixes a silent wrong annotation in production modules, and this case
+is loud, names its rsID, needs an offline re-derivation of a mirrored indel site, and an online one clears it. The cut
+entry says so. Triage files the offline placement as its own item, a patch for 0.8.10.
+
+**Residuals** RM453 · won't fix — a site witnessed both ways is not refused in 0.8 (the pm: refusing it is a minor's
+question, by escalating `rsid_genotype_reads_as_two_events`) · won't fix — an authored coordinate row winning over
+the expansion (S158's option 2) silences only the loud case
+
+## RM448 — the placement witness reads another ALT of a multi-allelic indel site as a disagreement, so the whole placement is withheld and the rsID is left with no row
+
+**SHIPPED 2026-11-18 on `main`, cut 2026-11-18 as `v0.8.9` — a patch.** Severity high · **Owner** enricher (`placement.compare_placements`, `events.counterparts`) ·
+**Motivating case** S158's second question (the registry, 2026-11-17/18): 12 rsIDs of the production `pathogenic` module, and `rs1452575772` in `cardio`, re-derived with no `resolution.csv` row, so strict refuses them as unresolved · *related* RM267, RM375, RM381
+
+**Reproduced on `main` (`5ff00802`, 2026-11-18)** with this machine's caches (Ensembl split snapshot
+`ensembl-variation-2026_07_13-vep116.0`, ClinVar `clinvar_2026-11-15`). A spec of four rsID rows from S158's list
+(`rs1452575772`, `rs1212793496`, `rs1362830842`, `rs1175404096`) was enriched online with `verify_ref` on. All four
+were left unresolved with no row. The run warned "Placement disagreement — 4 rsID(s) are placed as different
+events": `rs1452575772: ensembl places 7:150946949 A>AT; clinvar places 7:150946949 A>AC`, and the same shape for
+the other three. In every pair, ClinVar's allele is also one of Ensembl's. Ensembl holds `A>AC` and `A>AT` at that
+site, and ClinVar holds `A>AC` only. The same spec enriched offline places all four from the snapshot
+(`placement_verdict=undecided`), because offline nothing can judge an indel. So the loss happens only where the
+judge can run: online with the reference read, which is how the registry re-derives.
+
+**The mechanism.** `counterparts` pairs an allele with every witness allele of the same kind and length near it. Two
+one-base insertions of different bases at one position are counterparts. `same_event(A>AT, A>AC)` is then
+correctly `False`, and `compare_placements` records a disagreement for `A>AT`. That withholds the locus holding it,
+and with it `A>AC`, the allele both authorities agree on, because the split snapshot's locus carries both ALTs. RM267
+decided the opposite for this case: "**A different allele is `unplaced`**, never a disagreement". A witness that
+holds one ALT of a multi-allelic site says nothing about the others. Its allele is already matched, as the same
+event, by another allele of the same answer.
+
+**Shape of a fix (the builder decides).** A witness allele that is the same event as one of the authority's alleles
+for the rsID is accounted for, and is no counterpart for that rsID's other alleles. Those read `unplaced`. A
+witness allele that matches none of them still disagrees, as RM267 wants (S117's `rs8176719`). Tests: the four
+sites above as fixtures, plus a real one-ALT disagreement that must still withhold.
+
+**For the registry.** The rows are withheld at enrich time, so a re-derivation on a fixed enricher places them. A
+plain `enrich` re-asks only the subjects with no row (merge-not-clobber), never the whole table.
+
+**Class.** A patch: no schema, column or vocabulary moves (P3). The written rows are what the snapshot already says,
+so no published value changes meaning; rows that were wrongly withheld start being written. Severity high: it blocks
+three production modules' upgrade, and online it silently drops a placement for any multi-allelic indel site
+where ClinVar holds a subset of the ALTs.
+
+**Sized (the pm, 2026-11-18).** A patch on `main`, the builder's shape above, with both tests. Built after RM449,
+since RM449 is the silent one, and cut with it as 0.8.9; the registry then re-derives the 13 rsIDs online. On `0.9`
+the merge carries it like RM446.
+
+**Built (triage, 2026-11-18).** The shape above. `compare_placements` judges every (placed allele, witness
+counterpart) pair once. A witness allele that is the same event as any of the rsID's placed alleles is accounted
+for, and is dropped from the other alleles' counterparts. An allele left with no counterpart reads `unplaced`. All
+calls stay inside `compare_placements`, so the judge-caller registry (`test_authored_event`) does not move. Tests
+in `test_placement_witness.py`:
+
+- S158's four sites (`rs1452575772`, `rs1212793496`, `rs1362830842`, `rs1175404096`) at their real places, with
+  GRCh38 windows read from Ensembl REST on 2026-11-18 behind a multi-window proxy, so the minter mints the real
+  ids and the judge reaches the verdict the online run did. Each gives no disagreement and an `unplaced` row.
+- RM381's per-ALT pieces, where the witnessed `A>AC` reads `same_event` and `A>AT` beside it `unplaced`.
+
+All five fail on the code before the fix with S158's own `PlacementDisagreement`. The real one-ALT disagreement,
+S117's `rs8176719`, still withholds (`test_s117_is_withheld_…`, unchanged and green).
+
+**Residuals** won't fix — an authority's single ALT beside a witness's different ALT of the same length at one
+position (no third allele to account for it) still reads as a disagreement. Whether that is a different allele
+or a disputed placement is RM267's own question, not this item's; no report has met it
+
+## RM447 — Ensembl REST answers rs646776 without the A allele its own release 116 dump and dbSNP 157 carry, so an online fill and a snapshot fill disagree
+
+**SHIPPED 2026-11-17 on `main`, cut 2026-11-18 as `v0.8.9` — a patch.** Severity low · **Owner** enricher (the REST leg, `ensembl._rest_rsid` / `_loci_from_rest`); the fix is the compiler's message (`allele_checks._stale_reading`) ·
+**Motivating case** the lead's RM404 online run on `0.9` (`3e9b993c`), recorded by the pm under RM404 in `ROADMAP_0_9.md` (`ad49b85d`, 2026-11-16) · *related* RM374, RM376, RM271
+
+**Both sides, read 2026-11-17 04:15 UTC.**
+
+- Ensembl REST (`/variation/human/rs646776`; `/info/data` says release 116) answers `1:109275908`, `allele_string`
+  `C/G/T`.
+- The Ensembl snapshot on this machine (`ensembl_variations`, `homo_sapiens-chr1.parquet`, the same release's VCF
+  dump) holds three rows at `1:109275908`: `C>A`, `C>G` and `C>T`.
+- dbSNP (`/variation/v0/refsnp/646776`, the top-level GRCh38 placement) carries `C>A`, `C>G` and `C>T`.
+- `reference_examples/longevity_studies/resolution.csv` records `C` with `A,G,T` and three VRS ids, `source=cache`,
+  `ensembl-variation-2026_07_13-vep116.0`.
+
+So the example agrees with its pinned snapshot and with dbSNP, and nothing in it should move on this evidence.
+This is the case RM376 tested for `rs746071566` and ruled out ("the snapshot carries alleles REST does not: No").
+Here the answer is yes. *Corrected after the measurement below:* the filing read this as two surfaces of one release
+disagreeing, with REST the narrower one. It is a dbSNP build gap inside one Ensembl release. REST's
+`/info/variation` names dbSNP 156, and so does the VEP cache line in the snapshot's header. The VCF dump the snapshot
+is built from (`2026_07_13`) declares dbSNP 157, and dbSNP's own record of rs646776 was last updated in build 157.
+So RM374's reading, "a row from dbSNP 156", was right about the row's age; what it missed is that REST serves that
+build at the current release, so a re-derivation through REST cannot move it.
+
+**Why it matters.** REST answers an rsID the snapshot holds only when the run has no snapshot: `enrich(download=False)`
+on a host without one, or a provisioning that failed and degraded to live. Such a run records `G,T`, and a run with
+the snapshot records `A,G,T`. The module and the Ensembl release are the same in both. A correct `A/C` genotype is then
+refused under `--strict` after the first run only. RM374's probe met exactly this refusal. RM374 made the message name
+the stale reading and point at `--rederive`, but here a re-derivation on the same host writes `G,T` again. The remedy
+the message gives does not reach this cause.
+
+**Shape of a fix (the builder decides).** First measure: compare REST with the snapshot over the reference examples'
+rsIDs, which takes minutes, to learn whether rs646776 is one site or a class. One site may close as RM376 did, with the
+fact recorded in ENRICHER.md beside RM271's REST paragraph. For a class, the refusal's remedy should say when the row
+came from REST, so it can name REST's older build instead of a stale release. The enricher reports, never repairs:
+no REST answer is widened from another source.
+
+**Class.** A patch: no schema, column or vocabulary moves (P3), nothing authored (P9). Severity low: one site is known,
+and the failure is a refusal that names its rsID, never a silent wrong value. No consumer has reported it.
+
+**Sized (the pm, 2026-11-17).** A patch on `main`. The measurement is the first step and decides the rest: REST
+against the snapshot over every rsID the reference examples carry, both read the same hour. One site closes as RM376
+did, with the fact in ENRICHER.md beside RM271's REST paragraph and the refusal message unchanged. Two or more sites
+make it a class: the `--strict` refusal then says when the stored row came from REST and names the narrower surface
+instead of `--rederive`. Nothing is widened from another source either way.
+
+**Measured (triage, 2026-11-17, 04:25–04:29 UTC).** Every `rs<digits>` in `reference_examples/*/*.csv`, 467 rsIDs, was
+read in the same hour from the split snapshot on this machine (`ensembl-variation-2026_07_13-vep116.0`) and from
+Ensembl REST's batch route at release 116 (GRCh38 primary contigs). Each allele was compared with its shared prefix
+and suffix trimmed. REST answered 454 of the 467; the 13 it did not answer are `rs2494…` and `rs2533…` ids the
+snapshot carries, new in dbSNP 157. Of the 454, 58 differ. In 4 of them (`rs33991993`, `rs34083951`, `rs34515413`, `rs34933751`, all
+HBB) the only difference is a placeholder, `N` in the snapshot and `R` or `Y` in REST, which RM271's predicate drops
+on both sides. That leaves **54 where the snapshot carries alleles REST lacks, and none the reverse**: 61
+single-base and 2 longer alleles, among them `rs646776` (`A`), `rs137852556` (`A` and `G`, at both the X and the Y
+PAR spellings), `rs112339338` and `rs149436418`. A class, so the refusal changes. The builds behind the two sides
+were read at 04:41 UTC: REST's `/info/variation/homo_sapiens` names dbSNP 156; the snapshot's `manifest.json` keeps
+the dump's header, `##source="dbSNP" … version="157"`, beside the VEP line's `dbSNP="156"`.
+
+**Built (triage, 2026-11-17).** `allele_checks._stale_reading` adds a reading for a row whose `source` is
+`ensembl-rest` (a private `_LAGGING_LINKS`): the row came from a live link that can serve an older dbSNP build than the
+snapshot. The remedy is `enrich --rederive` on a host where the Ensembl snapshot is provisioned.
+One departure from the sizing, which said "instead of `--rederive`": `--rederive` stays, qualified, because with the
+snapshot present it is the remedy that reaches the row (the cache link answers first). Only a plain one, on a host
+without the snapshot, asks REST again. The release reading and its pinned phrases stay beside it. A cache-sourced or
+unsourced row reads as before, and a hand-filled one still gets no reading. The compiler reads a member of
+`ResolutionRow.source`, a vocabulary the schema documents, only to word a remedy. It maps no link to a source, so P2
+is not reached. A test over a REST row and a cache row is in `test_rsid_placements_disagree.py`. ENRICHER.md (beside
+RM271), COMPILER.md (beside RM374) and the CHANGELOG say it.
+
+**Residuals** won't fix — the enricher widens no REST answer from the snapshot or dbSNP: it reports, never repairs ·
+won't fix — `ensembl-graphql` is not in `_LAGGING_LINKS`, because no run measured it and no row in the examples
+records it
+
+## RM446 — a withholding client's `retired` outlives the run that met the 410, so a later run's outage reads as a retired route
+
+**SHIPPED 2026-11-17 on `main`, cut 2026-11-18 as `v0.8.9` — a patch.** Severity low · **Owner** enricher (`net.Withholding.note_retired`, `withheld_reason`, the live-Ensembl warning in `enrich/orchestration.py`) ·
+**Motivating case** the lead's RM404 build on `0.9` (`3e9b993c`), recorded by the pm under RM404 in `ROADMAP_0_9.md` (`ad49b85d`, 2026-11-16) · *related* RM361, RM404
+
+**What was seen.** `Withholding.retired` is set by the first 410 a client meets and never cleared (`note_retired` only
+sets it when it is `None`). `enrich` reads it per run: when some rsIDs went unanswered and the Ensembl client's
+`retired` is set, the warning says Ensembl "retired the route" and that "re-running will not answer them"; otherwise it
+says the request failed and a re-run may answer. `literature` records `crossref_unanswered = withheld_reason(crossref)`
+the same way. A client reused across runs carries run 1's 410 into run 2, so a run in which no request met a 410 (a
+timeout, a 5xx after the retries, a `Retry-After` hold) is told to upgrade, and told a re-run will not help.
+
+**Why it is a question and not only a bug.** RM361 chose the stickiness on purpose. The docstring says a retired route
+is "a fact about the source rather than about one request", so it holds "for the client's life". That premise holds
+for one route met twice. It does not hold for another route of the same client (`EnsemblResolver` meets a 410 at two
+sites, the single-rsID GET and the batch POST), or for a 410 the source stops serving. And it reads "the client's
+life" as "one run". Before RM404 a host could reuse a client only by injecting a `resolver=`. RM404 makes a
+`LookupClients` bundle, reused across runs, the designed path for every client, so the wrong case becomes the normal
+one for a long-lived host.
+
+**Shape of a fix (the builder decides).** The reason must come from what this run met, and RM404's first reading says
+`enrich` never alters a caller-given client. So no clearing at the start of a run. Something `enrich` can compare
+before and after it asks is enough: a count of the 410s met (new, additive), or the reason that `note_retired`'s
+`True` returns, captured per call. The test reuses one client across two runs. Run 1 meets a 410 and run 2 meets only a
+timeout, and run 2 must give the outage wording. The same holds for the Crossref record.
+
+**Class.** A patch: no schema, column or vocabulary moves (P3), nothing authored (P9); a client attribute added beside
+`retired` is additive. Severity low: the wording misleads a reader about whether to re-run, and no answer is recorded
+wrongly in a module table. No consumer has reported it.
+
+**Sized (the pm, 2026-11-17).** A patch on `main`, not 0.9: the defect predates 0.9 (a reused `resolver=` met it
+already), and trial rule 1 sends a pre-existing defect to triage's patch on `main`. Either capture the builder picks
+is additive; the test is the one above. Built before 0.9 merges so RM404's docstring can point at it; if it lands
+after, the merge carries it.
+
+**Built (triage, 2026-11-17).** The count shape. `Withholding` counts every 410 in `retired_met` beside the sticky
+`retired`, which is unchanged. `net.retired_mark(client)` reads the count, or `None` for a client without one.
+`net.withheld_reason(client, since=mark)` says `retired` only for a 410 met after the mark, and without a mark it reads
+as RM361 did. `enrich` takes the mark when it picks the live-Ensembl client and gates its warning on it.
+`literature` takes it when it picks the Crossref client and records `crossref_unanswered` with it. Nothing resets a
+caller's client. `test_a_reused_clients_410_is_not_a_later_runs.py` reuses one resolver across three `enrich` runs: a
+410, then only a failed request, then a 410 again. Run 2 gives the outage wording and runs 1 and 3 the retired one;
+on the code before the fix, run 2 said "retired the route". The same file walks the mark over a `CrossrefClient`
+and a host's client that counts nothing. ENRICHER.md (the client-contract section) and the CHANGELOG say it.
+
+**Residuals** won't fix — a 410 met on one route still names the reason for a run whose other unanswered requests
+failed otherwise: that is RM361's aggregate rule ("one retired endpoint means the run needs an upgrade"), within one
+run, and this item is about runs
+
 ## RM445 — a pull keeps an unrecorded cache's old parquet and places the hub's newer `release.json` over it, so old bytes carry the new release's label
 
 **SHIPPED 2026-11-16 on `main`, cut 2026-11-16 as `v0.8.8` — a patch.** Severity medium · **Owner** enricher (`download._provision_snapshot`, `_keep`) ·
