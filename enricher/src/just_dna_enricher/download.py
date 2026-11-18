@@ -1379,10 +1379,15 @@ def ensure_snapshot(
     is gated by `declared_use` when that states a use, else by its recorded declaration; one that is
     skipped, refused or cannot be fetched is logged and left as it was, so `ensembl_group_dir` refuses
     it as another release, and never raises out of a call that did not name it. A group's files are
-    checked against the manifest's sha256 on the way in, as the core's are.
+    checked against the manifest's sha256 on the way in, as the core's are. A pull record that is there
+    and cannot be read raises `locations.EnsemblGroupReleaseError` before anything is fetched or
+    rewritten, since nothing could carry its selection over (`locations.pulled_groups`).
     """
     cache_dir = Path(ensembl_cache) if ensembl_cache is not None else default_ensembl_cache_dir()
     named = _named_groups(groups)
+    # A pull record that is there and unreadable is refused before anything moves (review round 1, item 3):
+    # the core's pull would rewrite it without the groups it named, and the selection would end unsaid.
+    pulled_groups(cache_dir)
     if named:
         _admit_named_groups(cache_dir, named, declared_use)
     path = _provision_snapshot(

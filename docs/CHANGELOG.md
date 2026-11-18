@@ -274,6 +274,16 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   read where this call resolved it, `locations` included, so a call naming every lane still loads no `.env`. A
   core that cannot be pinned is no moved parent: the index stays `present`. `cache status` prints every state in
   its own word, which a walk over `LANE_STATES` holds.
+- **A pull record present but unreadable is refused, never read as no groups** (review round 1, item 3, RM437):
+  `locations.pulled_groups` answered `{}` for a record that was not JSON, not an object or held a malformed
+  `groups`, so the next pull rewrote it without them and the sticky selection ended unsaid, and a record that was
+  not UTF-8 raised `UnicodeDecodeError` past the documented type. It now raises `EnsemblGroupReleaseError`
+  naming the record and the remedy, through `ensembl_group_dir` too, and `ensure_snapshot` raises it before
+  anything is fetched or rewritten; an absent record is still `{}`. **The manifest's group records are read group
+  by group and field by field**: a group field of a kind not typed here (`default: "auto"`) failed the whole
+  `manifest.json`, losing the core's release, coverage and rsID-index pin; now that field reads as unstated with a
+  warning, a record that is not an object keeps its name, and an unread licence never admits. A remote
+  `release.json` keeps the local reader's leniency, by design.
 
 ## 2026-11-18 — RM453: a mirrored site where no spelling was witnessed keeps both spellings (patch, a declared corrected derivation, on `main`)
 

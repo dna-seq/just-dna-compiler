@@ -49,6 +49,7 @@ from just_dna_enricher.locations import (
     SNAPSHOT_REPO_IDS,
     EnsemblGroupReleaseError,
     SnapshotManifest,
+    SnapshotManifestGroup,
     ensembl_group_dir,
     ensembl_release_label,
     pulled_groups,
@@ -234,6 +235,106 @@ def test_the_manifest_types_its_groups_with_their_licence() -> None:
     assert [f.path for f in manifest.group_files("cadd")] == sorted(
         p for p in files if p.startswith("groups/cadd/")
     )
+
+
+# ── a record present but unreadable is refused, never read as absent (review round 1, item 3) ───────────
+
+
+#: Pull records that are there and cannot be read, by what is wrong with them.
+_UNREADABLE_RECORDS: dict[str, bytes] = {
+    "not utf-8": b"\xff\xfe{",
+    "not json": b'{"repo": "x", "groups": ',
+    "not an object": b'["cadd"]',
+    "groups not an object": json.dumps({"repo": "x", PULL_RECORD_GROUPS_KEY: ["cadd"]}).encode(),
+    "a group entry not an object": json.dumps(
+        {"repo": "x", PULL_RECORD_GROUPS_KEY: {"cadd": "pulled"}}
+    ).encode(),
+}
+
+
+def test_an_absent_pull_record_names_no_group_and_a_readable_one_names_its_own(tmp_path: Path) -> None:
+    assert pulled_groups(tmp_path) == {}
+    (tmp_path / PULL_RECORD_FILENAME).write_text(json.dumps({"repo": "x"}), encoding="utf-8")
+    assert pulled_groups(tmp_path) == {}
+    entry = {"release_id": _OLD, "files": [], "declared_use": "unstated"}
+    (tmp_path / PULL_RECORD_FILENAME).write_text(
+        json.dumps({"repo": "x", PULL_RECORD_GROUPS_KEY: {"cadd": entry}}), encoding="utf-8"
+    )
+    assert pulled_groups(tmp_path) == {"cadd": entry}
+
+
+@pytest.mark.parametrize("fault", sorted(_UNREADABLE_RECORDS))
+def test_a_pull_record_that_is_there_and_unreadable_is_refused_by_the_reader_and_the_guard(
+    tmp_path: Path, fault: str
+) -> None:
+    """Read as no groups, it ended a sticky selection silently and the guard blamed "not taken by a pull";
+    a record that was not UTF-8 raised `UnicodeDecodeError` past the documented type."""
+    (tmp_path / PULL_RECORD_FILENAME).write_bytes(_UNREADABLE_RECORDS[fault])
+    for read in (lambda: pulled_groups(tmp_path), lambda: ensembl_group_dir(tmp_path, "cadd")):
+        with pytest.raises(EnsemblGroupReleaseError) as refused:
+            read()
+        assert str(refused.value).startswith(
+            f"The pull record at {tmp_path / PULL_RECORD_FILENAME} is there and could not be read ("
+        )
+
+
+def test_ensure_refuses_an_unreadable_pull_record_before_anything_is_fetched_or_rewritten(
+    install_hub, tmp_path: Path
+) -> None:
+    """A moved core used to be re-pulled over it, and the rewritten record carried no group: the selection was
+    lost with nothing said. Now nothing is fetched and the record is left as it was, for the operator."""
+    cache = tmp_path / "ensembl"
+    install_hub(_published(0, _OLD))
+    dl.ensure_snapshot(cache, groups=["cadd"], declared_use="non_commercial")
+    broken = (cache / PULL_RECORD_FILENAME).read_bytes()[:-20]
+    (cache / PULL_RECORD_FILENAME).write_bytes(broken)
+    hub = install_hub(_published(1, _NEW))
+    with pytest.raises(EnsemblGroupReleaseError, match="could not be read"):
+        dl.ensure_snapshot(cache)
+    assert hub.fetched == [], "nothing was downloaded"
+    assert (cache / PULL_RECORD_FILENAME).read_bytes() == broken, "the record was not rewritten"
+
+
+def test_a_group_record_is_read_member_by_member_so_a_later_field_costs_no_core_pin(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A group field of a kind this reader does not type used to fail the whole manifest: the core's release,
+    coverage and pin went with it. Now that field alone reads as unstated, said in a warning, and a group
+    record that is not an object keeps its name with nothing stated, so it is never "no such group" and never
+    terms that admit."""
+    files = _release(0)
+    raw = json.loads(_manifest(files, _OLD))
+    raw["groups"]["cadd"]["default"] = "auto"
+    raw["groups"]["cadd"]["licence"] = {"text": _CADD_LICENCE}
+    raw["groups"]["mystery"] = "see the README"
+    with caplog.at_level("WARNING", logger="just_dna_enricher.locations"):
+        manifest = SnapshotManifest.model_validate_json(json.dumps(raw))
+    assert manifest.release_id == _OLD and manifest.files, "the core is still read"
+    assert set(manifest.groups or {}) == {"consequence", "cadd", "mystery"}
+    assert (manifest.groups["cadd"].licence, manifest.groups["cadd"].default) == (None, None)
+    assert manifest.groups["cadd"].name == "cadd"
+    assert manifest.groups["mystery"] == SnapshotManifestGroup()
+    assert manifest.groups["consequence"].licence == _ENSEMBL_LICENCE
+    said = [r.getMessage() for r in caplog.records]
+    assert "The snapshot manifest's cadd group: default, licence do not fit; read as unstated." in said
+    assert "The snapshot manifest's mystery group is not an object; read with nothing stated." in said
+    reason = check_declared_use(
+        snapshot_group_terms("cadd", manifest.groups["cadd"].licence), "non_commercial"
+    )
+    assert reason is not None, "an unread licence never admits"
+
+
+def test_groups_that_are_not_a_map_are_unstated_and_the_core_is_still_read(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    raw = json.loads(_manifest(_release(0), _OLD))
+    raw["groups"] = ["cadd"]
+    with caplog.at_level("WARNING", logger="just_dna_enricher.locations"):
+        manifest = SnapshotManifest.model_validate_json(json.dumps(raw))
+    assert manifest.release_id == _OLD and manifest.files and manifest.groups is None
+    assert "The snapshot manifest's groups are not a map of name to record; read as unstated." in [
+        r.getMessage() for r in caplog.records
+    ]
 
 
 # ── selecting, gating and pulling a group ───────────────────────────────────────────────────────

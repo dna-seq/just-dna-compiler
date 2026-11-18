@@ -2377,7 +2377,12 @@ prevent, and a stale group joins to the wrong variants silently.
   and `cache pull --only ensembl --groups NAME[,NAME] [--use …]`, which prints one
   `ensembl group <name>: <outcome>` line per group it looked at. The valid names are the manifest's own
   `groups` (`locations.SnapshotManifest.groups`, name → `SnapshotManifestGroup`, licence included;
-  `SnapshotManifest.group_files(name)` lists what it attests for one). `core` is not a group
+  `SnapshotManifest.group_files(name)` lists what it attests for one). The groups are read group by group
+  and field by field (0.9, review round 1): a field of a kind this reader does not type reads as unstated
+  with a warning (`The snapshot manifest's <group> group: <fields> do not fit; read as unstated.`), a
+  record that is not an object keeps its name with nothing stated, and `groups` that are not a map are
+  unstated, so a field a later release adds never costs the core's release, coverage or pin, and an unread
+  licence is no licence (unknown terms, never admitted). `core` is not a group
   (`locations.ENSEMBL_CORE_GROUP`, refused with `CORE_IS_NOT_A_GROUP`), and an unknown name is refused
   with the names the release does publish, both `ValueError` and before any download (a name the cache's
   manifest lacks is checked against the hub's, which may publish a newer release that adds it). `cache
@@ -2397,12 +2402,17 @@ prevent, and a stale group joins to the wrong variants silently.
   size and sha256, as a core file is. The pull record gains `groups` (`locations.PULL_RECORD_GROUPS_KEY`):
   per group, the `release_id` its files were attested against (`null` while its pull is under way), its
   files, the declaration it was admitted under, and since the pm's follow-up when that use was declared
-  (`declared_at`, `download.PULL_RECORD_DECLARED_AT_KEY`, UTC). `locations.pulled_groups(cache)` reads it.
+  (`declared_at`, `download.PULL_RECORD_DECLARED_AT_KEY`, UTC). `locations.pulled_groups(cache)` reads it:
+  `{}` for an absent record or one naming no groups, and `EnsemblGroupReleaseError` for one that is there
+  and cannot be read (not UTF-8 or JSON, not an object, `groups` or a group entry not an object), which
+  `ensure_snapshot` raises too, before anything is fetched or the record rewritten (review round 1): read
+  as no groups, it ended the sticky selection unsaid.
 - **The one path, with the check.** `locations.ensembl_group_dir(cache, group)` returns
   `<cache>/groups/<group>` (`ENSEMBL_GROUPS_DIRNAME`) only when the group's recorded release is the
   core's (`manifest.json`'s `release_id`) and the directory holds exactly the files the manifest attests
   for the group, at their sizes (a `stat`, as the core is read). Otherwise it raises
-  `EnsemblGroupReleaseError`, with its own sentence for each of six causes: not taken by a pull of this
+  `EnsemblGroupReleaseError`, with its own sentence for each of seven causes: a pull record there and
+  unreadable (`The pull record at <path> is there and could not be read (…)`), not taken by a pull of this
   cache (absent, or placed by hand), a pull that did not finish, a core stating no release, two releases,
   an attested file missing or of another size (re-pull it), and a parquet the manifest does not name for
   the group (move it aside: no pull removes a file it did not put there, and a pull over such a directory
