@@ -2461,6 +2461,104 @@ RM271), COMPILER.md (beside RM374) and the CHANGELOG say it.
 won't fix — `ensembl-graphql` is not in `_LAGGING_LINKS`, because no run measured it and no row in the examples
 records it
 
+## RM448 — the placement witness reads another ALT of a multi-allelic indel site as a disagreement, so the whole placement is withheld and the rsID is left with no row
+
+**Severity** high · **Status** open — **a patch; the pm sizes** · **Owner** enricher (`placement.compare_placements`, `events.counterparts`) ·
+**Motivating case** S158's second question (the registry, 2026-11-17/18): 12 rsIDs of the production `pathogenic` module, and `rs1452575772` in `cardio`, re-derived with no `resolution.csv` row, so strict refuses them as unresolved · *related* RM267, RM375, RM381
+
+**Reproduced on `main` (`5ff00802`, 2026-11-18)** with this machine's caches (Ensembl split snapshot
+`ensembl-variation-2026_07_13-vep116.0`, ClinVar `clinvar_2026-11-15`). A spec of four rsID rows from S158's list
+(`rs1452575772`, `rs1212793496`, `rs1362830842`, `rs1175404096`) was enriched online with `verify_ref` on. All four
+were left unresolved with no row. The run warned "Placement disagreement — 4 rsID(s) are placed as different
+events": `rs1452575772: ensembl places 7:150946949 A>AT; clinvar places 7:150946949 A>AC`, and the same shape for
+the other three. In every pair, ClinVar's allele is also one of Ensembl's. Ensembl holds `A>AC` and `A>AT` at that
+site, and ClinVar holds `A>AC` only. The same spec enriched offline places all four from the snapshot
+(`placement_verdict=undecided`), because offline nothing can judge an indel. So the loss happens only where the
+judge can run: online with the reference read, which is how the registry re-derives.
+
+**The mechanism.** `counterparts` pairs an allele with every witness allele of the same kind and length near it. Two
+one-base insertions of different bases at one position are counterparts. `same_event(A>AT, A>AC)` is then
+correctly `False`, and `compare_placements` records a disagreement for `A>AT`. That withholds the locus holding it,
+and with it `A>AC`, the allele both authorities agree on, because the split snapshot's locus carries both ALTs. RM267
+decided the opposite for this case: "**A different allele is `unplaced`**, never a disagreement". A witness that
+holds one ALT of a multi-allelic site says nothing about the others. Its allele is already matched, as the same
+event, by another allele of the same answer.
+
+**Shape of a fix (the builder decides).** A witness allele that is the same event as one of the authority's alleles
+for the rsID is accounted for, and is no counterpart for that rsID's other alleles. Those read `unplaced`. A
+witness allele that matches none of them still disagrees, as RM267 wants (S117's `rs8176719`). Tests: the four
+sites above as fixtures, plus a real one-ALT disagreement that must still withhold.
+
+**For the registry.** The rows are withheld at enrich time, so a re-derivation on a fixed enricher places them. A
+plain `enrich` re-asks only the subjects with no row (merge-not-clobber), never the whole table.
+
+**Class.** A patch: no schema, column or vocabulary moves (P3). The written rows are what the snapshot already says,
+so no published value changes meaning; rows that were wrongly withheld start being written. Severity high: it blocks
+three production modules' upgrade, and online it silently drops a placement for any multi-allelic indel site
+where ClinVar holds a subset of the ALTs.
+
+**Residuals** none yet.
+
+## RM449 — an rsID row's indel genotype is hosted by an insertion and a deletion at one position, so its claim lands on both events
+
+**Severity** high · **Status** open — **a patch, a corrected derivation; the pm sizes** · **Owner** compiler (the positional fill and `hosting_verdict`), enricher (the ClinVar drafter) ·
+**Motivating case** S158's first question (the registry, 2026-11-17/18): 21 `post-resolution: Duplicate (variant, genotype)` refusals in `cardio`, 25 or more in `cancer` and 14 or more in `pathogenic`, all indels · *related* RM31, RM267, RM274, RM381
+
+**Reproduced on `main` (`5ff00802`, 2026-11-18)**, two cases with this machine's caches, enriched online with
+`verify_ref`.
+
+- **Loud.** `variants.csv` holds `rs1057516393 … C/CT` (rsID only, drafted from ClinVar VCV 370313, the
+  insertion) and `11,108256251,CT,C, C/CT` (a coordinate row, from VCV 3653980, the deletion). The rsID resolves to
+  two loci, `11:108256251 C>CT` (`placement_verdict=same_event`, ClinVar witnessed) and `CT>C` (`unplaced`).
+  `C/CT` is hosted at both, the fill expands the rsID row onto both, and the second expansion's key is the
+  coordinate row's: the strict compile refuses with `Duplicate (variant, genotype): (11:108256251:CT:C, C/CT)`.
+- **Silent.** The same rsID row alone, with a study row. The strict compile **succeeds**, and `weights.parquet`
+  holds the insertion's claim (`conclusion=ins`, pathogenic in the module) on both `C>CT` and `CT>C`. A consumer
+  carrying the heterozygous one-base deletion matches the insertion's annotation. Nothing warns.
+
+**Why, and which decision this reopens.** RM31's hosting rule (`@hosting-tri-state`) compares the raw strings first.
+It relies on "a genotype naming *two* alleles carries the frame", because an rsID row states no coordinate. Here
+both strings occur in both frames with opposite meanings. On `C>CT`, `C/CT` is one inserted T; on `CT>C` it is one
+deleted T. That premise fails for an insertion and a deletion mirrored at one position, so hosting answers "yes"
+twice for one authored event. ClinVar settles which one was meant: the rsID is on VCV 370313, the insertion, and the
+deletion's record carries no rsID.
+
+**The reporter's three candidates, weighed.** (2), an authored coordinate row winning over the expansion, silences
+only the loud case; the silent one stays. (3), the ClinVar drafter writing the coordinate for an indel rsID row,
+removes the ambiguity at the source for new drafts. It does nothing for modules already drafted, three of them in
+production. (1), treating a genotype hosted by both spellings at one position as ambiguous and taking the locus a
+witness placed as `same_event`, else neither, fixes both cases for existing modules. It withholds rather than
+guesses where no witness settles it. The recommendation is (1) with (3) beside it; the builder decides.
+
+**Class.** A corrected derivation (P3): the fill writes fewer rows for a module already compiled, so `artifact.digest`
+moves, and the release must declare the correction. RM31's raw-first rule says normalization may only add
+acceptances. This item removes one, on purpose, for a case that rule did not consider, and says so where the rule
+is written. The one-to-many reverse must stay a fixed point (P7): the expansion it drops must not come back on lap
+two. Severity high: a silent wrong annotation on an indel, in production modules.
+
+**Residuals** none yet.
+
+## RM450 — a snapshot pull takes no lock on the cache directory, so two pulls into one cache share their `.part` names and the pull record
+
+**Severity** low · **Status** open — **a patch on `main`, if the pm keeps it (no incident yet)** · **Owner** enricher (`download._provision_snapshot`, `ensure_snapshot`, `cache pull`) ·
+**Motivating case** the pm's check request from RM437 on `0.9` (2026-11-17): the groups' pull record is rewritten without a lock, "as the core's is" · *related* RM437, RM445, RM231
+
+**Checked on `main` (`5ff00802`).** `download.py` takes no lock of any kind. The one `flock` in the enricher is
+`transaction.spec_lock`, over a spec directory. A pull stages each file at a fixed name (`<file>.part`,
+`release.json.part`, `manifest.json.part`), renames it, and rewrites the pull record with `atomic_write_text`. Two
+pulls into one cache, such as an `enrich` provisioning while a `cache pull` runs, or two module runs sharing a cache,
+write to the same `.part` paths. One may rename or remove the other's partial file, and the last record written
+wins. The record is never torn (atomic), but it may describe the other pull's file set.
+
+**No incident.** Nothing here was reproduced, and no run is known to have failed this way (`@argue-from-incidents`).
+That is why the severity is low and the status asks the pm whether to keep it. If kept, the shape is
+`@flock-not-a-lockfile`: an advisory `flock` on the cache directory's own descriptor for the whole pull, as
+`spec_lock` does for a spec, with the same warning where `flock` cannot hold. RM437's groups on `0.9` inherit it.
+
+**Class.** A patch: no schema, column or vocabulary moves (P3), nothing authored (P9).
+
+**Residuals** none yet.
+
 # Not format scope
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.
