@@ -27,7 +27,7 @@ from pathlib import Path
 import huggingface_hub
 import polars as pl
 import pytest
-from just_dna_enricher import caches
+from just_dna_enricher import caches, locations
 from just_dna_enricher import download as dl
 from just_dna_enricher.caches import LANES_BY_NAME
 from just_dna_enricher.cli import app as enricher_app
@@ -254,6 +254,11 @@ _UNREADABLE_RECORDS: dict[str, bytes] = {
 
 def test_an_absent_pull_record_names_no_group_and_a_readable_one_names_its_own(tmp_path: Path) -> None:
     assert pulled_groups(tmp_path) == {}
+    duckdb_file = tmp_path / "ensembl_variations.duckdb"
+    duckdb_file.write_bytes(b"")
+    assert pulled_groups(duckdb_file) == {}, (
+        "a cache handed as one file holds no pull record, which is no refusal"
+    )
     (tmp_path / PULL_RECORD_FILENAME).write_text(json.dumps({"repo": "x"}), encoding="utf-8")
     assert pulled_groups(tmp_path) == {}
     entry = {"release_id": _OLD, "files": [], "declared_use": "unstated"}
@@ -296,7 +301,7 @@ def test_ensure_refuses_an_unreadable_pull_record_before_anything_is_fetched_or_
 
 
 def test_a_group_record_is_read_member_by_member_so_a_later_field_costs_no_core_pin(
-    caplog: pytest.LogCaptureFixture,
+    caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A group field of a kind this reader does not type used to fail the whole manifest: the core's release,
     coverage and pin went with it. Now that field alone reads as unstated, said in a warning, and a group
@@ -307,8 +312,10 @@ def test_a_group_record_is_read_member_by_member_so_a_later_field_costs_no_core_
     raw["groups"]["cadd"]["default"] = "auto"
     raw["groups"]["cadd"]["licence"] = {"text": _CADD_LICENCE}
     raw["groups"]["mystery"] = "see the README"
+    monkeypatch.setattr(locations, "_SAID", set())
     with caplog.at_level("WARNING", logger="just_dna_enricher.locations"):
         manifest = SnapshotManifest.model_validate_json(json.dumps(raw))
+        assert SnapshotManifest.model_validate_json(json.dumps(raw)) == manifest
     assert manifest.release_id == _OLD and manifest.files, "the core is still read"
     assert set(manifest.groups or {}) == {"consequence", "cadd", "mystery"}
     assert (manifest.groups["cadd"].licence, manifest.groups["cadd"].default) == (None, None)
@@ -316,8 +323,12 @@ def test_a_group_record_is_read_member_by_member_so_a_later_field_costs_no_core_
     assert manifest.groups["mystery"] == SnapshotManifestGroup()
     assert manifest.groups["consequence"].licence == _ENSEMBL_LICENCE
     said = [r.getMessage() for r in caplog.records]
-    assert "The snapshot manifest's cadd group: default, licence do not fit; read as unstated." in said
-    assert "The snapshot manifest's mystery group is not an object; read with nothing stated." in said
+    assert (
+        said.count("The snapshot manifest's cadd group: default, licence do not fit; read as unstated.") == 1
+    ), "a manifest is read many times per lookup, and one unread field is said once"
+    assert (
+        said.count("The snapshot manifest's mystery group is not an object; read with nothing stated.") == 1
+    )
     reason = check_declared_use(
         snapshot_group_terms("cadd", manifest.groups["cadd"].licence), "non_commercial"
     )
@@ -325,8 +336,9 @@ def test_a_group_record_is_read_member_by_member_so_a_later_field_costs_no_core_
 
 
 def test_groups_that_are_not_a_map_are_unstated_and_the_core_is_still_read(
-    caplog: pytest.LogCaptureFixture,
+    caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    monkeypatch.setattr(locations, "_SAID", set())
     raw = json.loads(_manifest(_release(0), _OLD))
     raw["groups"] = ["cadd"]
     with caplog.at_level("WARNING", logger="just_dna_enricher.locations"):

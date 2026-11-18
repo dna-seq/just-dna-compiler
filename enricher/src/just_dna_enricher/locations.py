@@ -372,6 +372,19 @@ def pulled_from(cache_dir: Path, repo: str) -> str | None:
 # ── a snapshot's per-file manifest (RM372) ──────────────────────────────────────────────────────
 
 
+#: The manifest-group warnings already said in this process: a manifest is read many times per lookup
+#: (`core_pin`, `manifest_coverage`, `ensembl_group_dir`), and one unread field is one finding, said once.
+_SAID: set[str] = set()
+
+
+def _warn_once(template: str, *args: object) -> None:
+    """`logger.warning(template, *args)`, the first time this process would say that message."""
+    message = template % args
+    if message not in _SAID:
+        _SAID.add(message)
+        logger.warning(template, *args)
+
+
 class SnapshotManifestFile(BaseModel):
     """One file `manifest.json` attests: its path under the snapshot root, its size and its sha256.
 
@@ -440,14 +453,12 @@ class SnapshotManifest(BaseModel):
         if value is None:
             return None
         if not isinstance(value, dict):
-            logger.warning(
-                "The snapshot manifest's groups are not a map of name to record; read as unstated."
-            )
+            _warn_once("The snapshot manifest's groups are not a map of name to record; read as unstated.")
             return None
         read: dict[object, dict[str, object]] = {}
         for name, record in value.items():
             if not isinstance(record, dict):
-                logger.warning(
+                _warn_once(
                     "The snapshot manifest's %s group is not an object; read with nothing stated.", name
                 )
                 read[name] = {}
@@ -459,7 +470,7 @@ class SnapshotManifest(BaseModel):
                 except ValidationError:
                     bad.append(str(key))
             if bad:
-                logger.warning(
+                _warn_once(
                     "The snapshot manifest's %s group: %s do not fit; read as unstated.",
                     name,
                     ", ".join(sorted(bad)),
@@ -669,6 +680,8 @@ def pulled_groups(ensembl_cache: Path) -> dict[str, dict]:
     ended a sticky selection silently, since the next pull rewrote it without them, and the guard blamed a
     group "not taken by a pull"; nothing can say which groups it held, so nothing reads past it.
     """
+    if not Path(ensembl_cache).is_dir():
+        return {}  # a `.duckdb` handed as the cache, or nothing there: no pull record, and no groups
     path = Path(ensembl_cache) / PULL_RECORD_FILENAME
     try:
         payload = json.loads(path.read_bytes().decode("utf-8"))

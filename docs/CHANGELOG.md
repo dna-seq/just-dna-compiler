@@ -284,7 +284,8 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   anything is fetched or rewritten; an absent record is still `{}`. **The manifest's group records are read group
   by group and field by field**: a group field of a kind not typed here (`default: "auto"`) failed the whole
   `manifest.json`, losing the core's release, coverage and rsID-index pin; now that field reads as unstated with a
-  warning, a record that is not an object keeps its name, and an unread licence never admits. A remote
+  warning said once per process, a record that is not an object keeps its name, and an unread licence never
+  admits. A remote
   `release.json` keeps the local reader's leniency, by design.
 - **A proxy 200 is read through one strict model of the registry's reply** (review round 1, item 1, RM430,
   `@client-exception-contract`'s fourth leg): a reply missing `truncated` was taken as a whole answer, a row that
