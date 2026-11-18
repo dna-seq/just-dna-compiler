@@ -2478,10 +2478,10 @@ RM431, RM437
 
 - `download._pull_record`, `locations.pull_record_repo` and `locations.pulled_from` catch `JSONDecodeError` but not
   `UnicodeDecodeError`, so a pull record that is not UTF-8 escapes as a traceback (RM437's class 3);
-- the gnomAD, E-utilities and literature settings check `batch_size` when they are built and not when it is used, so
-  one set to 0 afterwards answers nothing, silently (RM404's class 8);
+- the gnomAD and E-utilities settings and both literature clients never check `batch_size`, so one set to 0
+  answers nothing, silently (RM404's class 8);
 - `mitomap_miss` declares `stale_parents` but no stale reason, so `cache status` calls it present over moved parents
-  (RM431's class 11, `@a-derived-lane-has-parents-...`);
+  (RM431's class 11). `main` has no stale state at all, so this one is RM431's on 0.9, not this patch;
 - `cache_commands._payload` keys on `lane.name == "strchive"` rather than a field of the lane (class 4).
 
 **The fix.** Each takes the form 0.9 gave its own instance: catch `UnicodeDecodeError` beside `JSONDecodeError`;
