@@ -7898,7 +7898,7 @@ sharpens: does re-derivation drop a ClinVar placement when Ensembl has no locus 
 row behind? If those ids are expected to be unplaceable under 0.8, what should the ClinVar drafter author for them
 (the coordinate it already holds?); if not, it is a resolver gap.
 
-**Status — both are defects, both reproduced on `main`, filed as [RM448](ROADMAP.md#rm448--the-placement-witness-reads-another-alt-of-a-multi-allelic-indel-site-as-a-disagreement-so-the-whole-placement-is-withheld-and-the-rsid-is-left-with-no-row) (the missing rows) and [RM449](ROADMAP.md#rm449--an-rsid-rows-indel-genotype-is-hosted-by-an-insertion-and-a-deletion-at-one-position-so-its-claim-lands-on-both-events) (the duplicates), both high, both patches for the pm to size.**
+**Status — both are defects, both reproduced on `main`, filed as [RM448](ROADMAP_HISTORY.md#rm448--the-placement-witness-reads-another-alt-of-a-multi-allelic-indel-site-as-a-disagreement-so-the-whole-placement-is-withheld-and-the-rsid-is-left-with-no-row) (the missing rows) and [RM449](ROADMAP_HISTORY.md#rm449--an-rsid-rows-indel-genotype-is-hosted-by-an-insertion-and-a-deletion-at-one-position-so-its-claim-lands-on-both-events) (the duplicates), both high, both patches for the pm to size.**
 Both were reproduced on 2026-11-18 at `5ff00802`, with this machine's Ensembl split snapshot
 (`ensembl-variation-2026_07_13-vep116.0`) and ClinVar (`clinvar_2026-11-15`), enriched online with `verify_ref` as
 you ran it.
