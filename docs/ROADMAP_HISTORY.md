@@ -246,6 +246,11 @@ as the carve-out it is. The comment on prohibition 1a gives the 2026-11-06 spell
 tests in `test_alphagenome_atlas_terms.py` that read each claim off `docs/vendor/` (red before on all three).
 `_default_terms_file` is untouched.
 
+**Kept as shipped, the maintainer (2026-11-18), relayed by the lead.** On the AVI row's training bar, which
+Google's Additional Terms exempt while the June 2025 Output Terms keep it: "We don't do training here, thus, don't
+care about the ban. Keep all as is." The cautious notice stays as 0.8.7 shipped it; the contradiction is Google's to
+fix, and nothing changes here until they do.
+
 **Residuals** none
 
 ## RM440 — a re-derivation that drops a back-filled rsID on RM438's no-host arm says nothing at run time

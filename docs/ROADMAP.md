@@ -2463,7 +2463,7 @@ records it
 
 ## RM448 — the placement witness reads another ALT of a multi-allelic indel site as a disagreement, so the whole placement is withheld and the rsID is left with no row
 
-**Severity** high · **Status** open — **a patch; the pm sizes** · **Owner** enricher (`placement.compare_placements`, `events.counterparts`) ·
+**Severity** high · **Status** open — **a patch on `main`, `unattended` (about 1 hour), for 0.8.9** · **Owner** enricher (`placement.compare_placements`, `events.counterparts`) ·
 **Motivating case** S158's second question (the registry, 2026-11-17/18): 12 rsIDs of the production `pathogenic` module, and `rs1452575772` in `cardio`, re-derived with no `resolution.csv` row, so strict refuses them as unresolved · *related* RM267, RM375, RM381
 
 **Reproduced on `main` (`5ff00802`, 2026-11-18)** with this machine's caches (Ensembl split snapshot
@@ -2497,11 +2497,15 @@ so no published value changes meaning; rows that were wrongly withheld start bei
 three production modules' upgrade, and online it silently drops a placement for any multi-allelic indel site
 where ClinVar holds a subset of the ALTs.
 
+**Sized (the pm, 2026-11-18).** A patch on `main`, the builder's shape above, with both tests. Built after RM449,
+since RM449 is the silent one, and cut with it as 0.8.9; the registry then re-derives the 13 rsIDs online. On `0.9`
+the merge carries it like RM446.
+
 **Residuals** none yet.
 
 ## RM449 — an rsID row's indel genotype is hosted by an insertion and a deletion at one position, so its claim lands on both events
 
-**Severity** high · **Status** open — **a patch, a corrected derivation; the pm sizes** · **Owner** compiler (the positional fill and `hosting_verdict`), enricher (the ClinVar drafter) ·
+**Severity** high · **Status** open — **a patch on `main`, a declared corrected derivation, `unattended` (about 2 hours, built first), for 0.8.9** · **Owner** compiler (the positional fill and `hosting_verdict`), enricher (the ClinVar drafter) ·
 **Motivating case** S158's first question (the registry, 2026-11-17/18): 21 `post-resolution: Duplicate (variant, genotype)` refusals in `cardio`, 25 or more in `cancer` and 14 or more in `pathogenic`, all indels · *related* RM31, RM267, RM274, RM381
 
 **Reproduced on `main` (`5ff00802`, 2026-11-18)**, two cases with this machine's caches, enriched online with
@@ -2536,11 +2540,28 @@ acceptances. This item removes one, on purpose, for a case that rule did not con
 is written. The one-to-many reverse must stay a fixed point (P7): the expansion it drops must not come back on lap
 two. Severity high: a silent wrong annotation on an indel, in production modules.
 
+**Sized (the pm, 2026-11-18).** A patch on `main`: a corrected derivation may ship in any release, never silently
+(P3), so 0.8.9's notes declare it, readable offline, naming what moves (the fill writes no row on the locus a
+mirrored indel genotype was wrongly expanded onto, and `artifact.digest` moves for a module holding one). Candidate
+(1) with (3) beside it, the more complete reading:
+
+1. A genotype hosted by both an insertion and a deletion at one position is ambiguous. The fill takes the locus the
+   recorded `placement_verdict` says is `same_event`, else neither, with a warning naming the rsID and both events.
+   The verdict is read from `resolution.csv`, so the compile stays offline (P2). Its cost, stated in the notes: a
+   module enriched offline, where no indel is judged, loses such a row until it is enriched online.
+2. The ClinVar drafter writes the coordinate on an indel rsID row, so new drafts carry the frame.
+3. The rule's change is written where RM31's is (`@hosting-tri-state` in AGENT_NOTES.md and its CLAUDE.md line):
+   raw-first may now remove an acceptance, for this case only.
+
+Tests: the loud and the silent case above as fixtures; a reverse, recompile, reverse lap that is a fixed point (P7);
+and a sweep over `reference_examples/` listing every row whose expansion moves, read before the cut. Built first,
+before RM448: it is the silent wrong annotation.
+
 **Residuals** none yet.
 
 ## RM450 — a snapshot pull takes no lock on the cache directory, so two pulls into one cache share their `.part` names and the pull record
 
-**Severity** low · **Status** open — **a patch on `main`, if the pm keeps it (no incident yet)** · **Owner** enricher (`download._provision_snapshot`, `ensure_snapshot`, `cache pull`) ·
+**Severity** low · **Status** a patch, parked · **Owner** enricher (`download._provision_snapshot`, `ensure_snapshot`, `cache pull`) ·
 **Motivating case** the pm's check request from RM437 on `0.9` (2026-11-17): the groups' pull record is rewritten without a lock, "as the core's is" · *related* RM437, RM445, RM231
 
 **Checked on `main` (`5ff00802`).** `download.py` takes no lock of any kind. The one `flock` in the enricher is
@@ -2556,6 +2577,11 @@ That is why the severity is low and the status asks the pm whether to keep it. I
 `spec_lock` does for a spec, with the same warning where `flock` cannot hold. RM437's groups on `0.9` inherit it.
 
 **Class.** A patch: no schema, column or vocabulary moves (P3), nothing authored (P9).
+
+**Parked, the pm (2026-11-18)** (`@argue-from-incidents-not-mechanisms`): nothing reproduced it and no run is known
+to have failed this way. **Unparks when** a pull is seen to leave a wrong file or record, or a host reports running
+two pulls into one cache at once (the registry's proxy hosts are the likely first). The fix is then the shape above,
+about 30 minutes, and RM437's groups on `0.9` inherit it.
 
 **Residuals** none yet.
 
@@ -3090,6 +3116,7 @@ possibly already satisfied, and the rest sound** — the sweep's value is mostly
 | **RM358** — a DOI-only citation is never pinned (parked 2026-11-16) | a `pmid=NONE` citation a downstream check needs pinned, or a bioRxiv full text an author cannot reach | **Sound.** Both occur with today's literature tools. |
 | **RM360** — four longevitymap v2 rows without a shape (parked 2026-11-16) | the next v2 version, or another module, needs one of the four rows | **Sound.** An author meets the gap while writing, before any column exists. |
 | **RM412** half 1's per-lane release probe (parked 2026-11-16) | an operator reports a rebuild that downloaded a source only to learn nothing had changed | **Sound.** Every rebuild today downloads first; an operator can meet this before the probe exists. |
+| **RM450** — a snapshot pull takes no lock (parked 2026-11-18) | a pull seen to leave a wrong file or record, or a host that runs two pulls into one cache | **Sound.** Either can happen while it is parked; nothing needs the lock to exist first. |
 | **RM15** / **RM69** / **RM52** and the 1.0 queue | a major-version bump | **Sound, and not this kind of gate.** A release boundary is a schedule, not a satisfier. |
 
 **What the sweep did not find, stated so it is not re-run for a while.** No gate anywhere is parked on
