@@ -39,10 +39,14 @@ The lead's working state, rewritten to the present before each reset. Last rewri
 
 ## In flight
 
-- Lanes behind source (liaison, 2026-11-17): clinvar_2026-11-15 and mitomap_2026-11-09+2026-11-03 built into
-  `data/caches/rebuild-2026-11-17/`, upload rehearsed (27 and 5 files). `blocked: the person` — the classifier refused
-  `<lane> publish` (kit #529); the two commands are with the person. After the publish: `cache pull` here, then
-  `mitomap miss` (mitomap_miss follows its parents).
+- 0.8.9 cut 2026-11-18, awaiting the publish: cut commit 13b3be36 (format, compiler, enricher 0.8.9; format moves for the
+  release record alone), merged into main (48aa8ae3, then RM453 in 19a7cdb0, which is 0.8.10's). Dists built from
+  13b3be36 into the root `dist/`, twine check passed. After the publish: tag `v0.8.9` on 13b3be36, GitHub release from
+  scratchpad/release_notes_0_8_9.md, README.md:94 and CLAUDE.md:84 to name 0.8.9. Branches cut/v0.8.9 (superseded)
+  and land/v0.8.9 are the person's to delete.
+- Lanes behind source (liaison, 2026-11-17): done 2026-11-18. clinvar_2026-11-15 and mitomap_2026-11-09+2026-11-03
+  published by the person (the classifier refused the seat, kit #529), pulled here; mitomap_miss rebuilt, the old copy
+  moved to `/data/just-dna-cache/mitomap_miss.before-2026-11-18` (the person's to delete).
 - 0.8.8 released 2026-11-17: enricher 0.8.8 on PyPI (02:17Z), tag `v0.8.8` on 655f1ebc, GitHub release, README and
   CLAUDE.md name it.
 - `main` pushed 2026-11-04 by the pm at the person's word (…150d916), the lead's commits included. Auto-mode rule
@@ -55,7 +59,7 @@ The lead's working state, rewritten to the present before each reset. Last rewri
   (scratch; this line is the record): branch `0.9` off `main`; wave 0 `LookupClients` leaf module + `parse_release`;
   wave 1 RM443, RM412, RM404, RM437 in parallel; wave 2 RM430; wave 3 RM431 asks 6, 5, then 4. Then one four-leaf
   round (two at most), the pm sorts, the cut. `unattended`: starts when the person is away.
-- 0.9 progress (2026-11-17): branch `0.9` open (worktree scratchpad/wt-09, locked). Wave 0 merged, e160a132
+- 0.9 progress (2026-11-17): branch `0.9` open (worktree `.worktrees/09` on disk, locked; moved off /tmp 2026-11-18, kit #536). Wave 0 merged, e160a132
   (suite 7461 passed). Wave 1 runs serially under the pace rule and the 7-day quota (87%, hold at 90%): RM443
   merged 4384bed3 (suite 7470); RM412 building; RM404, RM437 wait for quota room (7-day 89%, hold 90%). The pm
   decided parse_release lenient: the RM430 builder (wave 2) changes it, after syncing main into 0.9.

@@ -774,6 +774,16 @@ REVERSED_RESOLUTION_FIELDS: tuple[str, ...] = tuple(
 )
 
 
+def _filed_nothing(row: dict[str, Any]) -> bool:
+    """The table the module read filed nothing under this row's key, so reverse writes nothing for it (RM451).
+
+    `resolution_loci` is `[]` exactly then (`parquets.resolution_loci`). `None`, or a parquet without
+    the column, still means the row's cells answer, and the cell rebuild below writes them.
+    """
+    loci = row.get("resolution_loci")
+    return loci is not None and len(loci) == 0
+
+
 def _write_resolution_csv(
     weights_df: pl.DataFrame | None,
     positional: list[tuple[str, pl.DataFrame]],
@@ -857,6 +867,8 @@ def _write_resolution_csv(
         chrom, start = row.get("chrom"), row.get("start")
         alts_list = row.get("alts")
         alts_cell = ",".join(alts_list) if alts_list else None
+        if _filed_nothing(row):
+            continue
         if row.get("resolution_loci"):
             # RM364: the loci the table filed under the row's AUTHORED key, as the table stated them,
             # carried exactly where this row's own cells would not reproduce them. Every genotype row and
@@ -905,6 +917,8 @@ def _write_resolution_csv(
         # there) and every row of a parquet compiled before the column existed.
         for row in table_df.iter_rows(named=True):
             chrom, start = row.get("chrom"), row.get("start")
+            if _filed_nothing(row):
+                continue
             if row.get("resolution_loci"):
                 key = row.get("variant_key")
                 if key and key not in locus_counter:

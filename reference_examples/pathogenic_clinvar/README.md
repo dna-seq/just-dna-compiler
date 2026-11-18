@@ -58,7 +58,7 @@ Variants are authored **by identity, not by baked coordinate** — the 0.5 way:
 - **rsid variants** (301 here): carry only `rsid` + `genotype`/`state`/`conclusion`/`clin_sig`/`gene`. The
   enricher fills `chrom/start/ref/alts` into `resolution.csv` from the ClinVar snapshot
   (`source=clinvar`). Coordinates are *never* baked into `variants.csv`.
-- **coordinate-only variants** (26 here, 27 until 2026-11-05; see the last section): the ~10% of ClinVar pathogenic variants that carry **no
+- **coordinate-only variants** (27 here; 26 from 2026-11-05 until 0.8.9 restored one, see the last section): the ~10% of ClinVar pathogenic variants that carry **no
   rsID** cannot be authored by rsid, so they are authored `chrom/start/ref/alts` directly (a
   first-class `VariantRow` shape). The enricher passes them through (`source=authored`) unless a
   co-located ClinVar record lends an rsID (see finding 4).
@@ -66,7 +66,7 @@ Variants are authored **by identity, not by baked coordinate** — the 0.5 way:
 Every row also carries **`clin_sig`** — the typed ClinVar call, in the closed `VALID_CLIN_SIG`
 vocabulary — alongside the free-text `conclusion`. That is not decoration: it is what the enricher's
 ClinVar cross-check reads, so the module is checkable against the source it was built from. It agrees on
-every row (328 when this was written, 327 since 2026-11-05), which is the expected result and therefore a real regression guard: a future change to
+every row (328 when this was written, 327 from 2026-11-05, 328 again since 0.8.9), which is the expected result and therefore a real regression guard: a future change to
 allele matching or `clin_sig` normalization that starts producing conflicts here is producing them
 wrongly.
 
@@ -182,6 +182,13 @@ the rsID row expands onto the insertion's key, and `--strict` refused `Duplicate
 `clin_sig=pathogenic`, the same citation), so the positional row was dropped and the rsID row now carries
 both events. Had they differed, the rsID row would have been given the deletion's coordinate instead. This
 moves `content_signature`, and the module was closed again.
+
+**Restored in 0.8.9 (RM449).** Since RM449 an rsID row whose genotype reads as an insertion and as a deletion
+is filled only on the event a second source witnessed, and `rs80356821` now fills the deletion alone, so the
+removal left the module saying nothing about the insertion. The coordinate row `11:5226762 C>CAAAG` (ClinVar
+Variation 3572115) and its `studies.csv` row are back: a coordinate row picks the event, which is the remedy
+RM449's warning names, and the two keys no longer collide. This moves `content_signature` again, and the
+module was closed again.
 
 **`rs613985` resolves again.** Both Ensembl snapshots place that rsID only at `3:159434329 T>G`, which
 cannot host the authored `C/CATAACAGCATCAG`. Since RM382 a hosting-rejected answer asks the next link,

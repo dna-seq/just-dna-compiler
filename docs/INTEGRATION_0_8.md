@@ -11,30 +11,36 @@ the known issues 0.8 ships with.
 since `v0.7.3`), each intra-workspace floor is `>=0.8.0`, and `polars>=1.42.0` is unchanged, so a polars 1.x
 install still resolves. It is published and tagged `v0.8.0`.
 
-**Eight patches followed on the 0.8 line, and the current release is 0.8.8.** 0.8.1 (2026-11-07) moved the
+**Nine patches followed on the 0.8 line, and the current release is 0.8.9.** 0.8.1 (2026-11-07) moved the
 enricher alone, so format and compiler stayed 0.8.0. 0.8.2 (2026-11-07), 0.8.3 (2026-11-09), 0.8.4
 (2026-11-11), 0.8.5 (2026-11-12) and 0.8.6 (2026-11-13) each moved all three packages (the compiler in 0.8.4,
 0.8.5 and 0.8.6 for its floor only), and 0.8.6's floors are `>=0.8.6` throughout. 0.8.7 (2026-11-14) and 0.8.8
-(2026-11-16) moved the enricher alone again, so format and compiler stay 0.8.6 and the enricher's floors stay
-`>=0.8.6`. 0.8.8 adds one refusal for a direct caller (a `release.json` that could not be fetched stops a pull, RM445). One patch added a public
-name: 0.8.4's `GwasCatalogClient.size_refusals` (RM428), which a patch should not have added. No patch adds a
-field, table, flag or warning code, so this file's surface delta is still the whole 0.7 → 0.8 boundary; what
-each patch changed, and what to do after upgrading to it, is its entry in the [CHANGELOG](CHANGELOG.md), and
-§ 4 says which known issues each one fixed.
+(2026-11-16) moved the enricher alone again, so format and compiler stayed 0.8.6. 0.8.9 (2026-11-18) moves all
+three, and its floors are `>=0.8.9` throughout. **Format 0.8.9 changes only its release record**
+(`RELEASE_RECORDS["0.8.9"]`): no vocabulary, model or field moves, so a format 0.8.6 reader still reads every 0.8.9
+manifest, and only `needs_recompile(stamp, "0.8.9")` needs format 0.8.9. 0.8.8 adds one refusal for a direct caller
+(a `release.json` that could not be fetched stops a pull, RM445), and 0.8.9 one under `--strict` (an rsID row at a
+mirrored indel site that a witness placed as neither event is left unpositioned, RM449). Two patches added a public
+name, which a patch should not: 0.8.4's `GwasCatalogClient.size_refusals` (RM428), and 0.8.9's
+`Withholding.retired_met`, `net.retired_mark` and the optional `since=` on `net.withheld_reason` (RM446), all
+additive. No patch adds a field, table, flag or warning code (0.8.9's RM449 sentences borrow two existing codes
+until 0.9), so this file's surface delta is still the whole 0.7 → 0.8 boundary; what each patch changed, and what
+to do after upgrading to it, is its entry in the [CHANGELOG](CHANGELOG.md), and § 4 says which known issues each
+one fixed.
 
 **Pin the release, not the branch, and floor on the latest patch:**
 
 ```toml
 dependencies = [
-    "just-dna-format>=0.8.6",
-    "just-dna-compiler>=0.8.6",
-    "just-dna-enricher>=0.8.8",
+    "just-dna-format>=0.8.9",
+    "just-dna-compiler>=0.8.9",
+    "just-dna-enricher>=0.8.9",
 ]
 ```
 
 A consumer that holds only the format tier pins the first line alone. A git dependency on the `0.8` branch
 (`rev = "1007a26d"` and later), which this file recommended for testing before the cut, goes from your
-tracked files and your lock: `uv lock` against the published `0.8.8` release, then run your suite again.
+tracked files and your lock: `uv lock` against the published `0.8.9` release, then run your suite again.
 
 **The release record says what a recompile moves.** `release_records.RELEASE_RECORDS["0.8.0"]`, measured at
 the cut against the published compiler 0.7.2, declares each correction and addition (RM363's contig
@@ -43,11 +49,21 @@ spelling and RM361's `:None` key are the two corrections), and `needs_recompile(
 lite stays on polars 1.x (polars-bio caps `polars<2`), and this workspace locks polars 2.1.0, so one
 `compiler_version` over one spec writes two `artifact.digest`s and one `content_signature`. Compare content
 by `content_signature`; read a digest mismatch with `compilation.toolchain` beside it (§ 1.11).
-The patches add little to that answer: 0.8.1, 0.8.7 and 0.8.8 left the compiler alone and have no record, and
-`RELEASE_RECORDS["0.8.2"]`, measured from 0.8.0, moves only the text of two warnings, and
+The patches add little to that answer until 0.8.9: 0.8.1, 0.8.7 and 0.8.8 left the compiler alone and have no
+record, `RELEASE_RECORDS["0.8.2"]`, measured from 0.8.0, moves only the text of two warnings, and
 `RELEASE_RECORDS["0.8.3"]`, `RELEASE_RECORDS["0.8.4"]`, `RELEASE_RECORDS["0.8.5"]` and
-`RELEASE_RECORDS["0.8.6"]`, each measured from the patch before it, move nothing, so a module compiled by 0.8.0
-needs no recompile.
+`RELEASE_RECORDS["0.8.6"]`, each measured from the patch before it, move nothing. **`RELEASE_RECORDS["0.8.9"]`,
+measured from 0.8.6, declares a correction (RM449):** an rsID row whose indel genotype one position hosts as both
+an insertion and a deletion had its claim filled on both events, and is now filled on the spelling a second source
+witnessed. A module carrying such a row moves `weights.parquet`, `artifact.digest`, `stats.weights_rows`,
+`compilation.resolution_subjects`, `compilation.expanded_keys` and `compilation.expanded_rows` on recompile, never
+`content_signature`. The record scopes it on `compilation.expanded_keys` (a module that applied a resolution table
+with rows), so `needs_recompile(stamp, "0.8.9").declared_for(manifest)`, on format 0.8.9, keeps it for every such
+module. A recompile applies it where the module's `resolution.csv` records a `same_event` verdict at the site; a
+table with no verdict there, or `undecided` on both spellings, keeps both events and says so, and an online
+re-derivation with the reference read settles it (the CHANGELOG's `v0.8.9` entry). The same record declares RM451's
+`resolution_loci` cell (null → `[]` for a key the table filed nothing under) as an addition, and RM449's sentences;
+`pathogenic_clinvar` is unmeasured there, because 0.8.6 refuses its restored row.
 
 **What landed after `1007a26d`**, the pre-cut head this file first named, for a consumer who tested
 there; all of it is in 0.8.0. **First:** RM380, `reverse` carrying every `resolution.csv` column a
@@ -846,7 +862,7 @@ out: being importable does not make it a supported surface. All additive.
 1. **Pins, in tier order: format, then compiler, then enricher.** `just-dna-format` first, because a 0.7
    reader refuses some 0.8 output (§ 1, § 1.13, § 1.18) and drops the new manifest fields (§ 1.2); then
    `just-dna-compiler`; then `just-dna-enricher`. A consumer that holds only the format tier stops after
-   the first. Floor format and compiler on `>=0.8.6` and the enricher on `>=0.8.8`, the current patch.
+   the first. Floor all three on `>=0.8.9`, the current patch.
 2. **`uv lock`**, regenerated and never hand-edited, committed with the floors.
 3. **Move the shared Ensembl cache, once per machine** (§ 1.29): `just-dna-enricher cache pull --only
    ensembl`, or `cache prepare`. The lane now pulls `just-dna-seq/ensembl_variations_split` (dbSNP 157 /
@@ -1273,6 +1289,30 @@ What 0.8 ships with, known and not fixed. Each line names its item; [RM_TOC.md](
   and pull. **Fixed in enricher 0.8.8** (RM445): a pull places a label only over files it fetched or something
   attests, and `cache pull` repairs every affected pulled cache, checking a current label against the listing's
   sizes and LFS digests. Re-enrich modules enriched against such a lane (CHANGELOG, the `v0.8.8` entry).
+- **An rsID row's indel genotype could carry its claim on the opposite event (RM449).** At one position an
+  insertion and a deletion hold the same allele strings (`C/CT` is one inserted T on `C>CT` and one deleted T on
+  `CT>C`), and the fill put an rsID row's claim on both. Alone, the row compiled under `--strict` and a subject
+  carrying the other event matched it silently; beside an authored coordinate row for that event, `--strict` refused
+  `Duplicate (variant, genotype)` (the registry's `cardio`, `cancer` and `pathogenic`, S158). The registry found the
+  silent case in 2 of 69 published modules (`superhuman@2.4.1` `rs766212849`, `thrombophilia@2.0.1`
+  `rs1572088853`). **Fixed in compiler 0.8.9** (RM449), a declared corrected derivation: the fill takes the
+  spellings `resolution.csv`'s `placement_verdict` records as `same_event`, and a sentence naming RM449 reports every
+  such site (under `rsid_no_hosting_locus` or `rsid_expanded_to_multiple_loci` until 0.9). Recompile a module that
+  carries one (`RELEASE_RECORDS["0.8.9"]`), after re-deriving online where its table records no `same_event` verdict
+  at the site. Enricher 0.8.9's ClinVar drafter writes an indel record by its coordinate, so a new draft cannot pose
+  the question.
+- **Offline, a mirrored indel site whose ClinVar record carries a merged rsID refuses under `--strict` (RM453, for
+  0.8.10).** An offline re-derivation of `pathogenic_clinvar` leaves `rs80356821` unplaced, and `--strict` refuses
+  it; an online one clears it. ClinVar files that rsID's deletion under the retired `rs281864900` (dbSNP merged it
+  into `rs80356821`), so offline the witness holds no record for it, answers `unplaced` on both spellings, and RM449
+  reads that as witnessed neither. It is loud and names its rsID. Until the fix, re-derive such a module online.
+- **Online, a multi-allelic indel site could lose its whole placement (RM448).** With the reference read
+  (`verify_ref`), the placement witness compared ClinVar's one ALT of a multi-allelic indel site with Ensembl's other
+  ALT of the same kind and length, judged it a different event, and withheld the locus, so the rsID got no
+  `resolution.csv` row and `--strict` refused it as unresolved (12 rsIDs of the registry's `pathogenic` re-derivation,
+  one in `cardio`, S158). Offline runs never met it. **Fixed in enricher 0.8.9** (RM448): a witness allele that is
+  already the same event as one of the rsID's alleles is no counterpart of the others. After upgrading, a plain
+  `enrich` asks again for the subjects with no row.
 - **A `resolution.csv` row for a variant the module no longer names is silent (RM422).** A variant removed
   after `enrich` keeps its row, since `enrich` keeps rows it is not asked about, and on 0.8.2 neither `validate`
   nor `compile --strict` says so; the compile ships the file in `manifest.derived` (no parquet carries the row).

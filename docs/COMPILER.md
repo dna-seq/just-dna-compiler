@@ -237,6 +237,25 @@ serve an older dbSNP build than the snapshot (REST at Ensembl 116 serves dbSNP 1
 asks REST again. The comparison is also made
 against the **union** of every locus a key resolves to, never per-expanded-row, for the same reason.
 
+**A mirrored insertion and deletion are settled by the witness, not by the strings (RM449, 0.8.9).** At one
+position, `C>CT` and `CT>C` both hold the strings `C` and `CT`, so an rsID row's `C/CT` is hosted by both,
+yet it means an inserted T on one and a deleted T on the other. The fill reads `ResolutionRow.placement_verdict`
+there: the spellings a second source placed as `same_event` are filled, and the others are not. If both are
+witnessed, the rsID names both events, so both stay, and a warning says so once
+per rsID in both modes. If none is (`unplaced` on every spelling, RM453, 0.8.10), that is no evidence for
+either: both stay, under a warning saying the source asked "placed neither as the same event". 0.8.9 left that
+row unpositioned instead. If no second source was asked at all (`placement_verdict` empty at the site), both
+stay as before 0.8.9, and the warning says so. A site whose only recorded verdict is `undecided` (the witness
+could not judge, as a run with no reference sequence writes) reads the same way: both stay, under a sentence
+saying the source asked "could not decide whether either is the same event". Whatever the witness, an expansion member re-keyed onto an
+authored coordinate row's exact `(variant_key, genotype)` is not filled: the coordinate row picks its event, and
+the warning names the key. Each outcome is a warning and none is escalated in 0.8. In 0.8.9 each sentence
+borrows the code of what the row became, since a code added in a patch is refused by an older format reader:
+`rsid_no_hosting_locus` where no position is written, `rsid_expanded_to_multiple_loci` where one or more loci are
+filled (so a site narrowed to one locus counts as an expansion). 0.9 adds `rsid_genotype_reads_as_two_events`.
+A positional row was already left unplaced where two loci host it. It is a corrected derivation:
+an artifact compiled before 0.8.9 may hold the claim on both spellings. S158 is the report.
+
 **"Exactly one of those rows can match" is a statement about matching, and a reader does more than
 match (S33).** The sentence above is right and the expansion is staying, but it was written in the
 authoring/validation frame, where an unmatchable row is inert. It is not inert to a consumer *reading*
@@ -642,8 +661,8 @@ silently unreported.
 
 `_check_genotype_coverage` fires **only at a site the module already annotates for two or more
 genotypes**, and that scope is the design rather than a tuning choice. One genotype at a site is the
-ordinary shape of a drafted-then-curated module — `pathogenic_clinvar` authors exactly one at 325 of its
-326 sites — and it is a legitimate rule, not a gap; reporting those would put a line on almost every
+ordinary shape of a drafted-then-curated module — `pathogenic_clinvar` authors exactly one at 326 of its
+327 sites — and it is a legitimate rule, not a gap; reporting those would put a line on almost every
 module in existence, which is how a warning stops being read. Two or more is the author demonstrating
 that the genotype *space* at that site is what they are describing, and the missing member is then a
 hole in something they started. It expects the reference homozygote, one heterozygote per alternate and
@@ -1304,6 +1323,12 @@ since a second row rebuilt from cells would invent a one-to-many the table never
 resolved nothing anywhere and has no `weights.parquet` gets no file, rather than a header-only sidecar
 invented out of an absence, unless the compiled spec carried a table: then a header-only table comes
 back header-only (RM364).
+**A key the table files nothing under says so (RM451, 0.8.9).** `resolution_loci` is null where a row's own
+cells answer, and that read the same as a key the table never filed. A coordinate row authored after the last
+enrich was then rebuilt from its cells into a table row the injected table never had, and the second lap read
+it (`resolution_signature` moved). A module that read a table (`InjectedResolution.consulted`) now writes `[]`
+for a key with no positioned locus on its build, and reverse writes nothing for it. Lap 2 re-reads the header-only
+table it is handed and writes `[]` again. A module that read no table keeps null.
 
 **`resolution.csv` still gets no parquet**, and that is the repair this item deliberately did not
 make: it is a build-time derived artifact whose consumers are the compiler and the enricher, and
@@ -2193,6 +2218,7 @@ MISSING_ALLELE_PHRASE          = "is VCF's MISSING marker, not an allele"
 UNCLOSED_PHRASE                = "records no closure"
 LOG_NOT_SHIPPED_PHRASE         = "does not ship with the module"
 PLACEMENTS_DISAGREE_PHRASE     = "two placement sets for this one rsID"   # resolution.py, RM374
+UNDECIDED_PHRASE               = "could not decide whether either is the same event"   # resolution.py, RM449
 ```
 
 **Retired phrases.** A consumer may still grep manifests compiled before the retirement, so the text

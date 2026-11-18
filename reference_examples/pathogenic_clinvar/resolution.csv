@@ -12,6 +12,7 @@ variant_key,rsid,chrom,start,ref,alts,genome_build,locus_index,vrs_id,vrs_spec,c
 11:5226672:CA:AT,,11,5226672,CA,AT,GRCh38,0,ga4gh:VA.10UtNepjZ6wAe27gqA7IJOZJvV9h145N,2.0,,authored,,resolved,,,,,,true,,,,,
 11:5226675:TAAAGGCACCGA:T,,11,5226675,TAAAGGCACCGA,T,GRCh38,0,ga4gh:VA.Be0pCdaHYiKMnL1vo8fIvJMYzA98gP8g,2.0,,authored,,resolved,,,,,,true,,,,,
 11:5226689:ACTTT:A,,11,5226689,ACTTT,A,GRCh38,0,ga4gh:VA.oannudJoO2bH8WqtDbePs3FFaqdKEq1y,2.0,,authored,,resolved,,,,,,true,,,,,
+11:5226762:C:CAAAG,rs80356821,11,5226762,C,CAAAG,GRCh38,0,ga4gh:VA.jX3V8UFw8vpo8jKocxpVd0hYjSKluHKz,2.0,,cache,ensembl,resolved,,,live,,,true,,,,ensembl-variation-2026_07_13-vep116.0,
 11:5226786:A:AGTAG,,11,5226786,A,AGTAG,GRCh38,0,ga4gh:VA.Ubst6I2vzZQBDoMuBHM8o58AVL6qQ-zV,2.0,,authored,,resolved,,,,,,true,,,,,
 11:5226931:TGCCCAGG:T,,11,5226931,TGCCCAGG,T,GRCh38,0,ga4gh:VA.QRZzY2godwwpQ5tJTKBSmDfLfVPbQz2U,2.0,,authored,,resolved,,,,,,true,,,,,
 11:5226966:AC:A,,11,5226966,AC,A,GRCh38,0,ga4gh:VA.s976-B-NUfZ96bXXVAvx6ovLMCWSY9JH,2.0,,authored,,resolved,,,,,,true,,,,,

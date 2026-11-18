@@ -164,6 +164,14 @@ def resolve_from_table(
     # many artifact rows they became. Collected rather than reported in place — see the expansion
     # branch below.
     expansions: dict[str, list[list[ResolutionRow]]] = {}
+    # The (variant_key, genotype) of every authored coordinate row, which an expansion may not duplicate (RM449).
+    authored_rows = {(v.variant_key, v.genotype) for v in variants if v.chrom is not None and v.variant_key}
+    # rsID → its mirrored sites a second source witnessed both ways (RM449), in first-seen order, one
+    # sentence per rsID however many authored rows carry it.
+    both_ways: dict[str, dict[str, None]] = {}
+    unasked: dict[str, dict[str, None]] = {}
+    undecided_sites: dict[str, dict[str, None]] = {}
+    unplaced_sites: dict[str, dict[str, None]] = {}
     for v in variants:
         rows = resolution.get(v.variant_key or "")
         loci = usable_loci(rows, genome_build)
@@ -186,6 +194,54 @@ def resolve_from_table(
                 patched.append(v.model_copy(update=_coord_update(loci[0])))
             else:
                 usable, rejected, undecided = _hostable_loci(loci, v.genotype)
+                mirrored = _mirrored_sites(usable, v.genotype)
+                settled = _settle_mirrored_spellings(v.rsid, v.genotype, usable)
+                # RM449's sentences borrow the nearest existing code by what the row became (the pm, 2026-11-18):
+                # a code added in a patch is an old-reader break, since `warnings_summary` validates its keys
+                # against the closed vocabulary. No position written is `rsid_no_hosting_locus`; one or more
+                # loci filled is `rsid_expanded_to_multiple_loci`. 0.9 gives them their own code.
+                warnings.extend(CodedWarning("rsid_expanded_to_multiple_loci", s) for s in settled.sentences)
+                for site in settled.both_ways:
+                    both_ways.setdefault(v.rsid, {}).setdefault(site, None)
+                for site in settled.unasked:
+                    unasked.setdefault(v.rsid, {}).setdefault(site, None)
+                for site in settled.undecided:
+                    undecided_sites.setdefault(v.rsid, {}).setdefault(site, None)
+                for site in settled.unplaced:
+                    unplaced_sites.setdefault(v.rsid, {}).setdefault(site, None)
+                usable = settled.kept
+                # An authored coordinate row picks its event (RM449's own remedy), so an expansion member
+                # re-keyed onto that row's exact (variant_key, genotype) is not filled: it would be the
+                # same row twice (`Duplicate (variant, genotype)` under strict), whatever the witness said
+                # or whether one was asked at all. Only an expansion re-keys; one locus keeps the rsID key.
+                # Only at a mirrored site, RM449's own: an expansion colliding with an authored row anywhere
+                # else (a paralog's other copy) still refuses as the duplicate it is (`test_one_verdict`).
+                claimed = (
+                    [
+                        lo
+                        for lo in usable
+                        if (lo.chrom, lo.start) in mirrored
+                        and (_expansion_key(lo, genome_build), v.genotype) in authored_rows
+                    ]
+                    if len(usable) > 1
+                    else []
+                )
+                if claimed:
+                    claimed_ids = {id(lo) for lo in claimed}
+                    usable = [lo for lo in usable if id(lo) not in claimed_ids]
+                    sentence = (
+                        f"{v.rsid}: its row's genotype {v.genotype} is not filled on "
+                        f"{', '.join(_expansion_key(lo, genome_build) for lo in claimed)}, because the module "
+                        f"authors that coordinate row with the same genotype, which picks that event (RM449)"
+                    )
+                    # Borrowed codes until 0.9, by what the row became (see the settlement above).
+                    warnings.append(
+                        CodedWarning("rsid_expanded_to_multiple_loci", sentence)
+                        if usable
+                        else CodedWarning("rsid_no_hosting_locus", sentence)
+                    )
+                kept_ids = {id(lo) for lo in usable}
+                undecided = [lo for lo in undecided if id(lo) in kept_ids]
                 for locus in undecided:
                     # Kept, and said out loud. This tier cannot re-anchor an indel (that needs the
                     # reference sequence, which P2 keeps out of the compiler), so the row is carried and
@@ -230,7 +286,11 @@ def resolve_from_table(
                             refusal=refusal,
                         )
                     )
-                if not usable:
+                if claimed and not usable:
+                    # Every hosting locus is an authored coordinate row's own: said above, and the rsID row
+                    # is left unpositioned.
+                    patched.append(v)
+                elif not usable:
                     # Every candidate contradicts the genotype: the rsid and the genotype cannot both
                     # be right. Leave the row unresolved rather than pick one — `_cross_validate` and
                     # the strict gate then treat it as the unresolved variant it is.
@@ -323,6 +383,53 @@ def resolve_from_table(
                     searched="the resolution table",
                 )
                 + "; re-run the enricher if you want the labels back-filled.",
+            )
+        )
+
+    for rsid, sites in both_ways.items():
+        warnings.append(
+            CodedWarning(
+                "rsid_expanded_to_multiple_loci",
+                f"{rsid}: its row's genotype reads as an insertion and as a deletion at {'; '.join(sites)}, "
+                f"and a second source places both under this rsID, so the row's one claim is filled on two "
+                f"opposite events (RM449). If it is about one of them, replace the rsID row with a row "
+                f"authoring that event's coordinate, and re-run the enricher so the table files it",
+            )
+        )
+
+    for rsid, sites in unasked.items():
+        warnings.append(
+            CodedWarning(
+                "rsid_expanded_to_multiple_loci",
+                f"{rsid}: its row's genotype reads as an insertion and as a deletion at {'; '.join(sites)}, "
+                f"and no second source was asked where either is placed (`placement_verdict` is empty: an "
+                f"offline run, a ClinVar fill, or a table written before 0.8), so both are filled as before "
+                f"(RM449). If the row is about one of them, replace it with a row authoring that event's "
+                f"coordinate and re-run the enricher so the table files it; an online run records the witness",
+            )
+        )
+
+    for rsid, sites in undecided_sites.items():
+        warnings.append(
+            CodedWarning(
+                "rsid_expanded_to_multiple_loci",
+                f"{rsid}: its row's genotype reads as an insertion and as a deletion at {'; '.join(sites)}, "
+                f"and the second source asked {UNDECIDED_PHRASE} (`placement_verdict` is `undecided`: a run "
+                f"with no reference sequence, such as an offline one), so both are filled as before (RM449). "
+                f"If the row is about one of them, replace it with a row authoring that event's coordinate and "
+                f"re-run the enricher so the table files it; an online run records the witness",
+            )
+        )
+
+    for rsid, sites in unplaced_sites.items():
+        warnings.append(
+            CodedWarning(
+                "rsid_expanded_to_multiple_loci",
+                f"{rsid}: its row's genotype reads as an insertion and as a deletion at {'; '.join(sites)}, "
+                f"and the second source asked placed neither as the same event (`placement_verdict` is "
+                f"`unplaced`: it holds no counterpart under this rsID), so both are filled as before (RM453). "
+                f"If the row is about one of them, replace it with a row authoring that event's coordinate and "
+                f"re-run the enricher so the table files it",
             )
         )
 
@@ -1090,6 +1197,145 @@ def site_verdicts(genotype: str, loci: Sequence[LocusSpelling]) -> list[bool | N
     if all(verdict is False for verdict in per_locus):
         return [True if k in named else verdict for k, verdict in enumerate(per_locus)]
     return per_locus
+
+
+def _mirrored_sites(loci: list[ResolutionRow], genotype: str) -> set[tuple[str | None, int | None]]:
+    """The positions where an insertion and a deletion each host `genotype` on their own (RM449's mirror)."""
+    directions: dict[tuple[str | None, int | None], set[str | None]] = {}
+    for locus in loci:
+        if hosting_verdict(genotype, locus.ref, locus.alts) is not False:
+            directions.setdefault((locus.chrom, locus.start), set()).add(_indel_direction(locus))
+    return {site for site, seen in directions.items() if {"insertion", "deletion"} <= seen}
+
+
+def _expansion_key(locus: ResolutionRow, genome_build: str) -> str:
+    """The key an expansion member is re-keyed to, as `resolve_from_table` mints it."""
+    return derive_variant_key(None, locus.chrom, locus.start, locus.ref, locus.alts, build=genome_build)
+
+
+#: `ResolutionRow.placement_verdict`'s member that says a second source placed this locus as the same event (RM267).
+PLACED_SAME_EVENT = "same_event"
+#: The member that says the second source was asked and could not judge (no reference sequence): never agreement.
+PLACED_UNDECIDED = "undecided"
+#: The phrase the sentence for a mirrored site judged only `undecided` carries, pinned (`@warning-text-is-api`).
+UNDECIDED_PHRASE = "could not decide whether either is the same event"
+
+
+def _indel_direction(locus: ResolutionRow) -> str | None:
+    """`insertion` when every ALT is longer than `ref`, `deletion` when every ALT is shorter, else `None`."""
+    ref = (locus.ref or "").strip()
+    alts = [a.strip() for a in (locus.alts or "").split(",") if a.strip()]
+    if not ref or not alts:
+        return None
+    if all(len(a) > len(ref) for a in alts):
+        return "insertion"
+    if all(len(a) < len(ref) for a in alts):
+        return "deletion"
+    return None
+
+
+@dataclass
+class MirroredSettlement:
+    """What `_settle_mirrored_spellings` kept of a row's hosting loci, and the sentence for each site it settled."""
+
+    kept: list[ResolutionRow]
+    sentences: list[str] = field(default_factory=list)
+    #: `chrom:start (spellings)` of each mirrored site a second source witnessed both ways: kept, and said.
+    both_ways: list[str] = field(default_factory=list)
+    #: The same, for a mirrored site no second source was asked about: kept as before, and said.
+    unasked: list[str] = field(default_factory=list)
+    #: The same, for a mirrored site the second source judged `undecided` and nothing more: kept, and said.
+    undecided: list[str] = field(default_factory=list)
+    #: The same, for a mirrored site where the witness placed no spelling as `same_event` (RM453): kept, and said.
+    unplaced: list[str] = field(default_factory=list)
+
+
+def _settle_mirrored_spellings(rsid: str, genotype: str, usable: list[ResolutionRow]) -> MirroredSettlement:
+    """An rsID row's genotype hosted by an insertion and a deletion at one position names one of them (RM449).
+
+    `hosting_verdict` compares strings, and `@hosting-tri-state` relies on a two-allele genotype
+    carrying its own frame because an rsID row states no coordinate. An insertion and a deletion
+    mirrored at one position break that: `C/CT` is one inserted T on `C>CT` and one deleted T on
+    `CT>C`, so both host it, and the fill put the author's claim on both events (S158: silent alone, a
+    strict `Duplicate (variant, genotype)` beside an authored coordinate row). The strings cannot say
+    which was meant, so the recorded second witness does. Where it placed some of those spellings as
+    `same_event` and not the others, the witnessed ones are filled and the rest are not: the rest are
+    not this rsID's events by the only source that judged them (S158's `rs1057516393`, whose deletion
+    record carries no rsID). Where it placed **every** spelling there as `same_event`, the rsID really
+    names both events (ClinVar files the HBB frameshifts both ways under one rsID), so the
+    one-to-many expansion stands as `@membership-union` has it; but one rsID row then claims two
+    events, which `@rsid-not-per-allele` says a clinical claim should not, so the site is returned in
+    `both_ways` and the fill says so once per rsID (both modes, never escalated in 0.8; refusing it is a
+    minor's question; under the borrowed `rsid_expanded_to_multiple_loci` until 0.9 adds
+    `rsid_genotype_reads_as_two_events`). Where no second source was asked at all (`placement_verdict` empty everywhere at
+    the site), "not asked" is not "witnessed neither": the expansion stays as before 0.8.9, returned in
+    `unasked` and said once per rsID. A site whose only recorded verdict is `undecided` (the witness could
+    not judge, as a run with no reference sequence writes) reads the same way, returned in `undecided`
+    under its own sentence, since its table does record a verdict. So does one where the witness placed no
+    spelling as `same_event` (RM453): `unplaced` on every spelling is no evidence for either, returned in
+    `unplaced`. Nothing here leaves a row unpositioned any more. Loci at other positions (a paralog, a PAR partner) are untouched, and so is every
+    site that is not such a mirror (a homozygote over several insertions keeps its expansion).
+    """
+    sites: dict[tuple[str | None, int | None], list[ResolutionRow]] = {}
+    for locus in usable:
+        sites.setdefault((locus.chrom, locus.start), []).append(locus)
+    dropped: set[int] = set()
+    sentences: list[str] = []
+    both_ways: list[str] = []
+    unasked: list[str] = []
+    undecided: list[str] = []
+    unplaced: list[str] = []
+    for (chrom, start), at_site in sites.items():
+        # Only a locus that hosts the genotype on its own reads it as its own event. A compound het
+        # spelled in a padded frame (`G/GTTT` on `GTT>G` and `G>GT`) names one allele of each, so no
+        # locus hosts it alone and `site_verdicts` reads the frame to accept both: two events, both
+        # meant, nothing to settle.
+        loci = [lo for lo in at_site if hosting_verdict(genotype, lo.ref, lo.alts) is not False]
+        directions = {_indel_direction(locus) for locus in loci}
+        if len(loci) < 2 or not {"insertion", "deletion"} <= directions:
+            continue
+        spelled = ", ".join(f"{lo.ref}>{lo.alts}" for lo in loci)
+        verdicts = {getattr(lo, "placement_verdict", None) or None for lo in loci}
+        if verdicts == {None}:
+            # No second source was asked (an offline run, a ClinVar fill, a table written before 0.8):
+            # "not asked" is not "witnessed neither", so the expansion stays as it was, and is said.
+            unasked.append(f"{chrom}:{start} ({spelled})")
+            continue
+        if verdicts <= {None, PLACED_UNDECIDED}:
+            # Asked, and it could not judge (no reference sequence: an offline run). "Could not judge" is
+            # not "witnessed neither" either (the pm, 2026-11-18), so this reads as the empty cell above,
+            # under its own sentence, since the table does record a verdict.
+            undecided.append(f"{chrom}:{start} ({spelled})")
+            continue
+        witnessed = [lo for lo in loci if getattr(lo, "placement_verdict", None) == PLACED_SAME_EVENT]
+        if len(witnessed) == len(loci):
+            both_ways.append(f"{chrom}:{start} ({spelled})")
+            continue
+        if witnessed:
+            kept_ids = {id(lo) for lo in witnessed}
+            dropped.update(id(lo) for lo in loci if id(lo) not in kept_ids)
+            kept = ", ".join(f"{lo.ref}>{lo.alts}" for lo in witnessed)
+            others = ", ".join(f"{lo.ref}>{lo.alts}" for lo in loci if id(lo) not in kept_ids)
+            sentences.append(
+                f"{rsid}: the genotype {genotype} reads as an insertion and as a deletion at {chrom}:{start} "
+                f"({spelled}), opposite events spelled with the same strings, so which one the row means "
+                f"could not be decided from its genotype; the placement a second source witnessed as the "
+                f"same event, {kept}, is filled and {others} is not (RM449)"
+            )
+        else:
+            # RM453: no spelling witnessed `same_event` is no evidence for either. A witness that holds no
+            # counterpart under the rsID writes `unplaced` on every spelling (ClinVar files only some
+            # variants, and files one under a retired id dbSNP merged), the same knowledge as `undecided` or
+            # an empty cell, so the expansion stays as those arms leave it, and is said.
+            unplaced.append(f"{chrom}:{start} ({spelled})")
+    return MirroredSettlement(
+        kept=[lo for lo in usable if id(lo) not in dropped],
+        sentences=sentences,
+        both_ways=both_ways,
+        unasked=unasked,
+        undecided=undecided,
+        unplaced=unplaced,
+    )
 
 
 def _hostable_loci(

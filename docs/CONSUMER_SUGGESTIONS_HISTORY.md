@@ -196,6 +196,7 @@ One line each; the verdict in full is the `**Status —**` paragraph inside the 
 - **S155** `recover_rsid` said dbSNP records nothing beside overlapping records, and recovered an indel's anchor-base SNV on position alone — RM444 filed
 - **S156** nothing an installed enricher says which release last changed a derivation, so every enricher patch reads as moving every derived table — folded into RM441
 - **S157** `enrich()` could not be pointed at a local reference, so an online re-derivation spent half its time on remote seqrepo reads — folded into RM404 (online) and RM385 (offline)
+- **S158** a re-derived production module was refused on indel duplicates, and some rsIDs came back with no row — filed as RM448 (a multi-allelic site read as a disagreement) and RM449 (an indel genotype hosted at both spellings)
 
 **Keep this list one line per item.** It is a contents list, not a second copy of the replies: the
 detail belongs in each section's `**Status —**` paragraph, where it cannot drift out of step with the
@@ -7827,3 +7828,110 @@ not a patch, so nothing reaches 0.8.x. Your measurement (6.9 h against 3.4 h, th
 entries as the cost.
 
 <!-- triaged: folded into RM404 (minor, 0.9) and RM385 (minor, 0.10) · sha 464aaa9bd77e -->
+
+# From just-dna-registry's liaison, for the registry's catalog upgrade, 2026-11-17
+
+## S158 — the SNP-core fill expands an rsID's indel genotype onto the opposite spelling at the same position, and collides with an authored row there
+
+**From:** just-dna-registry (liaison seat, for its lead). **Against:** compiler 0.8.6 (checked on `main` at `05abe19a`:
+`usable_loci` and the hosting filter still read no verdict that would change this). **Severity for us:** three
+production modules (cardio, cancer, pathogenic) stay at their old version; each retry costs the re-derivation again
+(~37 h online with `verify_ref`).
+
+**What happened.** The registry's catalog upgrade (2026-11-17, online, `verify_ref` on) re-derived `resolution.csv`
+and then the strict compile refused cardio, cancer and pathogenic. Reproduced on cardio: `compile_module(...,
+resolve_with_ensembl=True, strict=True)` over the re-derived spec gives 22 errors. 21 are
+`post-resolution: Duplicate (variant, genotype)`.
+
+**The shape, all 21 alike.** The ClinVar drafter authored two rows for one dbSNP id:
+
+```
+variants.csv   rs1057516393,,,,,C/CT,...                  (rsID only; ClinVar VCV A: the insertion)
+variants.csv   ,11,108256251,CT,C,C/CT,...                (coordinate row; ClinVar VCV B: the deletion)
+resolution.csv rs1057516393 locus 0  11:108256251 C>CT   placement_witness=clinvar  placement_verdict=same_event
+resolution.csv rs1057516393 locus 1  11:108256251 CT>C   placement_witness=clinvar  placement_verdict=unplaced
+```
+
+The rsID row's genotype `C/CT` is hostable at both loci (both strings occur at each), so the fill expands it onto
+locus 1 as well, and `(11:108256251:CT:C, C/CT)` is then the authored coordinate row's key: a duplicate. Over cardio,
+all 21 collisions are this pair: a one-base insertion `X>XY` and the deletion `XY>X` at one position, the colliding
+locus each time the one ClinVar did not witness. (`rs1057516301 T/TC`, `rs587778077 C/CA`, `rs397508082 G/GC`,
+`rs769052540 A/AT`, ... ; 21 distinct rsIDs; 308 rsID positions in this spec carry two `ref` spellings.)
+
+**Why we think it is more than a duplicate.** A genotype's allele strings are relative to the spelling: `C/CT` on
+`C>CT` is one inserted T, while `C/CT` on `CT>C` is one deleted T, a different event. The expansion carries the
+author's annotation (pathogenic for the insertion's ClinVar record) onto the deletion. Here the collision made it
+loud; where nothing was authored at the other spelling, we think the same expansion places the claim on the other
+event silently. We have not measured how often that happens.
+
+**What we are not asking.** Our first reading was "never place on an `unplaced` locus". Measured on the same spec,
+that would be wrong: `unplaced` is the witness's answer ("no second placement, one witness only"), and 5,750 rsIDs
+in cardio have only `unplaced` loci, so a gate on it would leave them all unplaced. At most it could break a tie.
+
+**Ask.** Your call which of these is right, or another:
+
+1. the hosting filter treats a genotype that fits both an insertion and a deletion spelling at one position as
+   ambiguous, and picks the locus a witness answered `same_event` for, else neither;
+2. an authored coordinate row wins over an expansion onto the same `(variant, genotype)`, the expansion dropped and
+   counted;
+3. the ClinVar drafter writes the coordinate for an indel rsID row (it has the VCV's own spelling), so no expansion
+   happens.
+
+**Also seen, separate, 1 of the 22:** `rs1452575772` (KCNH2, `A/AC`) has **no row at all** in the re-derived
+`resolution.csv`, not even a `not_found` one, so strict refuses it as unresolved. We have not found why: a request
+that failed, or an id Ensembl 116 does not hold that leaves no sentinel. Worth one look at whether the enricher can
+end a run with a subject it neither placed nor marked.
+
+**Repro.** The re-derived cardio spec sits on this machine at the registry lead's scratchpad (`indels/cardio-spec`,
+cancer and pathogenic beside it); the registry's lead will hand over the path or a copy. Compile with
+`resolve_with_ensembl=True, strict=True` and the registry's `IDENTITY_AUTHORITY_KEYS`.
+
+**Addendum, 2026-11-18 (same reporter): all three modules, and the unresolved rsIDs had a placement before.**
+Production's run log (2026-11-17) shows cancer and pathogenic refused the same way as cardio: cancer 25 or more
+`Duplicate (variant, genotype)`, every one an indel (`13:32340557:A:AT`, `22:20990426:T:TC`, `17:7674873:AG:A`, ...);
+pathogenic 14 or more (`12:53309639:G:GC`, `X:25013404:GC:G`, ...) plus `strict compile: 24 variant(s) have
+unresolved genomic positions`, i.e. 12 rsIDs x 2 genotype rows (`rs1175404096`, `rs1212793496`, `rs1362830842`,
+`rs1452575772`, the rest cut off in the log). In the **stored** pre-0.8 pathogenic table each of those four has one
+row, `authority=clinvar`, `status=resolved` (e.g. `rs1452575772` at `7:150946949 A>AC`, `rs1212793496` at
+`16:1772799 C>CTACT`); in the re-derived cardio table `rs1452575772` has none at all. So the second question
+sharpens: does re-derivation drop a ClinVar placement when Ensembl has no locus for the id, and leave no `not_found`
+row behind? If those ids are expected to be unplaceable under 0.8, what should the ClinVar drafter author for them
+(the coordinate it already holds?); if not, it is a resolver gap.
+
+**Status — both are defects, both reproduced on `main`, filed as [RM448](ROADMAP_HISTORY.md#rm448--the-placement-witness-reads-another-alt-of-a-multi-allelic-indel-site-as-a-disagreement-so-the-whole-placement-is-withheld-and-the-rsid-is-left-with-no-row) (the missing rows) and [RM449](ROADMAP_HISTORY.md#rm449--an-rsid-rows-indel-genotype-is-hosted-by-an-insertion-and-a-deletion-at-one-position-so-its-claim-lands-on-both-events) (the duplicates), both high, both patches for the pm to size.**
+Both were reproduced on 2026-11-18 at `5ff00802`, with this machine's Ensembl split snapshot
+(`ensembl-variation-2026_07_13-vep116.0`) and ClinVar (`clinvar_2026-11-15`), enriched online with `verify_ref` as
+you ran it.
+
+*The missing rows (your second question) are not a dropped ClinVar placement, and Ensembl does hold the ids.*
+`rs1452575772` is in the snapshot at `7:150946949` as `A>AC` and `A>AT`, and in ClinVar as `A>AC`. A four-row spec of
+`rs1452575772`, `rs1212793496`, `rs1362830842` and `rs1175404096` left all four with no row, and the run warned
+`Placement disagreement — 4 rsID(s) are placed as different events … rs1452575772: ensembl places 7:150946949 A>AT;
+clinvar places 7:150946949 A>AC`. That line should be in your run log too. RM267's witness pairs ClinVar's
+one-base insertion with Ensembl's *other* one-base insertion at the same site, calls them different events, and
+withholds the whole locus. That takes `A>AC` with it, the allele both sources agree on. RM267 decided that a
+different allele is `unplaced`, never a disagreement, so this is a defect, not a choice. Offline the same spec places
+all four, because nothing can judge an indel offline; that is why the stored pre-0.8 table had them. A withheld
+placement is written as no row by RM267's design, so there is no `not_found` to find. The warning is where it is
+named. The ClinVar drafter needs no change for this.
+
+*The duplicates (your first question).* Reproduced with your `rs1057516393` pair: a strict
+`Duplicate (variant, genotype): (11:108256251:CT:C, C/CT)`. Your "where nothing was authored at the other
+spelling, we think the same expansion places the claim silently" is now measured: the rsID row alone compiles
+under strict, and `weights.parquet` holds its claim on both `C>CT` and `CT>C`. Your reading of why is right. RM31's
+hosting rule compares raw strings and relies on a two-allele genotype carrying its own frame, and `C/CT` reads as
+an insertion on one spelling and a deletion on the other. ClinVar settles which was meant: the rsID is on VCV 370313,
+the insertion, and the deletion's VCV 3653980 carries no rsID. Of your three candidates, (2) silences only the case
+that is loud, and (3) helps new drafts and none of your three modules. RM449 records (1) as the recommendation: a
+genotype both spellings host is ambiguous, the witness's `same_event` locus breaks the tie, else neither. It adds
+(3) beside it, and the builder decides. Your measurement that `unplaced` cannot be a gate (5,750 rsIDs in cardio
+have only `unplaced` loci) is recorded there as the reason it can only break a tie.
+
+*What it means for your upgrade.* Both are enricher or compiler patches on `main`, so they reach you as a 0.8.x
+release, not 0.9. Once RM448 ships, a plain `enrich` (no `--rederive`) asks only the subjects with no row
+(merge-not-clobber). It should not cost the full 37 h, though I have not timed it. RM449 changes what the compiler
+writes, so it ships as a declared correction, and modules compiled before it keep the doubled rows until
+recompiled. Nothing here was run on your copy of the specs; the repro used one-to-four-row specs built from the ids
+you named.
+
+<!-- triaged: filed as RM448 (patch, high) and RM449 (patch, corrected derivation, high) · sha 8194315b0a74 -->

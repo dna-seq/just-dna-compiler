@@ -636,7 +636,9 @@ def _lookup_rsid_candidates(
     for chrom, start, ref, alt in uniq:
         cands: list[str] = []
         matched: dict[str, list[tuple[str, int, str, str]]] = {}
-        for rref, ralt, rid in by_pos.get((str(chrom), int(start)) if chrom is not None else (), []):
+        # RM452: a probe with no start is no position, as one with no chrom is (`concrete` above).
+        here = (str(chrom), int(start)) if chrom is not None and start is not None else ()
+        for rref, ralt, rid in by_pos.get(here, []):
             placed = _placeable_alleles(rref, _snapshot_alleles(ralt))
             if placed is None:
                 continue  # RM271: a row with no nucleotide allele names no variant to back-fill from
@@ -855,7 +857,13 @@ def _lookup_positions_by_rsid(
     rows = _rsid_rows(con, rsids, rsid_index)
     alleles: dict[str, list[tuple[str, int, str, str]]] = defaultdict(list)
     unplaceable: set[str] = set()
+    unpositioned: set[str] = set()
     for row_id, chrom, start, ref, alt in rows:
+        if chrom is None or start is None:
+            # RM452: a row naming the rsID with no place answers nothing about where it is. Left out,
+            # never read as an answer, so the chain asks its next link; named once below.
+            unpositioned.add(str(row_id))
+            continue
         # `_snapshot_alleles` splits the old repo's pipe-joined cell; the split repo's rows are one ALT
         # each. RM271: an alt that is not bases (`<.>`, `<Y>`, an `N` run, empty) is dropped, and a row
         # whose `ref` is not bases or which keeps no alt places nothing.
@@ -868,6 +876,13 @@ def _lookup_positions_by_rsid(
     # shared ref, so that group is a frame no caller writes (`GTT>G,GT,GTTT`); each ALT is trimmed to its
     # own spelling and regrouped by it, in both repos' shapes (`@snapshot-pipe-alt`).
     result: dict[str, list[dict]] = {rsid: per_alt_loci(found) for rsid, found in alleles.items()}
+    if unpositioned - set(result):
+        logger.warning(
+            "%d rsID(s) are in the injected Ensembl snapshot only on rows with no chrom or start, so the "
+            "snapshot places none of them and the next link is asked: %s (RM452)",
+            len(unpositioned - set(result)),
+            ", ".join(sorted(unpositioned - set(result))),
+        )
     only_unplaceable = sorted(unplaceable - set(result))
     if non_nucleotide is not None:
         non_nucleotide.update(only_unplaceable)

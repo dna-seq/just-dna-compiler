@@ -1,4 +1,4 @@
-**Where it stands** (2026-11-17). The current release is **0.8.8** (enricher only, on PyPI since 2026-11-17). The next
+**Where it stands** (2026-11-18). The current release is **0.8.8** (enricher only, on PyPI since 2026-11-17). The next
 two minors are scoped small: 0.9 teaches the enricher to read reference data wherever it lives, and 0.10 is four small
 schema additions right after.
 
@@ -22,7 +22,11 @@ schema additions right after.
   where an anonymous client also runs out of requests after a few large lookups.
 
 **Next**
-1. ⏳ 0.9 — building on the `0.9` branch: four of six items in (RM443, RM412, RM404, RM437), plus the groundwork;
-   RM430 next, then RM431, as the account's limits allow.
-2. ❓ Three items you placed in 0.9 by name were parked by the small cut: parked, a 0.11, or 0.10 (desk #347).
-3. ❓ One question on the maintainer's desk: linking the project's memory to its new folder name.
+1. ⏳ 0.9 — all six items built on the `0.9` branch; one follow-up pass (RM430's and RM431's last fixes), then
+   the one review round.
+2. ⏳ 0.8.9 — fixes for two silent errors on indels, found when the registry re-derived its production modules: cut
+   and built, waiting on your publish. All three packages are 0.8.9 (format only for its release record); a reader on
+   format 0.8.6 still reads every 0.8.9 module. The next patch, 0.8.10, is built on `main`: an indel whose rsID dbSNP
+   merged is no longer refused offline.
+3. ❓ Three items you placed in 0.9 by name were parked by the small cut: parked, a 0.11, or 0.10 (desk #347).
+4. ❓ One question on the maintainer's desk: linking the project's memory to its new folder name.

@@ -180,7 +180,162 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   `ENSEMBL_RSID_INDEX_CACHE_VAR` (`$JUST_DNA_ENSEMBL_RSID_INDEX_CACHE`), `resolve_ensembl_rsid_index_reference`,
   `default_ensembl_rsid_index_cache_dir`.
 
-## 2026-11-17 — RM446: a reused client's earlier 410 no longer tells a later run's outage to upgrade (patch, on `main`)
+## 2026-11-18 — RM453: a mirrored site where no spelling was witnessed keeps both spellings (patch, a declared corrected derivation, on `main`)
+
+**A correction to 0.8.9, declared (P3).** 0.8.9's RM449 left an rsID row unpositioned where a second source
+recorded `unplaced` on both spellings of a mirrored insertion and deletion ("witnessed neither"). But `unplaced`
+on every spelling means only that the witness held no counterpart under the rsID. ClinVar files only some
+variants, and it files `pathogenic_clinvar`'s `rs80356821` deletion under `rs281864900`, which dbSNP merged
+into it. So an offline `enrich` refused that row under `--strict`, where the online table placed it. That is no
+evidence for either spelling, the same knowledge as `undecided` or an empty cell. Both spellings now stay filled,
+under a warning (borrowed code `rsid_expanded_to_multiple_loci` until 0.9) saying the source asked "placed
+neither as the same event". A site where one spelling was witnessed still fills only that one. **What moves:** a
+table with `unplaced` on every spelling of a mirrored site compiles that rsID row onto both spellings again, as
+before 0.8.9; nothing the enricher writes changes. Compiler only.
+
+## 2026-11-18 — `v0.8.9`: format, compiler and enricher 0.8.9 (a patch, cut from `main`)
+
+The compiler moves for RM447, RM449 and RM451, the enricher for RM446, RM448, RM449's ClinVar drafter and RM452.
+**Format 0.8.9 changes only its release record** (`RELEASE_RECORDS["0.8.9"]`, which declares RM449's corrected
+derivation): no vocabulary, model or field moves, so a reader on `just-dna-format` 0.8.6 still reads every 0.8.9
+manifest (measured: all 22 reference modules compiled by 0.8.9 read under format 0.8.6). Asking
+`needs_recompile(stamp, "0.8.9")` needs format 0.8.9, since 0.8.6 holds no record for it. Each intra-workspace floor
+is `>=0.8.9`: the compiler's `just-dna-format>=0.8.9`, the enricher's `just-dna-format>=0.8.9` and
+`just-dna-compiler>=0.8.9`. No third-party floor moved, and `uv lock` moved only the three workspace versions. Sized
+by the pm, 2026-11-18: RM449 first, the silent one, and RM448 beside it; both block three of the registry's
+production modules (S158).
+
+- **What it carries:** RM449 (an rsID row's indel genotype is filled on the spelling a second source witnessed, not
+  on both events at a mirrored insertion and deletion; a declared corrected derivation), RM448 (online, a witness
+  holding one ALT of a multi-allelic indel site no longer withholds the whole site), RM451 (`reverse` no longer
+  invents a `resolution.csv` row for a coordinate row the table never filed), RM447 (an allele refusal on a row
+  Ensembl REST answered names REST's older dbSNP build and the remedy that reaches it), RM446 (a reused client's
+  earlier 410 no longer tells a later run's outage to upgrade) and RM452 (a NULL `start` in the Ensembl snapshot
+  places nothing instead of raising `TypeError`). The `pathogenic_clinvar` example gets back its coordinate row
+  `11:5226762 C>CAAAG` (RM449's remedy), so its `content_signature` moves; nothing publishes it.
+- **No new warning code.** RM449's sentences borrow the existing code of what the row became until 0.9 adds
+  `rsid_genotype_reads_as_two_events`: `rsid_no_hosting_locus` where no position is written, and
+  `rsid_expanded_to_multiple_loci` (carried) where one or more loci are filled. Until 0.9 a site narrowed to one
+  locus counts as an expansion in `warnings_summary`, and the filled arms' sentences sit in `compilation.carried`
+  although an authored coordinate row clears them.
+- **A new refusal under `--strict`:** an rsID row at a mirrored indel site whose recorded `placement_verdict` places
+  neither spelling as `same_event` (an `unplaced` answer from a witness) is no longer filled, and `--strict` refuses
+  it as unresolved. A recorded `undecided` on both spellings reads as no verdict and keeps both. RM447 rewords the two
+  allele refusals for an `ensembl-rest` row; their pinned phrases stay.
+- **New public names, additive (RM446):** `Withholding.retired_met`, `net.retired_mark(client)` and an optional
+  `since=` on `net.withheld_reason`. A patch should not add a public name; these are recorded as 0.8.4's
+  `size_refusals` was.
+- **Known issue, RM453 (for 0.8.10):** an offline re-derivation of `pathogenic_clinvar` leaves `rs80356821`
+  unplaced, and `--strict` refuses it; an online one clears it. Offline, ClinVar files that rsID's deletion under the
+  retired `rs281864900` (dbSNP merged it into `rs80356821`), so the witness holds no record for it and answers
+  `unplaced` on both spellings, which RM449 reads as witnessed neither. The same can happen to any mirrored indel
+  site whose ClinVar record carries a merged rsID. It is loud and names its rsID.
+- **Release record** (`RELEASE_RECORDS["0.8.9"]`, measured from 0.8.6, the last published compiler, both sides on
+  polars 2.1.0 and Python 3.14.8): of 22 reference modules, 21 measured on both sides. `cyp2c9_warfarin_grch37` moves
+  `parquet_bytes` (RM451: 12 `pharm_variants` rows' `resolution_loci` null → `[]`, declared an addition) and
+  `hboc_palb2` gains two RM449 sentences under `rsid_expanded_to_multiple_loci`; `content_signature` moves on none.
+  `pathogenic_clinvar` is **unmeasured**: 0.8.6 refuses its restored row as `Duplicate (variant, genotype)`, the loud
+  case RM449 fixes. A second sweep, the same two compilers over `v0.8.8`'s spec of that module, measures the
+  correction: two `weights.parquet` rows fewer (`rs80356821` and `rs193922563` lose the mirrored insertion), and
+  `stats.weights_rows` and `compilation.resolution_subjects` 338 → 336, `compilation.expanded_keys` 11 → 9,
+  `compilation.expanded_rows` 22 → 18 (and `warnings_summary`'s `rsid_expanded_to_multiple_loci` 11 → 20). The
+  record declares those four fields and `weights.parquet` as RM449 corrections, scoped on
+  `compilation.expanded_keys` (a module that applied a resolution table with rows); RM451's addition states no
+  reach, since a header-only table writes its `[]` too.
+- **After upgrading:**
+  1. Raise all three floors to `>=0.8.9`.
+  2. **Recompile the modules RM449 reaches** (`needs_recompile(stamp, "0.8.9").declared_for(manifest)`, on format
+     0.8.9, keeps the correction for every module whose manifest carries `compilation.expanded_keys`; the reach is
+     narrower, an rsID row whose genotype one position hosts as both an insertion and a deletion). On recompile
+     `weights.parquet`, `artifact.digest`, `stats.weights_rows`, `compilation.resolution_subjects`,
+     `compilation.expanded_keys` and `compilation.expanded_rows` move; `content_signature` does not. The fill reads
+     `resolution.csv`'s `placement_verdict` at such a site, so a table enriched online with the reference read is
+     corrected by the recompile alone. A table with no verdict there, or `undecided` on both spellings (an offline
+     run, a ClinVar fill, a table written before 0.8), keeps both events and says so; re-derive it online
+     (`just-dna-enricher enrich <spec-dir> --rederive`) and recompile. The registry's two published cases are
+     `superhuman@2.4.1` `rs766212849` and `thrombophilia@2.0.1` `rs1572088853`.
+  3. Where an RM449 sentence fires (each one carries "(RM449)"), the rsID row claims both
+     events, or none. If it is about one of them, replace it with a row authoring that event's coordinate
+     and re-run the enricher so the table files it; at a mirrored site an authored coordinate row now wins over the
+     expansion onto its exact key.
+  4. A table re-derived online before this release may lack rows RM448 withheld: a plain `enrich` on 0.8.9 asks
+     again for every subject with no row.
+  5. Re-derive mirrored indel sites online, not offline, until RM453 ships (the known issue above).
+  6. Nothing to do for RM446, RM447, RM451 or RM452. RM451 moves `artifact.digest` on recompile for a module that read
+     a table and holds a coordinate row the table never filed; the table `reverse` gives back is the same.
+
+## 2026-11-18 — RM452: a NULL `start` in the Ensembl snapshot places nothing instead of raising (patch, cut as `v0.8.9`)
+
+A snapshot row naming an rsID with no `start` raised `TypeError` in `lookup_loci`, and so did a back-fill probe with a
+chrom and no start. The scan now leaves such a row out of the answer. An rsID named only on such rows is said in
+one warning, and the next link is asked. The probe gets no candidates. No published release on this machine
+carries a NULL start; the RM431 builder met it with a synthetic row. Enricher only; nothing public moves.
+
+## 2026-11-18 — RM451: reverse no longer invents a table row for a coordinate row the table never filed (patch, cut as `v0.8.9`)
+
+`resolution_loci` was null both where a row's own cells answer (RM364's saving) and where the module's table
+files nothing under the row's key. So a coordinate row authored after the last `enrich` came back from
+`reverse` as a table row rebuilt from its cells, and `compile → reverse → compile` moved `resolution_signature`.
+Restoring `pathogenic_clinvar`'s `11:5226762 C>CAAAG` (RM449's remedy) found it, and a two-row module with no
+mirrored site shows it too. A module that read a table now writes `[]` there, for a key with no positioned
+locus on its build, and `reverse` writes nothing for it. **What moves:** that cell, null → `[]`, so
+`artifact.digest` moves on recompile for a module that read a table and holds such a row. Among the
+reference examples that is `cyp2c9_warfarin_grch37` (12 `pharm_variants` rows). No value a row states
+changes, and reverse gives back the same table. A module that read no table is unchanged. Compiler only; no
+column, code or vocabulary moves.
+
+## 2026-11-18 — RM448: a witness holding one ALT of a multi-allelic indel site no longer withholds the site (patch, cut as `v0.8.9`)
+
+Online with the reference read (`verify_ref`), the placement witness (RM267) compared ClinVar's one ALT of a
+multi-allelic indel site with Ensembl's other ALT of the same kind and length. Ensembl places `rs1452575772`
+as `A>AC,AT` and ClinVar as `A>AC`, so `A>AT` was judged "a different event". The whole locus was withheld,
+`A>AC` with it, and the rsID was left with no `resolution.csv` row. The registry's re-derived `pathogenic`
+module lost 12 rsIDs this way and `cardio` one (S158). RM267's rule says a different allele is `unplaced`,
+never a disagreement. A witness allele that is already the same event as one of the rsID's placed alleles is
+now accounted for, and is no counterpart of the others. Those read `unplaced`, and the locus is written. A
+witness allele that matches none of the rsID's alleles still withholds, as S117's `rs8176719` does. Offline
+runs never hit this, since nothing judges an indel offline. Enricher only; no column, code or vocabulary
+moves. A table re-derived online before this release may lack those rows: a plain `enrich` on this
+release asks again only for subjects with no row.
+
+## 2026-11-18 — RM449: an rsID row's indel genotype is filled on the spelling a second source witnessed, not on both (patch, a declared corrected derivation, cut as `v0.8.9`)
+
+**A correction, declared (P3).** At one position an insertion and a deletion hold the same allele strings:
+`C/CT` is one inserted T on `C>CT` and one deleted T on `CT>C`. The string hosting rule accepted both, so
+the fill put an rsID row's claim on both events. Alone, the row compiled under `--strict`, and the claim sat
+silently on the event it is not about. Beside an authored coordinate row for the other event, `--strict`
+refused with `Duplicate (variant, genotype)`. S158 (the registry) hit 21 such refusals in `cardio`, 25 or more
+in `cancer` and 14 or more in `pathogenic`. Its lead found 2 of its 69 published modules carrying the silent
+claim (`superhuman@2.4.1` `rs766212849`, `thrombophilia@2.0.1` `rs1572088853`). The fill now reads
+`ResolutionRow.placement_verdict` at such a site. It fills the spellings a second source placed as
+`same_event` and not the others. Both witnessed: both stay, and a warning says so once
+per rsID, in both modes. Neither witnessed: neither is filled, and the row is left unpositioned
+(`--strict` refuses it as unresolved). No second source asked at all (an offline run, a ClinVar fill, a table
+written before 0.8): both stay as before, and a warning says so. Whatever the witness, an expansion member
+re-keyed onto an authored coordinate row's exact `(variant_key, genotype)` is not filled, and a warning names
+it: the coordinate row picks its event, which is RM449's own remedy, and never a strict duplicate. None is escalated in 0.8.
+**What moves:** an artifact compiled before this may hold the claim on both spellings. The reference
+examples move two rows (`pathogenic_clinvar`: `rs80356821` and `rs193922563` now fill only the witnessed
+deletion). The ClinVar drafter now writes an indel record with its coordinate, never its rsID alone, so a
+new draft cannot pose the question. A re-draft names an older rsID-only indel row as one no current draft
+would write.
+**No new warning code in 0.8.9; the sentences borrow two (the pm, before the cut).** `warnings_summary` validates
+its keys against the closed vocabulary, so a code added in a patch makes a `just-dna-format` 0.8.6 reader refuse
+the manifest of every module that triggers it, and an uncoded sentence cannot ship (`findings.classify` refuses a
+part-classified channel). Each RM449 sentence takes the existing code of what the row became: no position written
+is `rsid_no_hosting_locus`; one or more loci filled (both spellings kept, or one dropped as unwitnessed or under an
+authored coordinate row) is `rsid_expanded_to_multiple_loci`, which is carried. The text and its pinned phrases are
+RM449's own. Until 0.9, a site narrowed to one locus is counted in `warnings_summary` as an expansion, and the
+filled arms' sentences sit in `compilation.carried` although an authored coordinate row clears them. 0.9 adds
+`rsid_genotype_reads_as_two_events` and moves these sentences to it. `just-dna-format` stays 0.8.6.
+**A recorded `undecided` reads as no verdict (before the cut, the pm).** Where a mirrored site's only recorded
+`placement_verdict` is `undecided` (the witness was asked and could not judge, as a run with no reference sequence
+writes), both spellings stay, as for a site nobody was asked about, under their own sentence (pinned: "could not
+decide whether either is the same event"). Could not judge is not witnessed-neither, so a recorded `undecided` no
+longer turns a module that compiled into a strict refusal. `undecided` beside `unplaced` reads as an empty cell
+beside `unplaced`: neither is filled. An `unplaced` answer is a witness's, offline too, and still fills neither.
+
+## 2026-11-17 — RM446: a reused client's earlier 410 no longer tells a later run's outage to upgrade (patch, cut as `v0.8.9`)
 
 A withholding client (`EnsemblResolver`, `CrossrefClient`, the PMC clients, `Grch37Client`,
 `ClingenAlleleClient`) keeps the first 410 it met as `retired` for its life, and `enrich` and `literature` read that
@@ -192,7 +347,7 @@ live-Ensembl warning and `LiteratureResult.crossref_unanswered` use it. The clie
 and never reset. A host's own client without the counter reads as before. Enricher only and additive: a new
 attribute, a new function and an optional argument.
 
-## 2026-11-17 — RM447: a resolved allele refusal names Ensembl REST's older dbSNP build when REST answered the row (patch, on `main`)
+## 2026-11-17 — RM447: a resolved allele refusal names Ensembl REST's older dbSNP build when REST answered the row (patch, cut as `v0.8.9`)
 
 At Ensembl 116, REST serves dbSNP 156, while the same release's VCF dump, which the snapshot is built from, carries
 dbSNP 157. Measured over every rsID the reference examples name on 2026-11-17: of the 454 rsIDs both answered, 54

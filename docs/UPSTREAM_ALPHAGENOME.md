@@ -102,6 +102,9 @@ and it is the lead's. Nothing breaks today: no gate reads `notice`.
    2026-09-08 text, and so has prohibition 5 (the notice). For AVI under the Additional Terms, neither binds.
    Carrying the notice is harmless over-compliance; stating that the training bar binds is a claim the terms do
    not make. This predates the change.
+   **Decided by the person, 2026-11-18** (relayed by the lead): "We don't do training here, thus, don't care about
+   the ban. Keep all as is." The cautious notice stays as RM442 shipped it in enricher 0.8.7; the contradiction between
+   the two documents is Google's to resolve.
 3. **The `LICENSE.txt` slicer** (`alphagenome_avi_build.use_restrictions_text`) cuts from the "Use restrictions"
    heading to "Disclaimers". On the new text it would drop the new "Key Definitions" section, which the
    restrictions now depend on (what "Output" means). The AVI builder should keep reading the undated June 2025

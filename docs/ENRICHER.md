@@ -1311,7 +1311,14 @@ ids are VRS 2.1.1 and ours 2.0, so its VCF spelling is minted here rather than i
   no witness holds makes it `unplaced`, an unsettled one `undecided`.
 - **A different allele is not a disagreement.** ClinVar holds what somebody submitted, so an allele with
   no counterpart is `unplaced`, and the rsIDs where nothing had a counterpart are the published
-  one-witness count.
+  one-witness count. **A witness allele that is already one of the rsID's placed alleles is no
+  counterpart of the others (RM448, 0.8.9).** At a multi-allelic site, ClinVar's `A>AC` is the same kind
+  and length as Ensembl's other insertion `A>AT`. Judged against it with the reference read, it was a
+  different event, so the whole locus was withheld and the rsID got no row. That happened online only,
+  since offline nothing judges an indel. The witness's allele is accounted for by the placed allele it
+  matches, and says nothing about the others, which read `unplaced`. S158 met it on 12 rsIDs of the
+  registry's `pathogenic` and one of `cardio`. A witness allele that matches none of the rsID's alleles
+  still disagrees (S117's `rs8176719`).
 - **A ClinVar fill has no independent witness here.** ClinVar-GKM is ClinVar's own release, so a row the
   ClinVar link filled is counted with the one-witness class and its two columns stay empty.
 - **Each written row says who was asked and what they answered**: `placement_witness` and
@@ -1662,6 +1669,10 @@ alt, `<.>`, IUPAC placeholders (`<R>`, `<Y>`), `N` runs and N-masked chrY refs. 
 `resolver`): a `ref` outside `^[ACGT]+$` withholds the locus, an alt outside it is dropped, and a locus
 with no alt left is withheld. REST with nothing left answers the ordinary `[]` (it is permanent, so no
 re-run helps), and the snapshot names such rsIDs in one warning instead of `rsid_unresolved`.
+
+**A row with no position is not an answer (RM452, 2026-11-18).** A snapshot row naming an rsID with no `chrom` or
+`start` is left out of the scan's answer, named in one warning, and the next link is asked. A back-fill probe with
+no start gets no candidates, as one with no chrom does. No published release has shown one.
 
 **REST serves an older dbSNP build than the snapshot of the same release (RM447, 2026-11-17).** At Ensembl 116,
 REST's `/info/variation` names dbSNP 156, and so does the VEP cache line in the split snapshot's header, while the
