@@ -451,7 +451,7 @@ core was ported, not depended on, dropping `fastmcp`/`eliot`). In the workspace:
 | `civic_api` | RM160: CIViC's GraphQL API — the one surface carrying evidence attached to a variant no dated file can place, because a VCF record needs a POS | `httpx`, `tenacity` |
 | `civic_identities` | RM159: identities CIViC states in a variant's **name** and never in its identifier columns (`N150fs (c.448delA)`, `IVS2+1G>A`) | `clingen_allele`, `ensembl` |
 | `civic_citations` | RM160: the citations those variants carry, and the canary that says when the dated file has caught up | `civic_api`, format |
-| `civic_draft` | RM152: CIViC snapshot → `direction`-axis rows. **The axis is `direction`, not `clin_sig`** — the measurement refused the latter | `polars`, compiler `draft` |
+| `civic_draft` | RM152: CIViC snapshot → `direction`-axis rows. **The axis is `direction`, not `clin_sig`** — the measurement refused the latter. **0.9** (RM431): the keyed functions `lookup_genes` and `lookup_rsids`, in duckdb | `polars`, `duckdb`, compiler `draft` |
 | `civic_refutation` | RM170: an authored `direction` over a variant CIViC has published a refutation of — the pair `contested_variants` cannot see. Warns in both modes | `polars`, format |
 | `mitomap` | RM171: MITOMAP's published `pg_dump` reader, and the **two-token grammar** its `status` column is written in | `duckdb` |
 | `mitomap_build` | RM171 builder: the 63 MB gzipped SQL dump → snapshot parquet + `release.json`. CC BY 3.0 with commercial use stated free, so a deployment may publish it | `polars` (lazy), `httpx` |
@@ -2379,7 +2379,7 @@ with RemoteSnapshots(declared_use="non_commercial") as snapshots:      # proxy f
   `clinvar`, `gnomad_constraint`, `annotations`, `genes`, `drug_labels`).
 - **Lanes** (`remote.REMOTE_LANES`): `ensembl` (by `chrom` + `start` only: an rsID alone is refused
   before any route, since about 10.7 GB would be read on the Hub), `clinvar`, `constraint`, `clinpgx`,
-  `cpic`, `drug_labels`, and since RM431 `opentargets` (each by its keyed function's keys, below). Not
+  `cpic`, `drug_labels`, and since RM431 `opentargets` and `civic` (each by its keyed function's keys, below). Not
   `mitomap`, `strchive` or `alphagenome_avi`. PharmVar and PubMind have no published repo.
 - **The proxy** (`POST {proxy}/api/v1/lanes/{lane}/{table}`, the registry's §§ 46–47): one keep-alive
   `httpx` client, a 3 s connect and 10 s read timeout, at most 100 key values a request and one
@@ -2450,6 +2450,16 @@ with RemoteSnapshots(declared_use="non_commercial") as snapshots:      # proxy f
     part (25 and 200 files), so it costs many requests of the anonymous quota.
   - Both return plain dicts, as `lookup_clin_sig` does; a key the release holds nothing for is not in the
     answer, and a snapshot that cannot be read raises `OpenTargetsError`, never an empty answer.
+  - `civic_draft.lookup_genes(reference, genes) -> dict[str, list[dict]]` and `civic_draft.lookup_rsids(reference,
+    rsids) -> dict[str, list[dict]]`: every snapshot row under each gene (compared by `gene_key`: case and
+    surrounding space make no second gene) or rsID (lower case, `rs` prefixed: `334` is `rs334`), keyed as asked,
+    every column, in one total order. With the raising reader's semantics (`_snapshot_rows`): an absent or
+    unreadable snapshot raises `CivicDraftError` naming it. Remotely: table `civic`, keys `gene` (each as given,
+    stripped) and `rsid` (as the snapshot spells it). **Known divergence:** a remote route compares a gene
+    exactly, so a gene asked in another case than CIViC stores it (`brca1`) is answered locally and not
+    remotely; no guessed spelling is sent in its place, since HGNC symbols are not all upper case (`C9orf72`).
+    Every symbol of the 01-Nov-2026 snapshot is stored upper case. A strict `xfail` in
+    `test_remote_keyed_lanes.py` pins it until a remote route folds case.
 - **`remote_url(base, *parts)`** builds every URL a holder asks; the root `conftest.py` wraps it, so a
   test that would hand duckdb a host other than this machine is refused and recorded like a socket reach.
 

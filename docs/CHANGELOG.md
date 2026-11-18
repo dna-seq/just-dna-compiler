@@ -151,6 +151,12 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   Plain dicts, in duckdb; an unreadable snapshot raises `OpenTargetsError`. `opentargets` is now remote-eligible
   (`remote.REMOTE_LANES`): tables `variants` (by `chrom` + `start`), `consequences` and `credible_set_members` (by
   `variant_id`), and the same SQL reads a remote answer's rows as the local files.
+- **`civic_draft.lookup_genes` and `civic_draft.lookup_rsids`** (RM431 ask 5, S145): CIViC's keyed functions,
+  beside the raising reader and with its semantics (an absent or unreadable snapshot raises `CivicDraftError`;
+  the refutation check keeps its skipping reader). Read in duckdb, keyed as asked; a gene is compared by
+  `gene_key`, an rsID as the snapshot spells it. `civic` is now remote-eligible (table `civic`, by `gene` or
+  `rsid`), one SQL body over the local file and a remote answer's rows. Known divergence: a remote route compares
+  a gene exactly, so `brca1` is answered locally and not remotely.
 
 ## 2026-11-17 — RM446: a reused client's earlier 410 no longer tells a later run's outage to upgrade (patch, on `main`)
 

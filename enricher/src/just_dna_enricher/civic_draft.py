@@ -35,10 +35,11 @@ removed. The snapshot already counted the somatic majority; this counts what it 
 """
 
 import logging
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import duckdb
 from just_dna_compiler.draft import DraftReport, PartialRow, append_partial_rows
 from just_dna_format.snapshot import SnapshotRelease, read_release
 from just_dna_format.spec import StudyRow, VariantRow
@@ -52,6 +53,7 @@ from just_dna_enricher.drafting import DRAFT_PROVIDERS, licence_commit, record_d
 from just_dna_enricher.drafting import identity_refused_by_model as scaffold_identity_refused
 from just_dna_enricher.licensing import CIVIC_TERMS, CLINGEN_ALLELE_REGISTRY_TERMS
 from just_dna_enricher.locations import resolve_civic_reference
+from just_dna_enricher.resolver import _typed_rows_connection
 from just_dna_enricher.sequences import SequenceProxy, _held_by_one_run, _left_align
 from just_dna_enricher.verification import examples
 
@@ -172,6 +174,198 @@ def _snapshot_rows(reference: Path) -> list[dict]:
         import pyarrow.parquet as pq
 
         return pq.read_table(parquet).to_pylist()
+
+
+# ── the keyed functions (0.9, RM431 ask 5) ──────────────────────────────────────────────────────
+#
+# Beside the raising reader, with its semantics: a lookup that cannot read the snapshot raises
+# `CivicDraftError` saying what it could not read, never an empty answer. The refutation check keeps its
+# own skipping reader (`civic_refutation.civic_snapshot_rows`). Read in duckdb (a runtime pass,
+# `@duckdb-vs-polars`), one SQL body per key over a connection exposing `civic`: the local reader runs it
+# over the snapshot's parquet, and a remote answer's rows (`remote.RemoteSnapshots.lookup`, table
+# `REMOTE_CIVIC_TABLE`) run it through `_genes_from_rows` / `_rsids_from_rows`.
+
+#: The snapshot's columns, in the builder's order and typed for a remote answer's rows. Held equal to
+#: `civic_build._polars_schema()` by a test rather than derived from it: that schema is polars', which a
+#: reader of a built snapshot does not import.
+_CIVIC_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("chrom", "VARCHAR"),
+    ("start", "BIGINT"),
+    ("ref", "VARCHAR"),
+    ("alt", "VARCHAR"),
+    ("rsid", "VARCHAR"),
+    ("allele_registry_id", "VARCHAR"),
+    ("identity_derivation", "VARCHAR"),
+    ("direction", "VARCHAR"),
+    ("significance_raw", "VARCHAR"),
+    ("evidence_direction_raw", "VARCHAR"),
+    ("variant_id", "BIGINT"),
+    ("variant_name", "VARCHAR"),
+    ("gene", "VARCHAR"),
+    ("evidence_id", "BIGINT"),
+    ("molecular_profile_id", "BIGINT"),
+    ("evidence_molecular_profile_id", "BIGINT"),
+    ("evidence_molecular_profile_name", "VARCHAR"),
+    ("evidence_level", "VARCHAR"),
+    ("rating", "BIGINT"),
+    ("variant_origin", "VARCHAR"),
+    ("pmid", "VARCHAR"),
+    ("disease", "VARCHAR"),
+    ("doid", "VARCHAR"),
+    ("civic_grch37_chrom", "VARCHAR"),
+    ("civic_grch37_start", "BIGINT"),
+    ("evidence_status", "VARCHAR"),
+)
+#: The table a remote route names for the snapshot (`remote.table_name` of `data/civic.parquet`).
+REMOTE_CIVIC_TABLE = "civic"
+
+
+def _civic_connection(reference: Path) -> duckdb.DuckDBPyConnection:
+    """A connection exposing the snapshot as `civic`, or `CivicDraftError` naming what could not be read."""
+    reference = Path(reference)
+    parquet = reference / "data" / CIVIC_PARQUET if reference.is_dir() else reference
+    if not parquet.is_file():
+        raise CivicDraftError(
+            f"no CIViC snapshot at {parquet}. Build one with `just-dna-enricher civic build "
+            f"--release <date>`, or point at an existing one with $JUST_DNA_CIVIC_CACHE."
+        )
+    con = duckdb.connect(":memory:")
+    try:
+        # A local path from the caller's own cache, quoted defensively: a view cannot bind a parameter.
+        quoted = str(parquet).replace("'", "''")
+        con.execute(f"CREATE VIEW civic AS SELECT * FROM read_parquet('{quoted}')")
+        con.execute("SELECT * FROM civic LIMIT 0")
+    except duckdb.Error as exc:
+        con.close()
+        raise CivicDraftError(f"the CIViC snapshot at {parquet} could not be read: {exc}") from exc
+    return con
+
+
+def _select_civic(con: duckdb.DuckDBPyConnection, where: str, params: list[str]) -> list[dict]:
+    """The snapshot's rows matching `where`, every column, in one total order both routes reproduce."""
+    names = ", ".join(f'"{name}"' for name, _ in _CIVIC_COLUMNS)
+    cursor = con.execute(f"SELECT {names} FROM civic WHERE {where} ORDER BY ALL", params)
+    columns = [d[0] for d in cursor.description]
+    return [dict(zip(columns, values, strict=True)) for values in cursor.fetchall()]
+
+
+def _asked_genes(genes: Sequence[str]) -> dict[str, list[str]]:
+    """`gene_key` → the genes asked under it, in order: `Vhl` and `VHL` are one gene (RM351)."""
+    asked: dict[str, list[str]] = {}
+    for gene in genes:
+        if gene.strip() and gene not in asked.setdefault(gene_key(gene), []):
+            asked[gene_key(gene)].append(gene)
+    return {key: spellings for key, spellings in asked.items() if spellings}
+
+
+def _civic_gene_keys(genes: Sequence[str]) -> dict[str, list[str]]:
+    """The keys a remote route is asked for `genes`: each as given, stripped.
+
+    A remote route compares a gene exactly, where this reader compares by `gene_key` (case and space do
+    not make two genes), so a key spelled in another case than CIViC stores it is answered locally and
+    not remotely. CIViC stores HGNC symbols, and no other spelling is sent in their place: `C9orf72` is
+    not upper case, so an upper-cased guess would miss it too.
+    """
+    return {"gene": list(dict.fromkeys(gene.strip() for gene in genes if gene.strip()))}
+
+
+def _genes_over(con: duckdb.DuckDBPyConnection, genes: Sequence[str]) -> dict[str, list[dict]]:
+    """`lookup_genes`' query over a connection exposing `civic`: the one copy."""
+    asked = _asked_genes(genes)
+    if not asked:
+        return {}
+    keys = sorted(asked)
+    # `lower(trim(…))` is `gene_key` for the ASCII an HGNC symbol is spelled in.
+    rows = _select_civic(con, f"lower(trim(gene)) IN ({', '.join('?' for _ in keys)})", keys)
+    answer: dict[str, list[dict]] = {}
+    for row in rows:
+        for spelling in asked.get(gene_key(str(row["gene"])), ()):
+            answer.setdefault(spelling, []).append(dict(row))
+    return {gene: answer[gene] for spellings in asked.values() for gene in spellings if gene in answer}
+
+
+def lookup_genes(reference: Path, genes: Sequence[str]) -> dict[str, list[dict]]:
+    """A gene → every row the CIViC snapshot holds for it, as plain dicts (RM431).
+
+    Compared as every gene selector here compares (`gene_key`: case and surrounding space do not make two
+    genes) and keyed as asked. Each row is the snapshot's own columns, every one of them, in one total
+    order. A gene the snapshot holds nothing for is not a key. A snapshot that is absent or cannot be read
+    raises `CivicDraftError` naming it, never an empty answer. Read-only, and it never fetches.
+    """
+    if not any(gene.strip() for gene in genes):
+        return {}
+    con = _civic_connection(reference)
+    try:
+        return _genes_over(con, genes)
+    finally:
+        con.close()
+
+
+def _genes_from_rows(rows: Sequence[Mapping[str, object]], genes: Sequence[str]) -> dict[str, list[dict]]:
+    """`lookup_genes`' answer over a remote answer's rows of `REMOTE_CIVIC_TABLE`."""
+    con = _typed_rows_connection(("civic", _CIVIC_COLUMNS, rows))
+    try:
+        return _genes_over(con, genes)
+    finally:
+        con.close()
+
+
+def _rsid_token(rsid: str) -> str:
+    """An rsID as the snapshot spells it: lower case, `rs` prefixed (`RS334` and `334` are `rs334`)."""
+    token = rsid.strip().lower()
+    return token if token.startswith("rs") else f"rs{token}"
+
+
+def _asked_rsids(rsids: Sequence[str]) -> dict[str, list[str]]:
+    asked: dict[str, list[str]] = {}
+    for rsid in rsids:
+        if rsid.strip() and rsid not in asked.setdefault(_rsid_token(rsid), []):
+            asked[_rsid_token(rsid)].append(rsid)
+    return {token: spellings for token, spellings in asked.items() if spellings}
+
+
+def _civic_rsid_keys(rsids: Sequence[str]) -> dict[str, list[str]]:
+    """The keys a remote route is asked for `rsids`: each as the snapshot spells it, as the local SQL compares."""
+    return {"rsid": list(_asked_rsids(rsids))}
+
+
+def _rsids_over(con: duckdb.DuckDBPyConnection, rsids: Sequence[str]) -> dict[str, list[dict]]:
+    """`lookup_rsids`' query over a connection exposing `civic`: the one copy."""
+    asked = _asked_rsids(rsids)
+    if not asked:
+        return {}
+    tokens = list(asked)
+    rows = _select_civic(con, f"rsid IN ({', '.join('?' for _ in tokens)})", tokens)
+    answer: dict[str, list[dict]] = {}
+    for row in rows:
+        for spelling in asked[str(row["rsid"])]:
+            answer.setdefault(spelling, []).append(dict(row))
+    return {rsid: answer[rsid] for spellings in asked.values() for rsid in spellings if rsid in answer}
+
+
+def lookup_rsids(reference: Path, rsids: Sequence[str]) -> dict[str, list[dict]]:
+    """An rsID → every row the CIViC snapshot holds under it, as plain dicts (RM431).
+
+    The rsID is compared as the snapshot spells it (lower case, `rs` prefixed) and keyed as asked; about
+    a third of CIViC's germline rows carry none, so an absent key is not an absent variant. A snapshot that
+    is absent or cannot be read raises `CivicDraftError`. Read-only, and it never fetches.
+    """
+    if not any(rsid.strip() for rsid in rsids):
+        return {}
+    con = _civic_connection(reference)
+    try:
+        return _rsids_over(con, rsids)
+    finally:
+        con.close()
+
+
+def _rsids_from_rows(rows: Sequence[Mapping[str, object]], rsids: Sequence[str]) -> dict[str, list[dict]]:
+    """`lookup_rsids`' answer over a remote answer's rows of `REMOTE_CIVIC_TABLE`."""
+    con = _typed_rows_connection(("civic", _CIVIC_COLUMNS, rows))
+    try:
+        return _rsids_over(con, rsids)
+    finally:
+        con.close()
 
 
 def _release_payload(reference: Path | None) -> SnapshotRelease:
