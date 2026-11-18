@@ -59,10 +59,15 @@ The lead's working state, rewritten to the present before each reset. Last rewri
   (scratch; this line is the record): branch `0.9` off `main`; wave 0 `LookupClients` leaf module + `parse_release`;
   wave 1 RM443, RM412, RM404, RM437 in parallel; wave 2 RM430; wave 3 RM431 asks 6, 5, then 4. Then one four-leaf
   round (two at most), the pm sorts, the cut. `unattended`: starts when the person is away.
-- 0.9 progress (2026-11-17): branch `0.9` open (worktree `.worktrees/09` on disk, locked; moved off /tmp 2026-11-18, kit #536). Wave 0 merged, e160a132
-  (suite 7461 passed). Wave 1 runs serially under the pace rule and the 7-day quota (87%, hold at 90%): RM443
-  merged 4384bed3 (suite 7470); RM412 building; RM404, RM437 wait for quota room (7-day 89%, hold 90%). The pm
-  decided parse_release lenient: the RM430 builder (wave 2) changes it, after syncing main into 0.9.
+- 0.9 progress (2026-11-18): branch `0.9` at 6a12f7e1, pushed (worktree `.worktrees/09` on disk, locked). Every
+  wave and both follow-ups merged (RM431 fu 4d5fe26a, RM430 fu 15668c1e); review round 1 (four-leaf, 033b7213): 11
+  classes, no blocker, all fixed (ea3dcf07) plus the pm's flip of item 3 (6a12f7e1, an unreadable pull record moved
+  aside and re-pulled, the pm's cf12e864). Suite 8119 passed. Next, quota permitting (7-day 93%, hold 90%; a
+  wait-quota is registered): review round 2, the last, brief at scratchpad/review_0_9_round2_brief.md; then its
+  fixes plus mitomap_miss stale_reason and a walk over derived lanes (pm 757f5e32); then the cut. Owed at the cut
+  (scratchpad/BUILD_PLAN_0_9.md): enricher floor on format 0.9; INTEGRATION_0_9 lines for `stale` in LANE_STATES,
+  proxy-on/HF-off gene lanes could-not-ask (registry S36), a host closes a shared holder after its last lookup;
+  CHANGELOG line for cpic's trim; keep `just_dna_enricher.key_compare.KEY_COMPARES` stable (the registry reads it).
 
 ## Open decisions
 
