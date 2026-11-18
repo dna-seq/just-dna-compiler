@@ -177,6 +177,29 @@ def test_a_lane_whose_ensure_takes_the_declared_use_says_so_in_a_field() -> None
     assert 'lane.name == "ensembl"' not in source
 
 
+def test_cache_status_prints_every_lane_state_in_its_own_word(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A walk over `LANE_STATES` (review round 1, item 11): `cache status` used to print `present` for any
+    state it did not name, so a new state would have read as a usable snapshot."""
+    lane = LANES_BY_NAME["clinvar"]
+    statuses = [
+        LaneStatus(
+            lane,
+            state,
+            tmp_path,
+            path=tmp_path if state in ("present", "stale") else None,
+            stale="it pins another parent" if state == "stale" else None,
+        )
+        for state in sorted(LANE_STATES)
+    ]
+    monkeypatch.setattr(cache_commands, "lane_status", lambda: statuses)
+    result = CliRunner().invoke(app, ["cache", "status"])
+    assert result.exit_code == 0, result.output
+    words = [line.split()[1] for line in result.output.splitlines() if line.strip()]
+    assert words == sorted(LANE_STATES)
+
+
 def test_every_lane_can_name_the_release_its_snapshot_holds(tmp_path: Path) -> None:
     """Walked, because the defect was one lane silently answering nothing (RM180).
 

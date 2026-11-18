@@ -22,6 +22,7 @@ from just_dna_enricher.caches import (
     _gate,
     _named_only_detail,
     _rebuild_blocked,
+    _rebuild_detail,
     _unpinnable,
     lane_name,
     lane_status,
@@ -168,6 +169,14 @@ def cache_status_() -> None:
         # failure — the snapshot is still usable, so this says so instead of hiding it.
         label = status.release or ("(unreadable release.json)" if status.release_unreadable else "")
         size = f"{(status.size_bytes or 0) / 1e6:.1f} MB"
+        if status.state == "stale":
+            # On disk, and refused by its readers: its parents moved under it (review round 1, item 11).
+            typer.secho(
+                f"  {lane.name:13} stale    {status.path}  {label}  {size} — {status.stale}; "
+                f"{_rebuild_detail(lane, status.looked_in)}",
+                fg=typer.colors.YELLOW,
+            )
+            continue
         typer.secho(f"  {lane.name:13} present  {status.path}  {label}  {size}", fg=typer.colors.GREEN)
 
 

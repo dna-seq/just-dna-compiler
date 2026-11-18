@@ -1717,12 +1717,18 @@ provisioned by variable derives the whole set as `{lane.env_var for lane in CACH
 {CACHE_BASE_VAR}` rather than keeping the names by hand.
 **The status half is `caches.lane_status()` (S91, RM204)**, one `LaneStatus` per lane in registry
 order, and `cache status` renders it — a consumer serving the same answer over HTTP reads the function
-rather than re-writing the loop, which is two projections of one registry. Its `state` is
-three-valued: `present`, `absent`, and **`occupied`** — the place the lane looks exists, is non-empty
-and holds no snapshot (a build that failed after its downloads, a payload deleted beside its
-`release.json`, a stray `.part`, a foreign parquet). That third state used to print as `absent`,
-which sends an operator to run a pull that `prepare` is going to refuse, since provisioning never
-deletes. `looked_in` says which directory the verdict is about (the path given in `locations`, else
+rather than re-writing the loop, which is two projections of one registry. Its `state` is one of
+`LANE_STATES`, four since 0.9: `present`, `absent`, **`occupied`** — the place the lane looks exists, is
+non-empty and holds no snapshot (a build that failed after its downloads, a payload deleted beside its
+`release.json`, a stray `.part`, a foreign parquet) — and **`stale`**. `occupied` used to print as
+`absent`, which sends an operator to run a pull that `prepare` is going to refuse, since provisioning
+never deletes. `stale` (0.9, review round 1) is a derived lane on disk whose parents moved under it:
+its `CacheLane.stale_reason` (each parent's path as this call resolved it, the call's `locations`
+included) says why, in `LaneStatus.stale`. Only `ensembl_rsid_index` states one, the verdict its reader
+refuses the index by (an index of another core), so `cache status` prints `stale` with the reason and the
+rebuild where a reader looks, and `cache prepare` leaves it as it is, *unavailable* (`ready=None`, route
+`none`, `stale: …`), never `present`. A core that cannot be pinned is no moved parent: the index stays
+`present` and the reader scans. Before, both called a refused index present. `looked_in` says which directory the verdict is about (the path given in `locations`, else
 the lane's `env_var` if set, else the default), `release` is what the snapshot names, and
 `release_unreadable` is the present-and-unreadable `release.json` — a provenance failure, not a data
 failure.

@@ -41,7 +41,7 @@ from just_dna_format.vocab import ALLELE_PATTERN
 from just_dna_format.vrs import normalize_chrom
 
 from just_dna_enricher.ensembl import _placeable_alleles
-from just_dna_enricher.ensembl_rsid_index_build import INDEX_GLOB, core_pin
+from just_dna_enricher.ensembl_rsid_index_build import INDEX_GLOB, _moved_parent, core_pin
 from just_dna_enricher.events import (
     Mint,
     ReadWindow,
@@ -453,17 +453,14 @@ def _rsid_index_beside(reference: Path, explicit: Path | None = None) -> Path | 
         )
         return None
     payload = index_dir / SNAPSHOT_DATA_DIRNAME / INDEX_GLOB
-    release = read_release(index_dir)
-    pinned = ((release.parents or {}) if release is not None else {}).get("ensembl")
-    if (
-        any(payload.parent.glob(payload.name))
-        and pinned is not None
-        and {key: pinned.get(key) for key in current} == current
-    ):
+    # The one verdict `cache status` and `cache prepare` read too, so they call stale what is refused here.
+    if any(payload.parent.glob(payload.name)) and _moved_parent(index_dir, reference) is None:
         return payload
     if (index_dir, reference) not in _REFUSED_INDEXES:
         _REFUSED_INDEXES.add((index_dir, reference))
-        stated = pinned.get("release_id") if pinned is not None else None
+        release = read_release(index_dir)
+        pinned = (release.parents or {}).get("ensembl") if release is not None else None
+        stated = pinned.get("release_id") if isinstance(pinned, dict) else None
         logger.warning(
             "The rsID index at %s was not built from the Ensembl core at %s (it pins %s; the core is %s), "
             "so rsIDs are looked up by scanning the core. %s",

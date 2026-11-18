@@ -48,6 +48,7 @@ from just_dna_format.snapshot import (
     SNAPSHOT_MANIFEST_FILENAME,
     SnapshotRelease,
     begin_snapshot_write,
+    read_release,
 )
 
 from just_dna_enricher.locations import read_snapshot_manifest, resolve_ensembl_reference
@@ -88,6 +89,27 @@ def core_pin(core: Path) -> dict[str, str] | None:
     part, since two cores alike in release, paths and sizes would then pin alike over different bytes.
     """
     return _pin_and_refusal(core)[0]
+
+
+def _moved_parent(index_dir: Path, core: Path) -> str | None:
+    """Why the index at `index_dir` is not the index of `core`, or `None` when it is (review round 1, item 11).
+
+    The one verdict the reader (`resolver._rsid_index_beside`, which then scans) and the lane's status
+    (`caches.lane_status`, `prepare_lane`, which call the index stale) read. `None` too when `core` cannot
+    be pinned (gone, no manifest, a file unstated): a parent that cannot be compared has not moved
+    (`@a-derived-lane-has-parents-and-an-absent-parent-is-not-an-empty-result`), so it is never called stale.
+    """
+    current = core_pin(core)
+    if current is None:
+        return None
+    release = read_release(index_dir)
+    pinned = (release.parents or {}).get("ensembl") if release is not None else None
+    if isinstance(pinned, dict) and {key: pinned.get(key) for key in current} == current:
+        return None
+    stated = pinned.get("release_id") if isinstance(pinned, dict) else None
+    if stated == current["release_id"]:
+        return f"it pins release {stated} over other files than the Ensembl core at {core} holds"
+    return f"it pins {stated or 'no core'}, and the Ensembl core at {core} is {current['release_id']}"
 
 
 def _pin_and_refusal(core: Path) -> tuple[dict[str, str] | None, str]:

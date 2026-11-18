@@ -265,6 +265,15 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   only), which `cache prepare` and `cache pull` read to pass `declared_use=` to `ensure`, where both compared
   `lane.name == "ensembl"`; `lookup_variant` skips an rsID-only remote ask by `RemoteLane.needs_position`. No
   behaviour moves.
+- **A stale rsID index is called stale, never present** (review round 1, item 11, as RM431's reading 3 decided):
+  `lane_status` and `cache status` said `present` and `cache prepare` said ready for an index its reader refuses
+  because it pins another core. `LANE_STATES` gains **`stale`**, `LaneStatus` gains **`stale`** (the reason), and
+  `CacheLane` gains **`stale_reason`**, which `ensembl_rsid_index` states with the reader's own verdict, so the
+  three agree. `cache status` prints `stale` with the reason and the rebuild where a reader looks; `cache
+  prepare` leaves the index as it is and reports it *unavailable* (`ready=None`, `stale: …`). Each parent is
+  read where this call resolved it, `locations` included, so a call naming every lane still loads no `.env`. A
+  core that cannot be pinned is no moved parent: the index stays `present`. `cache status` prints every state in
+  its own word, which a walk over `LANE_STATES` holds.
 
 ## 2026-11-18 — RM453: a mirrored site where no spelling was witnessed keeps both spellings (patch, a declared corrected derivation, on `main`)
 

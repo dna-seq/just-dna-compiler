@@ -228,8 +228,11 @@ def test_a_moved_parent_never_rebuilds_the_index_it_is_refused_once_and_the_core
         f"Rebuild it in place with `just-dna-enricher cache rebuild --only ensembl_rsid_index --out {tmp_path / 'base'}`."
     )
     (prepared,) = caches.prepare_caches([LANES_BY_NAME["ensembl_rsid_index"]])
-    assert prepared.ready is True and prepared.route == "present", (
-        "a present index, stale or not, is left alone"
+    # Left alone, and called stale, never present (review round 1, item 11, as reading 3 decided).
+    assert (prepared.ready, prepared.route, prepared.path) == (None, "none", stale)
+    assert prepared.detail.startswith(f"stale: it pins release {ENSEMBL_SPLIT_RELEASE} over other files")
+    assert prepared.detail.endswith(
+        f"`just-dna-enricher cache rebuild --only ensembl_rsid_index --out {tmp_path / 'base'}`"
     )
     after = {
         path: (path.read_bytes(), path.stat().st_mtime_ns)
@@ -237,6 +240,62 @@ def test_a_moved_parent_never_rebuilds_the_index_it_is_refused_once_and_the_core
         if path.is_file()
     }
     assert after == before, "nothing rebuilt the index"
+
+
+@pytest.mark.parametrize("arm", ["current", "moved", "unpinnable"])
+def test_lane_status_calls_a_stale_index_stale_as_the_reader_refuses_it(
+    no_ambient_caches, ensembl_split_core, tmp_path: Path, arm: str
+) -> None:
+    """One verdict, two readers (review round 1, item 11): the status of the index beside a core says `stale`
+    exactly where the reader refuses the index for that core. A core that cannot be pinned is no moved parent:
+    the reader scans it without a word, and the status stays `present` (`@a-derived-lane-has-parents-…`)."""
+    built_from = tmp_path / "ensembl_variations"
+    index = build_rsid_index(ensembl_split_core(built_from), tmp_path / "ensembl_rsid_index").out_dir
+    core = built_from if arm != "moved" else ensembl_split_core(tmp_path / "moved", drop=(MULTI_ALT,))
+    if arm == "unpinnable":
+        (core / "manifest.json").unlink()
+    lane = LANES_BY_NAME["ensembl_rsid_index"]
+    locations_ = {"ensembl": core, "ensembl_rsid_index": index}
+    (status,) = caches.lane_status([lane], locations=locations_)
+    read = resolver._rsid_index_beside(core, index)
+    assert status.path == index
+    if arm == "moved":
+        assert (status.state, read) == ("stale", None)
+        assert status.stale == (
+            f"it pins release {ENSEMBL_SPLIT_RELEASE} over other files than the Ensembl core at {core} holds"
+        )
+    else:
+        assert status.state == "present" and status.stale is None
+        assert (read is not None) == (arm == "current")
+    both = caches.lane_status([LANES_BY_NAME["ensembl"], lane], locations=locations_)
+    assert both[1] == status, "the parent's path is the one this call resolved for it"
+
+
+def test_cache_status_prints_a_stale_index_as_stale_with_its_rebuild(
+    no_ambient_caches, monkeypatch: pytest.MonkeyPatch, ensembl_split_core, tmp_path: Path
+) -> None:
+    """The recipe's (b): a fixture-sized core moved under its index in a temp base reads `stale`."""
+    base = tmp_path / "base"
+    built = build_rsid_index(
+        ensembl_split_core(tmp_path / "older", drop=(MULTI_ALT,)), base / "ensembl_rsid_index"
+    )
+    core = ensembl_split_core(base / "ensembl_variations")
+    monkeypatch.setenv(locations.CACHE_BASE_VAR, str(base))
+    monkeypatch.setenv(locations.ENSEMBL_CACHE_VAR, str(core))
+    monkeypatch.setenv(locations.ENSEMBL_RSID_INDEX_CACHE_VAR, str(built.out_dir))
+    result = CliRunner().invoke(app, ["cache", "status"])
+    assert result.exit_code == 0, result.output
+    line = " ".join(
+        next(
+            row for row in result.output.splitlines() if row.strip().startswith("ensembl_rsid_index")
+        ).split()
+    )
+    assert line.startswith(f"ensembl_rsid_index stale {built.out_dir}")
+    assert (
+        f"it pins release {ENSEMBL_SPLIT_RELEASE} over other files than the Ensembl core at {core} holds"
+        in line
+    )
+    assert line.endswith(f"`just-dna-enricher cache rebuild --only ensembl_rsid_index --out {base}`")
 
 
 def test_an_index_that_cannot_be_read_is_no_answer_and_the_core_is_scanned(
