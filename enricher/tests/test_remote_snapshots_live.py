@@ -24,6 +24,6 @@ def test_one_ensembl_position_and_one_clinvar_rsid_over_the_hub(
     assert "rs429358" in {row["id"] for row in ensembl.rows}
     assert {(row["chrom"], row["start"]) for row in clinvar.rows} == {("19", 44908684)}
     for answer in (ensembl, clinvar):
-        assert answer.route == "hf" and answer.served_from is None
-        assert re.fullmatch(r"[0-9a-f]{40}", answer.revision or "")
-        assert answer.release
+        assert answer.route.route == "hf" and answer.route.served_from is None
+        assert re.fullmatch(r"[0-9a-f]{40}", answer.route.revision or "")
+        assert answer.route.release

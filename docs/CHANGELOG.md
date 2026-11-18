@@ -126,8 +126,8 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   the registry's proxy and then Hugging Face, for a box with no local snapshot. **Off unless a caller holds one**:
   a new `LookupClients` field, `snapshots`, that nothing builds lazily, so every existing call reads and fetches
   exactly what it did. `lookup(lane, table, keys)` answers the proxy's contract on both routes (identifier keys,
-  ORed within a column, ANDed across, `chrom` with `start` paired) as a `RemoteAnswer(rows, route, release,
-  served_from, revision)`. The proxy is `proxy_url=`, else `$JUST_DNA_SNAPSHOT_PROXY_URL`, unset by default; it is
+  ORed within a column, ANDed across, `chrom` with `start` paired) as a `RemoteAnswer(rows, route)`, whose `route` is a
+  `RemoteRoute(route, release, served_from, revision)`. The proxy is `proxy_url=`, else `$JUST_DNA_SNAPSHOT_PROXY_URL`, unset by default; it is
   asked in requests of at most 100 values and one chromosome, a truncated reply is halved down to one key, and it
   falls through to Hugging Face on a 429, 503, 504, 404 `lane_not_available`, a timeout or a connection error.
   Hugging Face is read through duckdb's `httpfs` at the commit `main` names at the lane's first read, one
@@ -155,8 +155,8 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   beside the raising reader and with its semantics (an absent or unreadable snapshot raises `CivicDraftError`;
   the refutation check keeps its skipping reader). Read in duckdb, keyed as asked; a gene is compared by
   `gene_key`, an rsID as the snapshot spells it. `civic` is now remote-eligible (table `civic`, by `gene` or
-  `rsid`), one SQL body over the local file and a remote answer's rows. Known divergence: a remote route compares
-  a gene exactly, so `brca1` is answered locally and not remotely.
+  `rsid`), one SQL body over the local file and a remote answer's rows. A gene compares by `gene_key` on every route
+  (`key_compare.KEY_COMPARES`, below).
 - **`clinvar_gkm.lookup_variants` and `clinvar_gkm.lookup_rsids`** (RM431 ask 5, S145): ClinVar-GKM's keyed
   functions, in duckdb, beside `ClinVarGkmWitness.load` (which stays the polars loader): every placement at a
   position or under an rsID, keyed as asked; an absent or unreadable slice raises `ClinVarGkmError`.
@@ -166,14 +166,14 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   functions, in duckdb, beside `load_snapshot` (which stays the whole-table loader): every annotation row under an
   rsID or naming a gene (a member of the `;`-joined `gene` cell, by `gene_key`), keyed as asked; an absent or
   unreadable snapshot raises `ClinPgxEnrichmentError`. One SQL body over the local file and a remote answer's rows
-  (table `annotations`, by `rsid` or `gene`). Known divergence: a remote route compares the whole cell, so a gene
-  in another case or inside a multi-gene cell is answered locally only.
+  (table `annotations`, by `rsid` or `gene`). A gene compares member by member, by `gene_key`, on
+  every route (`key_compare.KEY_COMPARES`, below).
 - **`drug_labels.lookup_genes`** (RM431 ask 5, the pm's reading 4, S145): the drug labels' keyed function, in
   duckdb, beside `load_drug_labels` (unchanged): every label naming a gene (a member of the `genes` cell, by
   `gene_key`), keyed as asked, every column; an absent snapshot raises `DrugLabelUnavailable`, an unreadable one
   `DrugLabelError`. One SQL body over the local file and a remote answer's rows (table `drug_labels`, by
-  `genes`). Known divergence: a remote route compares the whole cell, so a gene on a label naming several
-  (a quarter of the labels) is answered locally only.
+  `genes`). A gene compares member by member, by `gene_key`, on every
+  route (`key_compare.KEY_COMPARES`, below).
 - **A group re-pulled under its recorded declaration says which one** (RM437 follow-up, the pm's reading 1): the
   pull record keeps when each group's use was declared (`declared_at`, `download.PULL_RECORD_DECLARED_AT_KEY`),
   and a re-pull or skip gated by the recorded use rather than the call's logs `under the use recorded for it,
@@ -204,6 +204,41 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   paths explicitly (the registry's proxy, S154) hands over the rsID index's directory beside the core's. Given,
   it is the only place looked in, never the environment; the index is still read only when it pins the core, and
   the note and the stale refusal name the place passed and say to pass the rebuilt one, not to export a variable.
+- **`RemoteAnswer(rows, route: RemoteRoute)`** (RM430 follow-up, the pm's 2026-11-18 finding): an answer's `route`
+  is the one `RemoteRoute` record (route, release, `served_from`, revision) rather than a copy of its four fields,
+  and `RemoteAnswer.provenance()` is gone with the copy. Settled before 0.9 ships, since a public shape is permanent
+  within the major.
+- **A wrong request raises out of `lookup_variant`** (RM430 follow-up, the pm's reading 5): a 422 from the proxy, an
+  unknown lane, table or column, or a closed holder raises the holder's `ValueError` through `lookup_variant`,
+  where it used to become an `unchecked` warning finding. It is wrong on every route, and the finding reported a
+  caller's or our own defect as an outage. A route that could not be asked is still a finding.
+- **`RemoteSnapshots.close()` waits for the lookups in flight** (RM430 follow-up, the pm's 2026-11-18 finding): it
+  takes the holder's lock, refuses every lookup from then on with `ValueError` (`remote.HOLDER_CLOSED`), and closes
+  its clients and connections only once the lookups already running have finished. Before, a `close()` racing a
+  lookup closed the proxy's client under it and the lookup's next request leaked `httpx`'s `RuntimeError`.
+- **An AST walk holds that only `remote.remote_url` hands duckdb a URL** (RM430 follow-up, the pm's 2026-11-18
+  finding): the test fence's duckdb case wraps that one function, so the walk is the fence's own guard. No duckdb
+  call in the enricher carries a URL literal, no module but `remote` loads `httpfs` explicitly, and in `remote`
+  duckdb reads a file only through SQL and every `read_parquet` binds files that `_file_url` built through
+  `remote_url`. Its limit: duckdb autoloads `httpfs`, so outside `remote` only URL literals are seen. Each rule is shown failing on a sample.
+- **The remote compare is the local compare, on every lane** (RM430 follow-up, the pm's 2026-11-18 placing of the
+  `;`-joined cell): Hugging Face compared a key with the whole cell exactly, so a gene in another case (CIViC,
+  ClinPGx, cpic) or inside a joined cell (ClinPGx 399 of 16,117 rows, the drug labels 361 of 1,433) was answered
+  locally and missing remotely, with nothing said. New: the leaf module `key_compare`, with `KeyCompare`
+  (`fold`, `separator`; `key`, `members`, `predicate`, `parameter`, `exact`, `described`), `EXACT`, and
+  `KEY_COMPARES` (lane → table → column), the one registry the local SQL of `clinpgx`, `drug_labels`,
+  `civic_draft` and `cpic` is now built from, read with `lane_compare`; `remote.RemoteLane.compares` (the lane's
+  entry, derived from its name), `.compare()` and `.proxy_compares()`, carrying the same objects to the holder. The registry's proxy compares a whole cell
+  exactly, so a key a lane folds or splits is not sent to it and Hugging Face answers it (route `hf`); with
+  Hugging Face off that is could-not-ask, saying why. cpic's local gene compare also trims (`lower(trim(gene))`),
+  as every other folded compare does, and `partner_genes` reads it in both its queries. One walk over `REMOTE_LANES`, local against remote on Hugging Face and
+  again behind a `MockTransport` registry, holds it; the three strict `xfail`s in `test_remote_keyed_lanes.py` are
+  passing tests.
+- **`lookup_variant(..., rsid_index=None)` and `enrich(..., rsid_index=None)`** (RM431, the pm's 2026-11-18
+  reading 1): the rsID index's seam on every entry point that reads the index, beside `ensembl_cache`, since the
+  registry's hints call `lookup_variant` and its enrich step calls `enrich`, neither `lookup_loci`. Each passes
+  it down to `resolver.lookup_loci(..., rsid_index=)`, with its semantics: given, it is the only place an index
+  is looked for, never the environment; `None` keeps the lane's ladder.
 
 ## 2026-11-18 — RM453: a mirrored site where no spelling was witnessed keeps both spellings (patch, a declared corrected derivation, on `main`)
 

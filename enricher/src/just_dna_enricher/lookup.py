@@ -25,6 +25,7 @@ Offline is a first-class answer, not a failure: a check that could not run repor
 `absent`. `None` is not `False` anywhere in this file.
 """
 
+import functools
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -206,6 +207,7 @@ def lookup_variant(
     clinvar_cache: Path | None = None,
     pubmind_cache: Path | None = None,
     clients: LookupClients | None = None,
+    rsid_index: Path | None = None,
 ) -> VariantHint:
     """Answer "what is this variant?" — validity, coordinates, alleles, frequencies, clinical calls.
 
@@ -221,6 +223,13 @@ def lookup_variant(
     REST: the proxy, then Hugging Face, read by the same SQL the local reader runs. Ensembl is asked
     by position only; ClinVar by rsID and by position, and for its clinical calls. Each lane answered
     remotely says where in `routes`. Never under `offline=True`.
+
+    `rsid_index` is the `ensembl_rsid_index` lane's directory, beside `ensembl_cache` (0.9, RM431), for a
+    host that passes its lanes' paths explicitly (the registry's hints): handed to `resolver.lookup_loci`,
+    so given it is the only place an index is looked for, never the environment; `None` keeps the lane's
+    ladder. An index is read only when it pins the core, and the answer is the scan's either way. A route that could not be asked is a
+    `warning` finding; a request a route refuses as wrong (a 422, an unknown table or column, a closed
+    holder) raises its `ValueError`, since it is wrong on every route.
     """
     hint = VariantHint(rsid=rsid)
     owned = clients is None
@@ -229,7 +238,9 @@ def lookup_variant(
     # keeps zero egress at zero.
     remote = None if offline else clients.snapshots
     try:
-        _lookup_from_cache(hint, rsid, chrom, start, ref, alts, ensembl_cache, clinvar_cache, remote)
+        _lookup_from_cache(
+            hint, rsid, chrom, start, ref, alts, ensembl_cache, clinvar_cache, remote, rsid_index=rsid_index
+        )
         if not offline:
             # The live coordinate link, in `enrich()`'s own order: caches first, live Ensembl for what
             # they missed. Without it this surface was *silently weaker than the pass it advises on* —
@@ -297,6 +308,8 @@ def _lookup_from_cache(
     ensembl_cache: Path | None,
     clinvar_cache: Path | None,
     remote: RemoteSnapshots | None = None,
+    *,
+    rsid_index: Path | None = None,
 ) -> None:
     """The snapshot links: the Ensembl snapshot, then ClinVar, in `enrich()`'s own order.
 
@@ -307,7 +320,11 @@ def _lookup_from_cache(
     reader SQL over the rows the remote route answered, so the link reads alike on every route."""
     positions = [(chrom, start, ref, alts)] if chrom is not None and start is not None else []
     links = (
-        (resolve_ensembl_reference(ensembl_cache), lookup_loci, "ensembl"),
+        (
+            resolve_ensembl_reference(ensembl_cache),
+            functools.partial(lookup_loci, rsid_index=rsid_index),
+            "ensembl",
+        ),
         (resolve_clinvar_reference(clinvar_cache), clinvar_lookup_loci, "clinvar"),
     )
     for reference, lookup, label in links:
@@ -409,26 +426,26 @@ def _remote_loci(
         _record_route(hint, label, answer)
     rows = [row for answer in answers for row in answer.rows]
     first = answers[0]
-    searched = f"the ClinVar snapshot read over {first.route} (release {first.release or 'unstated'})"
+    searched = (
+        f"the ClinVar snapshot read over {first.route.route} (release {first.route.release or 'unstated'})"
+    )
     return clinvar._loci_from_rows(rows, [rsid] if rsid else [], positions, searched)
 
 
 def _ask_remote(remote: RemoteSnapshots, label: str, keys: dict[str, list]) -> RemoteAnswer:
-    """`remote.lookup` for a link's table. A request a route refuses as wrong is unchecked here too.
+    """`remote.lookup` for a link's table.
 
-    `ValueError` is the holder's word for a request no route would answer (a table the repo no longer
-    names, a closed holder); for an advisory lookup that is an unanswered question, never a traceback,
-    so it arrives as the one could-not-ask type, naming no route.
+    A request a route refuses as wrong (a 422, an unknown lane, table or column, a closed holder) raises
+    its `ValueError` out of `lookup_variant` (the pm, 2026-11-18): it is wrong on every route, a
+    caller's or our own defect, and an `unchecked` finding would report it as an outage. Only
+    `SnapshotRouteUnavailable`, a route that could not be asked, becomes a finding.
     """
-    try:
-        return remote.lookup(label, _REMOTE_TABLES[label], keys)
-    except ValueError as exc:
-        raise SnapshotRouteUnavailable(label, None, f"the request was refused as wrong: {exc}") from exc
+    return remote.lookup(label, _REMOTE_TABLES[label], keys)
 
 
 def _record_route(hint: VariantHint, label: str, answer: RemoteAnswer) -> None:
     """Note where `label` was answered; a second route in the same lookup is said, never folded."""
-    route = answer.provenance()
+    route = answer.route
     hint.routes = hint.routes if hint.routes is not None else {}
     known = hint.routes.setdefault(label, route)
     if known != route:

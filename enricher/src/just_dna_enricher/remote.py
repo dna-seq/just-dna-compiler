@@ -29,9 +29,11 @@ new holder.
 
 **Could-not-ask is one type, `SnapshotRouteUnavailable`**, never an empty answer
 (`@unreachable-not-absent`). The holder translates duckdb's HTTP and I/O errors and `httpx`'s errors
-into it. A request the routes would refuse as wrong (an unknown key column, an Ensembl key with no
-position, the proxy's 422) raises `ValueError`, because asking another route would get the same
-refusal. A licence the caller's declaration cannot meet raises `licensing.LicenseRefusal`.
+into it. A request the routes would refuse as wrong (an unknown lane, table or key column, an Ensembl
+key with no position, the proxy's 422, a closed holder) raises `ValueError`, because asking another
+route would get the same refusal; it is a caller's or our own defect, so nothing above the holder
+turns it into could-not-ask either. A licence the caller's declaration cannot meet raises
+`licensing.LicenseRefusal`.
 
 **Every remote URL is built by `remote_url`**, the one function the test suite's network fence wraps:
 duckdb opens its sockets in C++, where the fence's Python socket patch cannot see them. That is also why
@@ -44,7 +46,7 @@ import json
 import logging
 import re
 import threading
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from types import TracebackType
 from typing import Any, Self
@@ -63,6 +65,7 @@ from just_dna_format.vrs import normalize_chrom
 from pydantic import ValidationError
 
 from just_dna_enricher.caches import LANES_BY_NAME
+from just_dna_enricher.key_compare import KEY_COMPARES, KeyCompare, lane_compare
 from just_dna_enricher.licensing import check_declared_use
 from just_dna_enricher.locations import SNAPSHOT_REPO_IDS, SnapshotManifest, env_value
 from just_dna_enricher.net import GONE, EndpointRetired
@@ -90,6 +93,9 @@ PROXY_FALL_THROUGH_STATUSES = frozenset({429, 503, 504})
 PROXY_LANE_NOT_AVAILABLE = "lane_not_available"
 #: The proxy's 404 codes that name a wrong request rather than an absent lane: raised like a 422.
 PROXY_WRONG_REQUEST_404 = frozenset({"unknown_lane", "unknown_table"})
+
+#: What a lookup on a closing or closed holder raises, as `ValueError`: a wrong request, never could-not-ask.
+HOLDER_CLOSED = "this RemoteSnapshots is closed; open a new one"
 
 #: The routes a remote answer can come from: the registry's proxy, or the lane's Hugging Face repo.
 ROUTE_PROXY = "proxy"
@@ -185,18 +191,14 @@ class RemoteRoute:
 
 @dataclass(frozen=True)
 class RemoteAnswer:
-    """The rows one remote lookup matched, and where they came from (`route`, `release`, `served_from`,
-    `revision`, as `RemoteRoute` reads them). `rows` are the table's own columns, in a stable order."""
+    """The rows one remote lookup matched, and where they came from.
+
+    `rows` are the table's own columns, in a stable order. `route` is the one record of where they came
+    from (a `RemoteRoute`: the route, its release label, `served_from`, the Hub revision), never a copy
+    of its fields, so the two shapes cannot drift apart within the major."""
 
     rows: list[dict[str, Any]]
-    route: str
-    release: str | None = None
-    served_from: str | None = None
-    revision: str | None = None
-
-    def provenance(self) -> RemoteRoute:
-        """This answer's route, label, `served_from` and revision, without the rows."""
-        return RemoteRoute(self.route, self.release, self.served_from, self.revision)
+    route: RemoteRoute
 
 
 @dataclass(frozen=True)
@@ -207,10 +209,33 @@ class RemoteLane:
     `needs_position`: a key with no `chrom` + `start` is refused before any route is asked. Ensembl's
     alone: its rsID column is about 6.1 GB over 25 files and no row group prunes by it, so the proxy
     refuses it (`remote_needs_position`) and Hugging Face would scan about 10.7 GB (the trial).
+
+    `compares`: table -> key column -> `key_compare.KeyCompare`, the lane's entry in
+    `key_compare.KEY_COMPARES`, the registry its keyed functions' local SQL is built from, so a remote read
+    compares a key as the local one does: by `gene_key`, member by member of a `;`-joined cell. Derived
+    from the lane's name, never restated here. A column it does not name compares the whole cell exactly. The registry's proxy compares every key exactly, so a key with any
+    other compare is not sent to it (`proxy_compares`) and Hugging Face answers it.
     """
 
     name: str
     needs_position: bool = False
+
+    @property
+    def compares(self) -> Mapping[str, Mapping[str, KeyCompare]]:
+        """The lane's entry in `key_compare.KEY_COMPARES`: table -> column -> compare; empty when exact."""
+        return KEY_COMPARES.get(self.name, {})
+
+    def compare(self, table: str, column: str) -> KeyCompare:
+        """How `column` of `table` is compared with a key: the lane's declaration, else exactly."""
+        return lane_compare(self.name, table, column)
+
+    def proxy_compares(self, table: str, columns: Iterable[str]) -> bool:
+        """Whether the registry's proxy compares each of `columns` as the local reader does.
+
+        It compares a whole cell exactly, so it does only where the lane declares nothing else. Asked
+        for a folded or a joined column it would return fewer rows than the local route and say
+        nothing, an absence where the row exists (`@unreachable-not-absent`)."""
+        return all(self.compare(table, column).exact for column in columns)
 
 
 #: The lanes a holder reads remotely. Each needs a published repo; a lane without one (PharmVar and
@@ -392,7 +417,9 @@ class RemoteSnapshots:
 
     Thread-safe: a lane's pin and connection are made once, under that lane's own lock (so a slow first
     read of one lane holds up no other), and every query runs on its own cursor of the lane's
-    connection. Each connection lives as long as the holder. Close it when no query is running.
+    connection. Each connection lives as long as the holder. `close()` takes the holder's lock, refuses
+    every lookup from then on (`ValueError`, `HOLDER_CLOSED`) and waits for the lookups already running
+    to finish before it closes a client or a connection under them.
     """
 
     def __init__(
@@ -410,6 +437,9 @@ class RemoteSnapshots:
         self.declared_use = declared_use
         self.hf_base_url = (hf_base_url or HF_BASE_URL).rstrip("/")
         self._lock = threading.Lock()
+        #: Signalled, under `_lock`, when the last lookup in flight finishes: what `close()` waits on.
+        self._idle = threading.Condition(self._lock)
+        self._in_flight = 0
         self._pins: dict[str, _Pin] = {}
         self._pin_locks: dict[str, threading.Lock] = {}
         self._closed = False
@@ -432,15 +462,25 @@ class RemoteSnapshots:
         self.close()
 
     def close(self) -> None:
-        """Close every connection and client the holder opened; its pins end with it."""
+        """Close every connection and client the holder opened; its pins end with it.
+
+        Takes the holder's lock: from here on a lookup raises `ValueError` (`HOLDER_CLOSED`), and the
+        lookups already running finish before anything they read through is closed, so none of them
+        meets a closed client and a transport error that is not its route's. It waits as long as they
+        run, a whole-table Hub scan included; a wait that is interrupted (`KeyboardInterrupt`) still
+        closes everything before the interruption propagates, which is the old race, taken knowingly."""
         with self._lock:
             self._closed = True
-            for pin in self._pins.values():
-                pin.connection.close()
-            self._pins.clear()
-            self._hub.close()
-            if self._proxy is not None:
-                self._proxy.close()
+            try:
+                while self._in_flight:
+                    self._idle.wait()
+            finally:
+                for pin in self._pins.values():
+                    pin.connection.close()
+                self._pins.clear()
+                self._hub.close()
+                if self._proxy is not None:
+                    self._proxy.close()
 
     # ── the one query ───────────────────────────────────────────────────────────────────────────
 
@@ -456,11 +496,36 @@ class RemoteSnapshots:
         if spec is None:
             raise ValueError(f"{lane!r} is not read remotely; lanes that are: {', '.join(REMOTE_LANES)}")
         wanted = _read_keys(spec, keys)
-        if self._closed:
-            raise ValueError("this RemoteSnapshots is closed; open a new one")
+        with self._lock:
+            if self._closed:
+                raise ValueError(HOLDER_CLOSED)
+            self._in_flight += 1
+        try:
+            return self._lookup(lane, table, wanted)
+        finally:
+            with self._lock:
+                self._in_flight -= 1
+                if not self._in_flight:
+                    self._idle.notify_all()
+
+    def _lookup(self, lane: str, table: str, wanted: _Keys) -> RemoteAnswer:
+        """`lookup` past its checks, counted in flight so `close()` waits for it."""
         self._admit(lane)
+        spec = REMOTE_LANES[lane]
         fell_through: str | None = None
-        if self._proxy is not None:
+        passed_over: str | None = None
+        if self._proxy is not None and not spec.proxy_compares(table, wanted.plain):
+            compared = "; ".join(
+                f"{column} {spec.compare(table, column).described}"
+                for column in sorted(wanted.plain)
+                if not spec.compare(table, column).exact
+            )
+            passed_over = (
+                f"the registry's proxy compares a whole cell exactly, and {lane}/{table} compares "
+                f"{compared}, as its local reader does, so the proxy is not asked"
+            )
+            logger.info("%s: %s; asking Hugging Face", lane, passed_over)
+        elif self._proxy is not None:
             try:
                 answer = self._ask_proxy(lane, table, wanted)
             except SnapshotRouteUnavailable as exc:
@@ -474,6 +539,8 @@ class RemoteSnapshots:
         if not self.huggingface:
             if fell_through is not None:
                 raise SnapshotRouteUnavailable(lane, ROUTE_PROXY, f"{fell_through}, and Hugging Face is off")
+            if passed_over is not None:
+                raise SnapshotRouteUnavailable(lane, None, f"{passed_over}, and Hugging Face is off")
             raise SnapshotRouteUnavailable(lane, None, "no proxy is configured and Hugging Face is off")
         try:
             answer = self._ask_hf(lane, table, wanted)
@@ -493,10 +560,10 @@ class RemoteSnapshots:
             lane,
             table,
             len(answer.rows),
-            answer.route,
-            answer.release,
-            answer.served_from,
-            answer.revision,
+            answer.route.route,
+            answer.route.release,
+            answer.route.served_from,
+            answer.route.revision,
         )
 
     def _admit(self, lane: str) -> None:
@@ -522,11 +589,15 @@ class RemoteSnapshots:
         rows = [row for reply in replies for row in reply["rows"]]
         return RemoteAnswer(
             rows=_stable(rows),
-            route=ROUTE_PROXY,
-            release=_agreed(lane, "release", [reply.get("release") for reply in replies]),
-            served_from=", ".join(sorted({str(r["served_from"]) for r in replies if r.get("served_from")}))
-            or None,
-            revision=_agreed(lane, "revision", [reply.get("revision") for reply in replies]),
+            route=RemoteRoute(
+                route=ROUTE_PROXY,
+                release=_agreed(lane, "release", [reply.get("release") for reply in replies]),
+                served_from=", ".join(
+                    sorted({str(r["served_from"]) for r in replies if r.get("served_from")})
+                )
+                or None,
+                revision=_agreed(lane, "revision", [reply.get("revision") for reply in replies]),
+            ),
         )
 
     def _proxy_untruncated(
@@ -619,15 +690,18 @@ class RemoteSnapshots:
                 # checked on the rows that came back, so a file holding more cannot answer for it.
                 forms = set(_chrom_forms(request["chrom"][0]))
                 by_position = {k: v for k, v in request.items() if k != "chrom"}
-                found = self._hf_rows(lane, pin, group, by_position, schema, position)
+                found = self._hf_rows(lane, table, pin, group, by_position, schema, position)
                 rows.extend(row for row in found if str(row.get("chrom")) in forms)
             else:
-                rows.extend(self._hf_rows(lane, pin, group, request, schema, position))
-        return RemoteAnswer(rows=_stable(rows), route=ROUTE_HF, release=pin.release, revision=pin.revision)
+                rows.extend(self._hf_rows(lane, table, pin, group, request, schema, position))
+        return RemoteAnswer(
+            rows=_stable(rows), route=RemoteRoute(ROUTE_HF, release=pin.release, revision=pin.revision)
+        )
 
     def _hf_rows(
         self,
         lane: str,
+        table: str,
         pin: _Pin,
         files: Sequence[str],
         request: Mapping[str, list[Any]],
@@ -643,6 +717,12 @@ class RemoteSnapshots:
                 # read the whole chromosome file (66 requests and 65 MB measured on chr19, against 3 and
                 # 5.4 MB with literals). `int()` is what makes a literal safe to render.
                 clauses.append(f'"{position}" IN ({", ".join(str(int(v)) for v in values)})')
+                continue
+            compare = REMOTE_LANES[lane].compare(table, column)
+            if not compare.exact:
+                # The lane's local compare, the same object its keyed function's SQL is built from.
+                clauses.append(compare.predicate(column))
+                params.append(compare.parameter(values))
                 continue
             asked = (
                 [form for v in values for form in _chrom_forms(v)]
@@ -692,8 +772,6 @@ class RemoteSnapshots:
     def _pinned(self, lane: str) -> _Pin:
         """The lane's pin, read once per holder under the lock: its commit, files, label and connection."""
         with self._lock:
-            if self._closed:
-                raise ValueError("this RemoteSnapshots is closed; open a new one")
             pin = self._pins.get(lane)
             if pin is not None:
                 return pin
@@ -705,10 +783,8 @@ class RemoteSnapshots:
             if pin is not None:
                 return pin
             pin = self._pin(lane)
+            # Made in flight, so `close()` is still waiting for this lookup and closes the pin after it.
             with self._lock:
-                if self._closed:
-                    pin.connection.close()
-                    raise ValueError("this RemoteSnapshots is closed; open a new one")
                 self._pins[lane] = pin
             return pin
 

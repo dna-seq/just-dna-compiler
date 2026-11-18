@@ -488,6 +488,7 @@ core was ported, not depended on, dropping `fastmcp`/`eliot`). In the workspace:
 | `strchive_build` | RM165 builder: download `STRchive-loci.json` + `release.json`. Core `httpx` only, no parquet and no `[dev]` extra | `httpx` |
 | `strchive_draft` | RM165: STRchive → `repeat_alleles.csv` **partial** rows — identity only, bands left to a human | `strchive`, compiler `draft` |
 | `ensembl` | live Ensembl REST (the beta GraphQL leg was retired on 2026-11-04), tenacity | `httpx`, `tenacity` |
+| `key_compare` | **0.9** (the RM430 follow-up): how each keyed function compares a key with a cell on every route, `KeyCompare` (`fold` by `gene_key`, `separator` for a joined cell) and `EXACT`, and `KEY_COMPARES`, the one registry by lane, table and column that the keyed functions' local SQL and the remote holder both read (`lane_compare`). A leaf | format (`spelling`) |
 | `ensembl_rsid_index_build` | **0.9** (RM431 ask 4): the Ensembl rsID index, rsID → (chrom, start) sorted by rsID, built in duckdb from the split core on disk (`build_rsid_index`), and `core_pin`, what an index pins of its core (the manifest's `release_id` and a digest of its attested `data/` files). A derived lane, local only; `resolver.lookup_loci` reads it | `duckdb`, `locations` |
 | `upload` | publisher surface — push a compiled module or a reference snapshot to HF (`[dev]`) | `huggingface_hub` (lazy) |
 | `litvar` | RM167: LitVar2/PubTator3 literature coverage per locus, **with the tier that answered** (allele node / position node / absent). Reports only; writes no row and no `SourceRow` | `httpx`, `tenacity`, `clingen_allele` |
@@ -740,7 +741,7 @@ That is the documented "inject what you already hold" escape.
 ## `enrich()` — the resolver chain
 
 ```python
-enrich(spec_dir, *, mode="best_effort", offline=False, ensembl_cache=None,
+enrich(spec_dir, *, mode="best_effort", offline=False, ensembl_cache=None, rsid_index=None,
        clinvar_cache=None, use_clinvar=True, use_gnomad=True, download=True,
        genome_build=None, write=True, mint_vrs=True,
        verify_ref=True, verify_clinsig=True, verify_rsids=True, verify_datasets=True,
@@ -1886,8 +1887,12 @@ group, and a lookup by rsID pruned nothing (every row group's `id` spans rs1 to 
   never the environment, and an index there is read only when it pins `reference`, as above. With no index
   there, or a stale one, the note and the refusal name the place passed, and an instruction for a place not
   named `ensembl_rsid_index` says to pass `<dir>/ensembl_rsid_index` as `rsid_index` rather than to export
-  `$JUST_DNA_ENSEMBL_RSID_INDEX_CACHE`. `None` keeps the ladder above. `lookup_variant` and `enrich` take no
-  such path in 0.9: they read the index from the environment.
+  `$JUST_DNA_ENSEMBL_RSID_INDEX_CACHE`. `None` keeps the ladder above. **Every Python entry point that reads
+  the index takes the same seam** (the pm, 2026-11-18: the registry's hints call `lookup_variant` and its enrich
+  step calls `enrich`, neither `lookup_loci`): `lookup_variant(..., ensembl_cache=…, rsid_index=…)` and
+  `enrich(spec_dir, *, ensembl_cache=…, rsid_index=…)` pass it down to `lookup_loci`'s, with the same
+  semantics. The CLI commands (`hint variant`, `enrich`) take no `--rsid-index` in 0.9: they read the index
+  from the environment.
 
 **MANE's ❓ is an unestablished permission, and the third column says so.** MANE's bytes carry a
 *policy* — NCBI places no restrictions on use or distribution and, in the same paragraph, declines to
@@ -2453,7 +2458,7 @@ from just_dna_enricher.remote import RemoteSnapshots
 
 with RemoteSnapshots(declared_use="non_commercial") as snapshots:      # proxy from the environment, HF on
     answer = snapshots.lookup("clinvar", "clinvar", {"rsid": ["rs334"]})
-    answer.route, answer.release, answer.revision                     # ("hf", "clinvar_2026-11-01", "<commit>")
+    answer.route                     # RemoteRoute(route="hf", release="clinvar_2026-11-01", served_from=None, revision="<commit>")
     hint = lookup_variant(chrom="19", start=44908684, clients=LookupClients(snapshots=snapshots))
     hint.routes                                                       # {"ensembl": RemoteRoute(...), ...}
 ```
@@ -2499,8 +2504,8 @@ with RemoteSnapshots(declared_use="non_commercial") as snapshots:      # proxy f
   bound integer parameters prune no row group in duckdb, so one Ensembl position read its whole chromosome
   file that way (65 MB on chr19, against about 5 MB). No retry inside a call (`http_retries = 0`); a 429 is could-not-ask
   naming the Hub's quota window (3,000 requests per 5 minutes per IP, anonymous).
-- **Where an answer came from.** `RemoteAnswer(rows, route, release, served_from, revision)`;
-  `answer.provenance()` is the same without the rows, a `RemoteRoute`. One release per route per holder:
+- **Where an answer came from.** `RemoteAnswer(rows, route)`, whose `route` is a `RemoteRoute(route,
+  release, served_from, revision)`: one record, never a copy of its fields. One release per route per holder:
   `main` moving mid-session does not move a holder's Hugging Face reads, and a new holder reads the new
   commit. A 429 can send some of a session's lookups to the Hub and others to the proxy, so each answer
   carries its own. This traces an answer; it does not detect two copies under one label with different
@@ -2509,6 +2514,9 @@ with RemoteSnapshots(declared_use="non_commercial") as snapshots:      # proxy f
   (`CACHE_LANES`) go through `check_declared_use(terms, declared_use)`. A refusal raises `LicenseRefusal`;
   a skip is `SnapshotRouteUnavailable` with no route and the skip's reason. A lane whose registry entry
   states no terms is not gated, as `cache rebuild` reads it.
+- **Closing.** `close()` takes the holder's lock, refuses every lookup from then on (`ValueError`, the text
+  `remote.HOLDER_CLOSED`), and waits for the lookups already running before it closes a client or a
+  connection, so a lookup never meets a closed client and an `httpx` `RuntimeError`.
 - **`SnapshotRouteUnavailable`** (`lane`, `route`: `proxy`, `hf`, or `None` when no route was asked,
   `cause`) is every could-not-ask, with duckdb's or `httpx`'s error as its `__cause__`. A 410 is its
   subclass `SnapshotRouteRetired`, which `net.could_not_ask_reason` reads as `retired`, so one handler
@@ -2522,8 +2530,9 @@ with RemoteSnapshots(declared_use="non_commercial") as snapshots:      # proxy f
   each lane answered remotely to its `RemoteRoute`, and stays `None` when none was; a lane answered over
   two routes in one lookup keeps the first and says both in an `info` finding. A route that could not be
   asked is a `warning` finding (`…could not be asked remotely, so its answer is unchecked rather than
-  empty`), never an empty answer; so is a request a route refuses as wrong (a table the repo no longer
-  names, a closed holder), which `lookup` raises as `ValueError` and a lookup reports, and a remote miss names what was searched (`rsN: not in the ClinVar
+  empty`), never an empty answer. A request a route refuses as wrong (a 422, an unknown lane, table or
+  column, a closed holder) is not could-not-ask: `lookup` raises it as `ValueError` and `lookup_variant`
+  lets it out, since it is wrong on every route and a finding would report a defect as an outage. A remote miss names what was searched (`rsN: not in the ClinVar
   snapshot read over hf (release …)`).
 - **The keyed functions (RM431).** A lane RM431 made eligible is asked by the keys of its keyed function, and
   that function's SQL runs over the rows a route answers exactly as over the local files (one body per question,
@@ -2552,11 +2561,8 @@ with RemoteSnapshots(declared_use="non_commercial") as snapshots:      # proxy f
     surrounding space make no second gene) or rsID (lower case, `rs` prefixed: `334` is `rs334`), keyed as asked,
     every column, in one total order. With the raising reader's semantics (`_snapshot_rows`): an absent or
     unreadable snapshot raises `CivicDraftError` naming it. Remotely: table `civic`, keys `gene` (each as given,
-    stripped) and `rsid` (as the snapshot spells it). **Known divergence:** a remote route compares a gene
-    exactly, so a gene asked in another case than CIViC stores it (`brca1`) is answered locally and not
-    remotely; no guessed spelling is sent in its place, since HGNC symbols are not all upper case (`C9orf72`).
-    Every symbol of the 01-Nov-2026 snapshot is stored upper case. A strict `xfail` in
-    `test_remote_keyed_lanes.py` pins it until a remote route folds case.
+    stripped) and `rsid` (as the snapshot spells it). A gene is compared by its `key_compare.KEY_COMPARES` entry on every
+    route, so `brca1` answers on Hugging Face as it does locally; the proxy is not asked for a gene (below).
   - `clinvar_gkm.lookup_variants(reference, positions) -> dict[tuple[str, int], list[dict]]` and
     `clinvar_gkm.lookup_rsids(reference, rsids) -> dict[str, list[dict]]`: every placement the witness holds at
     each position (contig as `clinvar_gkm.normalize_chrom` spells it) or under each rsID (as `by_rsid` reads
@@ -2572,11 +2578,9 @@ with RemoteSnapshots(declared_use="non_commercial") as snapshots:      # proxy f
     `;`-joined `gene` cell (`KLC1;XRCC3` names both, as `draft-clinpgx --gene` reads it), compared by
     `gene_key`. `load_snapshot` stays the whole-table loader; an absent or unreadable snapshot raises
     `ClinPgxEnrichmentError`. Remotely (lane `clinpgx`, eligible since RM430, gated by ClinPGx's no-sale terms):
-    table `annotations`, keys `rsid` (as the snapshot spells it) and `gene` (each as given, stripped). **Known
-    divergence:** a remote route compares the whole `gene` cell exactly, so a gene asked in another case, and a
-    gene inside a multi-gene cell (399 of 16,117 rows on the 2026-08 snapshot), are answered locally and not
-    remotely. A strict `xfail` pins the case half; the slice holds no multi-gene cell, so that half is pinned
-    locally only.
+    table `annotations`, keys `rsid` (as the snapshot spells it) and `gene` (each as given, stripped). A gene is
+    compared by its `key_compare.KEY_COMPARES` entry on every route, member by member of the `;`-joined cell (399 of 16,117
+    rows on the 2026-08 snapshot name several); the proxy is not asked for a gene (below).
   - `drug_labels.lookup_genes(reference, genes) -> dict[str, list[dict]]` (the pm's reading 4): every
     regulator's label naming each gene, keyed as asked, every column of `drug_labels.parquet` (`LABEL_COLUMNS`,
     unparsed), in one total order. A label names a gene when a member of its `genes` cell does (`CYP2C9; VKORC1`
@@ -2584,11 +2588,37 @@ with RemoteSnapshots(declared_use="non_commercial") as snapshots:      # proxy f
     two asked genes is under both. `load_drug_labels` stays the loader the check reads. An absent snapshot raises
     `DrugLabelUnavailable`, an unreadable one `DrugLabelError`. Remotely (lane `drug_labels`, eligible since
     RM430, gated by ClinPGx's no-sale terms): table `drug_labels`, key `genes` (each gene as given, stripped).
-    **Known divergence:** a remote route compares the whole `genes` cell exactly, so a gene on a label naming
-    several (361 of 1,433 labels on the 2026-08 snapshot), and a gene asked in another case, are answered locally
-    and not remotely; a strict `xfail` pins the first with the slice's `VKORC1`.
+    A gene is compared by its `key_compare.KEY_COMPARES` entry on every route, member by member of the cell (361 of 1,433
+    labels on the 2026-08 snapshot name several); the proxy is not asked for a gene (below).
+  - **The remote compare is the local compare** (the pm, 2026-11-18, fixed as a class).
+    `key_compare.KeyCompare(fold=False, separator=None)` is how a keyed function compares a key with a cell:
+    `fold` by `spelling.gene_key` (`lower(trim(…))` in SQL), `separator` member by member of a joined cell;
+    `key_compare.EXACT` is the whole cell, byte for byte. `key`, `members(cell)`, `predicate(column, *,
+    negated=False)` (SQL over one bound `VARCHAR[]`), `parameter(values)` and `described` are the one reading of
+    it. `key_compare.KEY_COMPARES` (lane → table → column → `KeyCompare`, read with `lane_compare`) is the one
+    registry: `clinpgx` (`gene`, folded, `;`), `drug_labels` (`genes`, folded, `;`), `civic` (`gene`, folded) and
+    `cpic` (`gene` of every table, folded). The keyed functions build their local SQL from their entry, and
+    `remote.RemoteLane.compares` is the lane's entry, derived from its name, so the holder's Hugging Face SQL
+    compares as the local reader does; a column the registry does not name compares exactly on both routes.
+    `RemoteLane.compare(table, column)` reads one, and `RemoteLane.proxy_compares(table, columns)` says whether
+    the registry's proxy, which compares a whole cell exactly, compares them all as the local reader does.
+    Where it does not, the proxy is not asked and Hugging Face answers, so the answer's route is `hf`; with
+    Hugging Face off that is could-not-ask (`…the registry's proxy compares a whole cell exactly, and
+    <lane>/<table> compares <column> <how>, as its local reader does, so the proxy is not asked, and Hugging
+    Face is off`, `<how>` being the compare's `described`). A folded or split compare is a function of the
+    column, so on the Hub it prunes no row group by it; the four lanes that declare one read small tables. One walk in `test_remote_keyed_lanes.py` runs the same keys, a key in
+    another case and one inside a joined cell among them, through the local and the remote route of every lane
+    in `REMOTE_LANES`, on Hugging Face and again with a `MockTransport` registry in front, and asserts the
+    answers equal. The constraint lane's local `lookup_snapshot` compares a gene exactly, so it does remotely
+    too.
 - **`remote_url(base, *parts)`** builds every URL a holder asks; the root `conftest.py` wraps it, so a
   test that would hand duckdb a host other than this machine is refused and recorded like a socket reach.
+  The fence holds only while nothing else builds a URL duckdb opens, so an AST walk
+  (`test_the_network_is_fenced.py`) holds that: no duckdb call in the enricher carries a URL literal, no
+  module but `remote` loads `httpfs` explicitly (duckdb autoloads it on a URL by default, so outside `remote`
+  the walk sees URL literals only, not a URL held in a variable), and in `remote` duckdb reads a file only through SQL, every
+  `read_parquet` binds its files as a parameter built by `_file_url` (never rewritten in place), and
+  `_file_url` returns `remote_url(...)`.
 
 `caches.lane_status(locations=…)` takes local paths only. Handed a URL, a `Path` collapses it
 (`hf://datasets/a/b` becomes `hf:/datasets/a/b`), the lane's resolver finds no directory there, and the

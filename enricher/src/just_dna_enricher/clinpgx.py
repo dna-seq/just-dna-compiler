@@ -36,11 +36,12 @@ from just_dna_compiler.compiler import load_csv_rows
 from just_dna_format.pgx import PharmVariantRow
 from just_dna_format.snapshot import SnapshotRelease, read_release
 from just_dna_format.sources import SourceRow
-from just_dna_format.spelling import drug_key, gene_key
+from just_dna_format.spelling import drug_key
 from just_dna_format.vocab import MULTI_SEP, validate_phenotype_categories
 
 from just_dna_enricher.download import ensure_clinpgx_snapshot
 from just_dna_enricher.drafting import drafted_unchanged
+from just_dna_enricher.key_compare import lane_compare
 from just_dna_enricher.licensing import (
     CLINPGX_TERMS,
     check_declared_use,
@@ -251,6 +252,9 @@ _ANNOTATION_COLUMNS: tuple[tuple[str, str], ...] = (
 REMOTE_ANNOTATIONS_TABLE = "annotations"
 #: The separator inside a `gene` cell (`KLC1;XRCC3`), as `clinpgx_draft` splits one.
 _GENE_SEPARATOR = ";"
+#: How `lookup_genes` compares a gene with a `gene` cell, on every route: each member of the `;`-joined
+#: cell, by `gene_key` (`key_compare.KEY_COMPARES`, which the holder reads too).
+_GENE = lane_compare("clinpgx", REMOTE_ANNOTATIONS_TABLE, "gene")
 
 
 def _annotations_connection(reference: Path) -> duckdb.DuckDBPyConnection:
@@ -328,10 +332,10 @@ def _rsids_from_rows(rows: Sequence[Mapping[str, object]], rsids: Sequence[str])
 def _gene_keys(genes: Sequence[str]) -> dict[str, list[str]]:
     """The keys a remote route is asked for `genes`: each as given, stripped.
 
-    A remote route compares the whole `gene` cell exactly, where this reader compares each member of the
-    cell by `gene_key`. So a gene spelled in another case than ClinPGx stores it, and a gene inside a
-    multi-gene cell (`KLC1;XRCC3`), are answered locally and not remotely. No other spelling is sent in
-    their place, for `civic_draft._civic_gene_keys`' reason.
+    The holder compares them as this reader does (`key_compare.KEY_COMPARES`: each member of the cell, by `gene_key`),
+    so a gene in another case, or inside a multi-gene cell (`KLC1;XRCC3`), is answered on both routes. The
+    registry's proxy compares a whole cell exactly, so the holder does not ask it for this key and reads
+    Hugging Face instead (`remote.RemoteLane.proxy_compares`).
     """
     return {"gene": list(dict.fromkeys(gene.strip() for gene in genes if gene.strip()))}
 
@@ -341,13 +345,10 @@ def _genes_over(con: duckdb.DuckDBPyConnection, genes: Sequence[str]) -> dict[st
     asked = _asked_genes(genes)
     if not asked:
         return {}
-    # Each member of the cell as `gene_key` spells it (`lower(trim(…))` for the ASCII of an HGNC symbol).
-    members = f"list_transform(string_split(gene, '{_GENE_SEPARATOR}'), member -> lower(trim(member)))"
-    rows = _select_annotations(con, f"list_has_any({members}, ?::VARCHAR[])", [sorted(asked)])
+    rows = _select_annotations(con, _GENE.predicate("gene"), [_GENE.parameter(sorted(asked))])
     answer: dict[str, list[dict]] = {}
     for row in rows:
-        named = dict.fromkeys(gene_key(m) for m in str(row["gene"]).split(_GENE_SEPARATOR) if m.strip())
-        for key in named:
+        for key in _GENE.members(row["gene"]):
             for spelling in asked.get(key, ()):
                 answer.setdefault(spelling, []).append(dict(row))
     return {gene: answer[gene] for spellings in asked.values() for gene in spellings if gene in answer}

@@ -9,6 +9,7 @@ the registry reads them, so the two routes are two independent readers of one sn
 """
 
 import ast
+import dataclasses
 import hashlib
 import json
 import threading
@@ -210,13 +211,18 @@ def test_hf_answers_clinvar_by_rsid_with_the_rows_the_local_snapshot_holds(
         answer = holder.lookup("clinvar", "clinvar", {"rsid": ["rs334"]})
     release = json.loads((clinvar_root / "release.json").read_text())["dataset"]
     assert answer.rows == remote._stable(expected)
-    assert (answer.route, answer.release, answer.served_from, answer.revision) == (
-        "hf",
-        release,
-        None,
-        COMMIT_A,
-    )
-    assert answer.provenance() == RemoteRoute("hf", release, None, COMMIT_A)
+    assert answer.route == RemoteRoute("hf", release, None, COMMIT_A)
+
+
+def test_an_answer_is_its_rows_and_the_route_record_never_a_copy_of_its_fields() -> None:
+    """`RemoteAnswer(rows, route: RemoteRoute)`: one record of where an answer came from (a35e30f5)."""
+    assert [f.name for f in dataclasses.fields(RemoteAnswer)] == ["rows", "route"]
+    assert [f.name for f in dataclasses.fields(RemoteRoute)] == [
+        "route",
+        "release",
+        "served_from",
+        "revision",
+    ]
 
 
 def test_hf_opens_only_the_chromosome_file_the_manifest_attests_for_ensembl(
@@ -227,7 +233,7 @@ def test_hf_opens_only_the_chromosome_file_the_manifest_attests_for_ensembl(
     with RemoteSnapshots(hf_base_url=loopback_hub.base_url) as holder:
         answer = holder.lookup("ensembl", "homo_sapiens", {"chrom": ["chr16"], "start": [23635706]})
     assert answer.rows and answer.rows == remote._stable(expected)
-    assert answer.release == ENSEMBL_RELEASE and answer.revision == COMMIT_A
+    assert answer.route == RemoteRoute("hf", ENSEMBL_RELEASE, None, COMMIT_A)
     parquet = {path.rsplit("/", 1)[-1] for path in loopback_hub.paths() if path.endswith(".parquet")}
     assert parquet == {"homo_sapiens-chr16.parquet"}
 
@@ -348,13 +354,13 @@ def test_a_holder_stays_on_the_commit_it_pinned_and_a_new_holder_reads_the_new_o
         first = holder.lookup("clinvar", "clinvar", {"rsid": ["rs334"]})
         loopback_hub.publish(hub_repo, moved, COMMIT_B)
         second = holder.lookup("clinvar", "clinvar", {"chrom": ["11"], "start": [5227002]})
-    assert (first.revision, second.revision) == (COMMIT_A, COMMIT_A)
-    assert first.release == second.release != "clinvar_next"
+    assert (first.route.revision, second.route.revision) == (COMMIT_A, COMMIT_A)
+    assert first.route.release == second.route.release != "clinvar_next"
     revision_reads = [p for p in loopback_hub.paths() if "/revision/" in p]
     assert len(revision_reads) == 1
     with RemoteSnapshots(hf_base_url=loopback_hub.base_url) as fresh:
         third = fresh.lookup("clinvar", "clinvar", {"rsid": ["rs334"]})
-    assert (third.revision, third.release) == (COMMIT_B, "clinvar_next")
+    assert third.route == RemoteRoute("hf", "clinvar_next", None, COMMIT_B)
 
 
 def test_threads_share_one_pin_and_each_query_gets_its_own_cursor(
@@ -449,8 +455,92 @@ def test_an_unknown_table_or_column_is_a_wrong_request(httpfs, loopback_hub, cli
 def test_a_closed_holder_refuses(loopback_hub) -> None:
     holder = RemoteSnapshots(hf_base_url=loopback_hub.base_url)
     holder.close()
-    with pytest.raises(ValueError, match="closed"):
+    with pytest.raises(ValueError) as refused:
         holder.lookup("clinvar", "clinvar", {"rsid": ["rs334"]})
+    assert str(refused.value) == remote.HOLDER_CLOSED == "this RemoteSnapshots is closed; open a new one"
+
+
+class _Gate:
+    """A proxy whose first request waits until the test opens it, so a lookup is held in flight."""
+
+    def __init__(self, proxy: Callable[[httpx.Request], httpx.Response]) -> None:
+        self.proxy = proxy
+        self.entered = threading.Event()
+        self.release = threading.Event()
+
+    def __call__(self, request: httpx.Request) -> httpx.Response:
+        if not self.entered.is_set():
+            self.entered.set()
+            assert self.release.wait(10), "the test never opened the gate"
+        return self.proxy(request)
+
+
+def test_close_waits_for_a_lookup_in_flight_and_refuses_one_that_starts_while_closing(
+    clinvar_root: Path,
+) -> None:
+    """`close()` racing a lookup leaked `httpx`'s `RuntimeError` (the pm's finding, a35e30f5).
+
+    The lookup is two proxy requests (150 rsIDs, 100 a request); `close()` arrives while the first is in
+    flight. Before, it closed the client under the lookup, whose second request raised a transport type.
+    Now closing takes the lock, waits for the lookup in flight to finish, and a lookup arriving while it
+    closes is refused with the closed-holder error."""
+    gate = _Gate(_Proxy({"clinvar": clinvar_root}))
+    holder = _with_proxy(RemoteSnapshots(proxy_url=PROXY, huggingface=False), gate)
+    rsids = ["rs334", *(f"rs{i}" for i in range(1, 150))]
+    outcome: dict[str, Any] = {}
+
+    def ask() -> None:
+        try:
+            outcome["answer"] = holder.lookup("clinvar", "clinvar", {"rsid": rsids})
+        except BaseException as exc:  # the outcome is what the test asserts on, whatever its type
+            outcome["error"] = exc
+
+    asking = threading.Thread(target=ask)
+    asking.start()
+    assert gate.entered.wait(10)
+    closing = threading.Thread(target=holder.close)
+    closing.start()
+    closing.join(0.2)
+    assert closing.is_alive(), "close() returned with a lookup in flight"
+    for _ in range(1000):  # close() sets `_closed` under the lock before it waits; never ask before it has
+        with holder._lock:
+            if holder._closed:
+                break
+        threading.Event().wait(0.01)
+    assert holder._closed
+    with pytest.raises(ValueError) as late:
+        holder.lookup("clinvar", "clinvar", {"rsid": ["rs334"]})
+    assert str(late.value) == remote.HOLDER_CLOSED
+    gate.release.set()
+    asking.join(10)
+    closing.join(10)
+    assert not asking.is_alive() and not closing.is_alive()
+    assert "error" not in outcome, outcome.get("error")
+    assert outcome["answer"].rows == remote._stable(_registry_rows(clinvar_root, {"rsid": rsids}))
+    assert outcome["answer"].rows
+    with pytest.raises(ValueError) as after:
+        holder.lookup("clinvar", "clinvar", {"rsid": ["rs334"]})
+    assert str(after.value) == remote.HOLDER_CLOSED
+
+
+@pytest.mark.parametrize("lane", sorted(REMOTE_LANES))
+def test_a_wrong_request_raises_on_every_remote_lane(lane: str, httpfs, loopback_hub, tmp_path: Path) -> None:
+    """RM431's lanes as RM430's: an unknown table or column, or a closed holder, is `ValueError` (a35e30f5)."""
+    root = tmp_path / lane
+    (root / "data").mkdir(parents=True)
+    pl.DataFrame({"chrom": ["1"], "start": [1], "gene": ["G"]}).write_parquet(root / "data" / "only.parquet")
+    loopback_hub.publish(SNAPSHOT_REPO_IDS[lane], root, COMMIT_A)
+    position = {"chrom": ["1"], "start": [1]}
+    holder = RemoteSnapshots(hf_base_url=loopback_hub.base_url, declared_use="non_commercial")
+    with holder:
+        with pytest.raises(ValueError, match="has no table 'nope'"):
+            holder.lookup(lane, "nope", position)
+        with pytest.raises(ValueError, match="has no column variation_id"):
+            holder.lookup(lane, "only", {**position, "variation_id": ["1"]})
+        assert holder.lookup(lane, "only", position).rows == [{"chrom": "1", "start": 1, "gene": "G"}]
+    with pytest.raises(ValueError) as closed:
+        holder.lookup(lane, "only", position)
+    assert str(closed.value) == remote.HOLDER_CLOSED
 
 
 # ── the proxy ───────────────────────────────────────────────────────────────────────────────
@@ -473,7 +563,7 @@ def test_proxy_and_hf_answer_the_same_rows_for_the_same_keys(
         hubbed = [by_hub.lookup(*a) for a in asked]
     for via_proxy, via_hub in zip(proxied, hubbed, strict=True):
         assert via_proxy.rows and via_proxy.rows == via_hub.rows
-        assert (via_proxy.route, via_proxy.served_from, via_proxy.release) == ("proxy", "local", None)
+        assert via_proxy.route == RemoteRoute("proxy", None, "local", None)
     # Paired positions: 1:943234 and 11:5227002 only, never the cross product's 1:5227002.
     assert {(r["chrom"], r["start"]) for r in proxied[1].rows} == {("1", 943234), ("11", 5227002)}
 
@@ -482,7 +572,7 @@ def test_a_proxy_reply_that_states_its_release_carries_it(clinvar_root: Path) ->
     proxy = _Proxy({"clinvar": clinvar_root}, release="clinvar_2026-11-01")
     with _with_proxy(RemoteSnapshots(proxy_url=PROXY, huggingface=False), proxy) as holder:
         answer = holder.lookup("clinvar", "clinvar", {"rsid": ["rs334"]})
-    assert (answer.route, answer.release, answer.revision) == ("proxy", "clinvar_2026-11-01", None)
+    assert answer.route == RemoteRoute("proxy", "clinvar_2026-11-01", "local", None)
 
 
 def test_a_lookup_is_cut_to_the_proxys_key_limit_one_chromosome_per_request(clinvar_root: Path) -> None:
@@ -557,7 +647,7 @@ def test_the_proxy_falls_through_to_hf_exactly_on_the_registrys_list(
         RemoteSnapshots(proxy_url=PROXY, hf_base_url=loopback_hub.base_url), FALL_THROUGH[stage]
     ) as holder:
         answer = holder.lookup("clinvar", "clinvar", {"rsid": ["rs334"]})
-    assert answer.route == "hf" and answer.revision == COMMIT_A
+    assert answer.route.route == "hf" and answer.route.revision == COMMIT_A
     assert answer.rows == remote._stable(_registry_rows(clinvar_root, {"rsid": ["rs334"]}))
 
 
@@ -598,6 +688,26 @@ def test_a_status_off_the_list_is_could_not_ask_on_the_proxy_without_falling_thr
     assert failed.value.route == "proxy" and f"HTTP {status}" in str(failed.value)
     assert loopback_hub.requests == []
     assert could_not_ask_reason(failed.value) == ("retired" if status == 410 else "unreachable")
+
+
+def test_a_key_the_proxy_cannot_compare_as_the_lane_does_is_not_sent_to_it() -> None:
+    """The registry compares a whole cell exactly; CIViC's `gene` is compared by `gene_key`. With Hugging
+    Face off nothing else could answer it as the local reader does, so it is could-not-ask, naming why."""
+    asked: list[httpx.Request] = []
+    holder = _with_proxy(
+        RemoteSnapshots(proxy_url=PROXY, huggingface=False),
+        lambda request: asked.append(request) or httpx.Response(200, json={"rows": []}),
+    )
+    with holder, pytest.raises(SnapshotRouteUnavailable) as failed:
+        holder.lookup("civic", "civic", {"gene": ["brca1"]})
+    assert asked == [] and failed.value.route is None
+    assert str(failed.value) == (
+        "civic: no remote route was asked: the registry's proxy compares a whole cell exactly, and "
+        "civic/civic compares gene by gene_key, as its local reader does, so the proxy is not asked, and "
+        "Hugging Face is off"
+    )
+    assert REMOTE_LANES["civic"].proxy_compares("civic", ["rsid"])
+    assert not REMOTE_LANES["civic"].proxy_compares("civic", ["gene"])
 
 
 def test_no_route_configured_is_could_not_ask_and_asks_nothing() -> None:
@@ -671,7 +781,7 @@ def test_a_declared_non_commercial_use_reads_a_gated_lane(httpfs, loopback_hub, 
     loopback_hub.publish(SNAPSHOT_REPO_IDS["cpic"], root, COMMIT_A)
     with RemoteSnapshots(hf_base_url=loopback_hub.base_url, declared_use="non_commercial") as holder:
         answer = holder.lookup("cpic", "genes", {"gene": ["CYP2C19"]})
-    assert answer.rows == [{"gene": "CYP2C19", "chrom": "10"}] and answer.release is None
+    assert answer.rows == [{"gene": "CYP2C19", "chrom": "10"}] and answer.route.release is None
 
 
 def test_a_lane_whose_registry_entry_states_no_terms_is_not_gated() -> None:
@@ -835,22 +945,72 @@ def test_a_remote_snapshot_that_could_not_be_asked_is_unchecked_never_empty(
     assert hint.routes is None and hint.rsid_candidates == []
 
 
-def test_a_request_a_route_refuses_is_unchecked_in_a_lookup_not_a_traceback(
-    httpfs, no_ambient_caches, loopback_hub, tmp_path: Path
-) -> None:
-    """A repo whose payload no longer has the table the link asks for: a finding, as a local fault is."""
-    root = tmp_path / "renamed"
+def _renamed_repo(root: Path) -> Path:
+    """A repo whose payload no longer has the table a link asks for (`variants`, not the link's own)."""
     (root / "data").mkdir(parents=True)
     pl.DataFrame({"chrom": ["16"], "start": [1], "id": ["rs1"]}).write_parquet(
         root / "data" / "variants.parquet"
     )
+    return root
+
+
+def _columnless_repo(root: Path) -> Path:
+    """A repo whose `clinvar` table has a position but no `rsid` column for the link's rsID key."""
+    (root / "data").mkdir(parents=True)
+    pl.DataFrame({"chrom": ["11"], "start": [5227002], "ref": ["T"], "alt": ["A"]}).write_parquet(
+        root / "data" / "clinvar.parquet"
+    )
+    return root
+
+
+def test_an_unknown_table_raises_out_of_lookup_variant_never_an_unchecked_finding(
+    httpfs, no_ambient_caches, loopback_hub, tmp_path: Path
+) -> None:
+    """A wrong request is a wrong request on every route (the pm, a35e30f5 reading 5): it raises.
+
+    An `unchecked` finding would hide a caller's or our own defect as an outage."""
+    root = _renamed_repo(tmp_path / "renamed")
     loopback_hub.publish(SNAPSHOT_REPO_IDS["ensembl"], root, COMMIT_A)
     loopback_hub.publish(SNAPSHOT_REPO_IDS["clinvar"], root, COMMIT_A)
-    with RemoteSnapshots(hf_base_url=loopback_hub.base_url) as holder:
-        hint, _ensembl = _ask(tmp_path, holder, chrom="16", start=23635706)
-    refused = [f for f in hint.findings if "refused as wrong" in f.message]
-    assert {f.message.split(":", 1)[0] for f in refused} == {"ensembl", "clinvar"}
-    assert all(f.level == "warning" and "has no table" in f.message for f in refused)
+    with RemoteSnapshots(hf_base_url=loopback_hub.base_url) as holder, pytest.raises(ValueError) as wrong:
+        _ask(tmp_path, holder, chrom="16", start=23635706)
+    assert "has no table 'homo_sapiens'" in str(wrong.value)
+    assert not isinstance(wrong.value, SnapshotRouteUnavailable)
+
+
+def test_an_unknown_column_raises_out_of_lookup_variant(
+    httpfs, no_ambient_caches, loopback_hub, tmp_path: Path
+) -> None:
+    loopback_hub.publish(SNAPSHOT_REPO_IDS["clinvar"], _columnless_repo(tmp_path / "columnless"), COMMIT_A)
+    with RemoteSnapshots(hf_base_url=loopback_hub.base_url) as holder, pytest.raises(ValueError) as wrong:
+        _ask(tmp_path, holder, rsid="rs334")
+    assert "clinvar/clinvar has no column rsid" in str(wrong.value)
+
+
+@pytest.mark.parametrize(
+    "status,error", [(422, "unknown_key"), (422, "remote_needs_position"), (404, "unknown_table")]
+)
+def test_a_proxy_refusing_a_request_as_wrong_raises_out_of_lookup_variant(
+    status: int, error: str, no_ambient_caches, loopback_hub, tmp_path: Path
+) -> None:
+    holder = _with_proxy(
+        RemoteSnapshots(proxy_url=PROXY, hf_base_url=loopback_hub.base_url), _staged(status, error)
+    )
+    with holder, pytest.raises(ValueError) as wrong:
+        _ask(tmp_path, holder, rsid="rs334")
+    assert f"({status} {error})" in str(wrong.value)
+    assert loopback_hub.requests == []
+
+
+def test_a_closed_holder_raises_out_of_lookup_variant(
+    no_ambient_caches, loopback_hub, tmp_path: Path
+) -> None:
+    holder = RemoteSnapshots(hf_base_url=loopback_hub.base_url)
+    holder.close()
+    with pytest.raises(ValueError) as wrong:
+        _ask(tmp_path, holder, rsid="rs334")
+    assert str(wrong.value) == remote.HOLDER_CLOSED
+    assert loopback_hub.requests == []
 
 
 #: The two `try` blocks in `lookup.py` that read a snapshot locally or remotely, by enclosing function.

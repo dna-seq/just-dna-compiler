@@ -280,3 +280,198 @@ def test_every_live_test_skips_on_the_fences_reading_of_the_opt_in() -> None:
         if not m.group("rest").lstrip().startswith('== "1"')
     ]
     assert truthy == []
+
+
+# ── the duckdb case's own guard: only `remote.remote_url` hands duckdb a URL (RM430 follow-up) ──────
+
+#: The duckdb calls that read a file or run SQL that may name one.
+_DUCKDB_READS = frozenset(
+    {"execute", "sql", "query", "read_parquet", "from_parquet", "read_csv", "read_csv_auto", "read_json"}
+)
+#: A URL scheme written into a literal: `https://`, `hf://`, `s3://`, any scheme duckdb could open.
+_URL_SCHEME = re.compile(r"\b[a-z][a-z0-9+.-]*://", re.IGNORECASE)
+#: The module that loads `httpfs` and reads over HTTP, and its one URL builder for duckdb.
+_HOLDER_MODULE = "remote.py"
+_HOLDER_FILE_URL = "_file_url"
+
+
+def _literal_text(node: ast.AST) -> str:
+    """Every string constant inside `node`, an f-string's literal parts included, joined."""
+    return "".join(
+        part.value
+        for part in ast.walk(node)
+        if isinstance(part, ast.Constant) and isinstance(part.value, str)
+    )
+
+
+def _is_file_url_call(node: ast.AST) -> bool:
+    """`self._file_url(...)`, or a list or list comprehension of nothing else."""
+    if isinstance(node, ast.ListComp):
+        return _is_file_url_call(node.elt)
+    if isinstance(node, ast.List):
+        return bool(node.elts) and all(_is_file_url_call(e) for e in node.elts)
+    return (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == _HOLDER_FILE_URL
+    )
+
+
+def _duckdb_url_faults(sources: dict[str, str]) -> list[str]:
+    """Every place a module could hand duckdb a URL that `remote_url` did not build, by `file:line`.
+
+    Five rules. No duckdb call anywhere carries a URL scheme in a literal. No module but the holder's
+    loads `httpfs` explicitly. That second rule is not a fence by itself: duckdb autoloads `httpfs` on a URL
+    by default (measured on a plain connection), so outside the holder's module the walk sees only URL
+    literals, and a URL held in a variable there passes it unseen (its limit, stated). In the holder's module duckdb reads a file only
+    through SQL, never a relational `read_parquet(...)`/`from_parquet(...)` method, every `read_parquet`
+    binds its files (`read_parquet(?)`), the bound value is `self._file_url(...)`, never a string put
+    together on the spot, and no bound list is rewritten in place (`params[0] = …`). And `_file_url`
+    returns `remote_url(...)`, the function the fence wraps.
+    """
+    faults: list[str] = []
+    for name, source in sources.items():
+        tree = ast.parse(source)
+        bound = {
+            call.args[1].id
+            for call in ast.walk(tree)
+            if isinstance(call, ast.Call)
+            and len(call.args) > 1
+            and isinstance(call.args[1], ast.Name)
+            and "read_parquet(" in _literal_text(call.args[0])
+        }
+        for node in ast.walk(tree):
+            if name == _HOLDER_MODULE and isinstance(node, ast.Assign):
+                for target in node.targets:
+                    if (
+                        isinstance(target, ast.Subscript)
+                        and isinstance(target.value, ast.Name)
+                        and target.value.id in bound
+                    ):
+                        faults.append(f"{name}:{node.lineno}: a bound list rewritten in place")
+            if not isinstance(node, ast.Call):
+                continue
+            attr = node.func.attr if isinstance(node.func, ast.Attribute) else None
+            where = f"{name}:{node.lineno}"
+            arguments = [*node.args, *(k.value for k in node.keywords)]
+            literal = "".join(_literal_text(a) for a in arguments)
+            if attr in _DUCKDB_READS and _URL_SCHEME.search(literal):
+                faults.append(f"{where}: a URL literal handed to duckdb")
+            loads_httpfs = attr in {"install_extension", "load_extension"} and "httpfs" in literal
+            if (loads_httpfs or (attr == "execute" and "httpfs" in literal)) and name != _HOLDER_MODULE:
+                faults.append(f"{where}: httpfs loaded outside {_HOLDER_MODULE}")
+            if name == _HOLDER_MODULE and attr in _DUCKDB_READS - {"execute", "sql", "query"}:
+                faults.append(f"{where}: duckdb reads a file past SQL, unbound")
+            if name == _HOLDER_MODULE and attr in _DUCKDB_READS and node.args:
+                sql = _literal_text(node.args[0])
+                if "read_parquet(" in sql:
+                    if "read_parquet(?)" not in sql:
+                        faults.append(f"{where}: read_parquet's files are not a bound parameter")
+                    elif not (
+                        len(node.args) > 1
+                        and isinstance(node.args[1], ast.List)
+                        and node.args[1].elts
+                        and _is_file_url_call(node.args[1].elts[0])
+                    ) and not (
+                        len(node.args) > 1
+                        and isinstance(node.args[1], ast.Name)
+                        and _bound_to_file_urls(tree, node.args[1].id)
+                    ):
+                        faults.append(
+                            f"{where}: read_parquet(?) is bound to something but {_HOLDER_FILE_URL}"
+                        )
+        if name == _HOLDER_MODULE:
+            builders = [
+                f for f in ast.walk(tree) if isinstance(f, ast.FunctionDef) and f.name == _HOLDER_FILE_URL
+            ]
+            returns = [r for f in builders for r in ast.walk(f) if isinstance(r, ast.Return)]
+            if not returns or not all(
+                isinstance(r.value, ast.Call)
+                and isinstance(r.value.func, ast.Name)
+                and r.value.func.id == "remote_url"
+                for r in returns
+            ):
+                faults.append(f"{name}: {_HOLDER_FILE_URL} does not return remote_url(...)")
+    return faults
+
+
+def _bound_to_file_urls(tree: ast.AST, variable: str) -> bool:
+    """Whether every assignment to `variable` is a list whose first element is `self._file_url(...)`."""
+    assigned = [
+        node.value
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.Assign, ast.AnnAssign))
+        for target in (node.targets if isinstance(node, ast.Assign) else [node.target])
+        if isinstance(target, ast.Name) and target.id == variable and node.value is not None
+    ]
+    return bool(assigned) and all(
+        isinstance(value, ast.List) and value.elts and _is_file_url_call(value.elts[0]) for value in assigned
+    )
+
+
+def _enricher_sources() -> dict[str, str]:
+    package = _ROOT / "enricher" / "src" / "just_dna_enricher"
+    return {
+        str(path.relative_to(package)): path.read_text(encoding="utf-8")
+        for path in sorted(package.rglob("*.py"))
+    }
+
+
+def test_only_remote_url_hands_duckdb_a_url() -> None:
+    """The duckdb fence wraps `remote.remote_url` (answer H), so it holds only while nothing else builds
+    a URL duckdb opens: duckdb's sockets are C++, where the socket patch cannot see them."""
+    sources = _enricher_sources()
+    assert _HOLDER_MODULE in sources
+    assert _duckdb_url_faults(sources) == []
+
+
+def test_the_walk_sees_each_way_past_the_url_builder() -> None:
+    """Each rule shown failing on the shape it exists for, so a green walk is not a blind one."""
+    bound_by_hand = (
+        "def q(self, cursor, pin, files):\n"
+        "    cursor.execute('SELECT * FROM read_parquet(?)', [[f'{self.base}/{f}' for f in files]])\n"
+        "def _file_url(self, pin, path):\n    return remote_url(self.base, path)\n"
+    )
+    interpolated = (
+        "def q(self, cursor, url):\n    cursor.execute(f\"SELECT * FROM read_parquet('{url}')\")\n"
+        "def _file_url(self, pin, path):\n    return remote_url(self.base, path)\n"
+    )
+    builder_by_hand = (
+        "def q(self, cursor, pin, path):\n"
+        "    cursor.execute('DESCRIBE SELECT * FROM read_parquet(?)', [self._file_url(pin, path)])\n"
+        "def _file_url(self, pin, path):\n    return f'{self.base}/{path}'\n"
+    )
+    elsewhere = (
+        "def read(con):\n    con.execute(\"SELECT * FROM read_parquet('https://huggingface.co/x.parquet')\")\n"
+        "    con.execute('LOAD httpfs')\n"
+    )
+    assert _duckdb_url_faults({_HOLDER_MODULE: bound_by_hand}) == [
+        f"{_HOLDER_MODULE}:2: read_parquet(?) is bound to something but {_HOLDER_FILE_URL}"
+    ]
+    assert _duckdb_url_faults({_HOLDER_MODULE: interpolated}) == [
+        f"{_HOLDER_MODULE}:2: read_parquet's files are not a bound parameter"
+    ]
+    assert _duckdb_url_faults({_HOLDER_MODULE: builder_by_hand}) == [
+        f"{_HOLDER_MODULE}: {_HOLDER_FILE_URL} does not return remote_url(...)"
+    ]
+    relational = (
+        "def q(self, pin, url):\n    return pin.connection.read_parquet(url)\n"
+        + bound_by_hand.split("\n", 2)[2]
+    )
+    assert _duckdb_url_faults({_HOLDER_MODULE: relational}) == [
+        f"{_HOLDER_MODULE}:2: duckdb reads a file past SQL, unbound"
+    ]
+    rewritten = (
+        "def q(self, cursor, pin, files, url):\n"
+        "    params = [[self._file_url(pin, f) for f in files]]\n"
+        "    params[0] = [url]\n"
+        "    cursor.execute('SELECT * FROM read_parquet(?)', params)\n"
+        "def _file_url(self, pin, path):\n    return remote_url(self.base, path)\n"
+    )
+    assert _duckdb_url_faults({_HOLDER_MODULE: rewritten}) == [
+        f"{_HOLDER_MODULE}:3: a bound list rewritten in place"
+    ]
+    assert _duckdb_url_faults({"clinvar.py": elsewhere}) == [
+        "clinvar.py:2: a URL literal handed to duckdb",
+        f"clinvar.py:3: httpfs loaded outside {_HOLDER_MODULE}",
+    ]
