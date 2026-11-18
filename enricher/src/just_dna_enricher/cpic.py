@@ -47,9 +47,10 @@ import duckdb
 import httpx
 from just_dna_format.alleles import non_nucleotide_reason, symbolic_allele_defect
 from just_dna_format.snapshot import SnapshotRelease, read_release
-from just_dna_format.spelling import drug_key, gene_key
+from just_dna_format.spelling import drug_key
 from tenacity import retry
 
+from just_dna_enricher.key_compare import lane_compare
 from just_dna_enricher.locations import SNAPSHOT_DATA_DIRNAME
 from just_dna_enricher.net import (
     EndpointRetired,
@@ -60,7 +61,6 @@ from just_dna_enricher.net import (
     raise_if_retired,
     retry_if_transient,
 )
-from just_dna_enricher.resolver import KeyCompare
 
 logger = logging.getLogger(__name__)
 
@@ -580,14 +580,10 @@ class CpicClient:
 
 
 #: How every snapshot table's `gene` is compared, on every route: by `gene_key` (RM363), so an authored
-#: `Cyp2c19` is CPIC's `CYP2C19`. `CpicSnapshotClient` builds its SQL from it, and `remote.REMOTE_LANES`
-#: hands the same object to the holder, so a remote read compares a gene as the local one does.
-_GENE = KeyCompare(fold=True)
-#: The snapshot's tables (`data/<table>.parquet`) and the key column each compares (`_GENE`).
-KEY_COMPARES: dict[str, dict[str, KeyCompare]] = {
-    table: {"gene": _GENE}
-    for table in ("genes", "alleles", "diplotypes", "recommendations", "allele_definitions")
-}
+#: `Cyp2c19` is CPIC's `CYP2C19`. `CpicSnapshotClient` builds its SQL from it, and the holder reads the
+#: same entry (`key_compare.KEY_COMPARES`), so a remote read compares a gene as the local one does. One
+#: object for every table; a test holds that each table it reads is declared.
+_GENE = lane_compare("cpic", "genes", "gene")
 
 
 class CpicSnapshotClient:
@@ -759,8 +755,8 @@ class CpicSnapshotClient:
             return []
         others = self._rows(
             "recommendations.parquet",
-            "drug = ? AND gene_count > 1 AND lower(gene) <> ?",
-            [drug_key(drug), gene_key(gene)],
+            f"drug = ? AND gene_count > 1 AND {_GENE.predicate('gene', negated=True)}",
+            [drug_key(drug), _GENE.parameter([gene])],
             "DISTINCT gene",
             "gene",
         )

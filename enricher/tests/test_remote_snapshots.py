@@ -697,8 +697,8 @@ def test_a_key_the_proxy_cannot_compare_as_the_lane_does_is_not_sent_to_it() -> 
     assert asked == [] and failed.value.route is None
     assert str(failed.value) == (
         "civic: no remote route was asked: the registry's proxy compares a whole cell exactly, and "
-        "civic/civic compares gene as its local reader does (by gene_key, member by member), so the "
-        "proxy is not asked, and Hugging Face is off"
+        "civic/civic compares gene by gene_key, as its local reader does, so the proxy is not asked, and "
+        "Hugging Face is off"
     )
     assert REMOTE_LANES["civic"].proxy_compares("civic", ["rsid"])
     assert not REMOTE_LANES["civic"].proxy_compares("civic", ["gene"])

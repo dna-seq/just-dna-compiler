@@ -41,6 +41,7 @@ from just_dna_format.vocab import MULTI_SEP, validate_phenotype_categories
 
 from just_dna_enricher.download import ensure_clinpgx_snapshot
 from just_dna_enricher.drafting import drafted_unchanged
+from just_dna_enricher.key_compare import lane_compare
 from just_dna_enricher.licensing import (
     CLINPGX_TERMS,
     check_declared_use,
@@ -52,7 +53,7 @@ from just_dna_enricher.locations import (
     SNAPSHOT_DATA_DIRNAME,
     resolve_clinpgx_reference,
 )
-from just_dna_enricher.resolver import KeyCompare, _asked_genes, _asked_rsids, _typed_rows_connection
+from just_dna_enricher.resolver import _asked_genes, _asked_rsids, _typed_rows_connection
 from just_dna_enricher.verification import examples, ran, record_verification, skipped
 
 logger = logging.getLogger(__name__)
@@ -252,12 +253,8 @@ REMOTE_ANNOTATIONS_TABLE = "annotations"
 #: The separator inside a `gene` cell (`KLC1;XRCC3`), as `clinpgx_draft` splits one.
 _GENE_SEPARATOR = ";"
 #: How `lookup_genes` compares a gene with a `gene` cell, on every route: each member of the `;`-joined
-#: cell, by `gene_key`. The local SQL is built from it, and `remote.REMOTE_LANES` hands the same object to
-#: the holder, so the two routes cannot compare apart.
-KEY_COMPARES: dict[str, dict[str, KeyCompare]] = {
-    REMOTE_ANNOTATIONS_TABLE: {"gene": KeyCompare(fold=True, separator=_GENE_SEPARATOR)}
-}
-_GENE = KEY_COMPARES[REMOTE_ANNOTATIONS_TABLE]["gene"]
+#: cell, by `gene_key` (`key_compare.KEY_COMPARES`, which the holder reads too).
+_GENE = lane_compare("clinpgx", REMOTE_ANNOTATIONS_TABLE, "gene")
 
 
 def _annotations_connection(reference: Path) -> duckdb.DuckDBPyConnection:
@@ -335,7 +332,7 @@ def _rsids_from_rows(rows: Sequence[Mapping[str, object]], rsids: Sequence[str])
 def _gene_keys(genes: Sequence[str]) -> dict[str, list[str]]:
     """The keys a remote route is asked for `genes`: each as given, stripped.
 
-    The holder compares them as this reader does (`KEY_COMPARES`: each member of the cell, by `gene_key`),
+    The holder compares them as this reader does (`key_compare.KEY_COMPARES`: each member of the cell, by `gene_key`),
     so a gene in another case, or inside a multi-gene cell (`KLC1;XRCC3`), is answered on both routes. The
     registry's proxy compares a whole cell exactly, so the holder does not ask it for this key and reads
     Hugging Face instead (`remote.RemoteLane.proxy_compares`).

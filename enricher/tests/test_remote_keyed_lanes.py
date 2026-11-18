@@ -5,6 +5,7 @@ the keys the keyed function derives, and its rows go through the keyed function'
 must equal the local reader's over the same snapshot: same keys, same rows, one SQL body.
 """
 
+import ast
 import hashlib
 import json
 import zipfile
@@ -28,6 +29,7 @@ from just_dna_enricher import (
     drug_labels,
     drug_labels_build,
     gene_metrics,
+    key_compare,
     opentargets,
     remote,
     resolver,
@@ -540,12 +542,12 @@ _PROBES: dict[str, Callable[[pytest.FixtureRequest, _Recorder], tuple[Path, obje
 
 
 def test_a_key_compare_reads_a_key_and_a_cell_one_way() -> None:
-    joined = resolver.KeyCompare(fold=True, separator=";")
+    joined = key_compare.KeyCompare(fold=True, separator=";")
     assert joined.members(" KLC1; xrcc3 ;;") == ("klc1", "xrcc3")
     assert joined.parameter(["Klc1", " KLC1 ", ""]) == ["klc1"]
-    assert resolver.KeyCompare(fold=True).members(" Brca1 ") == ("brca1",)
-    assert resolver.EXACT.exact and resolver.EXACT.members("Brca1") == ("Brca1",)
-    assert not joined.exact and not resolver.KeyCompare(separator=";").exact
+    assert key_compare.KeyCompare(fold=True).members(" Brca1 ") == ("brca1",)
+    assert key_compare.EXACT.exact and key_compare.EXACT.members("Brca1") == ("Brca1",)
+    assert not joined.exact and not key_compare.KeyCompare(separator=";").exact
     con = duckdb.connect()
     cells = ["CYP2C9;VKORC1", " vkorc1 ", "VKORC1X", None]
     found = con.execute(
@@ -555,9 +557,62 @@ def test_a_key_compare_reads_a_key_and_a_cell_one_way() -> None:
     assert [cell for (cell,) in found] == [" vkorc1 ", "CYP2C9;VKORC1"]
 
 
-def test_every_declared_compare_is_on_a_key_column() -> None:
+def test_a_key_compare_negated_and_described() -> None:
+    joined = key_compare.KeyCompare(fold=True, separator=";")
+    con = duckdb.connect()
+    cells = ["CYP2C9;VKORC1", " vkorc1 ", "CYP2D6", None]
+    kept = con.execute(
+        f"SELECT cell FROM (SELECT unnest(?::VARCHAR[]) AS cell) WHERE {joined.predicate('cell', negated=True)}",
+        [cells, joined.parameter(["VKORC1"])],
+    ).fetchall()
+    assert [cell for (cell,) in kept] == ["CYP2D6", None]
+    assert joined.described == "by gene_key, member by member of a ';'-joined cell"
+    assert key_compare.KeyCompare(fold=True).described == "by gene_key"
+    assert key_compare.EXACT.described == "exactly"
+
+
+def test_cpic_partner_genes_compares_the_asked_gene_one_way_in_both_its_queries(tmp_path: Path) -> None:
+    """Its include query and its exclude query read one compare: a padded cell is the asked gene in both."""
+    root = tmp_path / "cpic"
+    (root / "data").mkdir(parents=True)
+    pl.DataFrame(
+        {"gene": [" CYP2C9", "VKORC1"], "drug": ["warfarin", "warfarin"], "gene_count": [2, 2]}
+    ).write_parquet(root / "data" / "recommendations.parquet")
+    assert cpic.CpicSnapshotClient(root).partner_genes("cyp2c9", "Warfarin") == ["VKORC1"]
+
+
+def test_every_declared_compare_is_on_a_key_column_of_a_remote_lane_and_names_its_readers_tables() -> None:
+    """`key_compare.KEY_COMPARES` is the one registry: each entry a remote lane's, on a key column, under
+    the table name its reader's module states, with that module's own separator."""
+    assert set(key_compare.KEY_COMPARES) <= set(REMOTE_LANES)
     declared = {c for lane in REMOTE_LANES.values() for cols in lane.compares.values() for c in cols}
     assert declared and declared <= set(remote.KEY_COLUMNS)
+    tables = {lane: set(entry) for lane, entry in key_compare.KEY_COMPARES.items()}
+    assert tables["clinpgx"] == {clinpgx.REMOTE_ANNOTATIONS_TABLE}
+    assert tables["drug_labels"] == {drug_labels.REMOTE_LABELS_TABLE}
+    assert tables["civic"] == {civic_draft.REMOTE_CIVIC_TABLE}
+    assert tables["cpic"] == {path.split("/")[-1].removesuffix(".parquet") for path in _cpic_tables_read()}, (
+        "every CPIC table the snapshot client reads is declared, and no other"
+    )
+    assert REMOTE_LANES["clinpgx"].compare("annotations", "gene").separator == clinpgx._GENE_SEPARATOR
+    assert REMOTE_LANES["drug_labels"].compare("drug_labels", "genes").separator == drug_labels.CELL_SEPARATOR
+    assert REMOTE_LANES["clinpgx"].compare("annotations", "gene") is clinpgx._GENE
+    assert REMOTE_LANES["drug_labels"].compare("drug_labels", "genes") is drug_labels._GENES
+    assert REMOTE_LANES["civic"].compare("civic", "gene") is civic_draft._GENE
+
+
+def _cpic_tables_read() -> set[str]:
+    """The parquet files `CpicSnapshotClient` reads, from the literal first argument of each `_rows` call."""
+    tree = ast.parse(Path(cpic.__file__).read_text(encoding="utf-8"))
+    return {
+        node.args[0].value
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "_rows"
+        and node.args
+        and isinstance(node.args[0], ast.Constant)
+    }
 
 
 def test_every_remote_lane_has_a_probe() -> None:

@@ -64,12 +64,11 @@ from just_dna_format.snapshot import (
 from just_dna_format.vrs import normalize_chrom
 from pydantic import ValidationError
 
-from just_dna_enricher import civic_draft, clinpgx, cpic, drug_labels
 from just_dna_enricher.caches import LANES_BY_NAME
+from just_dna_enricher.key_compare import KEY_COMPARES, KeyCompare, lane_compare
 from just_dna_enricher.licensing import check_declared_use
 from just_dna_enricher.locations import SNAPSHOT_REPO_IDS, SnapshotManifest, env_value
 from just_dna_enricher.net import GONE, EndpointRetired
-from just_dna_enricher.resolver import EXACT, KeyCompare
 
 logger = logging.getLogger(__name__)
 
@@ -211,20 +210,24 @@ class RemoteLane:
     alone: its rsID column is about 6.1 GB over 25 files and no row group prunes by it, so the proxy
     refuses it (`remote_needs_position`) and Hugging Face would scan about 10.7 GB (the trial).
 
-    `compares`: table -> key column -> `resolver.KeyCompare`, the lane's keyed functions' own declaration
-    (their `KEY_COMPARES`, the object their local SQL is built from), so a remote read compares a key as
-    the local one does: by `gene_key`, member by member of a `;`-joined cell. A column it does not name
-    compares the whole cell exactly. The registry's proxy compares every key exactly, so a key with any
+    `compares`: table -> key column -> `key_compare.KeyCompare`, the lane's entry in
+    `key_compare.KEY_COMPARES`, the registry its keyed functions' local SQL is built from, so a remote read
+    compares a key as the local one does: by `gene_key`, member by member of a `;`-joined cell. Derived
+    from the lane's name, never restated here. A column it does not name compares the whole cell exactly. The registry's proxy compares every key exactly, so a key with any
     other compare is not sent to it (`proxy_compares`) and Hugging Face answers it.
     """
 
     name: str
     needs_position: bool = False
-    compares: Mapping[str, Mapping[str, KeyCompare]] = field(default_factory=dict)
+
+    @property
+    def compares(self) -> Mapping[str, Mapping[str, KeyCompare]]:
+        """The lane's entry in `key_compare.KEY_COMPARES`: table -> column -> compare; empty when exact."""
+        return KEY_COMPARES.get(self.name, {})
 
     def compare(self, table: str, column: str) -> KeyCompare:
         """How `column` of `table` is compared with a key: the lane's declaration, else exactly."""
-        return self.compares.get(table, {}).get(column, EXACT)
+        return lane_compare(self.name, table, column)
 
     def proxy_compares(self, table: str, columns: Iterable[str]) -> bool:
         """Whether the registry's proxy compares each of `columns` as the local reader does.
@@ -247,11 +250,11 @@ REMOTE_LANES: dict[str, RemoteLane] = {
         RemoteLane("ensembl", needs_position=True),
         RemoteLane("clinvar"),
         RemoteLane("constraint"),
-        RemoteLane("clinpgx", compares=clinpgx.KEY_COMPARES),
-        RemoteLane("cpic", compares=cpic.KEY_COMPARES),
-        RemoteLane("drug_labels", compares=drug_labels.KEY_COMPARES),
+        RemoteLane("clinpgx"),
+        RemoteLane("cpic"),
+        RemoteLane("drug_labels"),
         RemoteLane("opentargets"),
-        RemoteLane("civic", compares=civic_draft.KEY_COMPARES),
+        RemoteLane("civic"),
         RemoteLane("clinvar_gkm"),
     )
 }
@@ -463,17 +466,21 @@ class RemoteSnapshots:
 
         Takes the holder's lock: from here on a lookup raises `ValueError` (`HOLDER_CLOSED`), and the
         lookups already running finish before anything they read through is closed, so none of them
-        meets a closed client and a transport error that is not its route's."""
+        meets a closed client and a transport error that is not its route's. It waits as long as they
+        run, a whole-table Hub scan included; a wait that is interrupted (`KeyboardInterrupt`) still
+        closes everything before the interruption propagates, which is the old race, taken knowingly."""
         with self._lock:
             self._closed = True
-            while self._in_flight:
-                self._idle.wait()
-            for pin in self._pins.values():
-                pin.connection.close()
-            self._pins.clear()
-            self._hub.close()
-            if self._proxy is not None:
-                self._proxy.close()
+            try:
+                while self._in_flight:
+                    self._idle.wait()
+            finally:
+                for pin in self._pins.values():
+                    pin.connection.close()
+                self._pins.clear()
+                self._hub.close()
+                if self._proxy is not None:
+                    self._proxy.close()
 
     # ── the one query ───────────────────────────────────────────────────────────────────────────
 
@@ -508,10 +515,14 @@ class RemoteSnapshots:
         fell_through: str | None = None
         passed_over: str | None = None
         if self._proxy is not None and not spec.proxy_compares(table, wanted.plain):
+            compared = "; ".join(
+                f"{column} {spec.compare(table, column).described}"
+                for column in sorted(wanted.plain)
+                if not spec.compare(table, column).exact
+            )
             passed_over = (
                 f"the registry's proxy compares a whole cell exactly, and {lane}/{table} compares "
-                f"{', '.join(sorted(c for c in wanted.plain if not spec.compare(table, c).exact))} "
-                f"as its local reader does (by gene_key, member by member), so the proxy is not asked"
+                f"{compared}, as its local reader does, so the proxy is not asked"
             )
             logger.info("%s: %s; asking Hugging Face", lane, passed_over)
         elif self._proxy is not None:

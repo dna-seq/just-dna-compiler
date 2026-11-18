@@ -320,15 +320,33 @@ def _is_file_url_call(node: ast.AST) -> bool:
 def _duckdb_url_faults(sources: dict[str, str]) -> list[str]:
     """Every place a module could hand duckdb a URL that `remote_url` did not build, by `file:line`.
 
-    Four rules. No duckdb call anywhere carries a URL scheme in a literal. No module but the holder's
-    loads `httpfs` (without it duckdb opens no URL). In the holder's module every `read_parquet` binds its
-    files (`read_parquet(?)`), and the bound value is `self._file_url(...)`, never a string put together on
-    the spot. And `_file_url` returns `remote_url(...)`, the function the fence wraps.
+    Five rules. No duckdb call anywhere carries a URL scheme in a literal. No module but the holder's
+    loads `httpfs` (without it duckdb opens no URL). In the holder's module duckdb reads a file only
+    through SQL, never a relational `read_parquet(...)`/`from_parquet(...)` method, every `read_parquet`
+    binds its files (`read_parquet(?)`), the bound value is `self._file_url(...)`, never a string put
+    together on the spot, and no bound list is rewritten in place (`params[0] = …`). And `_file_url`
+    returns `remote_url(...)`, the function the fence wraps.
     """
     faults: list[str] = []
     for name, source in sources.items():
         tree = ast.parse(source)
+        bound = {
+            call.args[1].id
+            for call in ast.walk(tree)
+            if isinstance(call, ast.Call)
+            and len(call.args) > 1
+            and isinstance(call.args[1], ast.Name)
+            and "read_parquet(" in _literal_text(call.args[0])
+        }
         for node in ast.walk(tree):
+            if name == _HOLDER_MODULE and isinstance(node, ast.Assign):
+                for target in node.targets:
+                    if (
+                        isinstance(target, ast.Subscript)
+                        and isinstance(target.value, ast.Name)
+                        and target.value.id in bound
+                    ):
+                        faults.append(f"{name}:{node.lineno}: a bound list rewritten in place")
             if not isinstance(node, ast.Call):
                 continue
             attr = node.func.attr if isinstance(node.func, ast.Attribute) else None
@@ -340,6 +358,8 @@ def _duckdb_url_faults(sources: dict[str, str]) -> list[str]:
             loads_httpfs = attr in {"install_extension", "load_extension"} and "httpfs" in literal
             if (loads_httpfs or (attr == "execute" and "httpfs" in literal)) and name != _HOLDER_MODULE:
                 faults.append(f"{where}: httpfs loaded outside {_HOLDER_MODULE}")
+            if name == _HOLDER_MODULE and attr in _DUCKDB_READS - {"execute", "sql", "query"}:
+                faults.append(f"{where}: duckdb reads a file past SQL, unbound")
             if name == _HOLDER_MODULE and attr in _DUCKDB_READS and node.args:
                 sql = _literal_text(node.args[0])
                 if "read_parquet(" in sql:
@@ -431,6 +451,23 @@ def test_the_walk_sees_each_way_past_the_url_builder() -> None:
     ]
     assert _duckdb_url_faults({_HOLDER_MODULE: builder_by_hand}) == [
         f"{_HOLDER_MODULE}: {_HOLDER_FILE_URL} does not return remote_url(...)"
+    ]
+    relational = (
+        "def q(self, pin, url):\n    return pin.connection.read_parquet(url)\n"
+        + bound_by_hand.split("\n", 2)[2]
+    )
+    assert _duckdb_url_faults({_HOLDER_MODULE: relational}) == [
+        f"{_HOLDER_MODULE}:2: duckdb reads a file past SQL, unbound"
+    ]
+    rewritten = (
+        "def q(self, cursor, pin, files, url):\n"
+        "    params = [[self._file_url(pin, f) for f in files]]\n"
+        "    params[0] = [url]\n"
+        "    cursor.execute('SELECT * FROM read_parquet(?)', params)\n"
+        "def _file_url(self, pin, path):\n    return remote_url(self.base, path)\n"
+    )
+    assert _duckdb_url_faults({_HOLDER_MODULE: rewritten}) == [
+        f"{_HOLDER_MODULE}:3: a bound list rewritten in place"
     ]
     assert _duckdb_url_faults({"clinvar.py": elsewhere}) == [
         "clinvar.py:2: a URL literal handed to duckdb",

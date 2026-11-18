@@ -51,9 +51,10 @@ from just_dna_enricher.civic_refutation import CIVIC_REFUTES
 from just_dna_enricher.clingen_allele import ClingenAlleleClient, anchor_indel
 from just_dna_enricher.drafting import DRAFT_PROVIDERS, licence_commit, record_draft_provenance
 from just_dna_enricher.drafting import identity_refused_by_model as scaffold_identity_refused
+from just_dna_enricher.key_compare import lane_compare
 from just_dna_enricher.licensing import CIVIC_TERMS, CLINGEN_ALLELE_REGISTRY_TERMS
 from just_dna_enricher.locations import resolve_civic_reference
-from just_dna_enricher.resolver import KeyCompare, _asked_genes, _asked_rsids, _typed_rows_connection
+from just_dna_enricher.resolver import _asked_genes, _asked_rsids, _typed_rows_connection
 from just_dna_enricher.sequences import SequenceProxy, _held_by_one_run, _left_align
 from just_dna_enricher.verification import examples
 
@@ -218,11 +219,9 @@ _CIVIC_COLUMNS: tuple[tuple[str, str], ...] = (
 )
 #: The table a remote route names for the snapshot (`remote.table_name` of `data/civic.parquet`).
 REMOTE_CIVIC_TABLE = "civic"
-#: How `lookup_genes` compares a gene with the `gene` cell, on every route: the whole cell, by `gene_key`.
-#: The local SQL is built from it, and `remote.REMOTE_LANES` hands the same object to the holder, so the
-#: two routes cannot compare apart.
-KEY_COMPARES: dict[str, dict[str, KeyCompare]] = {REMOTE_CIVIC_TABLE: {"gene": KeyCompare(fold=True)}}
-_GENE = KEY_COMPARES[REMOTE_CIVIC_TABLE]["gene"]
+#: How `lookup_genes` compares a gene with the `gene` cell, on every route: the whole cell, by `gene_key`
+#: (`key_compare.KEY_COMPARES`, which the holder reads too, so the two routes cannot compare apart).
+_GENE = lane_compare("civic", REMOTE_CIVIC_TABLE, "gene")
 
 
 def _civic_connection(reference: Path) -> duckdb.DuckDBPyConnection:
@@ -257,7 +256,7 @@ def _select_civic(con: duckdb.DuckDBPyConnection, where: str, params: list) -> l
 def _civic_gene_keys(genes: Sequence[str]) -> dict[str, list[str]]:
     """The keys a remote route is asked for `genes`: each as given, stripped.
 
-    The holder compares them as this reader does (`KEY_COMPARES`: by `gene_key`, so case and space do not
+    The holder compares them as this reader does (`key_compare.KEY_COMPARES`: by `gene_key`, so case and space do not
     make two genes), so a key spelled in another case than CIViC stores it is answered on both routes. The
     registry's proxy compares a cell exactly, so the holder does not ask it for this key and reads Hugging
     Face instead (`remote.RemoteLane.proxy_compares`); no upper-cased guess is sent in its place, since

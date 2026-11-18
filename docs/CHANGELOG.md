@@ -156,7 +156,7 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   the refutation check keeps its skipping reader). Read in duckdb, keyed as asked; a gene is compared by
   `gene_key`, an rsID as the snapshot spells it. `civic` is now remote-eligible (table `civic`, by `gene` or
   `rsid`), one SQL body over the local file and a remote answer's rows. A gene compares by `gene_key` on every route
-  (`KEY_COMPARES`, below).
+  (`key_compare.KEY_COMPARES`, below).
 - **`clinvar_gkm.lookup_variants` and `clinvar_gkm.lookup_rsids`** (RM431 ask 5, S145): ClinVar-GKM's keyed
   functions, in duckdb, beside `ClinVarGkmWitness.load` (which stays the polars loader): every placement at a
   position or under an rsID, keyed as asked; an absent or unreadable slice raises `ClinVarGkmError`.
@@ -167,13 +167,13 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   rsID or naming a gene (a member of the `;`-joined `gene` cell, by `gene_key`), keyed as asked; an absent or
   unreadable snapshot raises `ClinPgxEnrichmentError`. One SQL body over the local file and a remote answer's rows
   (table `annotations`, by `rsid` or `gene`). A gene compares member by member, by `gene_key`, on
-  every route (`KEY_COMPARES`, below).
+  every route (`key_compare.KEY_COMPARES`, below).
 - **`drug_labels.lookup_genes`** (RM431 ask 5, the pm's reading 4, S145): the drug labels' keyed function, in
   duckdb, beside `load_drug_labels` (unchanged): every label naming a gene (a member of the `genes` cell, by
   `gene_key`), keyed as asked, every column; an absent snapshot raises `DrugLabelUnavailable`, an unreadable one
   `DrugLabelError`. One SQL body over the local file and a remote answer's rows (table `drug_labels`, by
   `genes`). A gene compares member by member, by `gene_key`, on every
-  route (`KEY_COMPARES`, below).
+  route (`key_compare.KEY_COMPARES`, below).
 - **A group re-pulled under its recorded declaration says which one** (RM437 follow-up, the pm's reading 1): the
   pull record keeps when each group's use was declared (`declared_at`, `download.PULL_RECORD_DECLARED_AT_KEY`),
   and a re-pull or skip gated by the recorded use rather than the call's logs `under the use recorded for it,
@@ -223,13 +223,14 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 - **The remote compare is the local compare, on every lane** (RM430 follow-up, the pm's 2026-11-18 placing of the
   `;`-joined cell): Hugging Face compared a key with the whole cell exactly, so a gene in another case (CIViC,
   ClinPGx, cpic) or inside a joined cell (ClinPGx 399 of 16,117 rows, the drug labels 361 of 1,433) was answered
-  locally and missing remotely, with nothing said. New: `resolver.KeyCompare` (`fold`, `separator`; `key`,
-  `members`, `predicate`, `parameter`, `exact`) and `resolver.EXACT`; `KEY_COMPARES` in `clinpgx`, `drug_labels`,
-  `civic_draft` and `cpic`, which their local SQL is now built from; `remote.RemoteLane.compares`, `.compare()`
-  and `.proxy_compares()`, carrying the same objects to the holder. The registry's proxy compares a whole cell
+  locally and missing remotely, with nothing said. New: the leaf module `key_compare`, with `KeyCompare`
+  (`fold`, `separator`; `key`, `members`, `predicate`, `parameter`, `exact`, `described`), `EXACT`, and
+  `KEY_COMPARES` (lane → table → column), the one registry the local SQL of `clinpgx`, `drug_labels`,
+  `civic_draft` and `cpic` is now built from, read with `lane_compare`; `remote.RemoteLane.compares` (the lane's
+  entry, derived from its name), `.compare()` and `.proxy_compares()`, carrying the same objects to the holder. The registry's proxy compares a whole cell
   exactly, so a key a lane folds or splits is not sent to it and Hugging Face answers it (route `hf`); with
   Hugging Face off that is could-not-ask, saying why. cpic's local gene compare also trims (`lower(trim(gene))`),
-  as every other folded compare does. One walk over `REMOTE_LANES`, local against remote on Hugging Face and
+  as every other folded compare does, and `partner_genes` reads it in both its queries. One walk over `REMOTE_LANES`, local against remote on Hugging Face and
   again behind a `MockTransport` registry, holds it; the three strict `xfail`s in `test_remote_keyed_lanes.py` are
   passing tests.
 - **`lookup_variant(..., rsid_index=None)` and `enrich(..., rsid_index=None)`** (RM431, the pm's 2026-11-18
