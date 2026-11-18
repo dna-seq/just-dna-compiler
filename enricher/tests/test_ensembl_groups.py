@@ -499,7 +499,9 @@ def test_a_warm_cache_with_current_groups_reads_no_hub(install_hub, monkeypatch,
     assert ensembl_group_dir(cache, "cadd").is_dir()
 
 
-def test_a_moved_core_re_pulls_the_recorded_groups_without_naming_them(install_hub, tmp_path: Path) -> None:
+def test_a_moved_core_re_pulls_the_recorded_groups_without_naming_them(
+    install_hub, tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
     """`cache pull` with no `--groups`, unstated: the CADD group comes back under its recorded declaration."""
     cache = tmp_path / "ensembl"
     install_hub(_published(0, _OLD))
@@ -508,7 +510,16 @@ def test_a_moved_core_re_pulls_the_recorded_groups_without_naming_them(install_h
     hub = install_hub(new)
 
     follow = dl._FollowHub(ensembl_release_label)
-    dl.ensure_snapshot(cache, _follow_hub=follow)
+    with caplog.at_level("INFO", logger="just_dna_enricher.download"):
+        dl.ensure_snapshot(cache, _follow_hub=follow)
+    said = [r.getMessage() for r in caplog.records if r.name == "just_dna_enricher.download"]
+    assert any(
+        m.startswith(f"Pulling the Ensembl cadd group (1 file(s)) for {_NEW} under the use") for m in said
+    )
+    assert (
+        f"Removed groups/cadd/homo_sapiens-chrMT.parquet: an earlier release's cadd file the release {_NEW} "
+        "does not name."
+    ) in said
 
     assert follow.outcome == "refreshed"
     assert follow.groups == {"cadd": "pulled", "consequence": "pulled"}
@@ -644,7 +655,9 @@ def test_a_core_refresh_keeps_a_group_at_its_old_release_until_that_group_is_pul
         ensembl_group_dir(cache, "consequence")
 
 
-def test_a_sticky_group_that_cannot_be_fetched_does_not_sink_the_core(install_hub, tmp_path: Path) -> None:
+def test_a_sticky_group_that_cannot_be_fetched_does_not_sink_the_core(
+    install_hub, tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
     cache = tmp_path / "ensembl"
     install_hub(_published(0, _OLD))
     dl.ensure_snapshot(cache, groups=["consequence"])
@@ -653,9 +666,15 @@ def test_a_sticky_group_that_cannot_be_fetched_does_not_sink_the_core(install_hu
         failing={"groups/consequence/homo_sapiens-chr21.parquet": ConnectionError("reset by peer")},
     )
 
-    dl.ensure_snapshot(cache, _follow_hub=dl._FollowHub(ensembl_release_label))  # no raise
+    with caplog.at_level("WARNING", logger="just_dna_enricher.download"):
+        dl.ensure_snapshot(cache, _follow_hub=dl._FollowHub(ensembl_release_label))  # no raise
 
     assert ensembl_release_label(cache) == _NEW
+    (said,) = [r.getMessage() for r in caplog.records if "was not re-pulled" in r.getMessage()]
+    assert said.startswith(
+        f"Ensembl cache at {cache}: the consequence group, selected by an earlier pull, was not re-pulled ("
+    )
+    assert said.endswith("); it is refused to readers until a pull succeeds.")
     assert not (cache / "groups/consequence/homo_sapiens-chr21.part").exists()
     with pytest.raises(EnsemblGroupReleaseError, match="a pull that did not finish"):
         ensembl_group_dir(cache, "consequence")

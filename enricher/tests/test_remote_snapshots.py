@@ -12,6 +12,8 @@ import ast
 import dataclasses
 import hashlib
 import json
+import logging
+import shutil
 import threading
 from collections.abc import Callable
 from pathlib import Path
@@ -1182,3 +1184,111 @@ def test_a_request_over_the_proxys_limit_is_answered_by_hugging_face(
     with _with_proxy(RemoteSnapshots(proxy_url=PROXY, hf_base_url=loopback_hub.base_url), _never) as holder:
         answer = holder.lookup("clinvar", "clinvar", keys)
     assert answer.route.route == "hf" and answer.rows == remote._stable(expected)
+
+
+# ── the holder's log lines and the clinical call's finding, pinned (review round 1, item 2) ───────
+
+
+def _remote_log(caplog: pytest.LogCaptureFixture) -> list[str]:
+    return [r.getMessage() for r in caplog.records if r.name == "just_dna_enricher.remote"]
+
+
+def test_the_holders_log_says_why_the_hub_was_asked_where_it_pinned_and_what_answered(
+    httpfs, loopback_hub, clinvar_root: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    loopback_hub.publish(SNAPSHOT_REPO_IDS["clinvar"], clinvar_root, COMMIT_A)
+    release = json.loads((clinvar_root / "release.json").read_text())["dataset"]
+    with (
+        caplog.at_level(logging.INFO, logger="just_dna_enricher.remote"),
+        _with_proxy(
+            RemoteSnapshots(proxy_url=PROXY, hf_base_url=loopback_hub.base_url), _staged(503)
+        ) as holder,
+    ):
+        answer = holder.lookup("clinvar", "clinvar", {"rsid": ["rs334"]})
+    assert _remote_log(caplog) == [
+        "clinvar: the proxy could not answer (HTTP 503); asking Hugging Face next",
+        f"clinvar: pinned {SNAPSHOT_REPO_IDS['clinvar']} at revision {COMMIT_A}, release {release}",
+        f"clinvar/clinvar: {len(answer.rows)} row(s) over hf, release {release}, served_from None, "
+        f"revision {COMMIT_A}",
+    ]
+
+
+def test_a_request_over_the_limit_logs_that_the_proxy_is_passed_over(
+    httpfs, loopback_hub, clinvar_root: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    loopback_hub.publish(SNAPSHOT_REPO_IDS["clinvar"], clinvar_root, COMMIT_A)
+    keys = {"rsid": [f"rs{i}" for i in range(1, 101)], "variation_id": [str(i) for i in range(1, 101)]}
+    with (
+        caplog.at_level(logging.INFO, logger="just_dna_enricher.remote"),
+        _with_proxy(RemoteSnapshots(proxy_url=PROXY, hf_base_url=loopback_hub.base_url), _never) as holder,
+    ):
+        holder.lookup("clinvar", "clinvar", keys)
+    assert _remote_log(caplog)[0] == (
+        "clinvar: the registry's proxy answers at most 100 key values a request, and 100 besides "
+        "'variation_id' leave no room, so the proxy is not asked; asking Hugging Face"
+    )
+
+
+def test_two_proxy_replies_stating_two_releases_withhold_it_and_say_so(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """One lookup cut into two requests, answered at two releases: neither is the answer's, and the log says both."""
+    releases = iter(["clinvar_2026-11-01", "clinvar_2026-11-08"])
+
+    def proxy(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={**_well_formed("clinvar", "clinvar"), "release": next(releases)})
+
+    rsids = [f"rs{i}" for i in range(1, remote.PROXY_MAX_KEY_VALUES + 2)]
+    with (
+        caplog.at_level(logging.WARNING, logger="just_dna_enricher.remote"),
+        _with_proxy(RemoteSnapshots(proxy_url=PROXY, huggingface=False), proxy) as holder,
+    ):
+        answer = holder.lookup("clinvar", "clinvar", {"rsid": rsids})
+    assert answer.route.release is None
+    assert _remote_log(caplog) == [
+        "clinvar: the proxy's replies to one lookup state 2 releases (clinvar_2026-11-01, clinvar_2026-11-08); withheld"
+    ]
+
+
+def test_an_unreadable_hub_manifest_attests_no_file_and_says_so(
+    httpfs, loopback_hub, ensembl_root: Path, tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The lookup still answers, over the whole table: the warning is the only sign the manifest was dropped."""
+    broken = tmp_path / "ensembl"
+    shutil.copytree(ensembl_root, broken)
+    (broken / "manifest.json").write_text("{ not json", encoding="utf-8")
+    loopback_hub.publish(SNAPSHOT_REPO_IDS["ensembl"], broken, COMMIT_A)
+    with (
+        caplog.at_level(logging.WARNING, logger="just_dna_enricher.remote"),
+        RemoteSnapshots(hf_base_url=loopback_hub.base_url) as holder,
+    ):
+        answer = holder.lookup("ensembl", "homo_sapiens", {"chrom": ["16"], "start": [23635706]})
+    assert answer.rows, "the slice holds rows there, read over the whole table"
+    assert _remote_log(caplog) == [
+        f"ensembl: {SNAPSHOT_REPO_IDS['ensembl']}@{COMMIT_A}/manifest.json could not be read; it attests no file"
+    ]
+
+
+def test_a_clinical_call_that_could_not_be_asked_remotely_is_a_finding_naming_it(
+    no_ambient_caches, clinvar_root: Path, tmp_path: Path
+) -> None:
+    """The rsID resolves over the proxy's ClinVar, and ClinVar's own call at its alleles (asked by position)
+    could not be asked: a `clin_sig` finding, never an empty call."""
+    proxy = _Proxy({"clinvar": clinvar_root})
+    proxy.status = lambda request: (
+        httpx.Response(500, text="staged by the test")
+        if "chrom" in json.loads(request.content)["keys"]
+        else None
+    )
+    holder = _with_proxy(RemoteSnapshots(proxy_url=PROXY, huggingface=False), proxy)
+    with holder:
+        hint, _ensembl = _ask(tmp_path, holder, rsid="rs334")
+    assert hint.loci, "the rsID resolved remotely, so ClinVar's call was asked"
+    said = [f.message for f in hint.findings if f.column == "clin_sig" and f.level == "warning"]
+    assert any(
+        m.startswith(
+            "ClinVar could not be asked remotely, clin_sig unchecked: clinvar: the registry's proxy could not be "
+            "asked: HTTP 500"
+        )
+        for m in said
+    ), said

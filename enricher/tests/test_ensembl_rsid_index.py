@@ -78,6 +78,24 @@ def test_the_index_holds_every_rsid_locus_of_the_core_once_sorted_by_rsid(core: 
     assert release_label(index) == ENSEMBL_SPLIT_RELEASE, "the index states the core release it indexes"
 
 
+def test_the_build_says_what_it_read_and_wrote(
+    core: Path, tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A 42-minute build's progress, at `info`: each core file of pass 1, each bucket of pass 2, the files and the total."""
+    with caplog.at_level(logging.INFO, logger="just_dna_enricher.ensembl_rsid_index_build"):
+        built = build_rsid_index(core, tmp_path / "index")
+    said = [r.getMessage() for r in caplog.records if r.name == "just_dna_enricher.ensembl_rsid_index_build"]
+    sources = sorted(p.name for p in (core / "data").glob("*.parquet"))
+    assert [m.split(" (")[0] for m in said if m.startswith("rsID index, pass 1: ")] == [
+        f"rsID index, pass 1: {name}" for name in sources
+    ]
+    assert any(m.startswith("rsID index, pass 2: bucket ") for m in said)
+    assert f"Sorted {built.rows} rsID loci of {ENSEMBL_SPLIT_RELEASE} into {len(built.files)} file(s)" in said
+    assert any(
+        m.startswith(f"Built the rsID index of {ENSEMBL_SPLIT_RELEASE}: {built.rows} rows, ") for m in said
+    )
+
+
 def test_the_parent_pin_is_the_release_and_the_attested_files(
     core: Path, ensembl_split_core, tmp_path
 ) -> None:
@@ -224,6 +242,10 @@ def test_a_moved_parent_never_rebuilds_the_index_it_is_refused_once_and_the_core
         assert _lookup(core) == scanned
         assert _lookup(core) == scanned
     (refusal,) = [r.getMessage() for r in caplog.records if "rsID index" in r.getMessage()]
+    assert refusal.startswith(
+        f"The rsID index at {stale} was not built from the Ensembl core at {core} (it pins "
+        f"{ENSEMBL_SPLIT_RELEASE}; the core is {ENSEMBL_SPLIT_RELEASE}), so rsIDs are looked up by scanning the core."
+    )
     assert refusal.endswith(
         f"Rebuild it in place with `just-dna-enricher cache rebuild --only ensembl_rsid_index --out {tmp_path / 'base'}`."
     )

@@ -372,6 +372,23 @@ def _batch_column(request: Mapping[str, list[Any]]) -> str:
     return max(request, key=lambda column: (len(request[column]), column))
 
 
+def _passed_over(lane: RemoteLane, table: str, wanted: _Keys) -> str | None:
+    """Why the registry's proxy is not asked for `wanted`, or `None` when it is: a key it would compare
+    otherwise than the local reader (`RemoteLane.proxy_compares`), or a request over its own limit
+    (`_proxy_overflow`). Either way Hugging Face is asked instead, and with it off the reason is said."""
+    if not lane.proxy_compares(table, wanted.plain):
+        compared = "; ".join(
+            f"{column} {lane.compare(table, column).described}"
+            for column in sorted(wanted.plain)
+            if not lane.compare(table, column).cell_exact
+        )
+        return (
+            f"the registry's proxy compares a whole cell exactly, and {lane.name}/{table} compares "
+            f"{compared}, as its local reader does, so the proxy is not asked"
+        )
+    return _proxy_overflow(wanted)
+
+
 def _proxy_overflow(wanted: _Keys) -> str | None:
     """Why no request of `wanted` fits the proxy's limit of key values, or `None` when every one does.
 
@@ -593,21 +610,10 @@ class RemoteSnapshots:
         spec = REMOTE_LANES[lane]
         wanted = _read_as_compared(spec, table, wanted)
         fell_through: str | None = None
-        passed_over: str | None = None
-        if self._proxy is not None and not spec.proxy_compares(table, wanted.plain):
-            compared = "; ".join(
-                f"{column} {spec.compare(table, column).described}"
-                for column in sorted(wanted.plain)
-                if not spec.compare(table, column).cell_exact
-            )
-            passed_over = (
-                f"the registry's proxy compares a whole cell exactly, and {lane}/{table} compares "
-                f"{compared}, as its local reader does, so the proxy is not asked"
-            )
-            logger.info("%s: %s; asking Hugging Face", lane, passed_over)
-        elif self._proxy is not None and (overflow := _proxy_overflow(wanted)) is not None:
-            passed_over = overflow
-            logger.info("%s: %s; asking Hugging Face", lane, passed_over)
+        passed_over = _passed_over(spec, table, wanted) if self._proxy is not None else None
+        if passed_over is not None:
+            if self.huggingface:  # with it off, the could-not-ask below says so
+                logger.info("%s: %s; asking Hugging Face", lane, passed_over)
         elif self._proxy is not None:
             try:
                 answer = self._ask_proxy(lane, table, wanted)
@@ -615,7 +621,10 @@ class RemoteSnapshots:
                 if not exc._falls_through:
                     raise
                 fell_through = exc.cause
-                logger.info("%s: the proxy could not answer (%s); asking Hugging Face next", lane, exc.cause)
+                if self.huggingface:
+                    logger.info(
+                        "%s: the proxy could not answer (%s); asking Hugging Face next", lane, exc.cause
+                    )
             else:
                 self._log(lane, table, answer)
                 return answer
