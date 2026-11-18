@@ -2721,7 +2721,7 @@ about 30 minutes, and RM437's groups on `0.9` inherit it.
 
 ## RM451 — reverse writes a resolution row from the cells of a coordinate row the table never filed, so `compile → reverse → compile` moves `resolution_signature`
 
-**Severity** low · **Status** open — **a patch on `main`, `unattended` (about 45 minutes, triage); in 0.8.9 if ready, never holding it** · **Owner** compiler (`compiler/reverse._write_resolution_csv`, the cell rebuild) ·
+**Severity** low · **Status** open — **a patch, built on `main` 2026-11-18, uncut; in 0.8.9 if ready, never holding it** · **Owner** compiler (`compiler/reverse._write_resolution_csv`, the cell rebuild) ·
 **Motivating case** the lead's 0.8.9 run (2026-11-18): restoring `pathogenic_clinvar`'s coordinate row `11:5226762 C>CAAAG` (RM449's remedy) broke `test_reference_example_round_trips_to_a_fixed_point[pathogenic_clinvar]` · *related* RM364, RM380, RM449
 
 **What was seen, and that it is not RM449's.** The restored row validates and compiles under `--strict`, but a lap moves
@@ -2745,7 +2745,26 @@ two-row module above, one lap, projection equal.
 **Sized (the pm, 2026-11-18).** Agreed that it predates RM449: a module whose table files every coordinate row is
 a fixed point, and closing needs that enrich pass anyway. The builder's shape and test above.
 
-**Residuals** none yet.
+**Built (triage, 2026-11-18).** The shape above, corrected on the way: an empty `resolution_loci` already meant
+"the cells answer" (RM364's saving) as well as "filed nothing", so the two had to be written apart, not read apart.
+`parquets.resolution_loci` returns `[]` when a table was read and the key holds no positioned locus on the module's
+build (a key filed only as `not_found` included, since reverse never writes one back). `table_read` is
+`InjectedResolution.consulted`, threaded through `_build_weights` and `with_resolution_loci`. It is never "the table
+has rows": reverse hands an empty table back header-only, and lap 2 must write `[]` where lap 1 did. The
+round-trip matrix's `not_found` and table-says-more cases caught a first draft that read it from the dict.
+`reverse._filed_nothing` skips such a row in both loops. Null still means the cells answer, and the cell rebuild
+still writes those. Tests in `test_an_unfiled_coordinate_row_round_trips.py`:
+
+- the two-row module laps to an equal projection, with nothing invented;
+- a module that read no table laps unchanged;
+- `pathogenic_clinvar` as the restore stood before its enrich pass (the committed example with the row's table
+  entry taken out) laps on digest, content and projection.
+
+The first and last fail on `aa5b88f7`. The example sweep moves one digest, `cyp2c9_warfarin_grch37`: its 12
+unfiled `pharm_variants` rows now say `[]`, reverse gives back the same five table rows, and the CHANGELOG
+declares the byte change.
+
+**Residuals** none
 
 # Not format scope
 

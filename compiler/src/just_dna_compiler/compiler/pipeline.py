@@ -569,6 +569,9 @@ def compile_module(
     # refused the compile, so no table is unreadable here. The injected table's placements of every
     # carried identity are positions too (RM362, 2026-11-04), under the fill's own switch.
     placements = resolution_table if resolve_with_ensembl else None
+    # Whether a table was read at all, never whether it has rows (RM451): `[]` in `resolution_loci` says it
+    # filed nothing under a key, and must read the same on the lap that re-reads a header-only table.
+    table_read = resolve_with_ensembl and injected.consulted
     subjects = module_subjects(
         {"variants.csv": variants, **kind_rows}, resolution=placements, genome_build=config.genome_build
     )
@@ -799,7 +802,9 @@ def compile_module(
     vrs_ids = VrsIds.of(resolution_rows, config.genome_build) if resolve_with_ensembl else VrsIds()
     # SNP core: weights/annotations only when the module actually has variants.
     weights_df = (
-        _build_weights(variants, config, studies, vrs_ids, resolution=placements) if variants else None
+        _build_weights(variants, config, studies, vrs_ids, resolution=placements, table_read=table_read)
+        if variants
+        else None
     )
     annotations_df = _build_annotations(variants, module_name) if variants else None
     studies_df = (
@@ -847,7 +852,9 @@ def compile_module(
             # RM364: what the table said under each row's key, so `reverse` rebuilds `resolution.csv`
             # from the table's answer rather than from the row's own cells. Gated like every resolution
             # read, and NOT on the fill having applied: a row the fill left alone is the reason for it.
-            table_df = with_resolution_loci(table_df, placements or {}, config.genome_build)
+            table_df = with_resolution_loci(
+                table_df, placements or {}, config.genome_build, table_read=table_read
+            )
         table_df.write_parquet(output_dir / parquet_name, compression=compression)
         table_rows[parquet_name] = table_df.height
 

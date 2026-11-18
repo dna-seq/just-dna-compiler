@@ -41,6 +41,19 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md). The `0.8` branch merged into `main` at the 0.8.0 cut (2026-11-05).
 
+## 2026-11-18 — RM451: reverse no longer invents a table row for a coordinate row the table never filed (patch, on `main`)
+
+`resolution_loci` was null both where a row's own cells answer (RM364's saving) and where the module's table
+files nothing under the row's key. So a coordinate row authored after the last `enrich` came back from
+`reverse` as a table row rebuilt from its cells, and `compile → reverse → compile` moved `resolution_signature`.
+Restoring `pathogenic_clinvar`'s `11:5226762 C>CAAAG` (RM449's remedy) found it, and a two-row module with no
+mirrored site shows it too. A module that read a table now writes `[]` there, for a key with no positioned
+locus on its build, and `reverse` writes nothing for it. **What moves:** that cell, null → `[]`, so
+`artifact.digest` moves on recompile for a module that read a table and holds such a row. Among the
+reference examples that is `cyp2c9_warfarin_grch37` (12 `pharm_variants` rows). No value a row states
+changes, and reverse gives back the same table. A module that read no table is unchanged. Compiler only; no
+column, code or vocabulary moves.
+
 ## 2026-11-18 — RM448: a witness holding one ALT of a multi-allelic indel site no longer withholds the site (patch, on `main`)
 
 Online with the reference read (`verify_ref`), the placement witness (RM267) compared ClinVar's one ALT of a

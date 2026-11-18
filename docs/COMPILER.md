@@ -1317,6 +1317,12 @@ since a second row rebuilt from cells would invent a one-to-many the table never
 resolved nothing anywhere and has no `weights.parquet` gets no file, rather than a header-only sidecar
 invented out of an absence, unless the compiled spec carried a table: then a header-only table comes
 back header-only (RM364).
+**A key the table files nothing under says so (RM451, 0.8.9).** `resolution_loci` is null where a row's own
+cells answer, and that read the same as a key the table never filed. A coordinate row authored after the last
+enrich was then rebuilt from its cells into a table row the injected table never had, and the second lap read
+it (`resolution_signature` moved). A module that read a table (`InjectedResolution.consulted`) now writes `[]`
+for a key with no positioned locus on its build, and reverse writes nothing for it. Lap 2 re-reads the header-only
+table it is handed and writes `[]` again. A module that read no table keeps null.
 
 **`resolution.csv` still gets no parquet**, and that is the repair this item deliberately did not
 make: it is a build-time derived artifact whose consumers are the compiler and the enricher, and

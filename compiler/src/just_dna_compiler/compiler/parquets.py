@@ -105,6 +105,7 @@ def _build_weights(
     vrs: VrsIds | None = None,
     *,
     resolution: ResolutionTable | None = None,
+    table_read: bool = False,
 ) -> pl.DataFrame:
     """Build the weights.parquet DataFrame from validated variant rows, the locus-level columns
     derived from the module's study rows (`_locus_study_facts`), each allele's `vrs_id` recorded in
@@ -227,7 +228,9 @@ def _build_weights(
                 # ── 0.8 (RM364): the loci the table files under the authored key, so `reverse`
                 # rebuilds `resolution.csv` from the table's answer rather than from this row's cells,
                 # which hold the author's coordinate wherever the fill left the row alone. Last. ──
-                "resolution_loci": resolution_loci(authored_key, resolution or {}, config.genome_build),
+                "resolution_loci": resolution_loci(
+                    authored_key, resolution or {}, config.genome_build, table_read=table_read
+                ),
             }
         )
         # What reverse's cell rebuild writes for this record, read off the record itself so every rebuilt
@@ -455,7 +458,11 @@ def _locus_holds_more_than_cells(locus: dict[str, Any]) -> bool:
 
 
 def resolution_loci(
-    key: str | None, resolution: dict[str, list[ResolutionRow]], genome_build: str
+    key: str | None,
+    resolution: dict[str, list[ResolutionRow]],
+    genome_build: str,
+    *,
+    table_read: bool = False,
 ) -> list[dict[str, Any]] | None:
     """The loci `resolution.csv` files under `key` on this build, in `locus_index` order, or `None`.
 
@@ -469,6 +476,16 @@ def resolution_loci(
     cells wrote the author's coordinate back as a resolution fact.
 
     Positioned loci only: a `not_found` row carries no fact for reverse to restore.
+
+    **An empty list says the table filed nothing under this key (RM451).** `None` already means "the
+    row's own cells answer" (`withhold_reproduced_loci`, or a parquet compiled before the column, or a
+    module that read no table), and reverse rebuilds from the cells there. A coordinate row a module's
+    table never filed (authored after the last enrich) was read the same way, so reverse invented a
+    table row for it and the second lap read a row the first did not. A module that read a table
+    therefore says `[]` for a key under which it holds no positioned locus on this build, and reverse
+    writes nothing for it. `table_read` is
+    whether a table was read at all (`InjectedResolution.consulted`), never whether it has rows: reverse
+    hands an empty table back as a header-only file, and the second lap must say `[]` where the first did.
     """
     if key is None:
         return None
@@ -481,7 +498,9 @@ def resolution_loci(
         key=lambda r: r.locus_index,
     )
     if not loci:
-        return None
+        # Nothing positioned under the key on this build, a `not_found` row included: reverse writes
+        # none of it back, so the next lap reads the key as unfiled too, and both say `[]` (RM451).
+        return [] if table_read else None
     return [{name: getattr(r, name) for name in RESOLUTION_LOCUS_FIELDS} for r in loci]
 
 
@@ -549,7 +568,11 @@ def withhold_reproduced_loci(
 
 
 def with_resolution_loci(
-    table: pl.DataFrame, resolution: dict[str, list[ResolutionRow]], genome_build: str
+    table: pl.DataFrame,
+    resolution: dict[str, list[ResolutionRow]],
+    genome_build: str,
+    *,
+    table_read: bool = False,
 ) -> pl.DataFrame:
     """A positional table's parquet with `resolution_loci`: the loci filed under each row's key (RM364).
 
@@ -559,7 +582,7 @@ def with_resolution_loci(
     An empty `resolution` (no table, or `--no-resolve`) leaves the column null.
     """
     keys = table["variant_key"].to_list()
-    cells = [resolution_loci(key, resolution, genome_build) for key in keys]
+    cells = [resolution_loci(key, resolution, genome_build, table_read=table_read) for key in keys]
     # `row.get` where reverse's cell rebuild reads `row.get` too (`_resolution_record`): a kind with no
     # `rsid`, `ref` or `vrs_id` column writes those empty, and a positional row's ordinal is always 0.
     facts = [
