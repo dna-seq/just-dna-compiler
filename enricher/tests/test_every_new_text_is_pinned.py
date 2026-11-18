@@ -97,6 +97,11 @@ NEW_TEXTS: tuple[Text, ...] = (
     Text("remote", "the proxy could not answer (", "test_remote_snapshots.py"),
     Text("remote", "the registry's proxy compares a whole cell exactly", "test_remote_snapshots.py"),
     Text("remote", "the registry's proxy answers at most ", "test_remote_snapshots.py"),
+    Text(
+        "sequences",
+        "this read returns no bases, and the build is retried at the proxy's next read",
+        "test_enrich_takes_clients.py",
+    ),
 )
 
 #: The modules wholly new in 0.9: every text they emit is one `NEW_TEXTS` names.

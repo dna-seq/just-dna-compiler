@@ -445,6 +445,29 @@ def test_one_run_asks_a_failed_read_once(monkeypatch: pytest.MonkeyPatch, fails:
     assert backend.reads == first + first
 
 
+def test_a_failed_build_says_it_is_retried_at_the_next_read(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Review round 2, I: a stock proxy read outside a run's view retries a failed build at every read, so its
+    warning may not say the work "is skipped this run", which is not what happens."""
+    backend = _Backend("build")
+    monkeypatch.setattr("just_dna_enricher.sequences.create_dataproxy", backend.create_dataproxy)
+    shared = SequenceProxy()
+    with caplog.at_level(logging.WARNING, logger="just_dna_enricher.sequences"):
+        assert shared.subsequence("SQ.test", 1, 2) is None
+        assert shared.subsequence("SQ.test", 1, 2) is None
+    assert backend.builds == 2, "each read asked for the build again"
+    said = [r.getMessage() for r in caplog.records if r.name == "just_dna_enricher.sequences"]
+    assert (
+        said
+        == [
+            f"Could not reach the sequence service at {shared.uri} (seqrepo is down); this read returns no bases, "
+            "and the build is retried at the proxy's next read."
+        ]
+        * 2
+    )
+
+
 def test_a_resolvers_own_proxy_holds_no_failure_either(monkeypatch: pytest.MonkeyPatch) -> None:
     """A host may share one resolver across runs, so its own proxy is read directly: answers only."""
     backend = _Backend("raise")
