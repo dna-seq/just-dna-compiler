@@ -291,7 +291,8 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   was not an object reached the readers and raised `AttributeError` out of `lookup_variant`, and a reply for
   another lane or table was taken for the one asked. Each is now could-not-ask on the proxy with no fall-through
   (`SnapshotRouteUnavailable`, `a 200 that is not a lane reply (…)` or `… not the reply asked for: …`), as is a
-  `truncated` or `release` of the wrong JSON kind; a field the registry adds later is ignored. One walk over
+  `truncated` of the wrong JSON kind; a `release`, `revision` or `served_from` of another kind is withheld, and a
+  field the registry adds later is ignored. One walk over
   `REMOTE_LANES` feeds the proxy each malformed body.
 - **A request over the proxy's per-request limit goes to Hugging Face** (review round 1, item 6, RM430): a lookup
   whose columns besides the one split already held 100 values (100 rsIDs and 100 variation ids) raised

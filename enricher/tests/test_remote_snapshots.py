@@ -1084,7 +1084,6 @@ MALFORMED_REPLIES: dict[str, Callable[[str, str], dict[str, Any]]] = {
     "another lane": lambda lane, table: {**_well_formed(lane, table), "lane": f"{lane}_other"},
     "another table": lambda lane, table: {**_well_formed(lane, table), "table": f"{table}_other"},
     "no lane": lambda lane, table: {k: v for k, v in _well_formed(lane, table).items() if k != "lane"},
-    "a release not text": lambda lane, table: {**_well_formed(lane, table), "release": 7},
 }
 
 
@@ -1111,6 +1110,23 @@ def test_a_malformed_proxy_reply_is_could_not_ask_on_every_lane(lane: str, fault
     assert str(failed.value).startswith(
         f"{lane}: the registry's proxy could not be asked: a 200 that is not "
     )
+
+
+def test_provenance_of_another_kind_is_withheld_never_a_malformed_reply() -> None:
+    """`release`, `revision` and `served_from` only say where the rows came from: a kind the client does not read
+    costs that field (withheld, `None`), never the route (review round 1, the code review of item 1)."""
+    reply = {
+        **_well_formed("clinvar", "clinvar"),
+        "rows": [{"rsid": "rs334"}],
+        "release": 7,
+        "revision": {"a": 1},
+    }
+    holder = _with_proxy(
+        RemoteSnapshots(proxy_url=PROXY, huggingface=False), lambda r: httpx.Response(200, json=reply)
+    )
+    with holder:
+        answer = holder.lookup("clinvar", "clinvar", {"rsid": ["rs334"]})
+    assert answer.rows == [{"rsid": "rs334"}] and answer.route == RemoteRoute("proxy", None, "local", None)
 
 
 def test_a_well_formed_reply_with_extra_fields_is_read() -> None:

@@ -2517,8 +2517,8 @@ with RemoteSnapshots(declared_use="non_commercial") as snapshots:      # proxy f
   and raises `ValueError`; any other status, and a 200 that is not a lane reply, is could-not-ask on the
   proxy with no fall-through. A 200 is read through one strict model of the registry's reply (0.9, review
   round 1): `lane` and `table` equal to the request's, `rows` a list of objects, `truncated` a JSON bool, and
-  `served_from`, `release` and `revision` text or absent, with no coercion (`"false"` is no bool) and fields
-  it does not read ignored. A reply missing `truncated`, a row that is not an object, or a reply for another
+  `served_from`, `release` and `revision` text or absent (another kind is withheld, `None`, since they only
+  trace the rows), with no coercion (`"false"` is no bool) and fields it does not read ignored. A reply missing `truncated`, a row that is not an object, or a reply for another
   lane or table is `a 200 that is not a lane reply (…)` or `a 200 that is not the reply asked for: …`,
   never a whole answer and never an `AttributeError` out of `lookup_variant`. A proxy answer's `release` and `revision` are what its replies state
   (registry S34), else `None`, withheld; `served_from` is kept.

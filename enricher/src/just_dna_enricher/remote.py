@@ -62,7 +62,7 @@ from just_dna_format.snapshot import (
     parse_release,
 )
 from just_dna_format.vrs import normalize_chrom
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import BaseModel, ConfigDict, ValidationError, field_validator
 
 from just_dna_enricher.caches import LANES_BY_NAME
 from just_dna_enricher.key_compare import KEY_COMPARES, KeyCompare, lane_compare
@@ -453,7 +453,8 @@ class _ProxyReply(BaseModel):
     proxy with no fall-through. Strict on what the client reads (types are not coerced: `"false"` is no
     bool), and blind to what it does not (`extra="ignore"`), so a field the registry adds later costs
     nothing. `lane`, `table`, `rows` and `truncated` are in every reply since the proxy's first version
-    (registry 0.30); `served_from`, `release` and `revision` came later and may be absent or `null`.
+    (registry 0.30); `served_from`, `release` and `revision` came later and may be absent or `null`, and one
+    of another kind is withheld rather than refused.
     """
 
     model_config = ConfigDict(extra="ignore", strict=True)
@@ -465,6 +466,13 @@ class _ProxyReply(BaseModel):
     served_from: str | None = None
     release: str | None = None
     revision: str | None = None
+
+    @field_validator("served_from", "release", "revision", mode="before")
+    @classmethod
+    def _withheld_unless_text(cls, value: object) -> object:
+        """Provenance of another kind is withheld (`None`), never a malformed reply: these fields only say
+        where the rows came from, so a registry that changes one's kind costs that field, not the route."""
+        return value if value is None or isinstance(value, str) else None
 
 
 def _proxy_reply(lane: str, table: str, body: object) -> _ProxyReply:
