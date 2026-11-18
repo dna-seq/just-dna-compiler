@@ -1646,15 +1646,26 @@ def lane_status(
             # `resolve()` has loaded `.env` by now, so the override is read the way the resolver read it.
             looked_in = _ladder_dir(lane, named=False)
         out[index] = _lane_verdict(lane, path, looked_in)
-    resolved = {status.lane.name: status.path for status in out.values()}
-    for index, status in out.items():
-        if status.state == "present" and status.lane.stale_reason is not None:
-            named = status.lane.name in given
-            parents = {name: _parent_path(name, resolved, given, named=named) for name in status.lane.parents}
-            reason = status.lane.stale_reason(status.path, parents)
-            if reason is not None:
-                out[index] = dataclasses.replace(status, state="stale", stale=reason)
+        if lane.name in given:
+            # Judged now, before any unnamed lane loads `.env`, so a named lane's parents are read as it was.
+            out[index] = _staleness(out[index], out, given)
+    for index in order:
+        if walked[index].name not in given:
+            out[index] = _staleness(out[index], out, given)
     return [out[index] for index in range(len(walked))]
+
+
+def _staleness(
+    status: LaneStatus, so_far: Mapping[int, LaneStatus], given: Mapping[str, Path | None]
+) -> LaneStatus:
+    """`status` called `stale` when its lane's `stale_reason` says its parents moved under it; else as it is."""
+    if status.state != "present" or status.lane.stale_reason is None:
+        return status
+    resolved = {done.lane.name: done.path for done in so_far.values()}
+    named = status.lane.name in given
+    parents = {name: _parent_path(name, resolved, given, named=named) for name in status.lane.parents}
+    reason = status.lane.stale_reason(status.path, parents)
+    return status if reason is None else dataclasses.replace(status, state="stale", stale=reason)
 
 
 def _parent_path(
@@ -1663,8 +1674,9 @@ def _parent_path(
     """A parent's snapshot path for a stale check: the one this call resolved for it, else read as it would be.
 
     A parent the caller named is resolved with its path and without `.env`; one unnamed is read without
-    `.env` too when the child was named, so a call naming only its own lanes still writes nothing into
-    `os.environ` (RM443), and with the `.env` load otherwise, as the child itself was read."""
+    `.env` too when the child was named (and before any unnamed lane of the call loaded it), so a call naming
+    only its own lanes writes nothing into `os.environ` and a named child never reads what this call's own
+    `.env` load exported (RM443); with the `.env` load otherwise, as the child itself was read."""
     if name in resolved:
         return resolved[name]
     lane = LANES_BY_NAME[name]

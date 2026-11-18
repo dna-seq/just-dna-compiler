@@ -7,9 +7,11 @@ scan's own, computed in the test with no index in place.
 """
 
 import ast
+import dataclasses
 import hashlib
 import json
 import logging
+import os
 import threading
 from pathlib import Path
 
@@ -243,8 +245,9 @@ def test_a_moved_parent_never_rebuilds_the_index_it_is_refused_once_and_the_core
         assert _lookup(core) == scanned
     (refusal,) = [r.getMessage() for r in caplog.records if "rsID index" in r.getMessage()]
     assert refusal.startswith(
-        f"The rsID index at {stale} was not built from the Ensembl core at {core} (it pins "
-        f"{ENSEMBL_SPLIT_RELEASE}; the core is {ENSEMBL_SPLIT_RELEASE}), so rsIDs are looked up by scanning the core."
+        f"The rsID index at {stale} was not built from the Ensembl core at {core} (it pins release "
+        f"{ENSEMBL_SPLIT_RELEASE} over other files than the Ensembl core at {core} holds), so rsIDs are looked "
+        "up by scanning the core."
     )
     assert refusal.endswith(
         f"Rebuild it in place with `just-dna-enricher cache rebuild --only ensembl_rsid_index --out {tmp_path / 'base'}`."
@@ -264,33 +267,65 @@ def test_a_moved_parent_never_rebuilds_the_index_it_is_refused_once_and_the_core
     assert after == before, "nothing rebuilt the index"
 
 
-@pytest.mark.parametrize("arm", ["current", "moved", "unpinnable"])
+@pytest.mark.parametrize("arm", ["current", "moved", "unpinnable", "gone"])
 def test_lane_status_calls_a_stale_index_stale_as_the_reader_refuses_it(
     no_ambient_caches, ensembl_split_core, tmp_path: Path, arm: str
 ) -> None:
     """One verdict, two readers (review round 1, item 11): the status of the index beside a core says `stale`
-    exactly where the reader refuses the index for that core. A core that cannot be pinned is no moved parent:
-    the reader scans it without a word, and the status stays `present` (`@a-derived-lane-has-parents-…`)."""
+    exactly where the reader refuses the index for that core, with the reason the reader logs: a core of other
+    files, and a core on disk that cannot be pinned (a file of unstated sha256). A core that is gone is no moved
+    parent (`@a-derived-lane-has-parents-…`): the index stays `present`, and there is nothing to read it beside."""
     built_from = tmp_path / "ensembl_variations"
     index = build_rsid_index(ensembl_split_core(built_from), tmp_path / "ensembl_rsid_index").out_dir
     core = built_from if arm != "moved" else ensembl_split_core(tmp_path / "moved", drop=(MULTI_ALT,))
     if arm == "unpinnable":
-        (core / "manifest.json").unlink()
+        manifest = json.loads((core / "manifest.json").read_text())
+        del next(e for e in manifest["files"] if e["path"].startswith("data/"))["sha256"]
+        (core / "manifest.json").write_text(json.dumps(manifest))
+    if arm == "gone":
+        core = tmp_path / "no-core-here"
     lane = LANES_BY_NAME["ensembl_rsid_index"]
     locations_ = {"ensembl": core, "ensembl_rsid_index": index}
     (status,) = caches.lane_status([lane], locations=locations_)
     read = resolver._rsid_index_beside(core, index)
     assert status.path == index
+    assert (read is not None) == (arm == "current")
     if arm == "moved":
-        assert (status.state, read) == ("stale", None)
+        assert status.state == "stale"
         assert status.stale == (
             f"it pins release {ENSEMBL_SPLIT_RELEASE} over other files than the Ensembl core at {core} holds"
         )
+    elif arm == "unpinnable":
+        assert status.state == "stale"
+        assert status.stale.startswith(f"the Ensembl core at {core} cannot be pinned: the manifest.json of ")
     else:
         assert status.state == "present" and status.stale is None
-        assert (read is not None) == (arm == "current")
     both = caches.lane_status([LANES_BY_NAME["ensembl"], lane], locations=locations_)
     assert both[1] == status, "the parent's path is the one this call resolved for it"
+
+
+def test_a_named_index_is_judged_before_an_unnamed_lane_loads_the_env(
+    no_ambient_caches, monkeypatch: pytest.MonkeyPatch, ensembl_split_core, tmp_path: Path
+) -> None:
+    """RM443's promise holds for the stale check too: a named lane never reads a variable the same call's own
+    `.env` load exported. The unnamed lane here stands for that load, exporting a moved core as it resolves."""
+    index = build_rsid_index(
+        ensembl_split_core(tmp_path / "built_from"), tmp_path / "ensembl_rsid_index"
+    ).out_dir
+    moved = ensembl_split_core(tmp_path / "moved", drop=(MULTI_ALT,))
+    monkeypatch.setenv(locations.ENSEMBL_CACHE_VAR, "")
+    clinvar = LANES_BY_NAME["clinvar"]
+
+    def loads_the_env(*args: object, **kwargs: object) -> None:
+        os.environ[locations.ENSEMBL_CACHE_VAR] = str(moved)
+        return None
+
+    exporting = dataclasses.replace(clinvar, resolve=loads_the_env)
+    statuses = caches.lane_status(
+        [exporting, LANES_BY_NAME["ensembl_rsid_index"]], locations={"ensembl_rsid_index": index}
+    )
+    assert os.environ[locations.ENSEMBL_CACHE_VAR] == str(moved), "the unnamed lane did export it"
+    assert (statuses[1].state, statuses[1].stale) == ("present", None), "judged before the export"
 
 
 def test_cache_status_prints_a_stale_index_as_stale_with_its_rebuild(

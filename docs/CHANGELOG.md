@@ -272,7 +272,9 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   three agree. `cache status` prints `stale` with the reason and the rebuild where a reader looks; `cache
   prepare` leaves the index as it is and reports it *unavailable* (`ready=None`, `stale: …`). Each parent is
   read where this call resolved it, `locations` included, so a call naming every lane still loads no `.env`. A
-  core that cannot be pinned is no moved parent: the index stays `present`. `cache status` prints every state in
+  core on disk that cannot be pinned is stale too; a core that is gone is no moved parent, and the index stays
+  `present`. The reader's refusal now logs that same reason, where it said "it pins R; the core is R" of a core
+  of one release over other files. `cache status` prints every state in
   its own word, which a walk over `LANE_STATES` holds.
 - **A pull record present but unreadable is refused, never read as no groups** (review round 1, item 3, RM437):
   `locations.pulled_groups` answered `{}` for a record that was not JSON, not an object or held a malformed

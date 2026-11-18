@@ -1727,8 +1727,10 @@ its `CacheLane.stale_reason` (each parent's path as this call resolved it, the c
 included) says why, in `LaneStatus.stale`. Only `ensembl_rsid_index` states one, the verdict its reader
 refuses the index by (an index of another core), so `cache status` prints `stale` with the reason and the
 rebuild where a reader looks, and `cache prepare` leaves it as it is, *unavailable* (`ready=None`, route
-`none`, `stale: …`), never `present`. A core that cannot be pinned is no moved parent: the index stays
-`present` and the reader scans. Before, both called a refused index present. `looked_in` says which directory the verdict is about (the path given in `locations`, else
+`none`, `stale: …`), never `present`. A core on disk that cannot be pinned (no manifest, a file of unstated
+sha256) is stale too, since no index is read beside it; a core that is gone is no moved parent, and the
+index stays `present`. The reader logs the same reason when it refuses an index. Before, both called a
+refused index present. A named lane is judged before any unnamed lane of the call loads `.env`. `looked_in` says which directory the verdict is about (the path given in `locations`, else
 the lane's `env_var` if set, else the default), `release` is what the snapshot names, and
 `release_unreadable` is the present-and-unreadable `release.json` — a provenance failure, not a data
 failure.

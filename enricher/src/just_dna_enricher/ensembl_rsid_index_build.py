@@ -92,16 +92,18 @@ def core_pin(core: Path) -> dict[str, str] | None:
 
 
 def _moved_parent(index_dir: Path, core: Path) -> str | None:
-    """Why the index at `index_dir` is not the index of `core`, or `None` when it is (review round 1, item 11).
+    """Why the index at `index_dir` is not read beside `core`, or `None` when it is (review round 1, item 11).
 
-    The one verdict the reader (`resolver._rsid_index_beside`, which then scans) and the lane's status
-    (`caches.lane_status`, `prepare_lane`, which call the index stale) read. `None` too when `core` cannot
-    be pinned (gone, no manifest, a file unstated): a parent that cannot be compared has not moved
-    (`@a-derived-lane-has-parents-and-an-absent-parent-is-not-an-empty-result`), so it is never called stale.
+    The one verdict the reader (`resolver._rsid_index_beside`, which logs this reason and scans) and the
+    lane's status (`caches.lane_status`, `prepare_lane`, which call the index stale with it) read: it pins
+    another core, or none, or `core` is on disk and cannot be pinned (no manifest, a `data/` file of
+    unstated size or sha256), so no index is ever read beside it. `None` when `core` is gone: a parent that
+    is not there has not moved, and "provision the parent" is another instruction than "rebuild the index"
+    (`@a-derived-lane-has-parents-and-an-absent-parent-is-not-an-empty-result`).
     """
-    current = core_pin(core)
+    current, refusal = _pin_and_refusal(core)
     if current is None:
-        return None
+        return f"the Ensembl core at {core} cannot be pinned: {refusal}" if Path(core).is_dir() else None
     release = read_release(index_dir)
     pinned = (release.parents or {}).get("ensembl") if release is not None else None
     if isinstance(pinned, dict) and {key: pinned.get(key) for key in current} == current:
