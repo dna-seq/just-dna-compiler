@@ -2439,6 +2439,37 @@ the pm decided: this item no longer needs it, and it would change what the witne
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.
 
+## RM454 — the enricher's local key compares never went through the one normalizer: constraint by gene, `lookup_loci` by rsID and contig, and SQL's `lower(trim())` beside `gene_key`
+
+**Severity** low · **Status** open — **a patch, after 0.9 merges** (its home, `key_compare.KEY_COMPARES`, is 0.9's) ·
+**Owner** enricher (`gene_metrics.lookup_snapshot`, `clinvar.lookup_loci`, `resolver.lookup_loci`,
+`key_compare`) · **Motivating case** the RM430 follow-up's deferred findings (a) to (c), the lead's 0.9 run
+(2026-11-18, merged as 15668c1e) · *related* RM363, RM430, RM431
+
+**What was seen.** 0.9 made each keyed function compare a key the same way on the local and the remote route (one
+registry, `key_compare.KEY_COMPARES`, feeds both routes' SQL, and a walk over `REMOTE_LANES` asserts equal answers).
+Its builder found three compares that are equal across routes but not across functions:
+
+- (a) the constraint snapshot compares a gene exactly (`gene IN (?)` in `gene_metrics.lookup_snapshot`), though
+  RM363 lists `gene_metrics.py` among the sites moved to `gene_key`;
+- (b) `clinvar.lookup_loci` and `resolver.lookup_loci` compare an rsID and a contig exactly, so `RS334` and `chr11`
+  miss, where RM431's keyed functions normalize the same keys;
+- (c) SQL's `lower(trim(gene))` and Python's `gene_key` (casefold, every whitespace) differ on a tab and on non-ASCII
+  text. Older than 0.9.
+
+**Why low.** No incident: an authored row's rsID is one spelling (`^rs\d+$`) and `VariantRow` folds `chr12` to `12`, so
+a module never sends the spellings (b) misses. Only a direct caller of a lookup (a hint, a tool's user typing a key)
+can, and a miss there reads as absent. RM363 decided one normalizer per value; these are the sites its AST guard
+cannot see, because the compare is inside SQL.
+
+**The fix.** Every keyed SQL compare in the enricher is declared in `KEY_COMPARES`, not only the routed ones. The
+SQL form and the Python normalizer give the same key, or the compare normalizes in Python before the query. One walk
+asserts both: over every declared compare, a fixture key in another case, with surrounding whitespace, with a
+`chr` prefix where it is a contig, answers as its normalized form does. A patch after 0.9 merges; triage builds it.
+It may widen what a direct lookup returns, never what a module resolves, so no derived table moves.
+
+**Residuals** none yet.
+
 ## RM7 — Evaluation-output / report-card schema
 
 **Severity** — · **Status** **not format scope** — a consumer contract · **Owner** consumer

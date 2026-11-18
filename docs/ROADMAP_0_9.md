@@ -275,6 +275,25 @@ through the local and the remote route of every lane in `REMOTE_LANES`, over a f
 spelled in another case, and asserts the two answers are equal (`@registry-completeness`). The two strict xfails
 become passing tests.
 
+**The follow-up's readings, placed (the pm, 2026-11-18; merged as 15668c1e).** The class fix is in: one registry,
+`key_compare.KEY_COMPARES`, feeds both routes' SQL, and a walk over `REMOTE_LANES` asserts equal answers.
+
+- **Confirmed: a key the registry's proxy cannot compare skips the proxy.** The proxy compares a parquet key exactly,
+  so for a key column whose local reader folds or splits, the holder asks Hugging Face (`route` says so) instead of
+  taking a short answer with nothing said. It costs Hugging Face requests on four small whole-table gene reads (cpic,
+  civic, clinpgx, drug_labels). With the proxy set and Hugging Face off, those four lanes answer could-not-ask by
+  gene (pinned): a known issue in the upgrade notes. The liaison files the ask that the proxy fold and split, which
+  would let the holder use it again.
+- **Confirmed:** `close()` waits for lookups in flight and refuses one started while it closes; cpic's local compare
+  now trims too (one declaration for both routes; it can only add a match, and the CHANGELOG says so); the CLI takes
+  no `--rsid-index` flag and reads the index from the environment in 0.9, as ENRICHER.md says.
+- **Confirmed, as decided in reading 5 above:** a wrong request raises out of `lookup_variant`. That includes a proxy
+  422 and a lookup on a holder already closed at shutdown, both programming errors on the host's side. The upgrade
+  notes say a host that shares a holder closes it after its last lookup.
+- **Deferred (a) to (c) are one class, filed as RM454:** the enricher's local key compares that never went through
+  the one normalizer. A patch after 0.9 merges, because its home is 0.9's `KEY_COMPARES`. If the review round reports
+  the same class, its finding joins RM454.
+
 **Residuals** none yet.
 
 ## RM431 — the keyed readers a remote lookup needs: an rsID index for Ensembl, and a key on the whole-table readers
