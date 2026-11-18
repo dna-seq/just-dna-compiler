@@ -2432,6 +2432,15 @@ Four fail on `origin/main`. Two of the lead's 0.8.9 tests pinned the removed arm
 feature scenario moves to the borrowed code, and COMPILER.md, AGENT_NOTES and the CHANGELOG say it. 0.8.9's entries
 keep what 0.8.9 did.
 
+**Online too (the pm, 2026-11-19).** The registry re-derived cardio online with enricher 0.8.8 and compiled it strict
+under compiler 0.8.9. Four mirrored sites carry `unplaced` from ClinVar on both spellings, so the refusal also happens
+online: rs551348450, rs759332741, rs771806027 and rs786205353. The fix covers them by construction. It is in the
+compiler and reads only the verdicts, whatever the run: `unplaced` on every spelling fills every spelling under the
+warning, and no verdict combination leaves a row unpositioned any more (`_settle_mirrored_spellings`). The likelier
+reading online is the base rate, not a merge: ClinVar holds neither spelling under the rsID because most variants are
+not in ClinVar (`@absence-is-weighted-by-the-base-rate`). Since v0.8.9, `main`'s enricher has changed only RM455's
+bookkeeping, so a re-derive under enricher 0.8.9 resolves the same as one under 0.8.10, and can be reused.
+
 **Residuals** candidate 2, the offline witness following dbSNP merges through the snapshot's synonyms, is left as
 the pm decided: this item no longer needs it, and it would change what the witness compares
 
