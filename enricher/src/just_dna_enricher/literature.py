@@ -87,6 +87,7 @@ from just_dna_enricher.net import (
     aggregate_reason,
     attempt_floor,
     batched,
+    check_batch_size,
     could_not_ask_reason,
     dedupe,
     raise_if_retired,
@@ -439,6 +440,11 @@ class EuropePmcClient:
     def __post_init__(self) -> None:
         if self.gate is None:
             self.gate = PacingGate(self.min_request_interval)
+        self._check()
+
+    def _check(self) -> None:
+        """Refuse a `batch_size` below 1, here and again where `lookup` reads it (RM455)."""
+        check_batch_size(type(self).__name__, self.batch_size)
 
     def _http(self) -> httpx.Client:
         if self._client is None:
@@ -494,6 +500,7 @@ class EuropePmcClient:
         the flag describes Europe PMC's OA subset while the licence describes the article. Stored
         verbatim; `licensing.article_terms` maps it to rights at read time.
         """
+        self._check()  # a field may have been set since the client was built (RM455)
         out: dict[str, dict] = {}
         for batch in batched(dedupe(pmids), self.batch_size):
             query = " OR ".join(f"EXT_ID:{pmid}" for pmid in batch)
@@ -970,6 +977,11 @@ class PmcIdConverterClient(Withholding):
             self.gate = PacingGate(self.min_request_interval)
         if self.contact_email is None:
             self.contact_email = env_value("JUST_DNA_CONTACT_EMAIL") or None
+        self._check()
+
+    def _check(self) -> None:
+        """Refuse a `batch_size` below 1, here and again where `resolve` reads it (RM455)."""
+        check_batch_size(type(self).__name__, self.batch_size)
 
     def _http(self) -> httpx.Client:
         if self._client is None:
@@ -1012,6 +1024,7 @@ class PmcIdConverterClient(Withholding):
         **absent from the result**. A caller must not read a missing key as "does not exist" — that
         conflation is exactly what S20 was about, one service over.
         """
+        self._check()  # a field may have been set since the client was built (RM455)
         out: dict[str, PmcIdRecord] = {}
         for batch in batched(dedupe(pmcids), self.batch_size):
             params = {"ids": ",".join(batch), "format": "json", "tool": "just-dna-enricher"}

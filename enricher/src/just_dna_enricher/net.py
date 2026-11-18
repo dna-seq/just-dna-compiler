@@ -118,6 +118,20 @@ def _service_gate(service: str, interval: float) -> PacingGate:
         return gate
 
 
+def check_batch_size(owner: str, size: int) -> None:
+    """Raise `ValueError` for a `batch_size` below 1, naming `owner`'s field (RM455).
+
+    `batched` with a size of 0 yields no batch, so a client asked nothing and answered `{}`, which every
+    caller reads as "no record for any id". Each settings class calls this when it is built and again
+    where its batched read reads the field, since a dataclass field may be set after construction (the
+    form 0.9 gave `EnsemblSettings`, review round 1 item 8).
+    """
+    if size < 1:
+        raise ValueError(
+            f"{owner}.batch_size={size} is below 1: no batch would be asked, so nothing would be answered"
+        )
+
+
 def batched[T](items: list[T], size: int) -> Iterator[list[T]]:
     """Split into batches of at most `size`, preserving order (so emission stays deterministic)."""
     iterator = iter(items)

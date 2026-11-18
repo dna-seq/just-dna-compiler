@@ -50,6 +50,10 @@ fixed in the form 0.9 gave its own. Nothing a module resolves moves.
   `locations.pull_record_repo` (and `pulled_from` through it) and `locations.snapshot_record_missing` caught
   `JSONDecodeError` but not `UnicodeDecodeError`, so such a record escaped them. Each now takes its own
   unreadable arm: no record, no repo named, and an unrecorded cache with a warning.
+- **A batch size below 1 is refused where it is read.** `GnomadSettings`, `EutilsSettings`, `EuropePmcClient` and
+  `PmcIdConverterClient` never checked `batch_size`, and `net.batched` yields no batch for 0, so a client set to 0
+  asked nothing and answered `{}`, which every caller reads as no record for any id. Each now refuses it with a
+  `ValueError` naming the field (`net.check_batch_size`), when it is built and again by each batched read.
 
 ## 2026-11-18 — RM453: a mirrored site where no spelling was witnessed keeps both spellings (patch, a declared corrected derivation, on `main`)
 

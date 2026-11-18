@@ -2676,6 +2676,9 @@ request per variant is unusable. Everything is batched by GraphQL field aliasing
 of 20 and 25 succeeded and 29 returned HTTP 400, so `batch_size=20` with a **6 second** pacing gate —
 exactly the stated budget, about 200 variants/minute. Pacing comes *before* retry: `tenacity` retries
 transport errors, timeouts and 429s, but a blind retry spends the same budget that caused the 429.
+A `batch_size` below 1 is refused, when the settings are built and again by each batched read (RM455): with
+0 nothing would be asked and every id would come back unanswered, silently. The E-utilities settings and the
+Europe PMC and PMC ID converter clients refuse it the same way.
 
 **Partial failures never sink a batch.** GraphQL puts per-alias errors in `errors[]` and still returns
 `data` for the rest (a probed 20-alias batch came back `resolved=17, errors=3`), so every parser reads
