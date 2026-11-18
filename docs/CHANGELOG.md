@@ -41,6 +41,16 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md). The `0.8` branch merged into `main` at the 0.8.0 cut (2026-11-05).
 
+## 2026-11-18 — RM455: the pre-0.9 instances of four classes 0.9 fixed in its own code (patch, enricher only, on `main`)
+
+0.9's review round 1 fixed four error classes in its own code; these are the older instances on `main`, each
+fixed in the form 0.9 gave its own. Nothing a module resolves moves.
+
+- **A pull record that is not UTF-8 reads as unreadable, never as a traceback.** `download._pull_record`,
+  `locations.pull_record_repo` (and `pulled_from` through it) and `locations.snapshot_record_missing` caught
+  `JSONDecodeError` but not `UnicodeDecodeError`, so such a record escaped them. Each now takes its own
+  unreadable arm: no record, no repo named, and an unrecorded cache with a warning.
+
 ## 2026-11-18 — RM453: a mirrored site where no spelling was witnessed keeps both spellings (patch, a declared corrected derivation, on `main`)
 
 **A correction to 0.8.9, declared (P3).** 0.8.9's RM449 left an rsID row unpositioned where a second source
