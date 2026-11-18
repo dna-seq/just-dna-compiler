@@ -27,6 +27,7 @@ are authored `_TABLE_KINDS`; a network pass filling them would blur the authored
 """
 
 import logging
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -35,7 +36,7 @@ from just_dna_compiler.compiler import load_csv_rows
 from just_dna_format.pgx import PharmVariantRow
 from just_dna_format.snapshot import SnapshotRelease, read_release
 from just_dna_format.sources import SourceRow
-from just_dna_format.spelling import drug_key
+from just_dna_format.spelling import drug_key, gene_key
 from just_dna_format.vocab import MULTI_SEP, validate_phenotype_categories
 
 from just_dna_enricher.download import ensure_clinpgx_snapshot
@@ -51,6 +52,7 @@ from just_dna_enricher.locations import (
     SNAPSHOT_DATA_DIRNAME,
     resolve_clinpgx_reference,
 )
+from just_dna_enricher.resolver import _asked_rsids, _typed_rows_connection
 from just_dna_enricher.verification import examples, ran, record_verification, skipped
 
 logger = logging.getLogger(__name__)
@@ -217,6 +219,173 @@ def load_snapshot(reference: Path) -> tuple[list[dict], SnapshotRelease]:
         cursor = con.execute(f"SELECT * FROM read_parquet('{pattern}')")
         columns = [d[0] for d in cursor.description]
         return [dict(zip(columns, row, strict=True)) for row in cursor.fetchall()], release
+    finally:
+        con.close()
+
+
+# ── the keyed functions (0.9, RM431 ask 5, the pm's reading 4) ──────────────────────────────────
+#
+# Beside `load_snapshot`, which reads the whole table and stays as it is. These read only the rows a key
+# names, in duckdb (a runtime pass, `@duckdb-vs-polars`), one SQL body per key over a connection exposing
+# `annotations`: the local reader runs it over the snapshot's parquet, and a remote answer's rows
+# (`remote.RemoteSnapshots.lookup`, lane `clinpgx`, table `REMOTE_ANNOTATIONS_TABLE`) run it through
+# `_rsids_from_rows` / `_genes_from_rows`.
+
+#: The snapshot's columns, in the builder's order and typed for a remote answer's rows. Held equal to
+#: `clinpgx_build._schema()` by a test rather than derived from it: that schema is polars', which a
+#: reader of a built snapshot does not import.
+_ANNOTATION_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("annotation_id", "VARCHAR"),
+    ("subject", "VARCHAR"),
+    ("rsid", "VARCHAR"),
+    ("gene", "VARCHAR"),
+    ("genotype", "VARCHAR"),
+    ("evidence_level", "VARCHAR"),
+    ("phenotype_category", "VARCHAR"),
+    ("drugs", "VARCHAR"),
+    ("phenotypes", "VARCHAR"),
+    ("annotation_text", "VARCHAR"),
+    ("url", "VARCHAR"),
+)
+#: The table a remote route names for the snapshot (`remote.table_name` of `data/annotations.parquet`).
+REMOTE_ANNOTATIONS_TABLE = "annotations"
+#: The separator inside a `gene` cell (`KLC1;XRCC3`), as `clinpgx_draft` splits one.
+_GENE_SEPARATOR = ";"
+
+
+def _annotations_connection(reference: Path) -> duckdb.DuckDBPyConnection:
+    """A connection exposing the snapshot as `annotations`, or `ClinPgxEnrichmentError` naming what failed."""
+    parquet = Path(reference) / SNAPSHOT_DATA_DIRNAME / "annotations.parquet"
+    if not parquet.is_file():
+        raise ClinPgxEnrichmentError(f"no ClinPGx snapshot at {parquet}")
+    con = duckdb.connect(":memory:")
+    try:
+        # A local path from the caller's own cache, quoted defensively: a view cannot bind a parameter.
+        quoted = str(parquet).replace("'", "''")
+        con.execute(f"CREATE VIEW annotations AS SELECT * FROM read_parquet('{quoted}')")
+        con.execute("SELECT * FROM annotations LIMIT 0")
+    except duckdb.Error as exc:
+        con.close()
+        raise ClinPgxEnrichmentError(f"the ClinPGx snapshot at {parquet} could not be read: {exc}") from exc
+    return con
+
+
+def _select_annotations(con: duckdb.DuckDBPyConnection, where: str, params: list) -> list[dict]:
+    """The annotations matching `where`, every column, in one total order both routes reproduce."""
+    names = ", ".join(f'"{name}"' for name, _ in _ANNOTATION_COLUMNS)
+    cursor = con.execute(f"SELECT {names} FROM annotations WHERE {where} ORDER BY ALL", params)
+    columns = [d[0] for d in cursor.description]
+    return [dict(zip(columns, values, strict=True)) for values in cursor.fetchall()]
+
+
+def _rsid_keys(rsids: Sequence[str]) -> dict[str, list[str]]:
+    """The keys a remote route is asked for `rsids`: each as the snapshot spells it, as the local SQL compares."""
+    return {"rsid": list(_asked_rsids(rsids))}
+
+
+def _rsids_over(con: duckdb.DuckDBPyConnection, rsids: Sequence[str]) -> dict[str, list[dict]]:
+    """`lookup_rsids`' query over a connection exposing `annotations`: the one copy."""
+    asked = _asked_rsids(rsids)
+    if not asked:
+        return {}
+    tokens = list(asked)
+    rows = _select_annotations(con, f"rsid IN ({', '.join('?' for _ in tokens)})", tokens)
+    answer: dict[str, list[dict]] = {}
+    for row in rows:
+        for spelling in asked[str(row["rsid"])]:
+            answer.setdefault(spelling, []).append(dict(row))
+    return {rsid: answer[rsid] for spellings in asked.values() for rsid in spellings if rsid in answer}
+
+
+def lookup_rsids(reference: Path, rsids: Sequence[str]) -> dict[str, list[dict]]:
+    """An rsID → every annotation row the ClinPGx snapshot holds under it, as plain dicts (RM431).
+
+    The rsID is compared as the snapshot spells it (lower case, `rs` prefixed: `4149056` is `rs4149056`)
+    and keyed as asked. Each row is the snapshot's own columns, one per (annotation, genotype), in one
+    total order. Only an annotation whose subject is an rsID carries one, so a haplotype's annotations
+    (`CYP2C19*17`) are reached by gene, never here. An rsID the snapshot holds nothing under is not a key.
+    A snapshot that is absent or cannot be read raises `ClinPgxEnrichmentError`, never an empty answer.
+    Read-only, and it never fetches.
+    """
+    if not any(rsid.strip() for rsid in rsids):
+        return {}
+    con = _annotations_connection(reference)
+    try:
+        return _rsids_over(con, rsids)
+    finally:
+        con.close()
+
+
+def _rsids_from_rows(rows: Sequence[Mapping[str, object]], rsids: Sequence[str]) -> dict[str, list[dict]]:
+    """`lookup_rsids`' answer over a remote answer's rows of `REMOTE_ANNOTATIONS_TABLE`."""
+    con = _typed_rows_connection(("annotations", _ANNOTATION_COLUMNS, rows))
+    try:
+        return _rsids_over(con, rsids)
+    finally:
+        con.close()
+
+
+def _asked_genes(genes: Sequence[str]) -> dict[str, list[str]]:
+    """`gene_key` → the genes asked under it, in order: `Slco1b1` and `SLCO1B1` are one gene (RM351)."""
+    asked: dict[str, list[str]] = {}
+    for gene in genes:
+        if gene.strip() and gene not in asked.setdefault(gene_key(gene), []):
+            asked[gene_key(gene)].append(gene)
+    return {key: spellings for key, spellings in asked.items() if spellings}
+
+
+def _gene_keys(genes: Sequence[str]) -> dict[str, list[str]]:
+    """The keys a remote route is asked for `genes`: each as given, stripped.
+
+    A remote route compares the whole `gene` cell exactly, where this reader compares each member of the
+    cell by `gene_key`. So a gene spelled in another case than ClinPGx stores it, and a gene inside a
+    multi-gene cell (`KLC1;XRCC3`), are answered locally and not remotely. No other spelling is sent in
+    their place, for `civic_draft._civic_gene_keys`' reason.
+    """
+    return {"gene": list(dict.fromkeys(gene.strip() for gene in genes if gene.strip()))}
+
+
+def _genes_over(con: duckdb.DuckDBPyConnection, genes: Sequence[str]) -> dict[str, list[dict]]:
+    """`lookup_genes`' query over a connection exposing `annotations`: the one copy."""
+    asked = _asked_genes(genes)
+    if not asked:
+        return {}
+    # Each member of the cell as `gene_key` spells it (`lower(trim(…))` for the ASCII of an HGNC symbol).
+    members = f"list_transform(string_split(gene, '{_GENE_SEPARATOR}'), member -> lower(trim(member)))"
+    rows = _select_annotations(con, f"list_has_any({members}, ?::VARCHAR[])", [sorted(asked)])
+    answer: dict[str, list[dict]] = {}
+    for row in rows:
+        named = dict.fromkeys(gene_key(m) for m in str(row["gene"]).split(_GENE_SEPARATOR) if m.strip())
+        for key in named:
+            for spelling in asked.get(key, ()):
+                answer.setdefault(spelling, []).append(dict(row))
+    return {gene: answer[gene] for spellings in asked.values() for gene in spellings if gene in answer}
+
+
+def lookup_genes(reference: Path, genes: Sequence[str]) -> dict[str, list[dict]]:
+    """A gene → every annotation row the ClinPGx snapshot holds naming it, as plain dicts (RM431).
+
+    A row names a gene when any member of its `;`-joined `gene` cell does (`KLC1;XRCC3` names both, as
+    `clinpgx_draft --gene` reads it), compared by `gene_key` (case and surrounding space make no second
+    gene) and keyed as asked. Each row is the snapshot's own columns, in one total order; a row naming two
+    asked genes is under both. A gene the snapshot holds nothing for is not a key. A snapshot that is
+    absent or cannot be read raises `ClinPgxEnrichmentError`, never an empty answer. Read-only, and it
+    never fetches.
+    """
+    if not any(gene.strip() for gene in genes):
+        return {}
+    con = _annotations_connection(reference)
+    try:
+        return _genes_over(con, genes)
+    finally:
+        con.close()
+
+
+def _genes_from_rows(rows: Sequence[Mapping[str, object]], genes: Sequence[str]) -> dict[str, list[dict]]:
+    """`lookup_genes`' answer over a remote answer's rows of `REMOTE_ANNOTATIONS_TABLE`."""
+    con = _typed_rows_connection(("annotations", _ANNOTATION_COLUMNS, rows))
+    try:
+        return _genes_over(con, genes)
     finally:
         con.close()
 

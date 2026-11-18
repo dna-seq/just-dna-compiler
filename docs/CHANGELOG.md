@@ -162,6 +162,12 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   position or under an rsID, keyed as asked; an absent or unreadable slice raises `ClinVarGkmError`.
   `clinvar_gkm` is now remote-eligible (table `clinvar_gkm-indels`, by `chrom` + `start` or `rsid`), one SQL body
   over the local file and a remote answer's rows. The VRS id stays a local key: it is not one of the registry's.
+- **`clinpgx.lookup_rsids` and `clinpgx.lookup_genes`** (RM431 ask 5, the pm's reading 4, S145): ClinPGx's keyed
+  functions, in duckdb, beside `load_snapshot` (which stays the whole-table loader): every annotation row under an
+  rsID or naming a gene (a member of the `;`-joined `gene` cell, by `gene_key`), keyed as asked; an absent or
+  unreadable snapshot raises `ClinPgxEnrichmentError`. One SQL body over the local file and a remote answer's rows
+  (table `annotations`, by `rsid` or `gene`). Known divergence: a remote route compares the whole cell, so a gene
+  in another case or inside a multi-gene cell is answered locally only.
 - **A group re-pulled under its recorded declaration says which one** (RM437 follow-up, the pm's reading 1): the
   pull record keeps when each group's use was declared (`declared_at`, `download.PULL_RECORD_DECLARED_AT_KEY`),
   and a re-pull or skip gated by the recorded use rather than the call's logs `under the use recorded for it,

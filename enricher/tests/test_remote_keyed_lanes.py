@@ -7,11 +7,12 @@ must equal the local reader's over the same snapshot: same keys, same rows, one 
 
 import hashlib
 import json
+import zipfile
 from pathlib import Path
 
 import duckdb
 import pytest
-from just_dna_enricher import civic_draft, clinvar_gkm, opentargets, remote
+from just_dna_enricher import civic_draft, clinpgx, clinpgx_build, clinvar_gkm, opentargets, remote
 from just_dna_enricher.civic_build import CIVIC_PARQUET, build_snapshot
 from just_dna_enricher.clinvar_gkm import ALLELE_FILE, VARIATION_FILE, WITNESS_PARQUET, parse_manifest
 from just_dna_enricher.clinvar_gkm_build import build_snapshot as build_witness
@@ -22,6 +23,7 @@ _ASSETS = Path(__file__).resolve().parents[2] / "assets"
 OPENTARGETS_SLICE = _ASSETS / "opentargets_slice"
 CIVIC_SLICE = _ASSETS / "civic_slice"
 GKM_SLICE = _ASSETS / "clinvar_gkm_slice"
+CLINPGX_SLICE = _ASSETS / "clinpgx_annotations_slice"
 COMMIT = "c" * 40
 
 
@@ -169,3 +171,80 @@ def test_clinvar_gkm_answers_remotely_by_position_and_by_rsid_as_the_local_reade
     local_rsids = clinvar_gkm.lookup_rsids(gkm_root, rsids)
     assert len(local_rsids) == 2
     assert clinvar_gkm._rsids_from_rows(by_rsid.rows, rsids) == local_rsids
+
+
+# ── ClinPGx (the pm's reading 4) ────────────────────────────────────────────────────────────────
+
+
+def _zipped(directory: Path, archive: Path) -> Path:
+    with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as handle:
+        for path in sorted(directory.iterdir()):
+            handle.write(path, path.name)
+    return archive
+
+
+@pytest.fixture(scope="module")
+def clinpgx_root(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    tmp = tmp_path_factory.mktemp("clinpgx")
+    archive = _zipped(CLINPGX_SLICE, tmp / "summaryAnnotations.zip")
+    return clinpgx_build.build_snapshot(
+        archive, tmp / "snap", source_url="file://clinpgx_annotations_slice"
+    ).out_dir
+
+
+def _parquet_values(path: Path, column: str) -> list[str]:
+    quoted = str(path).replace("'", "''")
+    return [
+        str(value)
+        for (value,) in duckdb.sql(
+            f"SELECT DISTINCT {column} FROM read_parquet('{quoted}') WHERE {column} IS NOT NULL ORDER BY 1"
+        ).fetchall()
+    ]
+
+
+def test_the_annotations_table_is_named_as_a_remote_route_names_it() -> None:
+    assert remote.table_name("data/annotations.parquet") == clinpgx.REMOTE_ANNOTATIONS_TABLE
+
+
+def test_clinpgx_answers_remotely_by_rsid_and_by_gene_as_the_local_reader_does(
+    httpfs, loopback_hub, clinpgx_root: Path
+) -> None:
+    """ClinPGx's terms forbid sale, so the holder states a use they admit, or nothing is asked."""
+    assert "clinpgx" in REMOTE_LANES
+    loopback_hub.publish(SNAPSHOT_REPO_IDS["clinpgx"], clinpgx_root, COMMIT)
+    parquet = clinpgx_root / "data" / "annotations.parquet"
+    held = _parquet_values(parquet, "rsid")
+    rsids = [*held, held[0].removeprefix("rs"), "1"]
+    genes = [*_parquet_values(parquet, "gene"), "NOT_A_GENE"]
+    with RemoteSnapshots(hf_base_url=loopback_hub.base_url, declared_use="non_commercial") as holder:
+        by_rsid = holder.lookup("clinpgx", clinpgx.REMOTE_ANNOTATIONS_TABLE, clinpgx._rsid_keys(rsids))
+        by_gene = holder.lookup("clinpgx", clinpgx.REMOTE_ANNOTATIONS_TABLE, clinpgx._gene_keys(genes))
+    local_rsids = clinpgx.lookup_rsids(clinpgx_root, rsids)
+    assert len(local_rsids) == len(held) + 1, (
+        "every rsID held, and one asked bare, so an empty answer cannot pass"
+    )
+    assert clinpgx._rsids_from_rows(by_rsid.rows, rsids) == local_rsids
+    local_genes = clinpgx.lookup_genes(clinpgx_root, genes)
+    assert len(local_genes) == len(genes) - 1
+    assert clinpgx._genes_from_rows(by_gene.rows, genes) == local_genes
+
+
+@pytest.mark.xfail(
+    strict=True,
+    raises=AssertionError,
+    reason=(
+        "RM431 follow-up: a remote route compares the whole `gene` cell exactly and the local reader each "
+        "member by gene_key, so a gene asked in another case than ClinPGx stores it (and a gene inside a "
+        "`;`-joined cell, 399 of 16,117 rows on the 2026-08 snapshot) is answered locally only. The holder's "
+        "comparison is RM430's; this marker turns into a failure the day a remote route folds case, so it is "
+        "removed then."
+    ),
+)
+def test_a_clinpgx_gene_asked_in_another_case_answers_alike_on_both_routes(
+    httpfs, loopback_hub, clinpgx_root: Path
+) -> None:
+    loopback_hub.publish(SNAPSHOT_REPO_IDS["clinpgx"], clinpgx_root, COMMIT)
+    genes = [_parquet_values(clinpgx_root / "data" / "annotations.parquet", "gene")[0].lower()]
+    with RemoteSnapshots(hf_base_url=loopback_hub.base_url, declared_use="non_commercial") as holder:
+        answer = holder.lookup("clinpgx", clinpgx.REMOTE_ANNOTATIONS_TABLE, clinpgx._gene_keys(genes))
+    assert clinpgx._genes_from_rows(answer.rows, genes) == clinpgx.lookup_genes(clinpgx_root, genes)

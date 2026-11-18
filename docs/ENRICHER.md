@@ -469,7 +469,7 @@ core was ported, not depended on, dropping `fastmcp`/`eliot`). In the workspace:
 | `cpic_notation` | CPIC's `DEL<bases>`/`INS<bases>`/`UNIT(n)` → a VCF-anchored, left-normalized REF/ALT (RM253); never reads on its own, the caller passes the reference reader | `sequences` |
 | `pgx` | pass 5: cross-check star-allele tables, write the licence table | the three above |
 | `clinpgx_build` | `[dev]`: `summaryAnnotations.zip` → snapshot parquet + pinned `LICENSE.txt`; refuses the retired `clinicalAnnotations.zip` by name | `polars`, `httpx` |
-| `clinpgx` | pass 6: evidence-level cross-check over the snapshot (offline) | `duckdb` (core, not polars) |
+| `clinpgx` | pass 6: evidence-level cross-check over the snapshot (offline). **0.9** (RM431): the keyed functions `lookup_rsids` and `lookup_genes` | `duckdb` (core, not polars) |
 | `gnomad` | live gnomAD GraphQL: batched + paced rsid resolution, frequency, gene constraint | `httpx`, `tenacity` |
 | `frequencies` | pass 2: `resolution.csv` → `frequencies.csv` (per-ancestry-group AC/AN) | compiler `load_csv_rows`, format |
 | `gene_metrics` | pass 3: the module's genes → `gene_metrics.csv` (snapshot first, live API second) | `duckdb`, format |
@@ -2543,8 +2543,8 @@ with RemoteSnapshots(declared_use="non_commercial") as snapshots:      # proxy f
     answer, and a snapshot that cannot be read raises `OpenTargetsError`, never an empty answer.
   - Each table a remote route is asked for is a module constant beside its keyed function:
     `opentargets.REMOTE_VARIANTS_TABLE`, `REMOTE_CONSEQUENCES_TABLE`, `REMOTE_MEMBERS_TABLE` (also the
-    `table` values `lookup_consequences` tags its rows with), `civic_draft.REMOTE_CIVIC_TABLE` and
-    `clinvar_gkm.REMOTE_WITNESS_TABLE`.
+    `table` values `lookup_consequences` tags its rows with), `civic_draft.REMOTE_CIVIC_TABLE`,
+    `clinvar_gkm.REMOTE_WITNESS_TABLE` and `clinpgx.REMOTE_ANNOTATIONS_TABLE`.
   - `civic_draft.lookup_genes(reference, genes) -> dict[str, list[dict]]` and `civic_draft.lookup_rsids(reference,
     rsids) -> dict[str, list[dict]]`: every snapshot row under each gene (compared by `gene_key`: case and
     surrounding space make no second gene) or rsID (lower case, `rs` prefixed: `334` is `rs334`), keyed as asked,
@@ -2563,6 +2563,18 @@ with RemoteSnapshots(declared_use="non_commercial") as snapshots:      # proxy f
     wrong*. Remotely: table `clinvar_gkm-indels`, keys `chrom` + `start` (the holder reads `pos`) and `rsid`.
     The VRS id is not a key: it is not one of `remote.KEY_COLUMNS`, the registry's list, so it stays local
     (`by_vrs_id`).
+  - `clinpgx.lookup_rsids(reference, rsids) -> dict[str, list[dict]]` and `clinpgx.lookup_genes(reference, genes)
+    -> dict[str, list[dict]]` (the pm's reading 4): every annotation row (one per annotation and genotype) under
+    each rsID (lower case, `rs` prefixed; only an annotation whose subject is an rsID carries one) or naming each
+    gene, keyed as asked, every column of `annotations.parquet`, in one total order. A gene is a member of the
+    `;`-joined `gene` cell (`KLC1;XRCC3` names both, as `draft-clinpgx --gene` reads it), compared by
+    `gene_key`. `load_snapshot` stays the whole-table loader; an absent or unreadable snapshot raises
+    `ClinPgxEnrichmentError`. Remotely (lane `clinpgx`, eligible since RM430, gated by ClinPGx's no-sale terms):
+    table `annotations`, keys `rsid` (as the snapshot spells it) and `gene` (each as given, stripped). **Known
+    divergence:** a remote route compares the whole `gene` cell exactly, so a gene asked in another case, and a
+    gene inside a multi-gene cell (399 of 16,117 rows on the 2026-08 snapshot), are answered locally and not
+    remotely. A strict `xfail` pins the case half; the slice holds no multi-gene cell, so that half is pinned
+    locally only.
 - **`remote_url(base, *parts)`** builds every URL a holder asks; the root `conftest.py` wraps it, so a
   test that would hand duckdb a host other than this machine is refused and recorded like a socket reach.
 
