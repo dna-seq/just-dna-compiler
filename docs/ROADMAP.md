@@ -2557,6 +2557,29 @@ Tests: the loud and the silent case above as fixtures; a reverse, recompile, rev
 and a sweep over `reference_examples/` listing every row whose expansion moves, read before the cut. Built first,
 before RM448: it is the silent wrong annotation.
 
+**The sweep's case, decided (the pm, 2026-11-18, from triage's build).** Every multi-locus expansion in
+`reference_examples/` is a mirrored insertion and deletion pair: 13 sites in `hboc_palb2` and `pathogenic_clinvar`.
+At 11 of them ClinVar files **both** spellings under the one rsID, each `same_event` (the HBB frameshifts both ways);
+at 2 only the deletion (`rs80356821`, `rs193922563`). "`same_event`, else neither", read literally, fills neither at
+the 11, so both examples would refuse under strict. Decided:
+
+1. **At a mirrored site the fill takes every witnessed spelling and drops the unwitnessed ones; none witnessed fills
+   neither** (triage's B). The two one-sided sites move, S158's `rs1057516393` and the registry's
+   `superhuman@2.4.1` `rs766212849` settle to the witnessed spelling, and a site witnessed both ways keeps both.
+2. **A site witnessed both ways is never silent.** The fill warns in both modes, once per rsID, naming both events and
+   saying that an rsID row there claims both and that a coordinate row picks one (`@unreachable-not-absent`'s "warn in
+   both modes"; `@warning-code-names-the-finding`). It does not escalate under strict in 0.8.9.
+3. **Rejected for 0.8.9: refusing a both-witnessed rsID row until it is re-authored with coordinates** (triage's A).
+   It is the stricter reading of `@rsid-not-per-allele`, but it would make modules that compile today refuse in a
+   patch, the two examples and at least one production module among them, while the drafter's coordinate (3 above)
+   fixes new drafts only. Escalating the warning of 2 is that change, and can be taken in a minor if the maintainer
+   wants it; the warning's count is the evidence for it.
+
+The registry's two published cases go into the tests: `superhuman@2.4.1` `rs766212849` (`A/A`, protective, compiled
+on both `A>AAACTT`, where it is the reference homozygote, and `AAACTT>A`, where it is a homozygous deletion) and the
+polygon's `thrombophilia@2.0.1` `rs1572088853` (`C/CC`). Of 69 latest versions compiled by 0.8.x, these are the 2
+that carry a claim on the other spelling (the registry's lead, 2026-11-18).
+
 **Residuals** none yet.
 
 ## RM450 — a snapshot pull takes no lock on the cache directory, so two pulls into one cache share their `.part` names and the pull record
