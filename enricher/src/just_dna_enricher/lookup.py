@@ -220,7 +220,9 @@ def lookup_variant(
     `remote.RemoteSnapshots`** (0.9, RM430), in the local snapshot's place and before live Ensembl
     REST: the proxy, then Hugging Face, read by the same SQL the local reader runs. Ensembl is asked
     by position only; ClinVar by rsID and by position, and for its clinical calls. Each lane answered
-    remotely says where in `routes`. Never under `offline=True`.
+    remotely says where in `routes`. Never under `offline=True`. A route that could not be asked is a
+    `warning` finding; a request a route refuses as wrong (a 422, an unknown table or column, a closed
+    holder) raises its `ValueError`, since it is wrong on every route.
     """
     hint = VariantHint(rsid=rsid)
     owned = clients is None
@@ -416,16 +418,14 @@ def _remote_loci(
 
 
 def _ask_remote(remote: RemoteSnapshots, label: str, keys: dict[str, list]) -> RemoteAnswer:
-    """`remote.lookup` for a link's table. A request a route refuses as wrong is unchecked here too.
+    """`remote.lookup` for a link's table.
 
-    `ValueError` is the holder's word for a request no route would answer (a table the repo no longer
-    names, a closed holder); for an advisory lookup that is an unanswered question, never a traceback,
-    so it arrives as the one could-not-ask type, naming no route.
+    A request a route refuses as wrong (a 422, an unknown lane, table or column, a closed holder) raises
+    its `ValueError` out of `lookup_variant` (the pm, 2026-11-18): it is wrong on every route, a
+    caller's or our own defect, and an `unchecked` finding would report it as an outage. Only
+    `SnapshotRouteUnavailable`, a route that could not be asked, becomes a finding.
     """
-    try:
-        return remote.lookup(label, _REMOTE_TABLES[label], keys)
-    except ValueError as exc:
-        raise SnapshotRouteUnavailable(label, None, f"the request was refused as wrong: {exc}") from exc
+    return remote.lookup(label, _REMOTE_TABLES[label], keys)
 
 
 def _record_route(hint: VariantHint, label: str, answer: RemoteAnswer) -> None:

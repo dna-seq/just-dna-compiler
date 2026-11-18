@@ -2509,6 +2509,9 @@ with RemoteSnapshots(declared_use="non_commercial") as snapshots:      # proxy f
   (`CACHE_LANES`) go through `check_declared_use(terms, declared_use)`. A refusal raises `LicenseRefusal`;
   a skip is `SnapshotRouteUnavailable` with no route and the skip's reason. A lane whose registry entry
   states no terms is not gated, as `cache rebuild` reads it.
+- **Closing.** `close()` takes the holder's lock, refuses every lookup from then on (`ValueError`, the text
+  `remote.HOLDER_CLOSED`), and waits for the lookups already running before it closes a client or a
+  connection, so a lookup never meets a closed client and an `httpx` `RuntimeError`.
 - **`SnapshotRouteUnavailable`** (`lane`, `route`: `proxy`, `hf`, or `None` when no route was asked,
   `cause`) is every could-not-ask, with duckdb's or `httpx`'s error as its `__cause__`. A 410 is its
   subclass `SnapshotRouteRetired`, which `net.could_not_ask_reason` reads as `retired`, so one handler
@@ -2522,8 +2525,9 @@ with RemoteSnapshots(declared_use="non_commercial") as snapshots:      # proxy f
   each lane answered remotely to its `RemoteRoute`, and stays `None` when none was; a lane answered over
   two routes in one lookup keeps the first and says both in an `info` finding. A route that could not be
   asked is a `warning` finding (`…could not be asked remotely, so its answer is unchecked rather than
-  empty`), never an empty answer; so is a request a route refuses as wrong (a table the repo no longer
-  names, a closed holder), which `lookup` raises as `ValueError` and a lookup reports, and a remote miss names what was searched (`rsN: not in the ClinVar
+  empty`), never an empty answer. A request a route refuses as wrong (a 422, an unknown lane, table or
+  column, a closed holder) is not could-not-ask: `lookup` raises it as `ValueError` and `lookup_variant`
+  lets it out, since it is wrong on every route and a finding would report a defect as an outage. A remote miss names what was searched (`rsN: not in the ClinVar
   snapshot read over hf (release …)`).
 - **The keyed functions (RM431).** A lane RM431 made eligible is asked by the keys of its keyed function, and
   that function's SQL runs over the rows a route answers exactly as over the local files (one body per question,

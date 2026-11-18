@@ -208,6 +208,14 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   is the one `RemoteRoute` record (route, release, `served_from`, revision) rather than a copy of its four fields,
   and `RemoteAnswer.provenance()` is gone with the copy. Settled before 0.9 ships, since a public shape is permanent
   within the major.
+- **A wrong request raises out of `lookup_variant`** (RM430 follow-up, the pm's reading 5): a 422 from the proxy, an
+  unknown lane, table or column, or a closed holder raises the holder's `ValueError` through `lookup_variant`,
+  where it used to become an `unchecked` warning finding. It is wrong on every route, and the finding reported a
+  caller's or our own defect as an outage. A route that could not be asked is still a finding.
+- **`RemoteSnapshots.close()` waits for the lookups in flight** (RM430 follow-up, the pm's 2026-11-18 finding): it
+  takes the holder's lock, refuses every lookup from then on with `ValueError` (`remote.HOLDER_CLOSED`), and closes
+  its clients and connections only once the lookups already running have finished. Before, a `close()` racing a
+  lookup closed the proxy's client under it and the lookup's next request leaked `httpx`'s `RuntimeError`.
 
 ## 2026-11-18 — RM453: a mirrored site where no spelling was witnessed keeps both spellings (patch, a declared corrected derivation, on `main`)
 

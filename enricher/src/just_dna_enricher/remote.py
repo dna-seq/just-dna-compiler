@@ -29,9 +29,11 @@ new holder.
 
 **Could-not-ask is one type, `SnapshotRouteUnavailable`**, never an empty answer
 (`@unreachable-not-absent`). The holder translates duckdb's HTTP and I/O errors and `httpx`'s errors
-into it. A request the routes would refuse as wrong (an unknown key column, an Ensembl key with no
-position, the proxy's 422) raises `ValueError`, because asking another route would get the same
-refusal. A licence the caller's declaration cannot meet raises `licensing.LicenseRefusal`.
+into it. A request the routes would refuse as wrong (an unknown lane, table or key column, an Ensembl
+key with no position, the proxy's 422, a closed holder) raises `ValueError`, because asking another
+route would get the same refusal; it is a caller's or our own defect, so nothing above the holder
+turns it into could-not-ask either. A licence the caller's declaration cannot meet raises
+`licensing.LicenseRefusal`.
 
 **Every remote URL is built by `remote_url`**, the one function the test suite's network fence wraps:
 duckdb opens its sockets in C++, where the fence's Python socket patch cannot see them. That is also why
@@ -90,6 +92,9 @@ PROXY_FALL_THROUGH_STATUSES = frozenset({429, 503, 504})
 PROXY_LANE_NOT_AVAILABLE = "lane_not_available"
 #: The proxy's 404 codes that name a wrong request rather than an absent lane: raised like a 422.
 PROXY_WRONG_REQUEST_404 = frozenset({"unknown_lane", "unknown_table"})
+
+#: What a lookup on a closing or closed holder raises, as `ValueError`: a wrong request, never could-not-ask.
+HOLDER_CLOSED = "this RemoteSnapshots is closed; open a new one"
 
 #: The routes a remote answer can come from: the registry's proxy, or the lane's Hugging Face repo.
 ROUTE_PROXY = "proxy"
@@ -388,7 +393,9 @@ class RemoteSnapshots:
 
     Thread-safe: a lane's pin and connection are made once, under that lane's own lock (so a slow first
     read of one lane holds up no other), and every query runs on its own cursor of the lane's
-    connection. Each connection lives as long as the holder. Close it when no query is running.
+    connection. Each connection lives as long as the holder. `close()` takes the holder's lock, refuses
+    every lookup from then on (`ValueError`, `HOLDER_CLOSED`) and waits for the lookups already running
+    to finish before it closes a client or a connection under them.
     """
 
     def __init__(
@@ -406,6 +413,9 @@ class RemoteSnapshots:
         self.declared_use = declared_use
         self.hf_base_url = (hf_base_url or HF_BASE_URL).rstrip("/")
         self._lock = threading.Lock()
+        #: Signalled, under `_lock`, when the last lookup in flight finishes: what `close()` waits on.
+        self._idle = threading.Condition(self._lock)
+        self._in_flight = 0
         self._pins: dict[str, _Pin] = {}
         self._pin_locks: dict[str, threading.Lock] = {}
         self._closed = False
@@ -428,9 +438,15 @@ class RemoteSnapshots:
         self.close()
 
     def close(self) -> None:
-        """Close every connection and client the holder opened; its pins end with it."""
+        """Close every connection and client the holder opened; its pins end with it.
+
+        Takes the holder's lock: from here on a lookup raises `ValueError` (`HOLDER_CLOSED`), and the
+        lookups already running finish before anything they read through is closed, so none of them
+        meets a closed client and a transport error that is not its route's."""
         with self._lock:
             self._closed = True
+            while self._in_flight:
+                self._idle.wait()
             for pin in self._pins.values():
                 pin.connection.close()
             self._pins.clear()
@@ -452,8 +468,20 @@ class RemoteSnapshots:
         if spec is None:
             raise ValueError(f"{lane!r} is not read remotely; lanes that are: {', '.join(REMOTE_LANES)}")
         wanted = _read_keys(spec, keys)
-        if self._closed:
-            raise ValueError("this RemoteSnapshots is closed; open a new one")
+        with self._lock:
+            if self._closed:
+                raise ValueError(HOLDER_CLOSED)
+            self._in_flight += 1
+        try:
+            return self._lookup(lane, table, wanted)
+        finally:
+            with self._lock:
+                self._in_flight -= 1
+                if not self._in_flight:
+                    self._idle.notify_all()
+
+    def _lookup(self, lane: str, table: str, wanted: _Keys) -> RemoteAnswer:
+        """`lookup` past its checks, counted in flight so `close()` waits for it."""
         self._admit(lane)
         fell_through: str | None = None
         if self._proxy is not None:
@@ -694,8 +722,6 @@ class RemoteSnapshots:
     def _pinned(self, lane: str) -> _Pin:
         """The lane's pin, read once per holder under the lock: its commit, files, label and connection."""
         with self._lock:
-            if self._closed:
-                raise ValueError("this RemoteSnapshots is closed; open a new one")
             pin = self._pins.get(lane)
             if pin is not None:
                 return pin
@@ -707,10 +733,8 @@ class RemoteSnapshots:
             if pin is not None:
                 return pin
             pin = self._pin(lane)
+            # Made in flight, so `close()` is still waiting for this lookup and closes the pin after it.
             with self._lock:
-                if self._closed:
-                    pin.connection.close()
-                    raise ValueError("this RemoteSnapshots is closed; open a new one")
                 self._pins[lane] = pin
             return pin
 
