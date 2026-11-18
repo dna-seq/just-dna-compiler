@@ -2435,10 +2435,6 @@ keep what 0.8.9 did.
 **Residuals** candidate 2, the offline witness following dbSNP merges through the snapshot's synonyms, is left as
 the pm decided: this item no longer needs it, and it would change what the witness compares
 
-# Not format scope
-
-Listed so they are not mistaken for format scope, and so nobody re-proposes them.
-
 ## RM454 — the enricher's local key compares never went through the one normalizer: constraint by gene, `lookup_loci` by rsID and contig, and SQL's `lower(trim())` beside `gene_key`
 
 **Severity** low · **Status** open — **a patch, after 0.9 merges** (its home, `key_compare.KEY_COMPARES`, is 0.9's) ·
@@ -2469,6 +2465,10 @@ asserts both: over every declared compare, a fixture key in another case, with s
 It may widen what a direct lookup returns, never what a module resolves, so no derived table moves.
 
 **Residuals** none yet.
+
+# Not format scope
+
+Listed so they are not mistaken for format scope, and so nobody re-proposes them.
 
 ## RM7 — Evaluation-output / report-card schema
 
