@@ -2404,7 +2404,10 @@ prevent, and a stale group joins to the wrong variants silently.
   licence. A group already current (recorded at the manifest's release, every file it attests there at its
   size) is not gated again, named or not: nothing is taken (review round 2, D). So `cache pull --only
   ensembl --groups cadd --use commercial` over a current CADD group fetches nothing and reports it
-  `current`; the refusal comes when the group must be fetched, before any byte moves.
+  `current`; the refusal comes when the group must be fetched, before any byte moves. **Except during a
+  release transition** (a known issue of 0.9, C): currency is judged against the cache's manifest, so a group
+  current there while the hub publishes a newer release is gated by the pull after the core is refreshed.
+  It is still refused, and none of its bytes are taken, but the core has moved by then.
 - **Attested and recorded.** Each group file is renamed into place only if the manifest attests it by
   size and sha256, as a core file is. The pull record gains `groups` (`locations.PULL_RECORD_GROUPS_KEY`):
   per group, the `release_id` its files were attested against (`null` while its pull is under way), its

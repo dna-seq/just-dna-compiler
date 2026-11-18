@@ -1417,7 +1417,10 @@ def ensure_snapshot(
     raises `LicenseRefusal` when it must be fetched, and under `unstated`, or with terms unknown, the
     group is skipped with the reason logged. A group already current (recorded at the manifest's
     release, every file it attests there at its size) fetches nothing, so it is not gated again
-    (`@acquisition-gate-is-not-a-read-gate`; review round 2, D).
+    (`@acquisition-gate-is-not-a-read-gate`; review round 2, D). **Except during a release transition**:
+    the gate judges currency against the cache's manifest, so a group current there while the hub has a
+    newer release is gated only by the pull after the core is refreshed. It is still refused before any
+    of its own bytes move, but the core has moved by then (0.9's known issue C).
 
     **The selection is sticky.** The pull record names every group a pull took, with the release its
     files were attested against and the declaration it was admitted under, and every later call

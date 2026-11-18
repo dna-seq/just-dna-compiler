@@ -332,7 +332,9 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   needed a fetch, so `cache pull --only ensembl --groups cadd --use commercial` over a current CADD group raised
   `LicenseRefusal` though nothing would be taken. The currency check (recorded at the manifest's release, every
   attested file there at its size) now comes first, in the preflight and the pull alike; a named group that must be
-  fetched under a use its terms refuse still raises before any download.
+  fetched under a use its terms refuse still raises before any download, except during a release transition
+  (known issue C): current at the cache's release, it is gated by the pull after the core is refreshed, and still
+  refused before any of its own bytes move.
 - **A text said once is a warning the pinned-text walk sees** (review round 2, E): the walk read logger calls,
   `Finding`s and `warnings` lists, not `locations._warn_once`, the helper 0.9 added for the manifest's group
   warnings. It reads it now, and since the helper is new in 0.9, every call of it in any module must carry a

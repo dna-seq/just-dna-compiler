@@ -448,6 +448,32 @@ def test_a_named_group_that_must_be_fetched_is_still_refused_before_any_download
     assert hub.parquet_fetched() == []
 
 
+def test_a_group_current_at_the_caches_release_is_still_refused_when_the_core_moves(
+    install_hub, tmp_path: Path
+) -> None:
+    """D during a release transition (the known issue C): the preflight reads the cache's manifest, where CADD is
+    current, so the gate waits for the pull, which finds CADD behind the new core and refuses it there. The
+    refusal still comes, and no CADD byte is taken; it comes after the core is refreshed, not before."""
+    cache = tmp_path / "ensembl"
+    install_hub(_published(0, _OLD))
+    dl.ensure_snapshot(cache, groups=["cadd"], declared_use="non_commercial")
+    hub = install_hub(_published(1, _NEW))
+
+    with pytest.raises(LicenseRefusal, match="nothing was fetched"):
+        dl.ensure_snapshot(
+            cache,
+            groups=["cadd"],
+            declared_use="commercial",
+            _follow_hub=dl._FollowHub(ensembl_release_label),
+        )
+
+    assert not any(path.startswith("groups/") for path in hub.parquet_fetched())
+    assert any(path.startswith("data/") for path in hub.parquet_fetched()), "the core was refreshed first"
+    assert pulled_groups(cache)["cadd"]["release_id"] == _OLD
+    with pytest.raises(EnsemblGroupReleaseError, match=f"is release {_OLD} and the core beside it is {_NEW}"):
+        ensembl_group_dir(cache, "cadd")
+
+
 def test_an_unstated_use_pulls_the_core_and_skips_cadd_with_the_reason(install_hub, tmp_path: Path) -> None:
     cache = tmp_path / "ensembl"
     hub = install_hub(_published(0, _OLD))
