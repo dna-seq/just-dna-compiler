@@ -41,6 +41,13 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md). The `0.8` branch merged into `main` at the 0.8.0 cut (2026-11-05).
 
+## 2026-11-18 — RM452: a NULL `start` in the Ensembl snapshot places nothing instead of raising (patch, on `main`)
+
+A snapshot row naming an rsID with no `start` raised `TypeError` in `lookup_loci`, and so did a back-fill probe with a
+chrom and no start. The scan now leaves such a row out of the answer. An rsID named only on such rows is said in
+one warning, and the next link is asked. The probe gets no candidates. No published release on this machine
+carries a NULL start; the RM431 builder met it with a synthetic row. Enricher only; nothing public moves.
+
 ## 2026-11-18 — RM451: reverse no longer invents a table row for a coordinate row the table never filed (patch, on `main`)
 
 `resolution_loci` was null both where a row's own cells answer (RM364's saving) and where the module's table

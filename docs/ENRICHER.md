@@ -1639,6 +1639,10 @@ alt, `<.>`, IUPAC placeholders (`<R>`, `<Y>`), `N` runs and N-masked chrY refs. 
 with no alt left is withheld. REST with nothing left answers the ordinary `[]` (it is permanent, so no
 re-run helps), and the snapshot names such rsIDs in one warning instead of `rsid_unresolved`.
 
+**A row with no position is not an answer (RM452, 2026-11-18).** A snapshot row naming an rsID with no `chrom` or
+`start` is left out of the scan's answer, named in one warning, and the next link is asked. A back-fill probe with
+no start gets no candidates, as one with no chrom does. No published release has shown one.
+
 **REST serves an older dbSNP build than the snapshot of the same release (RM447, 2026-11-17).** At Ensembl 116,
 REST's `/info/variation` names dbSNP 156, and so does the VEP cache line in the split snapshot's header, while the
 VCF dump the snapshot is built from (`2026_07_13`) declares `##source="dbSNP" … version="157"`. So 54 of the 454

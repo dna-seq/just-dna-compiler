@@ -22,10 +22,9 @@ schema additions right after.
   where an anonymous client also runs out of requests after a few large lookups.
 
 **Next**
-1. ⏳ 0.9 — building on the `0.9` branch: five of six items in (RM443, RM412, RM404, RM437, RM430), plus the groundwork;
-   RM430's follow-up, then RM431.
-2. ⏳ 0.8.9 — two high fixes found by the registry's re-derivation of its production modules: an indel genotype
-   annotated on both an insertion and a deletion at one position (silent), and rsIDs at multi-allelic indel sites
-   left unplaced online. Both on `main`, then a patch.
+1. ⏳ 0.9 — all six items built on the `0.9` branch; one follow-up pass (RM430's and RM431's last fixes), then
+   the one review round.
+2. ⏳ 0.8.9 — fixes for two silent errors on indels, found when the registry re-derived its production modules; on
+   `main`, the cut being finished (format stays 0.8.6, so no reader has to upgrade).
 3. ❓ Three items you placed in 0.9 by name were parked by the small cut: parked, a 0.11, or 0.10 (desk #347).
 4. ❓ One question on the maintainer's desk: linking the project's memory to its new folder name.

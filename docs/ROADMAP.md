@@ -2698,6 +2698,16 @@ stripped. RM449 is a defect of this build until it passes; the half-day fallback
    instruction, and `main` is patch scope only. The warning's text and its pinned phrase ship unchanged, and 0.9
    adds the code and its INTEGRATION row. Rejected: shipping the code with a documented floor raise, which makes a
    patch an old-reader break for every consumer reading a module that triggers it.
+   **Amended the same night (the lead's build):** an uncoded warning cannot ship, because `findings.classify` in
+   the format tier refuses a channel where some warnings carry no code, and every triggering module has coded ones.
+   So 0.8.9 borrows the nearest existing codes, the 0.8 line's "no new code" idiom, by what the row became: where
+   the fill writes no position, `rsid_no_hosting_locus` ("the position remains unset", word for word); where it
+   fills one or more loci (both spellings kept, or one dropped as unwitnessed or under an authored coordinate row),
+   `rsid_expanded_to_multiple_loci` ("one authored row became several, because the source says so"). The message
+   text is RM449's own in every arm. The cost, stated in the cut entry: until 0.9, a site narrowed to one locus is
+   counted in `warnings_summary` as an expansion. 0.9 adds `rsid_genotype_reads_as_two_events` and moves these
+   sentences to it. Rejected: one borrowed code for every arm (it miscounts the filled arms as unplaced), withholding
+   `warnings_summary` on a mixed channel, a partial summary, and the floor raise above.
 2. **A recorded `undecided` on both spellings reads as no verdict, fixed before the cut.** An offline run writes
    `undecided`, which says the second source could not judge, not that it witnessed neither
    (`@unreachable-not-absent`; the same reading as 84a256ef's for a missing verdict). Such a site keeps its expansion
@@ -2781,6 +2791,31 @@ still writes those. Tests in `test_an_unfiled_coordinate_row_round_trips.py`:
 The first and last fail on `aa5b88f7`. The example sweep moves one digest, `cyp2c9_warfarin_grch37`: its 12
 unfiled `pharm_variants` rows now say `[]`, reverse gives back the same five table rows, and the CHANGELOG
 declares the byte change.
+
+**Residuals** none
+
+## RM452 — a NULL `start` raises `TypeError` in the Ensembl rsID scan and in the position back-fill
+
+**Severity** low · **Status** open — **a patch, built on `main` 2026-11-18, uncut** · **Owner** enricher (`resolver._lookup_positions_by_rsid`, `resolver._lookup_rsid_candidates`) ·
+**Motivating case** the RM431 builder on `0.9` (recorded under RM431, `08a83122`; the pm, 2026-11-18: "predates 0.9, a patch on main, triage's") · *related* RM271, RM381
+
+**What was seen.** A synthetic split-core row `("1", NULL, "A", "G", "rs2100212723")` made `lookup_loci` raise
+`TypeError: int() argument must be … not 'NoneType'` at `_lookup_positions_by_rsid`'s `int(start)`. The back-fill
+`_lookup_rsid_candidates` has the same read for a probe: it drops a probe with no start from the query
+(`concrete`), but its result loop still calls `int(start)` when the probe has a chrom. So it raises whenever
+another probe in the call is whole. No published Ensembl release on this machine carries a NULL start
+(`ensembl-variation-2026_07_13-vep116.0`: 0 rows, read 2026-11-18), so this guards against a defect in the data,
+and no module has met it.
+
+**Built (triage, 2026-11-18).** The scan leaves a row with no chrom or start out of the answer. An rsID named only on
+such rows is said in one warning and never read as an answer, so the chain asks its next link, which an absence
+must not foreclose (`@unreachable-not-absent`). The back-fill gives a probe with no start no candidates, as it
+already gave one with no chrom. Tests in `test_a_null_start_places_nothing.py`: the builder's repro as it ran, a
+placed row beside an unplaced one, and the back-fill's probe. All three fail on `origin/main` (`dae4e0c8`) with the
+reported `TypeError`.
+
+**Class.** A patch: no schema, column, code or vocabulary moves (P3). Severity low: no real snapshot carries the
+shape.
 
 **Residuals** none
 
