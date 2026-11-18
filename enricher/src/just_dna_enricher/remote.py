@@ -181,6 +181,8 @@ class RemoteRoute:
     `release_id`) at the pinned commit for `hf`, and what the proxy's reply states for `proxy`, `None`
     when it states none (withheld, never guessed). `served_from` is the proxy's (`local`, or
     `remote:<repo>`), `None` on `hf`. `revision` is the Hub commit read, `None` where none was stated.
+    A proxy answer cut into several requests states each of the three only when every reply states the
+    same one; a reply stating none, or two stating different ones, withholds it (`None`).
     """
 
     route: str
@@ -691,9 +693,9 @@ class RemoteSnapshots:
             rows=_stable(rows),
             route=RemoteRoute(
                 route=ROUTE_PROXY,
-                release=_agreed(lane, "release", [reply.release for reply in replies]),
-                served_from=", ".join(sorted({r.served_from for r in replies if r.served_from})) or None,
-                revision=_agreed(lane, "revision", [reply.revision for reply in replies]),
+                release=_agreed(lane, "releases", [reply.release for reply in replies]),
+                served_from=_agreed(lane, "served_from values", [reply.served_from for reply in replies]),
+                revision=_agreed(lane, "revisions", [reply.revision for reply in replies]),
             ),
         )
 
@@ -1020,11 +1022,12 @@ def _said(response: httpx.Response) -> str:
 
 
 def _agreed(lane: str, what: str, values: Sequence[Any]) -> str | None:
-    """The one value every reply states, else `None`: two replies disagreeing withhold it, said in the log."""
+    """The one value every reply states, else `None`: two replies disagreeing withhold it, said in the log, and
+    a reply stating none withholds it too (the unknown arm). `what` names the values, plural, for the log."""
     stated = {str(v) for v in values if v}
     if len(stated) > 1:
         logger.warning(
-            "%s: the proxy's replies to one lookup state %d %ss (%s); withheld",
+            "%s: the proxy's replies to one lookup state %d %s (%s); withheld",
             lane,
             len(stated),
             what,

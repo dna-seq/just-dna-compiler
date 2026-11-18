@@ -1273,6 +1273,40 @@ def test_two_proxy_replies_stating_two_releases_withhold_it_and_say_so(
     ]
 
 
+@pytest.mark.parametrize(
+    ("stated", "said"),
+    [
+        (["local", None], []),
+        (
+            ["local", "remote:just-dna-seq/clinvar"],
+            [
+                "clinvar: the proxy's replies to one lookup state 2 served_from values "
+                "(local, remote:just-dna-seq/clinvar); withheld"
+            ],
+        ),
+    ],
+    ids=["one unstated", "two stated"],
+)
+def test_served_from_is_withheld_unless_every_reply_states_the_same(
+    caplog: pytest.LogCaptureFixture, stated: list[str | None], said: list[str]
+) -> None:
+    """Review round 2, F: `served_from` goes through the rule `release` and `revision` do. A reply stating none
+    is the unknown arm, so `local` beside it is no answer; it was `local`, and two values were joined."""
+    replies = iter(stated)
+
+    def proxy(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={**_well_formed("clinvar", "clinvar"), "served_from": next(replies)})
+
+    rsids = [f"rs{i}" for i in range(1, remote.PROXY_MAX_KEY_VALUES + 2)]
+    with (
+        caplog.at_level(logging.WARNING, logger="just_dna_enricher.remote"),
+        _with_proxy(RemoteSnapshots(proxy_url=PROXY, huggingface=False), proxy) as holder,
+    ):
+        answer = holder.lookup("clinvar", "clinvar", {"rsid": rsids})
+    assert answer.route == RemoteRoute("proxy", None, None, None)
+    assert _remote_log(caplog) == said
+
+
 def test_an_unreadable_hub_manifest_attests_no_file_and_says_so(
     httpfs, loopback_hub, ensembl_root: Path, tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:

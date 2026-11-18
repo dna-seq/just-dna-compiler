@@ -338,6 +338,11 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   warnings. It reads it now, and since the helper is new in 0.9, every call of it in any module must carry a
   fragment the list names, older module or not; the three it makes today were already listed and pinned.
   Exception texts stay out of the walk: a caller catches an exception by its type, not its words.
+- **A proxy answer's `served_from` is withheld unless every reply states the same one** (review round 2, F, RM430,
+  the house algebra): it joined the values its replies stated and dropped the replies stating none, so `local`
+  beside an unstated reply read as `local`, a definite source from an unknown. It now goes through the rule
+  `release` and `revision` do: an unstated reply, or two differing values, give `None`, the second said in the
+  log. It reaches `VariantHint.routes` on every lookup the proxy answers in more than one request.
 
 ## 2026-11-18 — RM455: the pre-0.9 instances of four classes 0.9 fixed in its own code (patch, enricher only, on `main`)
 
