@@ -24,7 +24,9 @@ schema additions right after.
 **Next**
 1. ⏳ 0.9 — all six items built on the `0.9` branch; one follow-up pass (RM430's and RM431's last fixes), then
    the one review round.
-2. ⏳ 0.8.9 — fixes for two silent errors on indels, found when the registry re-derived its production modules; on
-   `main`, the cut being finished (format stays 0.8.6, so no reader has to upgrade).
+2. ⏳ 0.8.9 — fixes for two silent errors on indels, found when the registry re-derived its production modules: cut
+   and built, waiting on your publish. All three packages are 0.8.9 (format only for its release record); a reader on
+   format 0.8.6 still reads every 0.8.9 module. The next patch, 0.8.10, is built on `main`: an indel whose rsID dbSNP
+   merged is no longer refused offline.
 3. ❓ Three items you placed in 0.9 by name were parked by the small cut: parked, a 0.11, or 0.10 (desk #347).
 4. ❓ One question on the maintainer's desk: linking the project's memory to its new folder name.
