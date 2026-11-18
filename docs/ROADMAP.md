@@ -2468,7 +2468,7 @@ It may widen what a direct lookup returns, never what a module resolves, so no d
 
 ## RM455 — the pre-0.9 instances of 0.9's review classes: an unreadable pull record escapes its readers, three settings check `batch_size` only when built, `mitomap_miss` calls itself present over moved parents
 
-**Severity** low · **Status** open — **a patch on `main`**, triage, unattended (about 1 h) · **Owner** enricher
+**Severity** low · **Status** open — **a patch, built on `main` 2026-11-18 (e63a8d8c, 5799c2c9, 78b8fb3f), uncut, for 0.8.10** · **Owner** enricher
 (`download._pull_record`, `locations.pull_record_repo` and `pulled_from`, the gnomAD, E-utilities and literature
 settings, `mitomap_miss`'s status, `cli/cache_commands._payload`) · **Motivating case** 0.9's review round 1 fixes
 (the lead, 2026-11-18, merged as ea3dcf07), whose builder found these on code older than 0.9 · *related* RM430,
@@ -2489,7 +2489,9 @@ refuse a batch size below 1 where it is used; a stale reason for `mitomap_miss`,
 in place of the name. Each gets a test, and nothing a module resolves moves. Built on `main` and merged into 0.9 by
 the next sync, never on 0.9 (the trial rule: a defect older than the release is triage's patch).
 
-**Residuals** none yet.
+**Residuals** `mitomap_miss`'s stale reason → RM431 on 0.9 (`main` has no stale lane state, so it has no form
+here). Built with the rest: a fourth unreadable-record reader, `locations.snapshot_record_missing`, took the same
+fix; `acmg` took `payload_filename` beside `strchive`, since its resolver also finds a named root file.
 
 # Not format scope
 
