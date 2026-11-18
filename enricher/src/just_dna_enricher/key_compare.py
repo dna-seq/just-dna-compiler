@@ -59,7 +59,8 @@ class KeyCompare:
 
     def predicate(self, column: str, *, negated: bool = False) -> str:
         """SQL true where `column`'s cell answers to any key in one bound `VARCHAR[]` parameter (with
-        `negated`, true where it answers to none: a `NULL` cell answers to none)."""
+        `negated`, true where a stated cell answers to none). A `NULL` cell matches neither way, as SQL's
+        `lower(gene) <> ?` read it before this predicate: an unstated cell is no key and no other key."""
         cell = f'CAST("{column}" AS VARCHAR)'
         member = "lower(trim(member))" if self.fold else "member"
         if self.separator is None:
@@ -67,7 +68,7 @@ class KeyCompare:
         else:
             split = f"string_split({cell}, '{self.separator.replace(chr(39), chr(39) * 2)}')"
             test = f"list_has_any(list_transform({split}, member -> {member}), ?::VARCHAR[])"
-        return f"NOT coalesce({test}, false)" if negated else test
+        return f"coalesce(NOT ({test}), false)" if negated else test
 
     def parameter(self, values: Sequence[object]) -> list[str]:
         """The bound `VARCHAR[]` for `values` under this compare, sorted and once each."""

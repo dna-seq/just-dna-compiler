@@ -565,7 +565,8 @@ def test_a_key_compare_negated_and_described() -> None:
         f"SELECT cell FROM (SELECT unnest(?::VARCHAR[]) AS cell) WHERE {joined.predicate('cell', negated=True)}",
         [cells, joined.parameter(["VKORC1"])],
     ).fetchall()
-    assert [cell for (cell,) in kept] == ["CYP2D6", None]
+    # A NULL cell matches no key, negated or not, as the old `lower(gene) <> ?` read it (review round 1).
+    assert [cell for (cell,) in kept] == ["CYP2D6"]
     assert joined.described == "by gene_key, member by member of a ';'-joined cell"
     assert key_compare.KeyCompare(fold=True).described == "by gene_key"
     assert key_compare.EXACT.described == "exactly"
@@ -579,6 +580,18 @@ def test_cpic_partner_genes_compares_the_asked_gene_one_way_in_both_its_queries(
         {"gene": [" CYP2C9", "VKORC1"], "drug": ["warfarin", "warfarin"], "gene_count": [2, 2]}
     ).write_parquet(root / "data" / "recommendations.parquet")
     assert cpic.CpicSnapshotClient(root).partner_genes("cyp2c9", "Warfarin") == ["VKORC1"]
+
+
+def test_cpic_partner_genes_names_no_partner_for_a_row_with_no_gene(tmp_path: Path) -> None:
+    """A recommendation row whose `gene` is NULL is no partner: the negated compare treats NULL as no match,
+    as the old `lower(gene) <> ?` did, so `None` never joins the partners (review round 1, item 10)."""
+    root = tmp_path / "cpic"
+    (root / "data").mkdir(parents=True)
+    pl.DataFrame(
+        {"gene": ["CYP2C9", "VKORC1", None], "drug": ["warfarin"] * 3, "gene_count": [2, 2, 2]},
+        schema={"gene": pl.Utf8, "drug": pl.Utf8, "gene_count": pl.Int64},
+    ).write_parquet(root / "data" / "recommendations.parquet")
+    assert cpic.CpicSnapshotClient(root).partner_genes("CYP2C9", "warfarin") == ["VKORC1"]
 
 
 def test_every_declared_compare_is_on_a_key_column_of_a_remote_lane_and_names_its_readers_tables() -> None:

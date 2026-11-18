@@ -239,6 +239,10 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   registry's hints call `lookup_variant` and its enrich step calls `enrich`, neither `lookup_loci`. Each passes
   it down to `resolver.lookup_loci(..., rsid_index=)`, with its semantics: given, it is the only place an index
   is looked for, never the environment; `None` keeps the lane's ladder.
+- **The negated key compare treats a `NULL` cell as no match** (review round 1, item 10):
+  `KeyCompare.predicate(column, negated=True)` is true only where a stated cell answers to no key, as cpic's
+  `lower(gene) <> ?` read it before the shared predicate. `CpicSnapshotClient.partner_genes` no longer lists `None` as a
+  partner when a recommendation row states no gene.
 
 ## 2026-11-18 — RM453: a mirrored site where no spelling was witnessed keeps both spellings (patch, a declared corrected derivation, on `main`)
 

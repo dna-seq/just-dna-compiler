@@ -2594,8 +2594,9 @@ with RemoteSnapshots(declared_use="non_commercial") as snapshots:      # proxy f
     `key_compare.KeyCompare(fold=False, separator=None)` is how a keyed function compares a key with a cell:
     `fold` by `spelling.gene_key` (`lower(trim(…))` in SQL), `separator` member by member of a joined cell;
     `key_compare.EXACT` is the whole cell, byte for byte. `key`, `members(cell)`, `predicate(column, *,
-    negated=False)` (SQL over one bound `VARCHAR[]`), `parameter(values)` and `described` are the one reading of
-    it. `key_compare.KEY_COMPARES` (lane → table → column → `KeyCompare`, read with `lane_compare`) is the one
+    negated=False)` (SQL over one bound `VARCHAR[]`; a `NULL` cell matches neither way, so `negated` is true only
+    for a stated cell that answers to none, as SQL's `<>` read it), `parameter(values)` and `described` are the one
+    reading of it. `key_compare.KEY_COMPARES` (lane → table → column → `KeyCompare`, read with `lane_compare`) is the one
     registry: `clinpgx` (`gene`, folded, `;`), `drug_labels` (`genes`, folded, `;`), `civic` (`gene`, folded) and
     `cpic` (`gene` of every table, folded). The keyed functions build their local SQL from their entry, and
     `remote.RemoteLane.compares` is the lane's entry, derived from its name, so the holder's Hugging Face SQL
