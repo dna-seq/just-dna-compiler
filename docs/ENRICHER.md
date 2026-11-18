@@ -1872,7 +1872,12 @@ group, and a lookup by rsID pruned nothing (every row group's `id` spans rs1 to 
   An index pinning another core is refused once per process with a warning naming both and
   `cache rebuild --only ensembl_rsid_index`, and the core is scanned; a core with no manifest is scanned
   silently. `cache prepare` leaves a present index alone, a stale one included: rebuilding it is
-  `cache rebuild`.
+  `cache rebuild`. **With no index where it looked**, the core is scanned and the first such lookup of the
+  process says so at `info` (once per process, the pm's reading 2): `No rsID index was found at <place>, so
+  rsIDs in the Ensembl core at <core> are looked up by scanning…`, naming the lane and ending in the command
+  that builds an index there (`just-dna-enricher cache rebuild --only ensembl_rsid_index --out <base>`).
+  `info`, because a scan is the normal state of a host that never named the index: the answers are the
+  same, only slower.
 
 **MANE's ❓ is an unestablished permission, and the third column says so.** MANE's bytes carry a
 *policy* — NCBI places no restrictions on use or distribution and, in the same paragraph, declines to

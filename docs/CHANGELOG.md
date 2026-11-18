@@ -184,6 +184,10 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   `cache prepare` never builds it, named or not, its line naming the rebuild into the base it looked in; neither
   pays about 42 minutes and 6 GB unasked. New: `CacheLane.named_only` (the reason, `None` on every other lane)
   and `RebuildRequest.named` (default `True`); `cache status` says it of an absent index.
+- **A lookup that scans for want of the rsID index says so once** (RM431, the pm's reading 2): the first rsID
+  lookup of a process that finds no index where it looks logs, at `info`, that an index exists and the command
+  that builds one there (`No rsID index was found at <place>, so rsIDs in the Ensembl core at <core> are looked
+  up by scanning…`). A core with no manifest, which no index could be built from, says nothing.
 
 ## 2026-11-18 — RM453: a mirrored site where no spelling was witnessed keeps both spellings (patch, a declared corrected derivation, on `main`)
 

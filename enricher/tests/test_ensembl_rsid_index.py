@@ -9,6 +9,7 @@ scan's own, computed in the test with no index in place.
 import ast
 import json
 import logging
+import threading
 from pathlib import Path
 
 import duckdb
@@ -196,6 +197,57 @@ def test_the_command_the_refusal_names_rebuilds_the_index_where_the_reader_looks
     assert result.exit_code == 0, result.output
     assert resolver._rsid_index_beside(core) is not None, "the rebuilt index pins the core beside it"
     assert _lookup(core) == scanned
+
+
+#: The scan note's fixed half, pinned (`@warning-text-is-api`).
+SCAN_NOTE = "so rsIDs in the Ensembl core at"
+
+
+def test_a_lookup_with_no_index_says_once_per_process_that_one_exists_and_how_to_build_it(
+    no_ambient_caches,
+    monkeypatch: pytest.MonkeyPatch,
+    core: Path,
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The pm's reading 2: a scan says once that the index exists, with the command run here as printed."""
+    monkeypatch.setattr(resolver, "_SCAN_NOTED", threading.Event())
+    place = tmp_path / "base" / "ensembl_rsid_index"
+    monkeypatch.setenv(locations.ENSEMBL_RSID_INDEX_CACHE_VAR, str(place))
+    monkeypatch.setenv(locations.ENSEMBL_CACHE_VAR, str(core))
+    with caplog.at_level(logging.INFO, logger="just_dna_enricher.resolver"):
+        scanned = _lookup(core)
+        assert _lookup(core) == scanned
+    notes = [record for record in caplog.records if SCAN_NOTE in record.getMessage()]
+    assert len(notes) == 1, "once per process, not once per lookup"
+    assert notes[0].levelno == logging.INFO, "a scan is a normal state, not a fault"
+    assert notes[0].getMessage() == (
+        f"No rsID index was found at {place}, so rsIDs in the Ensembl core at {core} are looked up by scanning "
+        "its whole `id` column. An index (the `ensembl_rsid_index` lane) makes each a pruned read, and it is "
+        "built only when named. Build it with "
+        f"`just-dna-enricher cache rebuild --only ensembl_rsid_index --out {tmp_path / 'base'}`."
+    )
+    command = notes[0].getMessage().split("`")[-2].split()
+    result = CliRunner().invoke(app, command[1:])
+    assert result.exit_code == 0, result.output
+    assert resolver._rsid_index_beside(core) is not None, (
+        "the printed command built the index the reader takes"
+    )
+    assert _lookup(core) == scanned
+
+
+def test_a_scan_says_nothing_where_no_index_could_be_built(
+    no_ambient_caches,
+    monkeypatch: pytest.MonkeyPatch,
+    core: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A core with no manifest cannot be indexed (the builder refuses it), so no command is offered."""
+    monkeypatch.setattr(resolver, "_SCAN_NOTED", threading.Event())
+    (core / "manifest.json").unlink()
+    with caplog.at_level(logging.INFO, logger="just_dna_enricher.resolver"):
+        _lookup(core)
+    assert not [record for record in caplog.records if "rsID index" in record.getMessage()]
 
 
 def test_a_core_with_no_manifest_is_scanned_whatever_index_is_present(

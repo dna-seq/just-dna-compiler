@@ -10,7 +10,9 @@ caller's responsibility (the marketplace pins one reference for the whole ecosys
 
 import json
 import logging
+import os
 import re
+import threading
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
 from collections.abc import Set as AbstractSet
@@ -52,6 +54,7 @@ from just_dna_enricher.locations import (
     DUCKDB_NAME,
     ENSEMBL_RSID_INDEX_CACHE_VAR,
     ENSEMBL_RSID_INDEX_SUBDIR,
+    default_ensembl_rsid_index_cache_dir,
     resolve_ensembl_reference,
     resolve_ensembl_rsid_index_reference,
 )
@@ -362,24 +365,47 @@ def _lookup_loci(
         con.close()
 
 
-def _rebuild_instruction(index_dir: Path) -> str:
-    """The command that rebuilds the index where the reader looks for it (`cache rebuild` writes `<out>/<lane>`).
+def _rebuild_instruction(index_dir: Path, *, build: bool = False) -> str:
+    """The command that (re)builds the index where the reader looks for it (`cache rebuild` writes `<out>/<lane>`).
 
-    `cache prepare` leaves a present index alone, a stale one included, so the instruction is a rebuild
-    into the index's own place: the builder withdraws `release.json` before it moves a file, and a reader
-    in between scans.
+    `cache prepare` never builds the index (it is built only when named, `CacheLane.named_only`), so the
+    instruction is a rebuild into the index's own place: the builder withdraws `release.json` before it
+    moves a file, and a reader in between scans. `build` words it for a place that holds no index yet.
     """
     command = "just-dna-enricher cache rebuild --only ensembl_rsid_index"
     if index_dir.name == ENSEMBL_RSID_INDEX_SUBDIR:
-        return f"Rebuild it in place with `{command} --out {index_dir.parent}`."
+        verb = "Build it" if build else "Rebuild it in place"
+        return f"{verb} with `{command} --out {index_dir.parent}`."
     return (
-        f"Rebuild it with `{command} --out <dir>` and point ${ENSEMBL_RSID_INDEX_CACHE_VAR} at "
-        f"<dir>/{ENSEMBL_RSID_INDEX_SUBDIR}."
+        f"{'Build' if build else 'Rebuild'} it with `{command} --out <dir>` and point "
+        f"${ENSEMBL_RSID_INDEX_CACHE_VAR} at <dir>/{ENSEMBL_RSID_INDEX_SUBDIR}."
     )
 
 
 #: `(index, core)` pairs whose refusal was already logged: said once per process, not per lookup.
 _REFUSED_INDEXES: set[tuple[Path, Path]] = set()
+#: Set once a scan for want of an index has been noted (`_note_scan`): said once per process (RM431).
+_SCAN_NOTED = threading.Event()
+
+
+def _note_scan(place: Path, reference: Path) -> None:
+    """Say once per process, at `info`, that rsIDs are scanned for want of an index, and how to build one.
+
+    The pm's reading 2 (2026-11-18): the index is built only when named, so a host that never named it
+    learns here that it exists. `info`, because a scan is a normal state on a host that chose not to pay
+    the build, not a fault: the answers are the same, only slower.
+    """
+    if _SCAN_NOTED.is_set():
+        return
+    _SCAN_NOTED.set()
+    logger.info(
+        "No rsID index was found at %s, so rsIDs in the Ensembl core at %s are looked up by scanning its whole "
+        "`id` column. An index (the `ensembl_rsid_index` lane) makes each a pruned read, and it is built only "
+        "when named. %s",
+        place,
+        reference,
+        _rebuild_instruction(place, build=True),
+    )
 
 
 def _rsid_index_beside(reference: Path) -> Path | None:
@@ -389,15 +415,21 @@ def _rsid_index_beside(reference: Path) -> Path | None:
     environment (`$JUST_DNA_ENSEMBL_RSID_INDEX_CACHE`, else `<base>/ensembl_rsid_index`; the `.env` is
     not loaded here, as `lookup_loci` never loaded it). It is read only when its `release.json` pins this
     core (`ensembl_rsid_index_build.core_pin`: the release and the files its manifest attests); an index
-    of another core is refused with a warning naming both and the rebuild, and the core is scanned. A
-    core that cannot be pinned (no manifest, a `.duckdb` handed directly) is scanned with nothing said:
-    no index could ever be its.
+    of another core is refused with a warning naming both and the rebuild, and the core is scanned. With
+    no index there, the core is scanned and the first such lookup of the process says so at `info`, with
+    the command that builds one where the reader looked (`_note_scan`). A core that cannot be pinned (no
+    manifest, a `.duckdb` handed directly) is scanned with nothing said: no index could ever be its.
     """
     current = core_pin(reference)
     if current is None:
         return None
     index_dir = resolve_ensembl_rsid_index_reference(load_dotenv_file=False)
     if index_dir is None:
+        looked_in = os.getenv(ENSEMBL_RSID_INDEX_CACHE_VAR)
+        _note_scan(
+            Path(looked_in) if looked_in else default_ensembl_rsid_index_cache_dir(load_dotenv_file=False),
+            reference,
+        )
         return None
     payload = index_dir / SNAPSHOT_DATA_DIRNAME / INDEX_GLOB
     release = read_release(index_dir)
