@@ -55,6 +55,7 @@ from just_dna_format.snapshot import SNAPSHOT_DATA_DIRNAME, SnapshotRelease, rea
 from just_dna_format.vrs import vrs_spec_release
 from tenacity import retry
 
+from just_dna_enricher.key_compare import lane_compare
 from just_dna_enricher.net import (
     EndpointRetired,
     PacingGate,
@@ -627,6 +628,9 @@ _WITNESS_COLUMNS: tuple[tuple[str, str], ...] = (
 )
 #: The table a remote route names for the slice (`remote.table_name` of `data/clinvar_gkm-indels.parquet`).
 REMOTE_WITNESS_TABLE = "clinvar_gkm-indels"
+#: How `lookup_rsids` compares an rsID with the `rsid` cell, on every route: the key read as an rsID, the cell
+#: whole (`key_compare.KEY_COMPARES`, which the holder reads too).
+_RSID = lane_compare("clinvar_gkm", REMOTE_WITNESS_TABLE, "rsid")
 
 
 def _witness_connection(reference: Path) -> duckdb.DuckDBPyConnection:
@@ -721,18 +725,12 @@ def _variants_from_rows(
         con.close()
 
 
-def _rsid_keys(rsids: Sequence[str]) -> dict[str, list[str]]:
-    """The keys a remote route is asked for `rsids`: each as the slice spells it, as the local SQL compares."""
-    return {"rsid": list(_asked_rsids(rsids))}
-
-
 def _rsids_over(con: duckdb.DuckDBPyConnection, rsids: Sequence[str]) -> dict[str, list[dict]]:
     """`lookup_rsids`' query over a connection exposing `witness`: the one copy."""
     asked = _asked_rsids(rsids)
     if not asked:
         return {}
-    tokens = list(asked)
-    rows = _select_witness(con, f"rsid IN ({', '.join('?' for _ in tokens)})", tokens)
+    rows = _select_witness(con, _RSID.predicate("rsid"), [_RSID.parameter(list(asked))])
     answer: dict[str, list[dict]] = {}
     for row in rows:
         for spelling in asked[str(row["rsid"])]:

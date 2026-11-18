@@ -296,6 +296,14 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   `ValueError`, the wrong-request channel, so Hugging Face, which has no such limit, was never asked. The proxy is
   now passed over before any request, as for a folded key; with Hugging Face off that is could-not-ask naming the
   limit.
+- **`rsid` is declared in `KEY_COMPARES`, so the holder reads an rsID as the local reader does** (review round 1,
+  item 5, RM430's class fix missing a key): CIViC's, ClinPGx's and ClinVar-GKM's keyed functions read `RS334` and
+  `334` as `rs334`, but the holder compared the key exactly, so a raw rsID answered locally and was missing
+  remotely; the equal-answers walk could not see it, since it asked the holder through the readers' private key
+  builders, which did the reading. New: `KeyCompare.rsid` and `KeyCompare.cell_exact`; the holder reads each key
+  as its compare does before any route, so the proxy, which compares a cell exactly, is still asked for an rsID.
+  The three readers build their rsID SQL from the registry, the private key builders are gone, and the walk asks
+  the holder with raw keys.
 
 ## 2026-11-18 — RM453: a mirrored site where no spelling was witnessed keeps both spellings (patch, a declared corrected derivation, on `main`)
 

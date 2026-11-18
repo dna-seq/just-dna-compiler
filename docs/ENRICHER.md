@@ -2595,15 +2595,16 @@ with RemoteSnapshots(declared_use="non_commercial") as snapshots:      # proxy f
     rsids) -> dict[str, list[dict]]`: every snapshot row under each gene (compared by `gene_key`: case and
     surrounding space make no second gene) or rsID (lower case, `rs` prefixed: `334` is `rs334`), keyed as asked,
     every column, in one total order. With the raising reader's semantics (`_snapshot_rows`): an absent or
-    unreadable snapshot raises `CivicDraftError` naming it. Remotely: table `civic`, keys `gene` (each as given,
-    stripped) and `rsid` (as the snapshot spells it). A gene is compared by its `key_compare.KEY_COMPARES` entry on every
+    unreadable snapshot raises `CivicDraftError` naming it. Remotely: table `civic`, keys `gene` and `rsid`,
+    each as asked: the holder reads them as the local reader does (an rsID as the snapshot spells one). A gene is compared by its `key_compare.KEY_COMPARES` entry on every
     route, so `brca1` answers on Hugging Face as it does locally; the proxy is not asked for a gene (below).
   - `clinvar_gkm.lookup_variants(reference, positions) -> dict[tuple[str, int], list[dict]]` and
     `clinvar_gkm.lookup_rsids(reference, rsids) -> dict[str, list[dict]]`: every placement the witness holds at
     each position (contig as `clinvar_gkm.normalize_chrom` spells it) or under each rsID (as `by_rsid` reads
     one), keyed as asked, every column of the slice. `ClinVarGkmWitness.load` stays the polars loader. An
     absent or unreadable slice raises `ClinVarGkmError`; an absent key is *not witnessed*, never *placed
-    wrong*. Remotely: table `clinvar_gkm-indels`, keys `chrom` + `start` (the holder reads `pos`) and `rsid`.
+    wrong*. Remotely: table `clinvar_gkm-indels`, keys `chrom` + `start` (the holder reads `pos`) and `rsid` (as
+    asked; the holder reads it as `by_rsid` does).
     The VRS id is not a key: it is not one of `remote.KEY_COLUMNS`, the registry's list, so it stays local
     (`by_vrs_id`).
   - `clinpgx.lookup_rsids(reference, rsids) -> dict[str, list[dict]]` and `clinpgx.lookup_genes(reference, genes)
@@ -2613,7 +2614,7 @@ with RemoteSnapshots(declared_use="non_commercial") as snapshots:      # proxy f
     `;`-joined `gene` cell (`KLC1;XRCC3` names both, as `draft-clinpgx --gene` reads it), compared by
     `gene_key`. `load_snapshot` stays the whole-table loader; an absent or unreadable snapshot raises
     `ClinPgxEnrichmentError`. Remotely (lane `clinpgx`, eligible since RM430, gated by ClinPGx's no-sale terms):
-    table `annotations`, keys `rsid` (as the snapshot spells it) and `gene` (each as given, stripped). A gene is
+    table `annotations`, keys `rsid` and `gene`, each as asked (the holder reads them as the local reader does). A gene is
     compared by its `key_compare.KEY_COMPARES` entry on every route, member by member of the `;`-joined cell (399 of 16,117
     rows on the 2026-08 snapshot name several); the proxy is not asked for a gene (below).
   - `drug_labels.lookup_genes(reference, genes) -> dict[str, list[dict]]` (the pm's reading 4): every
@@ -2622,18 +2623,22 @@ with RemoteSnapshots(declared_use="non_commercial") as snapshots:      # proxy f
     names both, split on `CELL_SEPARATOR` as `load_drug_labels` splits it), compared by `gene_key`; a label naming
     two asked genes is under both. `load_drug_labels` stays the loader the check reads. An absent snapshot raises
     `DrugLabelUnavailable`, an unreadable one `DrugLabelError`. Remotely (lane `drug_labels`, eligible since
-    RM430, gated by ClinPGx's no-sale terms): table `drug_labels`, key `genes` (each gene as given, stripped).
+    RM430, gated by ClinPGx's no-sale terms): table `drug_labels`, key `genes` (each gene as asked).
     A gene is compared by its `key_compare.KEY_COMPARES` entry on every route, member by member of the cell (361 of 1,433
     labels on the 2026-08 snapshot name several); the proxy is not asked for a gene (below).
   - **The remote compare is the local compare** (the pm, 2026-11-18, fixed as a class).
-    `key_compare.KeyCompare(fold=False, separator=None)` is how a keyed function compares a key with a cell:
-    `fold` by `spelling.gene_key` (`lower(trim(…))` in SQL), `separator` member by member of a joined cell;
-    `key_compare.EXACT` is the whole cell, byte for byte. `key`, `members(cell)`, `predicate(column, *,
+    `key_compare.KeyCompare(fold=False, separator=None, rsid=False)` is how a keyed function compares a key with
+    a cell: `fold` by `spelling.gene_key` (`lower(trim(…))` in SQL), `separator` member by member of a joined
+    cell, and `rsid` (0.9, review round 1) the key read as an rsID (`RS334` and `334` are `rs334`) against the
+    whole cell; `key_compare.EXACT` is the whole cell, byte for byte. `exact` is no reading on either side;
+    `cell_exact` is the whole cell byte for byte against the key as read, which the proxy compares too when
+    the holder sends it the key as read, as it does: so an rsID still goes to the proxy, a gene does not. `key`, `members(cell)`, `predicate(column, *,
     negated=False)` (SQL over one bound `VARCHAR[]`; a `NULL` cell matches neither way, so `negated` is true only
     for a stated cell that answers to none, as SQL's `<>` read it), `parameter(values)` and `described` are the one
     reading of it. `key_compare.KEY_COMPARES` (lane → table → column → `KeyCompare`, read with `lane_compare`) is the one
-    registry: `clinpgx` (`gene`, folded, `;`), `drug_labels` (`genes`, folded, `;`), `civic` (`gene`, folded) and
-    `cpic` (`gene` of every table, folded). The keyed functions build their local SQL from their entry, and
+    registry: `clinpgx` (`gene`, folded, `;`; `rsid`), `drug_labels` (`genes`, folded, `;`), `civic` (`gene`,
+    folded; `rsid`), `clinvar_gkm` (`rsid`) and `cpic` (`gene` of every table, folded). The walk asks the holder
+    with the keys as a host types them (`RS334`, ` Brca1 `), never through a reader's private key builder. The keyed functions build their local SQL from their entry, and
     `remote.RemoteLane.compares` is the lane's entry, derived from its name, so the holder's Hugging Face SQL
     compares as the local reader does; a column the registry does not name compares exactly on both routes.
     `RemoteLane.compare(table, column)` reads one, and `RemoteLane.proxy_compares(table, columns)` says whether

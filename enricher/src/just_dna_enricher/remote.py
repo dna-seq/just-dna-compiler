@@ -232,10 +232,11 @@ class RemoteLane:
     def proxy_compares(self, table: str, columns: Iterable[str]) -> bool:
         """Whether the registry's proxy compares each of `columns` as the local reader does.
 
-        It compares a whole cell exactly, so it does only where the lane declares nothing else. Asked
-        for a folded or a joined column it would return fewer rows than the local route and say
-        nothing, an absence where the row exists (`@unreachable-not-absent`)."""
-        return all(self.compare(table, column).exact for column in columns)
+        It compares a whole cell exactly, so it does only where the lane compares the cell whole
+        (`KeyCompare.cell_exact`), the holder sending each key as the compare reads it (an rsID as the
+        snapshot spells one). Asked for a folded or a joined column it would return fewer rows than the
+        local route and say nothing, an absence where the row exists (`@unreachable-not-absent`)."""
+        return all(self.compare(table, column).cell_exact for column in columns)
 
 
 #: The lanes a holder reads remotely. Each needs a published repo; a lane without one (PharmVar and
@@ -336,6 +337,25 @@ def _read_keys(lane: RemoteLane, keys: Mapping[str, Sequence[Any]]) -> _Keys:
             at.append(start)
     plain = {column: values for column, values in given.items() if column not in ("chrom", "start")}
     return _Keys(plain, positions)
+
+
+def _read_as_compared(lane: RemoteLane, table: str, keys: _Keys) -> _Keys:
+    """`keys` with each value of a column whose compare reads the key (an rsID: `RS334` is `rs334`) read so.
+
+    The local reader reads an asked key so before its SQL compares the cell, so both routes are asked the
+    key as read: the proxy, which compares a cell exactly, then answers as the local route does (review
+    round 1, item 5). A column compared as given keeps its values, unconverted. A column left with no value
+    (only blanks) is a wrong request, as an empty one is.
+    """
+    plain: dict[str, list[Any]] = {}
+    for column, values in keys.plain.items():
+        compare = lane.compare(table, column)
+        plain[column] = values if compare.exact else compare.parameter(values)
+        if not plain[column]:
+            raise ValueError(
+                f"{lane.name}: a remote lookup needs a value for every key it names; {column} holds only blanks"
+            )
+    return _Keys(plain, keys.positions)
 
 
 def _requests(keys: _Keys) -> list[dict[str, list[Any]]]:
@@ -571,13 +591,14 @@ class RemoteSnapshots:
         """`lookup` past its checks, counted in flight so `close()` waits for it."""
         self._admit(lane)
         spec = REMOTE_LANES[lane]
+        wanted = _read_as_compared(spec, table, wanted)
         fell_through: str | None = None
         passed_over: str | None = None
         if self._proxy is not None and not spec.proxy_compares(table, wanted.plain):
             compared = "; ".join(
                 f"{column} {spec.compare(table, column).described}"
                 for column in sorted(wanted.plain)
-                if not spec.compare(table, column).exact
+                if not spec.compare(table, column).cell_exact
             )
             passed_over = (
                 f"the registry's proxy compares a whole cell exactly, and {lane}/{table} compares "

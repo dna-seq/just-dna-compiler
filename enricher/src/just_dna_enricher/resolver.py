@@ -51,6 +51,7 @@ from just_dna_enricher.events import (
     names_event,
     no_mint,
 )
+from just_dna_enricher.key_compare import _rsid_token
 from just_dna_enricher.locations import (
     DUCKDB_NAME,
     ENSEMBL_RSID_INDEX_CACHE_VAR,
@@ -554,18 +555,8 @@ def _typed_rows_connection(
     return con
 
 
-def _rsid_token(rsid: str) -> str:
-    """An rsID as the snapshots spell one: lower case, `rs` prefixed (`RS334` and `334` are `rs334`).
-
-    The one spelling CIViC's and ClinVar-GKM's keyed functions (RM431) compare an asked rsID in, and
-    `ClinVarGkmWitness.by_rsid`'s reading.
-    """
-    token = rsid.strip().lower()
-    return token if token.startswith("rs") else f"rs{token}"
-
-
 def _asked_rsids(rsids: Sequence[str]) -> dict[str, list[str]]:
-    """`_rsid_token` → the rsIDs asked under it, as asked and in order; blanks are dropped."""
+    """`key_compare._rsid_token` → the rsIDs asked under it, as asked and in order; blanks are dropped."""
     asked: dict[str, list[str]] = {}
     for rsid in rsids:
         if rsid.strip() and rsid not in asked.setdefault(_rsid_token(rsid), []):
