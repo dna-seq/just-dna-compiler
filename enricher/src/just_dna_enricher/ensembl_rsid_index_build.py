@@ -83,23 +83,43 @@ def core_pin(core: Path) -> dict[str, str] | None:
     `files_sha256` is the sha256 of the manifest's `data/` attestations, one `path size sha256` line
     each, sorted: the files a reader of the core reads, as the manifest states them. `None` when the
     core has no readable manifest, or one stating no `release_id` or no file under `data/`: such a core
-    cannot be named, so no index is built from it or read beside it.
+    cannot be named, so no index is built from it or read beside it. Also `None` when a `data/` file's
+    size or sha256 is unstated (review round 1, item 7): the pin is withheld, never hashed with an empty
+    part, since two cores alike in release, paths and sizes would then pin alike over different bytes.
     """
+    return _pin_and_refusal(core)[0]
+
+
+def _pin_and_refusal(core: Path) -> tuple[dict[str, str] | None, str]:
+    """`(core_pin(core), why it is None)`: the reason is empty when a pin is returned."""
     core = Path(core)
     if not core.is_dir():
-        return None
+        return None, f"there is no Ensembl snapshot at {core}"
     manifest = read_snapshot_manifest(core / SNAPSHOT_MANIFEST_FILENAME)
     release = (manifest.release_id or "").strip() if manifest is not None else ""
-    if manifest is None or not release:
-        return None
-    lines = sorted(
-        f"{entry.path} {entry.size} {(entry.sha256 or '').lower()}"
-        for entry in manifest.files or ()
-        if entry.path.startswith(f"{SNAPSHOT_DATA_DIRNAME}/")
+    entries = (
+        [e for e in (manifest.files or ()) if e.path.startswith(f"{SNAPSHOT_DATA_DIRNAME}/")]
+        if manifest
+        else []
     )
-    if not lines:
-        return None
-    return {"release_id": release, "files_sha256": hashlib.sha256("\n".join(lines).encode()).hexdigest()}
+    if manifest is None or not release or not entries:
+        return None, (
+            f"the Ensembl snapshot at {core} carries no {SNAPSHOT_MANIFEST_FILENAME} naming its release and "
+            f"files, so an index of it could never be told from an index of another; the rsID index is "
+            f"built from the split release only"
+        )
+    unstated = sorted(e.path for e in entries if e.size is None or not (e.sha256 or "").strip())
+    if unstated:
+        named = ", ".join(unstated[:5]) + (", …" if len(unstated) > 5 else "")
+        return None, (
+            f"the {SNAPSHOT_MANIFEST_FILENAME} of the Ensembl snapshot at {core} states no size or sha256 for "
+            f"{len(unstated)} file{'' if len(unstated) == 1 else 's'} under {SNAPSHOT_DATA_DIRNAME}/ ({named}), "
+            f"so the files an index would pin are not named whole and an index of it could be read beside "
+            f"another core of the same release; re-pull the core (`cache pull --only ensembl`)"
+        )
+    lines = sorted(f"{entry.path} {entry.size} {entry.sha256.lower()}" for entry in entries)
+    pin = {"release_id": release, "files_sha256": hashlib.sha256("\n".join(lines).encode()).hexdigest()}
+    return pin, ""
 
 
 @dataclass(frozen=True)
@@ -191,13 +211,9 @@ def build_rsid_index(
             f"no Ensembl snapshot at {core} to index: the rsID index is built from a whole split core "
             f"(`cache pull --only ensembl`)"
         )
-    pin = core_pin(core)
+    pin, refusal = _pin_and_refusal(core)
     if pin is None:
-        raise RsidIndexError(
-            f"the Ensembl snapshot at {core} carries no {SNAPSHOT_MANIFEST_FILENAME} naming its release and "
-            f"files, so an index of it could never be told from an index of another; the rsID index is "
-            f"built from the split release only"
-        )
+        raise RsidIndexError(refusal)
     sources = sorted((core / SNAPSHOT_DATA_DIRNAME).glob("*.parquet"))
     out_dir = Path(out_dir)
     staging = out_dir / _STAGING_DIRNAME

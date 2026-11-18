@@ -1846,7 +1846,9 @@ group, and a lookup by rsID pruned nothing (every row group's `id` spans rs1 to 
   `parents.ensembl` holds `ensembl_rsid_index_build.core_pin(core)`, the core manifest's `release_id` and
   `files_sha256`, a digest of the manifest's `data/` attestations (path, size, sha256), beside the core's
   path. A label alone is not a core: one label has been seen over two sets of bytes (RM445), and a test
-  slice states the real release's label. A core whose manifest names no release cannot be indexed.
+  slice states the real release's label. A core whose manifest names no release cannot be indexed, and
+  nor can one whose manifest states no size or sha256 for a `data/` file: its pin is withheld (`core_pin`
+  answers `None`), never hashed with an empty part, and the build refuses naming the files.
   `dataset` is the core's release, so `cache status` prints which release the index is of.
 - **Built, never pulled, and only when named** (the pm's reading 2, 2026-11-18). `cache rebuild --only
   ensembl_rsid_index` builds it; no `ensure` does, so `cache pull`, `ensure_snapshot` and

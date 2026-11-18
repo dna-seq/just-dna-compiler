@@ -7,6 +7,7 @@ scan's own, computed in the test with no index in place.
 """
 
 import ast
+import hashlib
 import json
 import logging
 import threading
@@ -86,6 +87,44 @@ def test_the_parent_pin_is_the_release_and_the_attested_files(
     other = core_pin(same_label_other_bytes)
     assert other is not None and other["release_id"] == pin["release_id"]
     assert other != pin, "one label over different bytes is another parent (RM445's sticky label)"
+
+
+def test_a_fully_stated_pin_is_the_documented_digest_so_an_index_built_before_stays_current(
+    core: Path,
+) -> None:
+    """The pin of a manifest stating every file's size and sha256 is unchanged by item 7: one `path size sha256`
+    line per `data/` file, sorted, hashed, so every index already built still pins its core."""
+    manifest = json.loads((core / "manifest.json").read_text())
+    lines = sorted(
+        f"{e['path']} {e['bytes']} {e['sha256'].lower()}"
+        for e in manifest["files"]
+        if e["path"].startswith("data/")
+    )
+    assert lines
+    assert core_pin(core) == {
+        "release_id": manifest["release_id"],
+        "files_sha256": hashlib.sha256("\n".join(lines).encode()).hexdigest(),
+    }
+
+
+@pytest.mark.parametrize("unstated", ["sha256", "bytes"])
+def test_a_pin_with_a_file_whose_digest_or_size_is_unstated_is_withheld(
+    core: Path, tmp_path: Path, unstated: str
+) -> None:
+    """A `data/` file the manifest states no sha256 (or size) for is not named whole, so the pin is withheld,
+    never hashed with an empty part: two cores alike in release, paths and sizes but with different bytes
+    would otherwise pin alike (review round 1, item 7). The build refuses with its own reason."""
+    manifest = json.loads((core / "manifest.json").read_text())
+    entry = next(e for e in manifest["files"] if e["path"].startswith("data/"))
+    del entry[unstated]
+    (core / "manifest.json").write_text(json.dumps(manifest))
+    assert core_pin(core) is None
+    with pytest.raises(RsidIndexError) as refused:
+        build_rsid_index(core, tmp_path / "index")
+    if unstated == "sha256":
+        assert f"states no size or sha256 for 1 file under data/ ({entry['path']})" in str(refused.value)
+    else:  # a file of unstated size is no attested core at all, so the resolver refuses it first
+        assert "no Ensembl snapshot at" in str(refused.value)
 
 
 def test_a_core_its_manifest_does_not_name_cannot_be_indexed(tmp_path: Path, core: Path) -> None:

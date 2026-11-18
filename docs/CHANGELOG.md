@@ -252,6 +252,11 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   `resolve_rsids_batched` yielded no answer for any rsID, saying nothing. The batched read now runs the same check
   before any request, raising the construction's `ValueError` word for word, for `batch_size` at either end and for
   `batch_timeout`.
+- **An rsID index pin with a file of unstated size or sha256 is withheld** (review round 1, item 7):
+  `ensembl_rsid_index_build.core_pin` hashed a missing sha256 as `""`, so two cores alike in release, paths and
+  sizes but not in bytes pinned alike and an index of one was read beside the other. It now answers `None` for such
+  a manifest (a core it cannot pin is scanned), and `build_rsid_index` refuses naming the files. A fully stated
+  manifest pins exactly as before, so an index already built stays current.
 
 ## 2026-11-18 — RM453: a mirrored site where no spelling was witnessed keeps both spellings (patch, a declared corrected derivation, on `main`)
 
