@@ -193,7 +193,7 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   `default_ensembl_rsid_index_cache_dir`.
 - **The rsID index is built only when named** (RM431, the pm's reading 2): `cache rebuild --only
   ensembl_rsid_index`. A bare `cache rebuild` (and `rebuild_caches(lanes=None)`) reports it *not run*, and
-  `cache prepare` never builds it, named or not, its line naming the rebuild into the base it looked in; neither
+  `cache prepare` never builds it, named or not, its line naming the build where the lane is read; neither
   pays about 42 minutes and 6 GB unasked. New: `CacheLane.named_only` (the reason, `None` on every other lane)
   and `RebuildRequest.named` (default `True`); `cache status` says it of an absent index.
 - **A lookup that scans for want of the rsID index says so once** (RM431, the pm's reading 2): the first rsID

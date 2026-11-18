@@ -19,6 +19,7 @@ from just_dna_enricher.caches import (
     RebuildOutcome,
     RebuildRequest,
     _gate,
+    _named_only_detail,
     _rebuild_blocked,
     _unpinnable,
     lane_name,
@@ -143,12 +144,14 @@ def cache_status_() -> None:
                 [f"`{lane.build_command}`"] if lane.build_command is not None else []
             )
             how = " or ".join(routes)
-            # A lane built only when named says so (RM431): `cache prepare` will not build it.
-            when = f" ({lane.named_only})" if lane.named_only is not None else ""
-            typer.secho(
-                f"  {lane.name:13} absent   — {lane.serves}; provision with {how}{when}",
-                fg=typer.colors.YELLOW,
+            # A lane built only when named says so, with the build where it is read (RM431): `cache
+            # prepare` will not build it, and a bare `cache rebuild` writes under its own `--out`.
+            provision = (
+                _named_only_detail(lane, status.looked_in)
+                if lane.named_only is not None
+                else f"provision with {how}"
             )
+            typer.secho(f"  {lane.name:13} absent   — {lane.serves}; {provision}", fg=typer.colors.YELLOW)
             continue
         if status.state == "occupied":
             # Neither present nor absent: something is at the place the lane looks and it is not a

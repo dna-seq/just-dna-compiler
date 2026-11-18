@@ -1623,6 +1623,25 @@ def lane_status(
     return [out[index] for index in range(len(walked))]
 
 
+def _named_only_detail(lane: CacheLane, looked_in: Path) -> str:
+    """Why a lane built only when named was not built, and the command that builds it where it is read.
+
+    `looked_in` is the directory the lane's resolver reads (its variable, else its default). `cache
+    rebuild` writes `<out>/<lane>`, so a place named for the lane gets `--out` its parent; any other place
+    gets `--out <dir>` and the variable to point at `<dir>/<lane>`. `cache prepare` and `cache status` say
+    this of an absent lane (RM431). Raises `ValueError` for a lane not built only when named.
+    """
+    if lane.named_only is None:
+        raise ValueError(f"{lane.name} is not built only when named")
+    command = f"just-dna-enricher {lane.build_command}"
+    where = (
+        f"`{command} --out {looked_in.parent}`"
+        if looked_in.name == lane.name
+        else f"`{command} --out <dir>` and point ${lane.env_var} at <dir>/{lane.name}"
+    )
+    return f"{lane.named_only}; build it where it is read with {where}"
+
+
 def _ladder_dir(lane: CacheLane, *, named: bool) -> Path:
     """The directory a lane's ladder names: its variable if the process exports one, else its default.
 
@@ -1780,11 +1799,7 @@ def prepare_lane(lane: CacheLane, request: RebuildRequest) -> PrepareOutcome:
         # Never built here, named or not (RM431): the reason, and the command that builds it where this
         # machine's readers look, since `cache rebuild` writes into the `--out` it is given.
         return PrepareOutcome(
-            lane.name,
-            None,
-            "none",
-            f"{lane.named_only}; build it here with "
-            f"`just-dna-enricher {lane.build_command} --out {lane.default_dir().parent}`",
+            lane.name, None, "none", _named_only_detail(lane, _ladder_dir(lane, named=False))
         )
 
     if lane.ensure is not None:

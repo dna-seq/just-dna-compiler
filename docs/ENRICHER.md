@@ -1850,9 +1850,11 @@ group, and a lookup by rsID pruned nothing (every row group's `id` spans rs1 to 
   `enrich(download=True)` pay nothing for it, and neither does a provisioning run or a nightly rebuild:
   the lane's `CacheLane.named_only` states why (about 42 minutes and 6 GB), and a bare `cache rebuild`
   (`rebuild_caches(lanes=None)`, which passes `RebuildRequest(named=False)`) reports it *not run* with
-  that reason. `cache prepare` never builds it, named or not: an absent index is *unavailable*, its line
-  naming `cache rebuild --only ensembl_rsid_index --out <base>` for the base it looked in, and a present
-  one is left alone. `cache status` says it of an absent index. The build runs in duckdb with an
+  that reason. `cache prepare` never builds it, named or not: an absent index is *unavailable*, and a
+  present one is left alone. Its line, and `cache status`'s for an absent index, name the build where the
+  lane's resolver reads it (`$JUST_DNA_ENSEMBL_RSID_INDEX_CACHE`, else the default): `cache rebuild --only
+  ensembl_rsid_index --out <base>` for a place named `ensembl_rsid_index`, else `--out <dir>` and the
+  variable to point at `<dir>/ensembl_rsid_index`. The build runs in duckdb with an
   8 GB ceiling and 4 threads, in two passes so nothing holds the whole index in memory (one global
   `DISTINCT … ORDER BY` ran out of that ceiling): each core file's distinct rows go into rsID buckets,
   then each bucket is sorted into its file, all under a hidden staging directory inside the output. It

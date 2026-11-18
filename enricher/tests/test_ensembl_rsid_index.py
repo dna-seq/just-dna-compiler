@@ -521,7 +521,7 @@ def test_prepare_never_builds_the_index_even_named_and_names_the_rebuild_into_it
     (outcome,) = caches.prepare_caches([lane])
     assert outcome.ready is None and outcome.route == "none"
     assert outcome.detail == (
-        f"{lane.named_only}; build it here with "
+        f"{lane.named_only}; build it where it is read with "
         f"`just-dna-enricher cache rebuild --only ensembl_rsid_index --out {tmp_path / 'base'}`"
     )
     assert not (tmp_path / "base" / lane.name).exists(), "prepare built nothing"
@@ -548,8 +548,42 @@ def test_a_bare_cache_rebuild_dry_run_passes_the_index_over_and_a_named_one_woul
     assert "ensembl_rsid_index would build" in " ".join(named.output.split())
 
 
-def test_cache_status_says_an_absent_index_is_built_only_when_named(no_ambient_caches) -> None:
+def test_prepare_names_the_build_where_the_variable_points_not_the_default(
+    no_ambient_caches, monkeypatch: pytest.MonkeyPatch, core: Path, tmp_path: Path
+) -> None:
+    """The reader looks where `$JUST_DNA_ENSEMBL_RSID_INDEX_CACHE` points, so that is where the command builds."""
+    monkeypatch.setenv(locations.ENSEMBL_CACHE_VAR, str(core))
+    lane = LANES_BY_NAME["ensembl_rsid_index"]
+    monkeypatch.setenv(lane.env_var, str(tmp_path / "srv" / "ensembl_rsid_index"))
+    (named_for_the_lane,) = caches.prepare_caches([lane])
+    assert named_for_the_lane.detail.endswith(f"--out {tmp_path / 'srv'}`")
+    command = named_for_the_lane.detail.split("`")[-2].split()
+    assert CliRunner().invoke(app, command[1:]).exit_code == 0
+    assert resolver._rsid_index_beside(core) is not None, "built where the reader looks"
+    monkeypatch.setenv(lane.env_var, str(tmp_path / "my-index"))
+    (elsewhere,) = caches.prepare_caches([lane])
+    assert elsewhere.detail.endswith(
+        f"`just-dna-enricher cache rebuild --only ensembl_rsid_index --out <dir>` and point "
+        f"${lane.env_var} at <dir>/ensembl_rsid_index"
+    )
+
+
+def test_cache_status_says_an_absent_index_is_built_only_when_named_and_where(
+    no_ambient_caches, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    lane = LANES_BY_NAME["ensembl_rsid_index"]
+    monkeypatch.setenv(lane.env_var, str(tmp_path / "base" / "ensembl_rsid_index"))
     result = CliRunner().invoke(app, ["cache", "status"])
     assert result.exit_code == 0, result.output
-    line = next(line for line in result.output.splitlines() if line.strip().startswith("ensembl_rsid_index"))
+    line = " ".join(
+        next(
+            line for line in result.output.splitlines() if line.strip().startswith("ensembl_rsid_index")
+        ).split()
+    )
     assert "absent" in line and NAMED_ONLY_PHRASE in line
+    assert line.endswith(
+        f"`just-dna-enricher cache rebuild --only ensembl_rsid_index --out {tmp_path / 'base'}`"
+    )
+    assert line.count("cache rebuild --only ensembl_rsid_index") == 2, (
+        "the reason's command, then where to run it"
+    )
