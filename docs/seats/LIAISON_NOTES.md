@@ -107,7 +107,9 @@ from the index too: a polars-bio cap that holds both of us is raised with it fir
 
 **S36 with the registry (2026-11-18): answered** (their f26ef9b; three candidates for their pm: read our
 KEY_COMPARES at their 0.9 floor, a per-request compare, or fold by default; the reply will name its compare; relayed
-to lead and pm) (uncommitted in their inbox, their triage told in agent-chat
+to lead and pm). **Their pm decided the first (2026-11-18):** the registry reads `KEY_COMPARES` in its
+release that floors 0.9, the lane reply naming the compare per key column; told them it needs the enricher floor, since
+the declaration lives in `just_dna_enricher.key_compare`, and told our lead to keep that module name stable) (uncommitted in their inbox, their triage told in agent-chat
 641541806), for the lead's RM430 follow-up: their lane lookup compares a key cell exactly (`cast(String).is_in`,
 read at their e0129b8), so a folded gene key or a member of a `;`-joined cell comes back short. Our 0.9 reads Hugging
 Face for those columns meanwhile.
