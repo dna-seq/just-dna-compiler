@@ -354,7 +354,10 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   but no pull can fetch a file the manifest attests no size for (`_fetch_parquet` refuses it), so the remedy
   could not clear the refusal. It now says the manifest states no size for it, that a re-pull cannot clear this,
   and that the snapshot's publisher must state each file's size: eight refusals, one sentence each. Latent:
-  the published manifest states every size.
+  the published manifest states every size. The reader's arm is reached only where the record says the group's
+  pull finished; a pull from a hub manifest stating no size still downloads the file, refuses it in
+  `_fetch_parquet` ("Re-run the pull"), and leaves the reader saying the pull did not finish, both remedies a
+  re-pull cannot meet. That pull-side half is left for 0.10.
 - **The sequence proxy's failed-build warning says what happens** (review round 2, I, RM404): it said
   sequence-dependent work "is skipped this run", but a proxy remembers no failure, so read outside a run's view
   it builds again at its next read. It now reads `Could not reach the sequence service at <uri> (<error>); this
