@@ -36,6 +36,7 @@ from just_dna_format.base import derive_variant_key
 from just_dna_format.findings import CodedWarning
 from just_dna_format.snapshot import SNAPSHOT_DATA_DIRNAME, read_release
 from just_dna_format.spec import VariantRow
+from just_dna_format.spelling import gene_key
 from just_dna_format.vocab import ALLELE_PATTERN
 from just_dna_format.vrs import normalize_chrom
 
@@ -401,6 +402,8 @@ def _rebuild_instruction(index_dir: Path, *, build: bool = False, explicit: bool
 _REFUSED_INDEXES: set[tuple[Path, Path]] = set()
 #: Set once a scan for want of an index has been noted (`_note_scan`): said once per process (RM431).
 _SCAN_NOTED = threading.Event()
+#: Makes `_note_scan`'s test-and-set one step, so two first lookups on two threads say it once.
+_SCAN_NOTE_LOCK = threading.Lock()
 
 
 def _note_scan(place: Path, reference: Path, *, explicit: bool = False) -> None:
@@ -410,9 +413,10 @@ def _note_scan(place: Path, reference: Path, *, explicit: bool = False) -> None:
     learns here that it exists. `info`, because a scan is a normal state on a host that chose not to pay
     the build, not a fault: the answers are the same, only slower.
     """
-    if _SCAN_NOTED.is_set():
-        return
-    _SCAN_NOTED.set()
+    with _SCAN_NOTE_LOCK:
+        if _SCAN_NOTED.is_set():
+            return
+        _SCAN_NOTED.set()
     logger.info(
         "No rsID index was found at %s, so rsIDs in the Ensembl core at %s are looked up by scanning its whole "
         "`id` column. An index (the `ensembl_rsid_index` lane) makes each a pruned read, and it is built only "
@@ -570,6 +574,19 @@ def _asked_rsids(rsids: Sequence[str]) -> dict[str, list[str]]:
         if rsid.strip() and rsid not in asked.setdefault(_rsid_token(rsid), []):
             asked[_rsid_token(rsid)].append(rsid)
     return {token: spellings for token, spellings in asked.items() if spellings}
+
+
+def _asked_genes(genes: Sequence[str]) -> dict[str, list[str]]:
+    """`gene_key` → the genes asked under it, as asked and in order; blanks are dropped.
+
+    `Vhl` and `VHL` are one gene (RM351). The one reading of an asked gene CIViC's, ClinPGx's and the
+    drug labels' keyed functions (RM431) compare in, beside `_asked_rsids`.
+    """
+    asked: dict[str, list[str]] = {}
+    for gene in genes:
+        if gene.strip() and gene not in asked.setdefault(gene_key(gene), []):
+            asked[gene_key(gene)].append(gene)
+    return {key: spellings for key, spellings in asked.items() if spellings}
 
 
 def _loci_from_rows(

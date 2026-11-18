@@ -52,7 +52,7 @@ from just_dna_enricher.locations import (
     SNAPSHOT_DATA_DIRNAME,
     resolve_clinpgx_reference,
 )
-from just_dna_enricher.resolver import _asked_rsids, _typed_rows_connection
+from just_dna_enricher.resolver import _asked_genes, _asked_rsids, _typed_rows_connection
 from just_dna_enricher.verification import examples, ran, record_verification, skipped
 
 logger = logging.getLogger(__name__)
@@ -323,15 +323,6 @@ def _rsids_from_rows(rows: Sequence[Mapping[str, object]], rsids: Sequence[str])
         return _rsids_over(con, rsids)
     finally:
         con.close()
-
-
-def _asked_genes(genes: Sequence[str]) -> dict[str, list[str]]:
-    """`gene_key` → the genes asked under it, in order: `Slco1b1` and `SLCO1B1` are one gene (RM351)."""
-    asked: dict[str, list[str]] = {}
-    for gene in genes:
-        if gene.strip() and gene not in asked.setdefault(gene_key(gene), []):
-            asked[gene_key(gene)].append(gene)
-    return {key: spellings for key, spellings in asked.items() if spellings}
 
 
 def _gene_keys(genes: Sequence[str]) -> dict[str, list[str]]:

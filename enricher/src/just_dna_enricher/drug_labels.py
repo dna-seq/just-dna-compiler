@@ -69,7 +69,7 @@ from just_dna_enricher.locations import (
     resolve_drug_labels_reference,
 )
 from just_dna_enricher.net import EndpointRetired
-from just_dna_enricher.resolver import _typed_rows_connection
+from just_dna_enricher.resolver import _asked_genes, _typed_rows_connection
 from just_dna_enricher.verification import examples, ran, record_verification, skipped
 
 logger = logging.getLogger(__name__)
@@ -464,15 +464,6 @@ def _labels_connection(reference: Path) -> duckdb.DuckDBPyConnection:
         con.close()
         raise DrugLabelError(f"the drug-label snapshot at {parquet} could not be read: {exc}") from exc
     return con
-
-
-def _asked_genes(genes: Sequence[str]) -> dict[str, list[str]]:
-    """`gene_key` → the genes asked under it, in order: `Cyp2c19` and `CYP2C19` are one gene (RM351)."""
-    asked: dict[str, list[str]] = {}
-    for gene in genes:
-        if gene.strip() and gene not in asked.setdefault(gene_key(gene), []):
-            asked[gene_key(gene)].append(gene)
-    return {key: spellings for key, spellings in asked.items() if spellings}
 
 
 def _gene_keys(genes: Sequence[str]) -> dict[str, list[str]]:
