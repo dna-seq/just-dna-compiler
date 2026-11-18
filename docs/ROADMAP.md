@@ -2830,7 +2830,7 @@ shape.
 
 ## RM453 — offline, the placement witness reads a merged rsID's ClinVar record as no record, so RM449's "witnessed neither" leaves `rs80356821` unpositioned
 
-**Severity** medium · **Status** open — **a patch, for 0.8.10; the pm sizes** · **Owner** enricher (`placement.compare_placements`, the ClinVar witness's rsID key) and compiler (RM449's neither arm, `resolution._settle_mirrored_spellings`) ·
+**Severity** medium · **Status** open — **a patch on `main`, a declared corrected derivation, `unattended` (about 45 minutes, triage), for 0.8.10** · **Owner** enricher (`placement.compare_placements`, the ClinVar witness's rsID key) and compiler (RM449's neither arm, `resolution._settle_mirrored_spellings`) ·
 **Motivating case** the lead's 0.8.9 run (2026-11-18): `pathogenic_clinvar` enriched offline compiles strict except one row; the 0.8.9 cut states it (`c8f3f3ed`) · *related* RM267, RM398, RM449
 
 **What was seen.** An `enrich --offline` of `pathogenic_clinvar` (the table deleted, ClinVar `clinvar_2026-11-15`, the
@@ -2864,6 +2864,20 @@ beyond un-refusing the row.
 **Class.** A patch: no schema, column or vocabulary moves (P3). Severity medium: a module enriched offline (or by
 an older enricher) can refuse under `--strict` on a mirrored indel site whose ClinVar record carries a merged
 rsID. It is loud and names its rsID, and an online re-derivation clears it.
+
+**Sized (the pm, 2026-11-18): candidate 1, in the compiler, and RM449's neither arm goes.** `unplaced` on every
+spelling of a mirrored site says the witness filed neither spelling under this rsID: no evidence for either, the
+same knowledge as `undecided` or an empty cell (`@unreachable-not-absent`; `@absence-is-weighted-by-the-base-rate`,
+since ClinVar files only some variants). So a mirrored site fills the spellings a witness placed `same_event`; with
+none, it fills every spelling, under RM449's warning, as the not-asked and `undecided` arms already do. No arm fills
+neither. This needs no new verdict member (the vocabulary is closed, and a member would be minor class), and
+nothing the enricher writes changes. It is a corrected derivation (rows that were withheld are written), declared
+in 0.8.10's entry. Tests: `pathogenic_clinvar` enriched offline compiles strict (0.8.9's xfail becomes a pass), and a
+site witnessed on one spelling still drops the other.
+
+Candidate 2, the offline witness following dbSNP merges through the snapshot's synonyms, is a residual of this
+entry: it would make more offline verdicts `same_event`, but after the change above nothing refuses for want of it.
+It becomes an item if an offline placement elsewhere is seen to misread a merged rsID.
 
 **Residuals** none yet.
 
