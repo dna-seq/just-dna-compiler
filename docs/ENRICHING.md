@@ -260,11 +260,9 @@ names rather than on the environment.
 The split Ensembl snapshot keeps every annotation value (consequence, clinical flags, frequencies, CADD and
 more) in `groups/<name>/` beside the core, joined to it on `(chrom, row_idx)`, which holds within one
 release only. Since 0.9 the lane pulls them, attested by the same manifest and re-pulled with the core
-whenever its release moves:
-
-```bash
-just-dna-enricher cache pull --only ensembl --groups consequence,clinical --use non-commercial
-```
+whenever its release moves: `just-dna-enricher cache pull --only ensembl --groups consequence,clinical --use
+non-commercial` names two (the 0.9 docs pass did not run that pull, which writes gigabytes into the cache; the two
+refusals below were run).
 
 Read a group's directory from `locations.ensembl_group_dir(cache, group)`, which refuses a group of
 another release than the core's, never by spelling the path. Each group is licensed by its own licensor:

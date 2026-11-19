@@ -392,8 +392,8 @@ The consumer 0.9 was built for (S145, S150, S154, S157).
 What 0.9 ships with, known and not fixed. Each line names its item; [RM_TOC.md](RM_TOC.md) has its state.
 
 - **During an Ensembl release transition, a group can be refused after the core was refreshed (RM458, 0.9's known
-  issue C, for 0.10).** The group preflight reads the cache's `manifest.json` and the provisioning the hub's newer
-  one, so a group the new release refuses is refused after the core moved, not before any download. And a group
+  issue C, for 0.10).** The group preflight reads the cache's `manifest.json` when it names every group asked (else
+  the hub's), and the provisioning the hub's newer one, so a group the new release refuses is refused after the core moved, not before any download. And a group
   current at the cache's release (which the preflight does not gate, since it fetches nothing) is gated only by the
   pull after the core refresh. In both cases it is still refused, loudly, and none of the group's own bytes move; what
   is lost is only "refused before anything changed".
