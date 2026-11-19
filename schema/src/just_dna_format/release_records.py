@@ -1746,4 +1746,138 @@ RELEASE_RECORDS: dict[str, ReleaseRecord] = {
             "record's manifest_fields and its manifest_fields axis come from that second sweep."
         ),
     ),
+    # Measured at the 0.8.10 cut (2026-11-19). `previous` is 0.8.9, the newest published compiler, and
+    # BEFORE was compiled by it (with format 0.8.9) from this tree's `reference_examples/`, pinned to the
+    # locked polars and Python: every module on both sides records polars 2.1.0 and Python 3.14.8, so no
+    # toolchain sweep. The lock did not move since 0.8.9 beyond the three workspace versions. Format's
+    # source did not change except this entry, which it carries.
+    #
+    # Two measurements, and the record states both. The gate's sweep over this tree's 22 examples is a
+    # measured zero: the one example RM453 bears on, `pathogenic_clinvar`, records `same_event` on the
+    # deletion at its mirrored site (an online table), which 0.8.9 and 0.8.10 read alike. A second sweep,
+    # rooted at `v0.8.8`'s `pathogenic_clinvar` spec (no authored coordinate row at the site) with
+    # `rs80356821`'s two `placement_verdict` cells set to `unplaced`, as an offline enrich writes them,
+    # and compiled by the same two compilers, measures the correction: the axes and manifest fields below
+    # come from it, which is why the gate notes them as declared and not seen. RM456 reaches only a
+    # `logs/` directory that may be listed but not searched, which no example carries; RM455 is
+    # enricher-only.
+    "0.8.10": ReleaseRecord(
+        version="0.8.10",
+        previous="0.8.9",
+        axes={
+            "parquet_schema": False,
+            "parquet_bytes": True,
+            "content_signature": False,
+            "manifest_fields": True,
+            "warnings": True,
+        },
+        manifest_fields=[
+            "compilation.expanded_keys",
+            "compilation.expanded_rows",
+            "compilation.fully_resolved",
+            "compilation.resolution_subjects",
+            "stats.weights_rows",
+        ],
+        declared=[
+            DeclaredChange(
+                axis="parquet_bytes",
+                target="weights.parquet,annotations.parquet",
+                kind="correction",
+                detail=(
+                    "RM453: 0.8.9's RM449 left an rsID row unpositioned where the second source recorded "
+                    "`unplaced` on both spellings of a mirrored insertion and deletion, reading it as "
+                    "witnessed neither. `unplaced` on every spelling says only that the witness filed no "
+                    "counterpart under the rsID (ClinVar files only some variants, and some under an rsID "
+                    "dbSNP since merged), so it is no evidence for either spelling. Both are filled again, "
+                    "as before 0.8.9, under a sentence naming RM453; a site witnessed `same_event` on one "
+                    "spelling still fills only that one. A CORRECTION: an artifact compiled by 0.8.9 may "
+                    "carry such a row with no position, so no subject matches its claim. Measured on "
+                    "`v0.8.8`'s `pathogenic_clinvar` with `rs80356821`'s verdicts `unplaced`: one row "
+                    "becomes two, on `11:5226762` `C>CAAAG` and `CAAAG>C`, in `weights.parquet` and "
+                    "`annotations.parquet`. Only a module compiled without `--strict` can hold it, since "
+                    "0.8.9 refuses the row under `--strict`."
+                ),
+                item="RM453",
+                # A necessary condition, as for RM449's: the fill runs only where a resolution table with
+                # rows was applied. The reach is narrower (an rsID row at a mirrored site with no
+                # `same_event` verdict, compiled by 0.8.9 without `--strict`).
+                requires=("compilation.expanded_keys",),
+            ),
+            DeclaredChange(
+                axis="manifest_fields",
+                target="stats.weights_rows",
+                kind="correction",
+                detail="RM453: the `weights.parquet` row count, 336 to 337 on the module above.",
+                item="RM453",
+                requires=("compilation.expanded_keys",),
+            ),
+            DeclaredChange(
+                axis="manifest_fields",
+                target="compilation.resolution_subjects",
+                kind="correction",
+                detail="RM453: counted after the expansion, so it moves with the rows above (336 to 337).",
+                item="RM453",
+                requires=("compilation.expanded_keys",),
+            ),
+            DeclaredChange(
+                axis="manifest_fields",
+                target="compilation.expanded_keys",
+                kind="correction",
+                detail=(
+                    "RM453: an rsID filled on both spellings is an expansion again, so the count of "
+                    "expanded keys rises (9 to 10 on the module above)."
+                ),
+                item="RM453",
+                requires=("compilation.expanded_keys",),
+            ),
+            DeclaredChange(
+                axis="manifest_fields",
+                target="compilation.expanded_rows",
+                kind="correction",
+                detail="RM453: the rows those keys became, 18 to 20 on the same module.",
+                item="RM453",
+                requires=("compilation.expanded_keys",),
+            ),
+            DeclaredChange(
+                axis="manifest_fields",
+                target="compilation.fully_resolved",
+                kind="correction",
+                detail=(
+                    "RM453: false while 0.8.9 left the row unpositioned, true once it is filled, on the "
+                    "module above and on this tree's `pathogenic_clinvar` with the same two cells."
+                ),
+                item="RM453",
+                requires=("compilation.expanded_keys",),
+            ),
+            DeclaredChange(
+                axis="warnings",
+                target="compilation.warnings",
+                kind="addition",
+                detail=(
+                    "RM453's sentence, once per rsID at such a site, in both modes and never escalated, "
+                    "under the borrowed `rsid_expanded_to_multiple_loci` until 0.9. It replaces RM449's "
+                    '"neither is filled and the position remains unset" sentence, which was counted under '
+                    "`rsid_no_hosting_locus`. Measured on the module above: that sentence goes, RM453's and "
+                    "an expansion sentence arrive, and `warnings_summary` moves `rsid_no_hosting_locus` 1 "
+                    "to 0 and `rsid_expanded_to_multiple_loci` 19 to 21."
+                ),
+                item="RM453",
+                requires=("compilation.expanded_keys",),
+            ),
+        ],
+        evidence=(
+            "22 reference module(s) compiled under 0.8.9 and 0.8.10 from one spec root, so the compiler is "
+            "the only variable; modules moved per axis: content_signature 0/22, manifest_fields 0/22, "
+            "parquet_bytes 0/22, parquet_schema 0/22, warnings 0/22. A second sweep, the same two "
+            "compilers over v0.8.8's pathogenic_clinvar spec with rs80356821's two placement_verdict "
+            "cells set to unplaced (as an offline enrich writes them), measures RM453's correction: "
+            "content_signature 0/1, manifest_fields 1/1 (compilation.expanded_keys 9 to 10, "
+            "compilation.expanded_rows 18 to 20, compilation.fully_resolved false to true, "
+            "compilation.resolution_subjects 336 to 337, stats.weights_rows 336 to 337), parquet_bytes 1/1 "
+            "(weights.parquet and annotations.parquet 336 to 337 rows), parquet_schema 0/1, warnings 1/1. "
+            "The same two cells on this tree's pathogenic_clinvar spec move parquet_bytes, warnings and "
+            "compilation.fully_resolved only, because its authored coordinate row 11:5226762 C>CAAAG "
+            "picks the insertion. The record's manifest_fields and its axes come from the second sweep."
+        ),
+    ),
 }
