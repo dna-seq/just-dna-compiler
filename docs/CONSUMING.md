@@ -115,6 +115,39 @@ order. It is a string, it is stable across recompiles, and it is what the derive
     `alleles.event_profile`). This is RM31's consumer half, which until 2026-09-27 lived only in its
     closing entry.
 
+### What one row is: read the key, never restate it
+
+Every table declares what makes two of its rows the same row, and the compiler publishes it:
+`just_dna_compiler.hints.key_fields(csv_name)` returns a `TableKey` whose `columns` are that identity and
+whose `rule` says how to read them. Read it by the table's CSV name: each lead parquet `X.parquet` is
+compiled from `X.csv`, except `weights.parquet`, which comes from `variants.csv`.
+
+```python
+from just_dna_compiler.hints import key_fields
+
+key_fields("pharm_variants.csv").columns
+# ('variant_key', 'drug', 'genotype', 'phenotype_category', 'annotation_id')
+key_fields("variants.csv").columns     # weights.parquet
+# ('variant_key', 'genotype')
+```
+
+Three things the key is not:
+
+- **Not an order.** It says which rows are one row, nothing about their sequence. A streaming join emits
+  ties in whatever order its batches arrive, so a sort that must be total has to cover the whole key: a
+  restated key that missed `drug`, `phenotype_category` and `annotation_id` reordered a `pharm_variants`
+  module's drug rows from run to run (S159).
+- **Not the parquet's grain where resolution expanded a row.** An rsID that resolves onto several loci
+  becomes one parquet row per locus (the section below), so those rows share the key and differ in
+  `chrom`, `start`, `ref` and `alts`. Add those columns to make a sort total. Position alone is not
+  enough, since an insertion and a deletion can share one position.
+- **Not unique when `rule` is `"overlap"`.** The binning kinds (`activity_phenotype`, `copynumbers`,
+  `repeat_alleles`, `heteroplasmy`) name grouping columns, and their rows within a group are told apart by
+  their bounds, which must not overlap.
+
+A public read keyed by the lead parquet, answering its full grain, is
+[RM457](ROADMAP.md#rm457--no-public-read-answers-a-lead-parquets-row-grain-so-a-consumer-maps-parquet-to-csv-and-adds-the-locus-columns-by-hand).
+
 ## 3. The join contract — two obligations that are yours
 
 A module supplies the annotation; you supply the measurement. Two things the module cannot do for you:

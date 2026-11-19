@@ -2523,6 +2523,32 @@ the existing test is the regression test. Nothing a module resolves moves.
 
 **Residuals** none.
 
+## RM457 — no public read answers a lead parquet's row grain, so a consumer maps parquet to CSV and adds the locus columns by hand
+
+**Severity** low · **Status** open — **a minor, release undecided** · **Owner** compiler (`hints`) ·
+**Motivating case** S159 in CONSUMER_SUGGESTIONS_HISTORY.md (just-dna-lite, 2026-11-19) · *related* RM43, RM449
+
+**What was seen.** just-dna-lite sorted a streaming join on a row key it wrote from memory, missed three of
+`pharm_variants`' five key columns, and emitted a different drug order every run. The key was readable all
+along: `hints.key_fields("pharm_variants.csv")` returns exactly the five (S48, S51). What no public name answers
+is the question a consumer of the **artifact** asks:
+
+- `key_fields` is keyed by the CSV an author writes, and a consumer holds parquets. The map is one stem
+  everywhere but `weights.parquet` ← `variants.csv`, which a consumer has to know.
+- The key is the **authored** row's identity, not the parquet's grain. An rsID row resolution expands onto
+  several loci becomes one parquet row per locus (RM43, RM449), sharing the key and differing in `chrom`,
+  `start`, `ref` and `alts`, so a sort over the key alone still ties.
+
+The documentation half shipped with the reply (CONSUMING.md § "What one row is"). This item is the code half.
+
+**Candidate.** A read keyed by the lead parquet's name (`LEAD_PARQUETS`), returning the declared key, the
+`rule`, and the columns that make the parquet's rows distinct where expansion ran, derived from the same
+`_KEY_FIELDS` so it cannot drift. A new public function is additive, so a minor. **Against it**, for the pm to
+weigh: with the doc, a consumer restates only the stem map and the locus columns, both stable, and the reporter
+named the alternative of sorting on every column, priced by them as too slow on list columns.
+
+**Residuals** none yet.
+
 # Not format scope
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.
