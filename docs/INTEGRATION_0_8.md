@@ -11,20 +11,24 @@ the known issues 0.8 ships with.
 since `v0.7.3`), each intra-workspace floor is `>=0.8.0`, and `polars>=1.42.0` is unchanged, so a polars 1.x
 install still resolves. It is published and tagged `v0.8.0`.
 
-**Nine patches followed on the 0.8 line, and the current release is 0.8.9.** 0.8.1 (2026-11-07) moved the
+**Ten patches followed on the 0.8 line, and the current release is 0.8.10.** 0.8.1 (2026-11-07) moved the
 enricher alone, so format and compiler stayed 0.8.0. 0.8.2 (2026-11-07), 0.8.3 (2026-11-09), 0.8.4
 (2026-11-11), 0.8.5 (2026-11-12) and 0.8.6 (2026-11-13) each moved all three packages (the compiler in 0.8.4,
 0.8.5 and 0.8.6 for its floor only), and 0.8.6's floors are `>=0.8.6` throughout. 0.8.7 (2026-11-14) and 0.8.8
 (2026-11-16) moved the enricher alone again, so format and compiler stayed 0.8.6. 0.8.9 (2026-11-18) moves all
 three, and its floors are `>=0.8.9` throughout. **Format 0.8.9 changes only its release record**
 (`RELEASE_RECORDS["0.8.9"]`): no vocabulary, model or field moves, so a format 0.8.6 reader still reads every 0.8.9
-manifest, and only `needs_recompile(stamp, "0.8.9")` needs format 0.8.9. 0.8.8 adds one refusal for a direct caller
-(a `release.json` that could not be fetched stops a pull, RM445), and 0.8.9 one under `--strict` (an rsID row at a
-mirrored indel site that a witness placed as neither event is left unpositioned, RM449). Two patches added a public
-name, which a patch should not: 0.8.4's `GwasCatalogClient.size_refusals` (RM428), and 0.8.9's
-`Withholding.retired_met`, `net.retired_mark` and the optional `since=` on `net.withheld_reason` (RM446), all
-additive. No patch adds a field, table, flag or warning code (0.8.9's RM449 sentences borrow two existing codes
-until 0.9), so this file's surface delta is still the whole 0.7 → 0.8 boundary; what each patch changed, and what
+manifest, and only `needs_recompile(stamp, "0.8.9")` needs format 0.8.9. 0.8.10 (2026-11-19) moves all three again,
+its floors are `>=0.8.10` throughout, and **format 0.8.10 likewise changes only its release record**
+(`RELEASE_RECORDS["0.8.10"]`): a format 0.8.6 or 0.8.9 reader still reads every 0.8.10 manifest, and only
+`needs_recompile(stamp, "0.8.10")` needs format 0.8.10. 0.8.8 adds one refusal for a direct caller (a `release.json`
+that could not be fetched stops a pull, RM445), 0.8.9 one under `--strict` (an rsID row at a mirrored indel site that
+a witness placed as neither event is left unpositioned, RM449), which 0.8.10 removes again (RM453), and 0.8.10 one
+for a direct caller (a `batch_size` below 1 on the gnomAD, E-utilities and literature clients, RM455). Three patches
+added a public name, which a patch should not: 0.8.4's `GwasCatalogClient.size_refusals` (RM428), 0.8.9's
+`Withholding.retired_met`, `net.retired_mark` and the optional `since=` on `net.withheld_reason` (RM446), and
+0.8.10's `CacheLane.payload_filename` and `net.check_batch_size` (RM455), all additive. No patch adds a field, table,
+flag or warning code (the RM449 and RM453 sentences borrow two existing codes until 0.9), so this file's surface delta is still the whole 0.7 → 0.8 boundary; what each patch changed, and what
 to do after upgrading to it, is its entry in the [CHANGELOG](CHANGELOG.md), and § 4 says which known issues each
 one fixed.
 
@@ -32,15 +36,15 @@ one fixed.
 
 ```toml
 dependencies = [
-    "just-dna-format>=0.8.9",
-    "just-dna-compiler>=0.8.9",
-    "just-dna-enricher>=0.8.9",
+    "just-dna-format>=0.8.10",
+    "just-dna-compiler>=0.8.10",
+    "just-dna-enricher>=0.8.10",
 ]
 ```
 
 A consumer that holds only the format tier pins the first line alone. A git dependency on the `0.8` branch
 (`rev = "1007a26d"` and later), which this file recommended for testing before the cut, goes from your
-tracked files and your lock: `uv lock` against the published `0.8.9` release, then run your suite again.
+tracked files and your lock: `uv lock` against the published `0.8.10` release, then run your suite again.
 
 **The release record says what a recompile moves.** `release_records.RELEASE_RECORDS["0.8.0"]`, measured at
 the cut against the published compiler 0.7.2, declares each correction and addition (RM363's contig
@@ -63,7 +67,17 @@ module. A recompile applies it where the module's `resolution.csv` records a `sa
 table with no verdict there, or `undecided` on both spellings, keeps both events and says so, and an online
 re-derivation with the reference read settles it (the CHANGELOG's `v0.8.9` entry). The same record declares RM451's
 `resolution_loci` cell (null → `[]` for a key the table filed nothing under) as an addition, and RM449's sentences;
-`pathogenic_clinvar` is unmeasured there, because 0.8.6 refuses its restored row.
+`pathogenic_clinvar` is unmeasured there, because 0.8.6 refuses its restored row. **`RELEASE_RECORDS["0.8.10"]`,
+measured from 0.8.9, declares a correction of that correction (RM453):** where a mirrored site's table records no
+`same_event` verdict on either spelling and `unplaced` on at least one (the rest `undecided` or empty), 0.8.9 left
+the rsID row unpositioned, and 0.8.10 fills both spellings again under a sentence naming RM453. A site with no
+`unplaced` at all (`undecided` or empty on both) kept both spellings in 0.8.9 too. Only a module
+0.8.9 compiled without `--strict` can hold the unpositioned row, since `--strict` refused it. On recompile it moves
+`weights.parquet`, `annotations.parquet`, `artifact.digest`, `stats.weights_rows`, `compilation.resolution_subjects`,
+`compilation.expanded_keys`, `compilation.expanded_rows` and `compilation.fully_resolved`, never `content_signature`,
+scoped on `compilation.expanded_keys` as RM449's is. The 22 reference modules measure zero; a second sweep over
+`pathogenic_clinvar` with `rs80356821`'s verdicts set to `unplaced` measures the correction. No re-derivation is
+needed: the fix reads only the recorded verdicts, and a table re-derived under enricher 0.8.9 is reusable under 0.8.10.
 
 **What landed after `1007a26d`**, the pre-cut head this file first named, for a consumer who tested
 there; all of it is in 0.8.0. **First:** RM380, `reverse` carrying every `resolution.csv` column a
@@ -862,7 +876,7 @@ out: being importable does not make it a supported surface. All additive.
 1. **Pins, in tier order: format, then compiler, then enricher.** `just-dna-format` first, because a 0.7
    reader refuses some 0.8 output (§ 1, § 1.13, § 1.18) and drops the new manifest fields (§ 1.2); then
    `just-dna-compiler`; then `just-dna-enricher`. A consumer that holds only the format tier stops after
-   the first. Floor all three on `>=0.8.9`, the current patch.
+   the first. Floor all three on `>=0.8.10`, the current patch.
 2. **`uv lock`**, regenerated and never hand-edited, committed with the floors.
 3. **Move the shared Ensembl cache, once per machine** (§ 1.29): `just-dna-enricher cache pull --only
    ensembl`, or `cache prepare`. The lane now pulls `just-dna-seq/ensembl_variations_split` (dbSNP 157 /
@@ -1301,11 +1315,15 @@ What 0.8 ships with, known and not fixed. Each line names its item; [RM_TOC.md](
   carries one (`RELEASE_RECORDS["0.8.9"]`), after re-deriving online where its table records no `same_event` verdict
   at the site. Enricher 0.8.9's ClinVar drafter writes an indel record by its coordinate, so a new draft cannot pose
   the question.
-- **Offline, a mirrored indel site whose ClinVar record carries a merged rsID refuses under `--strict` (RM453, for
-  0.8.10).** An offline re-derivation of `pathogenic_clinvar` leaves `rs80356821` unplaced, and `--strict` refuses
-  it; an online one clears it. ClinVar files that rsID's deletion under the retired `rs281864900` (dbSNP merged it
-  into `rs80356821`), so offline the witness holds no record for it, answers `unplaced` on both spellings, and RM449
-  reads that as witnessed neither. It is loud and names its rsID. Until the fix, re-derive such a module online.
+- **A mirrored indel site no witness placed as `same_event` refused under `--strict` on 0.8.9 (RM453).** An offline
+  re-derivation of `pathogenic_clinvar` left `rs80356821` unplaced, and `--strict` refused it: ClinVar files that
+  rsID's deletion under the retired `rs281864900` (dbSNP merged it into `rs80356821`), so offline the witness held no
+  record for it, answered `unplaced` on both spellings, and RM449 read that as witnessed neither. Online runs met it
+  too, since most variants are not in ClinVar: the registry's `cardio` re-derivation carries `unplaced` on both
+  spellings at four sites (`rs551348450`, `rs759332741`, `rs771806027`, `rs786205353`). **Fixed in compiler 0.8.10**
+  (RM453), a declared corrected derivation: `unplaced` on every spelling is no evidence for either, so both spellings
+  are filled under a sentence naming RM453, and a site witnessed `same_event` on one spelling still fills only that
+  one. Recompile; no re-derivation is needed, and a table re-derived under enricher 0.8.9 is reusable under 0.8.10.
 - **Online, a multi-allelic indel site could lose its whole placement (RM448).** With the reference read
   (`verify_ref`), the placement witness compared ClinVar's one ALT of a multi-allelic indel site with Ensembl's other
   ALT of the same kind and length, judged it a different event, and withheld the locus, so the rsID got no

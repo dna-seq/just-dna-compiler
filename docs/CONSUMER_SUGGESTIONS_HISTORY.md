@@ -197,6 +197,7 @@ One line each; the verdict in full is the `**Status —**` paragraph inside the 
 - **S156** nothing an installed enricher says which release last changed a derivation, so every enricher patch reads as moving every derived table — folded into RM441
 - **S157** `enrich()` could not be pointed at a local reference, so an online re-derivation spent half its time on remote seqrepo reads — folded into RM404 (online) and RM385 (offline)
 - **S158** a re-derived production module was refused on indel duplicates, and some rsIDs came back with no row — filed as RM448 (a multi-allelic site read as a disagreement) and RM449 (an indel genotype hosted at both spellings)
+- **S159** a consumer restated `pharm_variants`' row key from memory and its output order went random — the key is public as `hints.key_fields`; CONSUMING.md now says so, and a read keyed by the lead parquet is RM457
 
 **Keep this list one line per item.** It is a contents list, not a second copy of the replies: the
 detail belongs in each section's `**Status —**` paragraph, where it cannot drift out of step with the
@@ -7935,3 +7936,67 @@ recompiled. Nothing here was run on your copy of the specs; the repro used one-t
 you named.
 
 <!-- triaged: filed as RM448 (patch, high) and RM449 (patch, corrected derivation, high) · sha 8194315b0a74 -->
+
+# From just-dna-lite, on its streaming join's output order, 2026-11-19
+
+## S159 — A consumer restated `pharm_variants`' row key from memory, missed three columns, and its output order went random
+
+From just-dna-lite, 2026-11-19, on just-dna-format/compiler/enricher 0.8.9.
+
+**What we ran.** just-dna-lite's engine joins a VCF to a module's lead table with polars' streaming
+engine, then sorts before `sink_parquet`: the sort is the barrier that makes the streaming join's
+output deterministic, so its keys have to be a total order over the lead table's rows. Our keys were
+written by hand: `chrom`, `start`, `genotype`, then `variant_key`, `weight`, `conclusion`, `priority`,
+`evidence_level` where present. Three runs of the same code on one genome, ClinPGx-drafted `pharmgkb`
+module (pharm_variants-led), all inputs identical.
+
+**What we expected.** Byte-identical `pharmgkb_weights.parquet` each time.
+
+**What happened.** The same row count every run, and a different `drug` column every run. A
+`pharm_variants` row's identity is `(variant_key, drug, genotype, phenotype_category, annotation_id)`
+(`PharmVariantRow._KEY_FIELDS`, with the reasoning in its docstring), so rows for one call that differ
+only by drug, category or annotation id tied on our keys and the streaming engine emitted them in
+whatever order its morsels arrived. Two things a reader of the report saw move between runs of the same
+genome: which drug row is shown first, and which rows fall inside the preview cut-off.
+
+**Where the key lives.** Every row model declares its identity, but as a private `ClassVar`
+(`_KEY_FIELDS`), and the weights family's `(variant_key, genotype)` rule appears in
+`variant_checks.py`'s duplicate check rather than on a public name. There is no public way to ask
+"what is the row key of lead family X", keyed by the family name a manifest states (`lead_table`), so a
+consumer has to restate it, and restating it is how we got it wrong. `base.py` already enforces that the
+key is non-empty (RM213), so the declaration exists and is maintained; only the read side is missing.
+
+**What we did meanwhile.** Added `drug`, `phenotype_category` and `annotation_id` to our sort keys
+(just-dna-lite 905995b), with a test that passed 1 of 3 runs on the old keys and 5 of 5 on the new, and
+two real-genome runs that are now identical. It is still a restatement: a key column added to
+`PharmVariantRow` later, or a new lead family reaching our engine, would reopen it silently.
+
+**A candidate, and a reason against it.** A public read of the declared key per lead family, e.g.
+`row_key(lead_table: str) -> tuple[str, ...]` beside `LEAD_PARQUETS`, would let a consumer sort, dedup
+or join on exactly what the format calls one row. Against: a key is a uniqueness claim, not an order,
+so a consumer that only needs determinism could instead sort on every column; that costs a sort over
+list and struct columns on a large module, which is why we did not do it.
+
+**Status — the key you needed is already public, by CSV name: `just_dna_compiler.hints.key_fields`. The
+documentation that should have pointed you there is fixed (CONSUMING.md), and a read keyed by the lead parquet
+is filed as [RM457](ROADMAP.md#rm457--no-public-read-answers-a-lead-parquets-row-grain-so-a-consumer-maps-parquet-to-csv-and-adds-the-locus-columns-by-hand), a minor for the pm to size.**
+
+`key_fields("pharm_variants.csv").columns` returns `('variant_key', 'drug', 'genotype', 'phenotype_category',
+'annotation_id')`, read from `PharmVariantRow._KEY_FIELDS` itself (S48, and S51 for the machine-written
+tables), so a key column added later reaches you without a release note. Checked on `main` 2026-11-19 for every
+lead family. Each lead parquet `X.parquet` comes from `X.csv`, except `weights.parquet`, which comes from
+`variants.csv` (`('variant_key', 'genotype')`). There is no `lead_table` field in the manifest; `LEAD_PARQUETS`
+(in `just_dna_compiler.compiler.tables`) lists the lead files.
+
+Two things your sort still has to add, both now in CONSUMING.md § "What one row is":
+
+- **The locus, where resolution expanded a row.** An rsID that resolves onto several loci becomes one parquet row
+  per locus, sharing the key. Your `chrom`, `start` keys covered that; `ref` and `alts` are needed too, since an
+  insertion and a deletion can share a position (RM449).
+- **The rule.** The four binning kinds answer `rule="overlap"`: their key names a group, and rows in a group are
+  told apart by their bounds.
+
+RM457 would answer all of that in one call keyed by the parquet's name. Against it, for the pm: with the doc,
+what you still restate is the stem map and the locus columns, both stable.
+
+<!-- triaged: RM457 filed (minor, low) and CONSUMING.md fixed · sha 70534f24a978 -->

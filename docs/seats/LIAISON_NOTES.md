@@ -104,6 +104,10 @@ from the index too: a polars-bio cap that holds both of us is raised with it fir
 **S34 with the registry (2026-11-16): answered** (their d76adff), a minor for their pm: `release` /
 `release_unreadable` on both lane replies, `revision` for remote reads. Relayed to the pm with their two corrections
 (a label would not have caught the ClinPGx copy, RM445's case; our pull record writes no revision).
+**S34 shipped** in just-dna-registry 0.33.0 (PyPI 2026-11-18; newest 0.34.1 read 2026-11-19): both lane replies carry
+`release`, `release_unreadable`, `revision`; neither server runs it yet (both 0.32.1). Relayed to pm and lead.
+**S159 (just-dna-lite, no seat there):** triage's answer relayed 2026-11-19 as an uncommitted note in their repo,
+`docs/UPSTREAM_ANSWER_S159_from_just-dna-compiler.md`.
 
 **S36 with the registry (2026-11-18): answered** (their f26ef9b; three candidates for their pm: read our
 KEY_COMPARES at their 0.9 floor, a per-request compare, or fold by default; the reply will name its compare; relayed

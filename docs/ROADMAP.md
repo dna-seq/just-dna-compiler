@@ -2365,76 +2365,6 @@ about 30 minutes, and RM437's groups on `0.9` inherit it.
 
 **Residuals** none yet.
 
-## RM453 — offline, the placement witness reads a merged rsID's ClinVar record as no record, so RM449's "witnessed neither" leaves `rs80356821` unpositioned
-
-**Severity** medium · **Status** open — **a patch, a declared corrected derivation, built on `main` 2026-11-18, uncut, for 0.8.10** · **Owner** enricher (`placement.compare_placements`, the ClinVar witness's rsID key) and compiler (RM449's neither arm, `resolution._settle_mirrored_spellings`) ·
-**Motivating case** the lead's 0.8.9 run (2026-11-18): `pathogenic_clinvar` enriched offline compiles strict except one row; the 0.8.9 cut states it (`c8f3f3ed`) · *related* RM267, RM398, RM449
-
-**What was seen.** An `enrich --offline` of `pathogenic_clinvar` (the table deleted, ClinVar `clinvar_2026-11-15`, the
-release the committed table records) writes `placement_verdict=unplaced` on both spellings of `rs80356821` at
-`11:5226762`, the insertion `C>CAAAG` and the deletion `CAAAG>C`. The committed online table has the deletion
-`same_event`. RM449 reads "a witness was asked and placed neither" and fills neither, so `--strict` refuses the
-row as unresolved. 12 of the 13 mirrored sites agree between the two runs.
-
-**Why, read 2026-11-18 04:21 UTC.** It is not an indel the offline run could not normalize: the pm's first
-hypothesis does not hold here. ClinVar `clinvar_2026-11-15` files the deletion `11:5226762 CAAAG>C` as VCV 15417
-under `rs281864900` and holds nothing under `rs80356821`. dbSNP merged `rs281864900` into `rs80356821`
-(`/variation/v0/refsnp/281864900`: `merged_into: [80356821]`). ClinVar's label is the retired id. The witness is keyed
-by rsID (`load_witnesses(…, fresh_rsids)`), so offline it holds no record for `rs80356821`, no allele has a
-counterpart, and both rows read `unplaced`. That is the witness's honest answer for "nothing filed under this id".
-It is not "the witness placed the rsID elsewhere". Online, the merge check (RM398's dbSNP record) is available and
-the deletion reads `same_event`; which leg supplies it is to be confirmed, since the row names `clinvar`.
-
-**Where the defect is, two candidates (the builder decides).**
-
-1. **RM449's neither arm.** `unplaced` conflates "the witness holds this rsID at other alleles" with "the witness
-   holds nothing under this rsID". Only the first is a witness that placed neither spelling. The second is closer
-   to "not asked", and RM449's not-asked arm keeps the expansion. The compiler sees only the row's verdict, so
-   telling them apart needs the enricher to say which.
-2. **The witness's key.** ClinVar's records under a retired rsID are invisible to the witness offline. The Ensembl
-   snapshot carries synonyms (`rs281864900` among `rs80356821`'s?), which could let the offline witness follow the
-   merge without the network.
-
-The first is the safer patch, and the second changes what the witness compares. Neither changes a published value
-beyond un-refusing the row.
-
-**Class.** A patch: no schema, column or vocabulary moves (P3). Severity medium: a module enriched offline (or by
-an older enricher) can refuse under `--strict` on a mirrored indel site whose ClinVar record carries a merged
-rsID. It is loud and names its rsID, and an online re-derivation clears it.
-
-**Sized (the pm, 2026-11-18): candidate 1, in the compiler, and RM449's neither arm goes.** `unplaced` on every
-spelling of a mirrored site says the witness filed neither spelling under this rsID: no evidence for either, the
-same knowledge as `undecided` or an empty cell (`@unreachable-not-absent`; `@absence-is-weighted-by-the-base-rate`,
-since ClinVar files only some variants). So a mirrored site fills the spellings a witness placed `same_event`; with
-none, it fills every spelling, under RM449's warning, as the not-asked and `undecided` arms already do. No arm fills
-neither. This needs no new verdict member (the vocabulary is closed, and a member would be minor class), and
-nothing the enricher writes changes. It is a corrected derivation (rows that were withheld are written), declared
-in 0.8.10's entry. Tests: `pathogenic_clinvar` enriched offline compiles strict (0.8.9's xfail becomes a pass), and a
-site witnessed on one spelling still drops the other.
-
-Candidate 2, the offline witness following dbSNP merges through the snapshot's synonyms, is a residual of this
-entry: it would make more offline verdicts `same_event`, but after the change above nothing refuses for want of it.
-It becomes an item if an offline placement elsewhere is seen to misread a merged rsID.
-
-**Built (triage, 2026-11-18).** Candidate 1, compiler side, as the pm sized it (`f3e6d6a1`). RM449's neither arm is gone.
-At a mirrored site where no spelling was witnessed `same_event`, any mix of `unplaced`, `undecided` and empty, both
-spellings stay filled, said once per rsID under the borrowed `rsid_expanded_to_multiple_loci` ("placed neither as
-the same event", `(RM453)`). Nothing the enricher writes changes, and no verdict member is added. A one-sided witness
-still fills only the witnessed spelling. `MirroredSettlement.withheld_all` is removed, since no settlement leaves a
-row unpositioned any more. Tests in `test_a_mirrored_indel_genotype_names_one_event.py`:
-
-- `pathogenic_clinvar` with `rs80356821`'s two verdicts set to `unplaced`, as the offline run writes them, compiles
-  strict;
-- the both-`unplaced` and `undecided`/empty-beside-`unplaced` cases fill both;
-- the summary counts no `rsid_no_hosting_locus`.
-
-Four fail on `origin/main`. Two of the lead's 0.8.9 tests pinned the removed arm and now state the new rule. The
-feature scenario moves to the borrowed code, and COMPILER.md, AGENT_NOTES and the CHANGELOG say it. 0.8.9's entries
-keep what 0.8.9 did.
-
-**Residuals** candidate 2, the offline witness following dbSNP merges through the snapshot's synonyms, is left as
-the pm decided: this item no longer needs it, and it would change what the witness compares
-
 ## RM454 — the enricher's local key compares never went through the one normalizer: constraint by gene, `lookup_loci` by rsID and contig, and SQL's `lower(trim())` beside `gene_key`
 
 **Severity** low · **Status** open — **a patch, after 0.9 merges** (its home, `key_compare.KEY_COMPARES`, is 0.9's) ·
@@ -2466,32 +2396,31 @@ It may widen what a direct lookup returns, never what a module resolves, so no d
 
 **Residuals** none yet.
 
-## RM455 — the pre-0.9 instances of 0.9's review classes: an unreadable pull record escapes its readers, three settings check `batch_size` only when built, `mitomap_miss` calls itself present over moved parents
+## RM457 — no public read answers a lead parquet's row grain, so a consumer maps parquet to CSV and adds the locus columns by hand
 
-**Severity** low · **Status** open — **a patch, built on `main` 2026-11-18 (e63a8d8c, 5799c2c9, 78b8fb3f), uncut, for 0.8.10** · **Owner** enricher
-(`download._pull_record`, `locations.pull_record_repo` and `pulled_from`, the gnomAD, E-utilities and literature
-settings, `mitomap_miss`'s status, `cli/cache_commands._payload`) · **Motivating case** 0.9's review round 1 fixes
-(the lead, 2026-11-18, merged as ea3dcf07), whose builder found these on code older than 0.9 · *related* RM430,
-RM431, RM437
+**Severity** low · **Status** open — **a minor, release undecided** · **Owner** compiler (`hints`) ·
+**Motivating case** S159 in CONSUMER_SUGGESTIONS_HISTORY.md (just-dna-lite, 2026-11-19) · *related* RM43, RM449
 
-**What was seen.** 0.9 fixed four error classes in its own code, and the same classes have older instances on `main`:
+**What was seen.** just-dna-lite sorted a streaming join on a row key it wrote from memory, missed three of
+`pharm_variants`' five key columns, and emitted a different drug order every run. The key was readable all
+along: `hints.key_fields("pharm_variants.csv")` returns exactly the five (S48, S51). What no public name answers
+is the question a consumer of the **artifact** asks:
 
-- `download._pull_record`, `locations.pull_record_repo` and `locations.pulled_from` catch `JSONDecodeError` but not
-  `UnicodeDecodeError`, so a pull record that is not UTF-8 escapes as a traceback (RM437's class 3);
-- the gnomAD and E-utilities settings and both literature clients never check `batch_size`, so one set to 0
-  answers nothing, silently (RM404's class 8);
-- `mitomap_miss` declares `stale_parents` but no stale reason, so `cache status` calls it present over moved parents
-  (RM431's class 11). `main` has no stale state at all, so this one is RM431's on 0.9, not this patch;
-- `cache_commands._payload` keys on `lane.name == "strchive"` rather than a field of the lane (class 4).
+- `key_fields` is keyed by the CSV an author writes, and a consumer holds parquets. The map is one stem
+  everywhere but `weights.parquet` ← `variants.csv`, which a consumer has to know.
+- The key is the **authored** row's identity, not the parquet's grain. An rsID row resolution expands onto
+  several loci becomes one parquet row per locus (RM43, RM449), sharing the key and differing in `chrom`,
+  `start`, `ref` and `alts`, so a sort over the key alone still ties.
 
-**The fix.** Each takes the form 0.9 gave its own instance: catch `UnicodeDecodeError` beside `JSONDecodeError`;
-refuse a batch size below 1 where it is used; a stale reason for `mitomap_miss`, so status says stale; a lane field
-in place of the name. Each gets a test, and nothing a module resolves moves. Built on `main` and merged into 0.9 by
-the next sync, never on 0.9 (the trial rule: a defect older than the release is triage's patch).
+The documentation half shipped with the reply (CONSUMING.md § "What one row is"). This item is the code half.
 
-**Residuals** `mitomap_miss`'s stale reason → RM431 on 0.9 (`main` has no stale lane state, so it has no form
-here). Built with the rest: a fourth unreadable-record reader, `locations.snapshot_record_missing`, took the same
-fix; `acmg` took `payload_filename` beside `strchive`, since its resolver also finds a named root file.
+**Candidate.** A read keyed by the lead parquet's name (`LEAD_PARQUETS`), returning the declared key, the
+`rule`, and the columns that make the parquet's rows distinct where expansion ran, derived from the same
+`_KEY_FIELDS` so it cannot drift. A new public function is additive, so a minor. **Against it**, for the pm to
+weigh: with the doc, a consumer restates only the stem map and the locus columns, both stable, and the reporter
+named the alternative of sorting on every column, priced by them as too slow on list columns.
+
+**Residuals** none yet.
 
 # Not format scope
 

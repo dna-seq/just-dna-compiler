@@ -337,9 +337,19 @@ def discover_logs(spec_dir: Path, explicit: list[Path] | None) -> tuple[list[tup
             # it, when everything under it stays behind unseen and the directory is what is named. A
             # directory that resolves elsewhere without being a symlink (a Windows junction) is judged
             # as a link. A top-level `*.log` that is a directory is not a log, and stays silent.
-            if path.is_symlink() or path.is_file():
+            try:
+                linked_or_file = path.is_symlink() or path.is_file()
+                directory = not linked_or_file and path.is_dir()
+            except OSError:
+                # Python 3.13's pathlib raises here where 3.14's answers False (RM456): the walk listed
+                # a name it cannot stat, which under `logs/` means a directory above it cannot be
+                # searched. That directory is named in its place; any other cause names the path.
+                if any(not _listable(parent) for parent in path.parents if parent.is_relative_to(logs_dir)):
+                    continue
+                linked_or_file, directory = True, False
+            if linked_or_file:
                 reason = _log_left_behind_reason(path, logs_dir, spec_dir)
-            elif path.is_dir() and path.is_relative_to(logs_dir):
+            elif directory and path.is_relative_to(logs_dir):
                 if _reached_through_a_link(path, spec_dir):
                     reason = LOG_NOT_SHIPPED_REASONS["symlink"]
                 elif _listable(path):

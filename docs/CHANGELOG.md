@@ -366,7 +366,63 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   (an indel's VRS id unminted, the reference-allele check not made) and that a run's view asks for the build
   once per run; the same prefix, pinned with the 0.9 texts.
 
-## 2026-11-18 — RM455: the pre-0.9 instances of four classes 0.9 fixed in its own code (patch, enricher only, on `main`)
+## 2026-11-19 — `v0.8.10`: format, compiler and enricher 0.8.10 (a patch, cut from `main`)
+
+The compiler moves for RM453 and RM456, the enricher for RM455. **Format 0.8.10 changes only its release record**
+(`RELEASE_RECORDS["0.8.10"]`, which declares RM453's corrected derivation): no vocabulary, model or field moves, so a
+reader on `just-dna-format` 0.8.6 or 0.8.9 still reads every 0.8.10 manifest (measured: all 22 reference modules
+compiled by 0.8.10 read under both). Asking `needs_recompile(stamp, "0.8.10")` needs format 0.8.10, since earlier
+releases hold no record for it. Each intra-workspace floor is `>=0.8.10`: the compiler's `just-dna-format>=0.8.10`, the
+enricher's `just-dna-format>=0.8.10` and `just-dna-compiler>=0.8.10`. No third-party floor moved, and `uv lock` moved
+only the three workspace versions. Asked for by the registry, whose production upgrade waits on RM453 (the pm,
+2026-11-19).
+
+- **What it carries:** RM453 (a mirrored insertion and deletion where no spelling was witnessed `same_event` keeps
+  both spellings, under a warning, instead of leaving the rsID row unpositioned; a declared corrected derivation of
+  0.8.9's RM449), RM456 (`compile_module` no longer raises on Python 3.13 over a `logs/` directory it may list but
+  not search) and RM455 (the pre-0.9 instances of three classes 0.9 fixed in its own code: a pull record that is
+  not UTF-8, a batch size below 1, a lane's payload chosen by its name).
+- **One `--strict` refusal goes:** 0.8.9's refusal of an rsID row at a mirrored indel site that a witness placed as
+  neither spelling (0.8.9's known issue, RM453). Such a row now fills both spellings. No refusal is added for a
+  module; a direct caller that sets `batch_size` below 1 on `GnomadSettings`, `EutilsSettings`, `EuropePmcClient` or
+  `PmcIdConverterClient` now gets a `ValueError` where it got an empty answer (RM455).
+- **No new warning code.** RM453's sentence borrows `rsid_expanded_to_multiple_loci` until 0.9, as RM449's do, and
+  `rsid_no_hosting_locus` no longer counts RM449's "neither is filled" sentence, which is gone.
+- **New public names, additive (RM455):** `CacheLane.payload_filename` and `net.check_batch_size`, recorded as 0.8.4's
+  `size_refusals` and 0.8.9's RM446 names were. `resolution.MirroredSettlement.withheld_all`, added in 0.8.9 as the
+  return of a private helper, is removed, since no settlement leaves a row unpositioned any more.
+- **Release record** (`RELEASE_RECORDS["0.8.10"]`, measured from 0.8.9, both sides on polars 2.1.0 and Python
+  3.14.8): over the 22 reference modules, a measured zero on every axis. The one example RM453 bears on,
+  `pathogenic_clinvar`, records `same_event` at its mirrored site, which both releases read alike. A second sweep,
+  the same two compilers over `v0.8.8`'s spec of that module with `rs80356821`'s two `placement_verdict` cells set
+  to `unplaced` (as an offline `enrich` writes them), measures the correction: the row goes from unpositioned to
+  both spellings, so `weights.parquet` and `annotations.parquet` gain a row, `stats.weights_rows` and
+  `compilation.resolution_subjects` go 336 → 337, `compilation.expanded_keys` 9 → 10, `compilation.expanded_rows`
+  18 → 20 and `compilation.fully_resolved` false → true; `content_signature` does not move. The record declares those
+  as RM453 corrections scoped on `compilation.expanded_keys`, and RM453's sentence as an addition.
+- **After upgrading:**
+  1. Raise all three floors to `>=0.8.10`.
+  2. **Recompile a module 0.8.9 compiled without `--strict` that carries an RM449 sentence saying "neither is filled
+     and the position remains unset".** That row has no position, so no subject matches its claim; under 0.8.10 it
+     fills both spellings and says so under RM453. `needs_recompile(stamp, "0.8.10").declared_for(manifest)`, on
+     format 0.8.10, keeps the correction for every module whose manifest carries `compilation.expanded_keys`; the
+     reach is narrower. A module 0.8.9 compiled under `--strict` cannot carry it (0.8.9 refused the row), and one
+     0.8.9 refused can now be compiled.
+  3. **No re-derivation is needed for RM453.** The fix is in the compiler and reads only the recorded verdicts. Since
+     `v0.8.9` the enricher changed only RM455's bookkeeping, so a table re-derived under enricher 0.8.9, online or
+     offline, resolves the same as one under 0.8.10 and can be reused.
+  4. Where RM453's sentence fires and the rsID row is about one of the two events, replace it with a row authoring
+     that event's coordinate and re-run the enricher so the table files it.
+  5. Nothing to do for RM455 or RM456, beyond a `batch_size` below 1 in a direct caller's settings, which now refuses.
+
+## 2026-11-19 — RM456: `compile_module` no longer raises on Python 3.13 over a `logs/` directory it may list but not search (patch, compiler only, cut as `v0.8.10`)
+
+Under a `logs/` subdirectory that may be listed but not searched (mode `0o444`), Python 3.13's `pathlib` raises
+`PermissionError` where 3.14 answers `False`, and `discover_logs` let it escape `compile_module`. That directory is
+named unreadable as RM348 promised, on both versions now, and the names under it are skipped; a name that cannot be
+stat'ed for any other reason is named itself. CI on `main` (py3.13, Linux) had been red on this since 2026-11-05.
+
+## 2026-11-18 — RM455: the pre-0.9 instances of four classes 0.9 fixed in its own code (patch, enricher only, cut as `v0.8.10`)
 
 0.9's review round 1 fixed four error classes in its own code; these are the older instances on `main`, each
 fixed in the form 0.9 gave its own. Nothing a module resolves moves.
@@ -386,7 +442,7 @@ fixed in the form 0.9 gave its own. Nothing a module resolves moves.
 - **Not here:** `mitomap_miss` calling itself present over moved parents. `main` has no stale state for any lane;
   that one is fixed with RM431 on 0.9.
 
-## 2026-11-18 — RM453: a mirrored site where no spelling was witnessed keeps both spellings (patch, a declared corrected derivation, on `main`)
+## 2026-11-18 — RM453: a mirrored site where no spelling was witnessed keeps both spellings (patch, a declared corrected derivation, cut as `v0.8.10`)
 
 **A correction to 0.8.9, declared (P3).** 0.8.9's RM449 left an rsID row unpositioned where a second source
 recorded `unplaced` on both spellings of a mirrored insertion and deletion ("witnessed neither"). But `unplaced`

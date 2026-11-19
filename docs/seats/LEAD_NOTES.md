@@ -39,11 +39,14 @@ The lead's working state, rewritten to the present before each reset. Last rewri
 
 ## In flight
 
-- 0.8.9 cut 2026-11-18, awaiting the publish: cut commit 13b3be36 (format, compiler, enricher 0.8.9; format moves for the
-  release record alone), merged into main (48aa8ae3, then RM453 in 19a7cdb0, which is 0.8.10's). Dists built from
-  13b3be36 into the root `dist/`, twine check passed. After the publish: tag `v0.8.9` on 13b3be36, GitHub release from
-  scratchpad/release_notes_0_8_9.md, README.md:94 and CLAUDE.md:84 to name 0.8.9. Branches cut/v0.8.9 (superseded)
-  and land/v0.8.9 are the person's to delete.
+- 0.8.10 cut 2026-11-19, awaiting the publish: cut commit 65cfa25b (format, compiler, enricher 0.8.10: RM453, RM455,
+  RM456), merged into main as ce98a26f. Gates at the cut: suite 7569, sweep --release 0.8.10, network pre-release 26,
+  strict docs. Dists in the root `dist/`, twine check passed. After the publish: tag `v0.8.10` on 65cfa25b, GitHub
+  release from scratchpad/release_notes_0_8_10.md, README.md:94 and CLAUDE.md:84 to name 0.8.10, done-line (the
+  registry's production upgrade waits on it). Branches cut/v0.8.10 and land/v0.8.10 are the person's to delete.
+- 0.8.9 published 2026-11-18 (PyPI 22:45Z, all three): tag `v0.8.9` on 13b3be36, GitHub release, README.md:94 and
+  CLAUDE.md:84 name 0.8.9. Main carries RM453 and RM455 since, uncut: 0.8.10's. Branches cut/v0.8.9 (superseded) and
+  land/v0.8.9 are the person's to delete.
 - Lanes behind source (liaison, 2026-11-17): done 2026-11-18. clinvar_2026-11-15 and mitomap_2026-11-09+2026-11-03
   published by the person (the classifier refused the seat, kit #529), pulled here; mitomap_miss rebuilt, the old copy
   moved to `/data/just-dna-cache/mitomap_miss.before-2026-11-18` (the person's to delete).
@@ -59,15 +62,14 @@ The lead's working state, rewritten to the present before each reset. Last rewri
   (scratch; this line is the record): branch `0.9` off `main`; wave 0 `LookupClients` leaf module + `parse_release`;
   wave 1 RM443, RM412, RM404, RM437 in parallel; wave 2 RM430; wave 3 RM431 asks 6, 5, then 4. Then one four-leaf
   round (two at most), the pm sorts, the cut. `unattended`: starts when the person is away.
-- 0.9 progress (2026-11-18): branch `0.9` at 6a12f7e1, pushed (worktree `.worktrees/09` on disk, locked). Every
-  wave and both follow-ups merged (RM431 fu 4d5fe26a, RM430 fu 15668c1e); review round 1 (four-leaf, 033b7213): 11
-  classes, no blocker, all fixed (ea3dcf07) plus the pm's flip of item 3 (6a12f7e1, an unreadable pull record moved
-  aside and re-pulled, the pm's cf12e864). Suite 8119 passed. Next, quota permitting (7-day 93%, hold 90%; a
-  wait-quota is registered): review round 2, the last, brief at scratchpad/review_0_9_round2_brief.md; then its
-  fixes plus mitomap_miss stale_reason and a walk over derived lanes (pm 757f5e32); then the cut. Owed at the cut
-  (scratchpad/BUILD_PLAN_0_9.md): enricher floor on format 0.9; INTEGRATION_0_9 lines for `stale` in LANE_STATES,
-  proxy-on/HF-off gene lanes could-not-ask (registry S36), a host closes a shared holder after its last lookup;
-  CHANGELOG line for cpic's trim; keep `just_dna_enricher.key_compare.KEY_COMPARES` stable (the registry reads it).
+- 0.9 progress (2026-11-18): branch `0.9` at 25ec5362, pushed (worktree `.worktrees/09` on disk, locked). Both
+  review rounds closed (no blocker; round 1 ea3dcf07 + 6a12f7e1, round 2 77c37ff1, 31b5bae4, 9afaa39a, 25ec5362; the
+  pm's sortings in ROADMAP_0_9.md). Suite 8197 passed. Left, quota permitting (7-day 91%, hold 90%; a wait-quota is
+  registered): B, 0.8.9 vs 0.9 enrich bytes online on five examples, into the release record; INTEGRATION_0_9 with
+  the known issues (C incl. D's release-move case; proxy-on/HF-off gene lanes, registry S36), `stale` in
+  LANE_STATES, a host closes a shared holder after its last lookup, cpic's trim; then the cut: enricher floor on
+  format 0.9, versions, release record, merge into main, dists. Keep `just_dna_enricher.key_compare.KEY_COMPARES`
+  stable (the registry reads it). Detail: scratchpad/BUILD_PLAN_0_9.md.
 
 ## Open decisions
 
