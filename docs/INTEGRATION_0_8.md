@@ -69,8 +69,9 @@ re-derivation with the reference read settles it (the CHANGELOG's `v0.8.9` entry
 `resolution_loci` cell (null → `[]` for a key the table filed nothing under) as an addition, and RM449's sentences;
 `pathogenic_clinvar` is unmeasured there, because 0.8.6 refuses its restored row. **`RELEASE_RECORDS["0.8.10"]`,
 measured from 0.8.9, declares a correction of that correction (RM453):** where a mirrored site's table records no
-`same_event` verdict on either spelling (`unplaced`, `undecided` or empty on each), 0.8.9 left the rsID row
-unpositioned under `unplaced`, and 0.8.10 fills both spellings again under a sentence naming RM453. Only a module
+`same_event` verdict on either spelling and `unplaced` on at least one (the rest `undecided` or empty), 0.8.9 left
+the rsID row unpositioned, and 0.8.10 fills both spellings again under a sentence naming RM453. A site with no
+`unplaced` at all (`undecided` or empty on both) kept both spellings in 0.8.9 too. Only a module
 0.8.9 compiled without `--strict` can hold the unpositioned row, since `--strict` refused it. On recompile it moves
 `weights.parquet`, `annotations.parquet`, `artifact.digest`, `stats.weights_rows`, `compilation.resolution_subjects`,
 `compilation.expanded_keys`, `compilation.expanded_rows` and `compilation.fully_resolved`, never `content_signature`,
