@@ -105,6 +105,24 @@ reviewed by nobody: each is a few lines, and its test is shown failing on the co
 
 The trial rules end here. The pm reports how they went after the cut.
 
+**At the cut, placed (the pm, 2026-11-19).**
+
+1. **`rsid_genotype_reads_as_two_events` goes to 0.10, not 0.9.** RM449 said 0.9 would add it, but it was never in
+   0.9's scope. It is a new closed-vocabulary code in format and compiler, an old-reader break, in a minor scoped to
+   the enricher whose two review rounds are closed, so a code added now would ship unreviewed. 0.9 keeps the
+   borrowed codes. The cut builder claims an RM for 0.10, which is schema work, and adds a dated line to RM449's
+   history entry pointing at it. That RM first says which sentences the code would carry after RM453: with no row
+   left unpositioned, `rsid_no_hosting_locus` may borrow nothing any more, and what is left is the fill of a mirrored
+   site under `rsid_expanded_to_multiple_loci`.
+2. **Residuals, on the lead's default, with these homes.** A "next minor" residual gets an RM in ROADMAP_0_10. A
+   cleanup with no wrong answer is won't fix, with its reason. RM412 closes its built halves, and half 1's probe stays
+   open. Four have homes already decided:
+   - RM404's per-run wrap guard with the five `_held_by_one_run` imports, and RM430's three ClinVar asks made one
+     query, are **patches on `main` after 0.9 merges**, as placed, not 0.10.
+   - RM437's lock residual is **RM450**, the parked pull lock.
+   - RM431's prebuilt `.duckdb` against the index pin is **won't fix**: the path is deprecated and retired at 1.0.
+3. The two known issues (C, and the gene lanes with the proxy on and Hugging Face off) get RMs in ROADMAP_0_10.
+
 **Earlier sizings, for the record.** The file opened on 2026-11-03, when the maintainer scoped 0.8 and sent "the rest"
 to 0.9; the pm re-sized it on 2026-11-05 after the 0.8.0 cut ("'Auto-next minor' was a policy when we didn't have a
 dedicated decision maker for this"), parking 22 items into ROADMAP.md. Everything here is **additive under Principles
