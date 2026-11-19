@@ -106,6 +106,11 @@ from the index too: a polars-bio cap that holds both of us is raised with it fir
 (a label would not have caught the ClinPGx copy, RM445's case; our pull record writes no revision).
 **S34 shipped** in just-dna-registry 0.33.0 (PyPI 2026-11-18; newest 0.34.1 read 2026-11-19): both lane replies carry
 `release`, `release_unreadable`, `revision`; neither server runs it yet (both 0.32.1). Relayed to pm and lead.
+**0.9 pre-integration (RELEASE_CYCLE step 6), asked 2026-11-19 for the lead, open:** 0.9 at d9c578ae from git.
+Asked: registry and module-creator liaisons (agent-chat 641755221); just-dna-lite by an uncommitted note
+(`docs/UPSTREAM_REQUEST_0_9_preintegration_from_just-dna-compiler.md`); longevity-loci through our secretary to the
+embassy (this seat made keys 2026-11-19, holds no contact key). Route every answer to lead and pm; the merge into
+main waits for them. **0.8.10:** cut 65cfa25b, waits on the person's PyPI publish; tell the registry when it lands.
 **S159 (just-dna-lite, no seat there):** triage's answer relayed 2026-11-19 as an uncommitted note in their repo,
 `docs/UPSTREAM_ANSWER_S159_from_just-dna-compiler.md`.
 
