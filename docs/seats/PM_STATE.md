@@ -1,4 +1,4 @@
-**Where it stands** (2026-11-19). The current release is **0.8.9** (all three packages, on PyPI since 2026-11-19). The next
+**Where it stands** (2026-11-19). The current release is **0.8.9** (all three packages, on PyPI since 2026-11-19); 0.8.10 and 0.9.0 are cut and wait on your publish and merge. The next
 two minors are scoped small: 0.9 teaches the enricher to read reference data wherever it lives, and 0.10 is four small
 schema additions right after.
 
@@ -22,10 +22,12 @@ schema additions right after.
   where an anonymous client also runs out of requests after a few large lookups.
 
 **Next**
-1. ⏳ 0.9 — all six items built on the `0.9` branch; one follow-up pass (RM430's and RM431's last fixes), then
-   the one review round.
-2. ✅ 0.8.9 released (2026-11-19): two silent indel errors fixed. ⏳ 0.8.10 next, asked for by the registry, whose
-   production upgrade waits on it: a mirrored indel site that ClinVar does not know keeps both spellings instead of
-   being refused (RM453), plus RM455's small fixes.
-3. ❓ Three items you placed in 0.9 by name were parked by the small cut: parked, a 0.11, or 0.10 (desk #347).
-4. ❓ One question on the maintainer's desk: linking the project's memory to its new folder name.
+1. ⏳ 0.9 — built, reviewed twice with no blocker, and cut on a local branch. It waits on the 0.8.10 publish and on
+   the registry's trial of it; just-module-creator found no break.
+2. ⏳ 0.8.10 — cut, waiting on your publish. The registry's production upgrade waits on it: a mirrored indel site
+   that ClinVar does not know keeps both spellings instead of being refused.
+3. ⏳ After the 0.9 merge, the pm's own steps (unattended): re-sort 0.10, which grew by the nine follow-ups 0.9 left
+   (RM458 to RM466), against the small-minors rule; size the registry's two re-derive-cost items (RM467, RM468,
+   12.5 to 37 h per module today); point the lead's and pm's briefs at ROADMAP_0_10.md.
+4. ❓ Three items you placed in 0.9 by name were parked by the small cut: parked, a 0.11, or 0.10 (desk #347).
+5. ❓ One question on the maintainer's desk: linking the project's memory to its new folder name.
