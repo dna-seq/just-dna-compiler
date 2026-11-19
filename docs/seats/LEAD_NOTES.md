@@ -62,14 +62,15 @@ The lead's working state, rewritten to the present before each reset. Last rewri
   (scratch; this line is the record): branch `0.9` off `main`; wave 0 `LookupClients` leaf module + `parse_release`;
   wave 1 RM443, RM412, RM404, RM437 in parallel; wave 2 RM430; wave 3 RM431 asks 6, 5, then 4. Then one four-leaf
   round (two at most), the pm sorts, the cut. `unattended`: starts when the person is away.
-- 0.9 progress (2026-11-18): branch `0.9` at 25ec5362, pushed (worktree `.worktrees/09` on disk, locked). Both
-  review rounds closed (no blocker; round 1 ea3dcf07 + 6a12f7e1, round 2 77c37ff1, 31b5bae4, 9afaa39a, 25ec5362; the
-  pm's sortings in ROADMAP_0_9.md). Suite 8197 passed. Left, quota permitting (7-day 91%, hold 90%; a wait-quota is
-  registered): B, 0.8.9 vs 0.9 enrich bytes online on five examples, into the release record; INTEGRATION_0_9 with
-  the known issues (C incl. D's release-move case; proxy-on/HF-off gene lanes, registry S36), `stale` in
-  LANE_STATES, a host closes a shared holder after its last lookup, cpic's trim; then the cut: enricher floor on
-  format 0.9, versions, release record, merge into main, dists. Keep `just_dna_enricher.key_compare.KEY_COMPARES`
-  stable (the registry reads it). Detail: scratchpad/BUILD_PLAN_0_9.md.
+- 0.9 cut built 2026-11-19, not merged: local branch cut/v0.9.0 at e057186b (worktree .worktrees/cut-090, unlocked;
+  dists in its dist/). Gates: suite 8196 + 1 red only until v0.8.10 is tagged (test_first_seen, by design), sweep
+  --release 0.9.0 green, network gates 28, strict docs, twine 6. Before the merge: (1) 0.8.10 published and tagged,
+  then the full suite re-run at the cut commit; (2) the consumers' trial (desk #370, default: registry and
+  module-creator try d9c578ae; module-creator blocked by its own auto-mode rules, kit #550); (3) merge cut/v0.9.0
+  into main taking the branch's side of docs/ROADMAP_0_9.md (moved to history); (4) `item-next.py --release` for
+  RM458-RM466, whose reservation rows sit uncommitted in the primary checkout's docs/RM_TOC.md: never stage them;
+  (5) LEAD.md/PM.md name ROADMAP_0_9.md as the open minor's file: point at ROADMAP_0_10.md (change-priming). Then
+  dists into dist/ for the person's publish. Scratch under .worktrees/ (cut-090-docs/ holds a throwaway signing key).
 
 ## Open decisions
 
