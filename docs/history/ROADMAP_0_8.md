@@ -6,13 +6,13 @@ Every item it scoped shipped, and each record is in [ROADMAP_HISTORY.md](../ROAD
 known issues 0.8 shipped with are in [INTEGRATION_0_8.md § 4](INTEGRATION_0_8.md#4-known-issues).
 
 **Where its contents went.** The one item still waiting, RM28's predicate half, moved to
-[ROADMAP_0_9.md](../ROADMAP_0_9.md) unchanged but for the file it sits in; the decisions its combination
+[ROADMAP_0_9.md](ROADMAP_0_9.md) unchanged but for the file it sits in; the decisions its combination
 half was built to stay below. [RM_TOC.md](../RM_TOC.md) indexes every item and is where to look one up.
 Nothing here is edited as routine work, the same rule as the rest of this folder.
 
 **What 0.8 is, decided 2026-11-03 with the maintainer:** the work already built and the fixes already
 chosen, plus longevitymap v2's requirements. "The rest goes to 0.9", so everything else that was waiting
-here moved to [ROADMAP_0_9.md](../ROADMAP_0_9.md), each entry with a dated line under its heading. That
+here moved to [ROADMAP_0_9.md](ROADMAP_0_9.md), each entry with a dated line under its heading. That
 includes RM188's competitor-parity work, which was 0.8's second half from 2026-09-11, the methylation items
 (RM317–RM319), and the Gherkin corpus (RM149), which is frozen. This file is now 0.8's scope and nothing else.
 
@@ -76,17 +76,17 @@ land wherever RM323 puts per-locus facts. RM322 next, since APOE is the lead loc
 scope decision put each in 0.8 or 0.9, as marked):
 
 - **RM236** (**shipped 2026-11-04 on `0.8`**, in ROADMAP_HISTORY) — causal confidence C1 and effector confidence E1 both key on a variant being coding.
-- **RM238** ([ROADMAP_0_9.md](../ROADMAP_0_9.md), **0.9** since 2026-11-04: Open Targets' coloc, in RM333's lane, replaces it) — the cis-QTL colocalisation behind effector confidence E1/E2.
+- **RM238** ([ROADMAP_0_9.md](ROADMAP_0_9.md), **0.9** since 2026-11-04: Open Targets' coloc, in RM333's lane, replaces it) — the cis-QTL colocalisation behind effector confidence E1/E2.
 - **RM239** (**shipped 2026-11-04 on `0.8`**, in ROADMAP_HISTORY) — the fine-mapping posterior is the input to causal confidence C1–C4.
 - **RM241** (this file, **built on `0.8`**) — v2 declares `weighting:` precisely to say it has no weights, and `reverse` drops the block.
 - **RM263** ([ROADMAP.md](../ROADMAP.md), **built on `0.8`**) — v2 cites preprints, whose rows hold a DOI and need a PMID; RM336 is the parsing half.
-- **RM294** ([ROADMAP_0_9.md](../ROADMAP_0_9.md), **0.9** since 2026-11-04, after the one-scale tier decision) — a source's evidence grade travelling into a module is the same column family as RM324's tier.
-- **RM302** ([ROADMAP_0_9.md](../ROADMAP_0_9.md), **0.9** since 2026-11-04: v2's conclusion is already lay) — v2 writes for three readers (citizen, geneticist, ageing researcher), which is the register question.
+- **RM294** ([ROADMAP_0_9.md](ROADMAP_0_9.md), **0.9** since 2026-11-04, after the one-scale tier decision) — a source's evidence grade travelling into a module is the same column family as RM324's tier.
+- **RM302** ([ROADMAP_0_9.md](ROADMAP_0_9.md), **0.9** since 2026-11-04: v2's conclusion is already lay) — v2 writes for three readers (citizen, geneticist, ageing researcher), which is the register question.
 - **RM308** ([ROADMAP.md](../ROADMAP.md), **built on `0.8`**) — v2 hand-writes per-genotype conclusions for its scored loci and a 528-rsID legacy layer.
 - **RM321** ([ROADMAP.md](../ROADMAP.md), **a patch on `main`**) — v2's plan sets `pleiotropic` and `conditional` expecting behaviour.
 - **RM28** (this file, **0.8**: its combination half, taken in 2026-11-04) — KL-VS buffering in APOE4 carriers joins two loci on two chromosomes, so no haplotype holds it. It is now a defined combination, and its facts sit on RM323's table.
-- **RM188** ([ROADMAP_0_9.md](../ROADMAP_0_9.md), **0.9**) — its axes 2, 3 and 5 are now numbered, as RM328, RM330 and RM324, all three in 0.8.
-- **RM248** ([ROADMAP_0_9.md](../ROADMAP_0_9.md), **0.9**) — v2's §5 is a report specification: a context card, grouping by mechanism, a research view. The report is the consumer's to build meanwhile.
+- **RM188** ([ROADMAP_0_9.md](ROADMAP_0_9.md), **0.9**) — its axes 2, 3 and 5 are now numbered, as RM328, RM330 and RM324, all three in 0.8.
+- **RM248** ([ROADMAP_0_9.md](ROADMAP_0_9.md), **0.9**) — v2's §5 is a report specification: a context card, grouping by mechanism, a research view. The report is the consumer's to build meanwhile.
 
 The authored `report:` block in [ROADMAP.md's idea-book](../ROADMAP.md) is the unnumbered half of RM248 and
 answers v2's §8 consumer requests 1 and 2 (category prose from the module, no "Net weight").

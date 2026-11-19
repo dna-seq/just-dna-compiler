@@ -28,10 +28,11 @@ deferral is filed against the release that will decide it:
   at the time; PT2 re-asked which release each belonged to now that 0.6 is uncut, and took five back:
   RM55's fix, RM72, RM82, RM84 and RM87. It is authoritative for those five, and for three of them the
   probe overturned what the roadmap entry says.
-- **[ROADMAP_0_9.md](ROADMAP_0_9.md)** — items legal in a minor, each waiting on a design question, a
-  corpus or a caller. Its predecessor `ROADMAP_0_8.md`, 0.8's scope, closed at the 0.8.0 cut on 2026-11-05 into
-  [history/](history/ROADMAP_0_8.md), and its one waiting item, RM28's predicate half, moved here. What
-  follows describes the 0.8 file as it was. **0.8 is a stabilization and competitor-parity release, decided 2026-09-11 with
+- **[ROADMAP_0_10.md](ROADMAP_0_10.md)** — items legal in a minor, each waiting on a design question, a
+  corpus or a caller: 0.10's scope and the methylation minor after it. Its predecessor `ROADMAP_0_9.md`, 0.9's
+  scope, closed at the 0.9.0 cut on 2026-11-19 into [history/](history/ROADMAP_0_9.md), as `ROADMAP_0_8.md` had
+  at the 0.8.0 cut on 2026-11-05 ([history/](history/ROADMAP_0_8.md)), whose one waiting item, RM28's predicate
+  half, moved on then. What follows describes the 0.8 file as it was. **0.8 is a stabilization and competitor-parity release, decided 2026-09-11 with
   the maintainer**; the theme is stated in that file's header and does not itself admit an item. RM10 closed there, folded into RM28. **It succeeded `ROADMAP_0_7.md` at the 0.7
   cut** — that round is closed in [history/](history/ROADMAP_0_7.md), which keeps four of the five
   records the line above names; only RM84 is still waiting and still here. **Read the membership rule in its header, not a list here**:
@@ -45,7 +46,14 @@ deferral is filed against the release that will decide it:
 Code comments citing "ROADMAP item N" / "ROADMAP 0.3 item 5b" are historical breadcrumbs — follow them
 to [CHANGELOG.md](CHANGELOG.md) / [COMPILER.md](COMPILER.md).
 
-**Status:** **0.8.0 is cut, tagged and published** — all three packages at `0.8.0`, on 2026-11-05. The
+**Status:** **0.9.0 is cut, and not yet tagged or published** — all three packages at `0.9.0`, cut on
+2026-11-19 from the `0.9` branch; publishing is the maintainer's, and the tag `v0.9.0` follows the publish. What a
+consumer checks and changes is [INTEGRATION_0_9.md](INTEGRATION_0_9.md), and the cut's own entry is in
+[CHANGELOG.md](CHANGELOG.md). The previous cut was **`v0.8.10`** (2026-11-19, all three packages at `0.8.10`),
+the last of ten patches on the 0.8 line, which is published and tagged before 0.9.0 is; PyPI's latest at the
+0.9.0 cut was 0.8.9.
+
+**0.8.0 was cut, tagged and published** — all three packages at `0.8.0`, on 2026-11-05. The
 tag is `v0.8.0` at `e97339a3`, and PyPI has the three releases as of 19:56 UTC that day; what a
 consumer checks and changes is [INTEGRATION_0_8.md](history/INTEGRATION_0_8.md), and the cut's own entry is in
 [CHANGELOG.md](CHANGELOG.md). The previous cut was **`v0.7.3`** (2026-09-27: format 0.7.1, compiler
@@ -309,7 +317,7 @@ with their rationale and with the five places the eight filings turned out to un
 there. **An empty list here is not an all-clear** — it means nothing is *filed*, and this file has read
 empty twice before while carrying real work one heading down. The live consumer inbox
 ([CONSUMER_SUGGESTIONS.md](CONSUMER_SUGGESTIONS.md)) is the other half of that question, and
-[ROADMAP_0_9.md](ROADMAP_0_9.md) / [ROADMAP_1_0.md](ROADMAP_1_0.md) hold the deferred items.
+[ROADMAP_0_10.md](ROADMAP_0_10.md) / [ROADMAP_1_0.md](ROADMAP_1_0.md) hold the deferred items.
 Every one of them broke a rule this repo had already written down — which is the finding worth keeping
 out of the item entries and stating once: **the gotcha book is not the thing that catches a
 regression.** In four of the eight the file carrying the violation also carried the rule, sometimes in
@@ -2365,37 +2373,6 @@ about 30 minutes, and RM437's groups on `0.9` inherit it.
 
 **Residuals** none yet.
 
-## RM454 — the enricher's local key compares never went through the one normalizer: constraint by gene, `lookup_loci` by rsID and contig, and SQL's `lower(trim())` beside `gene_key`
-
-**Severity** low · **Status** open — **a minor, 0.9** (rescoped 2026-11-26, [ROADMAP_0_9.md](ROADMAP_0_9.md); its home, `key_compare.KEY_COMPARES`, is 0.9's) ·
-**Owner** enricher (`gene_metrics.lookup_snapshot`, `clinvar.lookup_loci`, `resolver.lookup_loci`,
-`key_compare`) · **Motivating case** the RM430 follow-up's deferred findings (a) to (c), the lead's 0.9 run
-(2026-11-18, merged as 15668c1e) · *related* RM363, RM430, RM431
-
-**What was seen.** 0.9 made each keyed function compare a key the same way on the local and the remote route (one
-registry, `key_compare.KEY_COMPARES`, feeds both routes' SQL, and a walk over `REMOTE_LANES` asserts equal answers).
-Its builder found three compares that are equal across routes but not across functions:
-
-- (a) the constraint snapshot compares a gene exactly (`gene IN (?)` in `gene_metrics.lookup_snapshot`), though
-  RM363 lists `gene_metrics.py` among the sites moved to `gene_key`;
-- (b) `clinvar.lookup_loci` and `resolver.lookup_loci` compare an rsID and a contig exactly, so `RS334` and `chr11`
-  miss, where RM431's keyed functions normalize the same keys;
-- (c) SQL's `lower(trim(gene))` and Python's `gene_key` (casefold, every whitespace) differ on a tab and on non-ASCII
-  text. Older than 0.9.
-
-**Why low.** No incident: an authored row's rsID is one spelling (`^rs\d+$`) and `VariantRow` folds `chr12` to `12`, so
-a module never sends the spellings (b) misses. Only a direct caller of a lookup (a hint, a tool's user typing a key)
-can, and a miss there reads as absent. RM363 decided one normalizer per value; these are the sites its AST guard
-cannot see, because the compare is inside SQL.
-
-**The fix.** Every keyed SQL compare in the enricher is declared in `KEY_COMPARES`, not only the routed ones. The
-SQL form and the Python normalizer give the same key, or the compare normalizes in Python before the query. One walk
-asserts both: over every declared compare, a fixture key in another case, with surrounding whitespace, with a
-`chr` prefix where it is a contig, answers as its normalized form does. A patch after 0.9 merges; triage builds it.
-It may widen what a direct lookup returns, never what a module resolves, so no derived table moves.
-
-**Residuals** none yet.
-
 ## RM457 — no public read answers a lead parquet's row grain, so a consumer maps parquet to CSV and adds the locus columns by hand
 
 **Severity** low · **Status** open — **a minor, parked** (the pm, 2026-11-26; unparks below) · **Owner** compiler (`hints`) ·
@@ -2426,26 +2403,23 @@ asks for the read; either can happen while this is parked, so the gate is honest
 
 **Residuals** none yet.
 
-## RM468 — the live clients keep no answers between runs, so a re-run under unchanged source releases spends the same egress again
+## RM412 — a rebuild cannot ask a source for its newest release without downloading the payload (half 1's per-lane probe, parked)
 
-**Severity** medium · **Status** open — **a minor, 0.10** (the pm, 2026-11-26, beside RM399 and RM441: a design of its own, not a leftover of 0.9's build) · **Owner** enricher (the live clients:
-Ensembl REST, E-utilities, ClinVar, the sequence proxy) · **Motivating case** S162 in CONSUMER_SUGGESTIONS_HISTORY.md
-(just-dna-registry, 2026-11-19) · *related* RM467, RM441, RM38
+**Severity** low · **Status** open — **a minor, parked** · **Owner** enricher (a `CacheLane` field per lane) ·
+**Motivating case** the maintainer, 2026-11-07 ("only download headers/metadata"), RM411's residual · *related*
+RM411, RM413, RM416
 
-**What was seen.** ENRICHER.md states it as an open question: the live clients are paced only, and persistence is the
-sidecars and the published snapshots. A held module re-run after a fix, a second module sharing rsIDs, or a sweep
-resumed in a new run asks the same questions again. A run killed mid-way does resume from its staged answers
-(`--keep-staging` says so); that covers one table, not a second run or a second module.
+**What is left of RM412.** Its half 2 (the 0.8 line's private names made public, `opentargets publish` and
+`clinvar-gkm publish`) and half 1's `--rehearse-download` flag shipped in 0.9.0; that record is
+[ROADMAP_HISTORY.md § RM412](ROADMAP_HISTORY.md#rm412--a-dry-run-cannot-rehearse-the-download-and-the-08-lines-private-names-wait-for-their-public-ones).
+Half 1's cheaper part is open: per lane, the source's newest release and the bytes a build would fetch, asked of
+the source without the payload. That needs a probe per lane (a `CacheLane` field), which
+`docs/UPSTREAM_DATA_SOURCES.md` measures by hand today, and RM413's gates still read that release off the liaison's
+hand-kept table.
 
-**What it would be.** A persistent store of online answers, keyed by the source and the release that answered (the
-Ensembl release, the ClinVar release, the dbSNP build), so a moved release invalidates exactly its own answers; an
-answer whose source states no release is not stored. A location setting like the snapshot lanes' (`JUST_DNA_*_CACHE`),
-and a report saying which answers came from the store.
-
-**Design points.** A stored negative must keep the house's distinctions: answered-absent is storable, could-not-ask
-never is (`@unreachable-not-absent`). A licence-gated source's answers inherit its terms, so the store is per host
-and never published (`@gated-source-caches`). Ensembl REST's release lags the snapshot's (RM447), so the key is the
-release REST states, never the snapshot's. A new setting and a new lane-like location: a minor.
+**Parked, the pm (2026-11-16)**, out of 0.9's scope ([desk #326](https://github.com/winternewt/desk/issues/326)).
+**Unparks when** an operator reports a rebuild that downloaded a source only to learn nothing had changed, or a scope
+the maintainer highlights touches it, or the roadmap is empty.
 
 **Residuals** none yet.
 
@@ -2935,9 +2909,9 @@ the demand question, which is answerable now.
 item carrying a parked-on / would-unpark clause was checked. **One circular, one marginal, one
 possibly already satisfied, and the rest sound** — the sweep's value is mostly the eight it cleared.
 
-**Re-sized 2026-11-05, after the 0.8.0 cut (the pm).** 22 items were parked out of [ROADMAP_0_9.md](ROADMAP_0_9.md) into Active items. The 15 rows from RM261 down are new. RM16, RM23, RM28, RM68, RM122, RM164 and RM238 already had rows here; their verdicts stand, and their entries now live in this file.
+**Re-sized 2026-11-05, after the 0.8.0 cut (the pm).** 22 items were parked out of [ROADMAP_0_9.md](history/ROADMAP_0_9.md) into Active items. The 15 rows from RM261 down are new. RM16, RM23, RM28, RM68, RM122, RM164 and RM238 already had rows here; their verdicts stand, and their entries now live in this file.
 
-**Re-sized 2026-11-16 (the pm), for smaller minors ([desk #326](https://github.com/winternewt/desk/issues/326)).** RM430 and RM431 left this table for 0.9's scope, where their gate, the maintainer naming remote reads a zone, was met on desk #261. Seven items were parked out of [ROADMAP_0_9.md](ROADMAP_0_9.md); their six rows (RM345 and RM286 share one), and one for RM412's parked probe, sit above the 1.0 queue's row, all judged Sound.
+**Re-sized 2026-11-16 (the pm), for smaller minors ([desk #326](https://github.com/winternewt/desk/issues/326)).** RM430 and RM431 left this table for 0.9's scope, where their gate, the maintainer naming remote reads a zone, was met on desk #261. Seven items were parked out of [ROADMAP_0_9.md](history/ROADMAP_0_9.md); their six rows (RM345 and RM286 share one), and one for RM412's parked probe, sit above the 1.0 queue's row, all judged Sound.
 
 | Item | Gate as written | Verdict |
 |---|---|---|
@@ -3598,7 +3572,7 @@ likely to be working on interactively. `_vrs_coverage`'s grouping already exists
   from, and `refresh_sidecar` will not backfill a sidecar that is already present. A conditional
   warning, or carrying `panel` into `manifest.json` the way `weighting` is, would settle it.
   **Update:** S69 shipped the message half (the warning stopped claiming nothing else is lost); the
-  home-for-the-three-fields half is [RM265](ROADMAP_0_9.md#rm265--the-panel-deprecation-has-no-accepted-signal-on-the-replaced-branch-the-warning-fires-whether-or-not-you-need-the-three-fields-it-tells-you-to-keep-the-block-for)
+  home-for-the-three-fields half is [RM265](ROADMAP_0_10.md#rm265--the-panel-deprecation-has-no-accepted-signal-on-the-replaced-branch-the-warning-fires-whether-or-not-you-need-the-three-fields-it-tells-you-to-keep-the-block-for)
   (S114), which showed the replaced-branch warning is unclearable for a module that needs them.
 
 ### Absences that pass in silence (compiler)

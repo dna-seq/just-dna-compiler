@@ -5338,7 +5338,7 @@ got this result, and fell back to pasting the DOI into a free-text literature se
 
 ## S114 — the `panel_block_deprecated` replaced-branch warns whether or not you need the three fields it says to keep the block for, so there is no way to signal "accepted"
 
-**Status — accepted, filed as [RM265](ROADMAP_0_9.md#rm265--the-panel-deprecation-has-no-accepted-signal-on-the-replaced-branch-the-warning-fires-whether-or-not-you-need-the-three-fields-it-tells-you-to-keep-the-block-for) (open, a minor), plus a doc fix shipped this pass.** Reproduced against the code: on the `replaced=True` branch (`compiler.py:4231`) `panel_block_deprecated` fires for a fully-migrated module, and its `unreplaced` clause tells the author to keep the block for `genes`/`significance`/`reference_sha256` — so keeping it *is* the permanent warning, with no key to say "accepted". Your reading is exactly right, and it is the state P3 forbids: a deprecation is legal in a minor only where the audience can act, and for these three fields on the replaced branch no replacement exists.
+**Status — accepted, filed as [RM265](ROADMAP_0_10.md#rm265--the-panel-deprecation-has-no-accepted-signal-on-the-replaced-branch-the-warning-fires-whether-or-not-you-need-the-three-fields-it-tells-you-to-keep-the-block-for) (open, a minor), plus a doc fix shipped this pass.** Reproduced against the code: on the `replaced=True` branch (`compiler.py:4231`) `panel_block_deprecated` fires for a fully-migrated module, and its `unreplaced` clause tells the author to keep the block for `genes`/`significance`/`reference_sha256` — so keeping it *is* the permanent warning, with no key to say "accepted". Your reading is exactly right, and it is the state P3 forbids: a deprecation is legal in a minor only where the audience can act, and for these three fields on the replaced branch no replacement exists.
 
 The design question RM265 records is whether `panel:` is deprecated *as a whole* or only its reader. Your candidate (1) — a home for the three fields, a `panel_provenance:` sub-block or keys beside `dataset` — is the P3-clean answer and is minor (additive); it is a schema-shape decision for the version interview (where the gene *denominator* lives, and that it is your one lossy field). Your candidate (2) — fire only on `replaced=False` — we are **not** taking on its own: it silences a *true* statement on the modules that keep the block, so they would compile clean until 1.0 removes the block under `extra="forbid"` and the data with it, and P3 makes a major ship its upgrade procedure rather than a silent loss. So (2) is a noise stopgap, not the fix.
 
@@ -7306,7 +7306,7 @@ repository (ours has none).
 What we do meanwhile: nothing remote. The proxy keeps answering from local snapshots only, and the remote half of the
 release waits on these. Several items or one is your call; asks 1 to 3 are the ones that unblock everything else.
 
-**Status — filed as [RM430](ROADMAP_0_9.md#rm430--no-snapshot-reader-takes-a-remote-root-a-url-collapses-in-path-and-every-resolve-release-read-and-connector-checks-the-local-disk) (asks 1 to 3) and [RM431](ROADMAP_0_9.md#rm431--the-keyed-readers-a-remote-lookup-needs-an-rsid-index-for-ensembl-and-a-key-on-the-whole-table-readers) (asks 4 to 7): both minors; the pm sizes.** Asks 1 to 3 are
+**Status — filed as [RM430](ROADMAP_HISTORY.md#rm430--no-snapshot-reader-takes-a-remote-root-a-url-collapses-in-path-and-every-resolve-release-read-and-connector-checks-the-local-disk) (asks 1 to 3) and [RM431](ROADMAP_HISTORY.md#rm431--the-keyed-readers-a-remote-lookup-needs-an-rsid-index-for-ensembl-and-a-key-on-the-whole-table-readers) (asks 4 to 7): both minors; the pm sizes.** Asks 1 to 3 are
 confirmed on `main`. `Path("hf://datasets/a/b")` prints `hf:/datasets/a/b`. `_resolve_parquet_cache` answers by
 `is_dir()` and a glob, `read_release` by `is_file()`, and `clinvar._connect` by local globs. They are one item
 because they unblock the rest. Every reader that takes a new kind of input is a minor, and none goes on `main` as a
@@ -7413,7 +7413,7 @@ disagrees. Against it: two fields that can contradict each other; a warning on d
 safe. A narrower alternative is to let `effect_size` carry a sign alone, which the format does not have a way to
 state without inventing a magnitude, so we would not ask for that.
 
-**Status — filed as [RM435](ROADMAP_0_9.md#rm435--a-study-row-has-no-direction-of-its-own-so-a-study-that-prints-its-allele-and-direction-but-no-size-puts-the-direction-in-free-text): a minor; the pm sizes.** Confirmed: a study row has no direction except the sign
+**Status — filed as [RM435](ROADMAP_0_10.md#rm435--a-study-row-has-no-direction-of-its-own-so-a-study-that-prints-its-allele-and-direction-but-no-size-puts-the-direction-in-free-text): a minor; the pm sizes.** Confirmed: a study row has no direction except the sign
 of its `effect_size`. The schema already has this field, one table over. `GwasEffectRow.effect_direction` holds
 `increase|decrease`, relative to the row's effect allele, and its description says it is **not** the clinical
 direction, so the two axes stay apart (our Principle 5). RM435 proposes that field on `StudyRow`: same name, same
@@ -7507,7 +7507,7 @@ record, plus a public name for the group directory (`snapshot.ensembl_group_dir(
 reader never spells the path. A refusal when a present group's files are not the manifest's release would be
 the guard `row_idx` needs.
 
-**Status — filed as [RM437](ROADMAP_0_9.md#rm437--the-split-ensembl-snapshots-groups-sidecars-have-no-provisioning-route-so-a-consumer-who-needs-a-group-must-write-into-the-lanes-directory-itself): a minor; the pm sizes.** Confirmed: the lane pulls `data/` only, by the comment you
+**Status — filed as [RM437](ROADMAP_HISTORY.md#rm437--the-split-ensembl-snapshots-groups-sidecars-have-no-provisioning-route-so-a-consumer-who-needs-a-group-must-write-into-the-lanes-directory-itself): a minor; the pm sizes.** Confirmed: the lane pulls `data/` only, by the comment you
 quote. You are right not to write `groups/` yourselves. A group joins to the core on `row_idx`, valid within one
 `release_id`, so the only safe writer is the one that pulled the core under the same manifest. Your candidate is the
 ask: opt-in groups on the lane, attested and recorded, a public directory name, and a refusal on a release
@@ -7632,7 +7632,7 @@ What we do meanwhile: the registry's lead re-derives the five pre-0.8 modules on
 it. On our side, acting on a declared derived-table correction means a re-derive (`enrich(rederive=True)`), not a
 recompile, which is our change to make once the axis exists.
 
-**Status — filed as [RM441](ROADMAP_0_9.md#rm441--a-release-record-has-no-axis-for-a-correction-to-a-derived-table-so-085s-reads-as-nothing-moved-although-rm438-corrected-resolutioncsv): a minor; the pm sizes.** Confirmed: every axis
+**Status — filed as [RM441](ROADMAP_0_10.md#rm441--a-release-record-has-no-axis-for-a-correction-to-a-derived-table-so-085s-reads-as-nothing-moved-although-rm438-corrected-resolutioncsv): a minor; the pm sizes.** Confirmed: every axis
 is compiled output, and the sweep measures by compiling with the committed sidecars, so a correction to enricher
 output cannot show up. Two points from the code, both now in the entry. First, ask 1 cannot be a plain new member.
 `RECOMPILE_DRIVING_AXES` is the vocabulary minus `warnings`, so a new axis would tell you to recompile, when the
@@ -7677,7 +7677,7 @@ same directories. Worth deciding in the same change whether `load_dotenv_file` s
 `resolve()` loads `.env` by default, which for a host that never configures through the environment is an
 ambient read it did not ask for.
 
-**Status — filed as [RM443](ROADMAP_0_9.md#rm443--lane_status-resolves-every-lane-from-the-environment-so-a-host-that-passes-its-lanes-paths-explicitly-cannot-ask-it-about-them): a minor; the pm sizes.**
+**Status — filed as [RM443](ROADMAP_HISTORY.md#rm443--lane_status-resolves-every-lane-from-the-environment-so-a-host-that-passes-its-lanes-paths-explicitly-cannot-ask-it-about-them): a minor; the pm sizes.**
 Confirmed on 0.8.6: `lane_status` calls `lane.resolve()` bare, and all seventeen lanes' resolvers take the override
 first plus `load_dotenv_file` (checked with `inspect.signature` over `CACHE_LANES`). Your `.env` question has a
 firmer answer than "ambient read": with its default flag, each resolver calls `locations.load_env()`, which exports
@@ -7776,7 +7776,7 @@ constant beside `CACHE_LANES` would do). The first is the more general, since `d
 records and a missing record has to read as *cannot say*; the second is cheaper and is all the convergence check
 needs. Either way it should be readable from the installed package, offline.
 
-**Status — taken into [RM441](ROADMAP_0_9.md#rm441--a-release-record-has-no-axis-for-a-correction-to-a-derived-table-so-085s-reads-as-nothing-moved-although-rm438-corrected-resolutioncsv) as a fourth ask: a minor, 0.9, one design with RM399.**
+**Status — taken into [RM441](ROADMAP_0_10.md#rm441--a-release-record-has-no-axis-for-a-correction-to-a-derived-table-so-085s-reads-as-nothing-moved-although-rm438-corrected-resolutioncsv) as a fourth ask: a minor, 0.9, one design with RM399.**
 Confirmed as you describe: `RELEASE_RECORDS` holds compiled-output axes only, and INTEGRATION_0_8 says 0.8.1 and
 0.8.7 "left the compiler alone and have no record". One fact weighs on your two candidates: the records live in
 `just_dna_format.release_records`, and an enricher-only patch does not release the format (0.8.7 left it at 0.8.6).
@@ -7817,8 +7817,8 @@ cannot use it. One design answers both: an offline run reads the local reference
 with the three stages a lane owes, which is RM385's open question 2; a passed URI alone would already serve
 us. Not urgent: our upgrade runs either way, slower.
 
-**Status — the online case is answered by [RM404](ROADMAP_0_9.md#rm404--enrich-builds-its-own-ncbi-client-and-sequence-proxy-so-a-host-cannot-pace-them-with-the-rest) in 0.9, the offline case and the lane by
-[RM385](ROADMAP_0_9.md#rm385--offline-enrich-cannot-left-align-an-indel-because---offline-turns-off-the-reference-as-well-as-the-network) in 0.10; folded into both, nothing new filed.**
+**Status — the online case is answered by [RM404](ROADMAP_HISTORY.md#rm404--enrich-builds-its-own-ncbi-client-and-sequence-proxy-so-a-host-cannot-pace-them-with-the-rest) in 0.9, the offline case and the lane by
+[RM385](ROADMAP_0_10.md#rm385--offline-enrich-cannot-left-align-an-indel-because---offline-turns-off-the-reference-as-well-as-the-network) in 0.10; folded into both, nothing new filed.**
 Confirmed as you describe: `enrich()` builds `SequenceProxy(offline=offline)` (`enrich/orchestration.py:790`) and hands
 that same proxy to its `VrsMinter` (`:794`), so no caller reaches the URI. RM404, decided for 0.9 by the pm on
 2026-11-16, adds `enrich(..., sequences: SequenceProxy | None = None)` in place of that line, so `verify_ref`, indel

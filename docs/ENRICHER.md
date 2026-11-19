@@ -2228,7 +2228,7 @@ published*, or *could not ask*. The upload's own checks need the built bytes, so
 `<out>/<lane>` by a run without `--publish` has its upload rehearsed against that snapshot. The source's own
 newest release is not asked: the liaison's `docs/UPSTREAM_DATA_SOURCES.md` keeps it by hand, and the per-lane
 probe that would ask it is parked in
-[RM412](ROADMAP_0_9.md#rm412--a-dry-run-cannot-rehearse-the-download-and-the-08-lines-private-names-wait-for-their-public-ones).
+[RM412](ROADMAP_HISTORY.md#rm412--a-dry-run-cannot-rehearse-the-download-and-the-08-lines-private-names-wait-for-their-public-ones).
 
 **`--dry-run --publish --rehearse-download` takes the bytes and sends none** (0.9, RM412): the opt-in inverse,
 and the old dry run's behaviour asked for by name. Each lane first prints the line the dry run would

@@ -261,7 +261,7 @@ nav:
       - Changelog: CHANGELOG.md
       - Shipped items, with their rationale: ROADMAP_HISTORY.md
       - Open items: ROADMAP.md
-      - Deferred to 0.9: ROADMAP_0_9.md
+      - Deferred to 0.10: ROADMAP_0_10.md
       - Deferred to 1.0: ROADMAP_1_0.md
       - Index of every item: RM_TOC.md
       - Items 1–99: RM_TOC_000_099.md
