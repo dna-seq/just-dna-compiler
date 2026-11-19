@@ -1067,7 +1067,7 @@ flag or warning code; RM422 is one more arm of the existing `derived_row_orphan`
 - **Unchanged while the bytes stand still:** the default stays `True`, and a check a run did not put keeps its
   earlier record (RM45), as does an answer a fresh skip would otherwise replace (RM72). The closure was already
   dropped on moved bytes (RM73). No public name moves. A corrected derivation of a public function's output, so
-  declared rather than silent: see [INTEGRATION_0_8 § 4](INTEGRATION_0_8.md#4-known-issues) for documents
+  declared rather than silent: see [INTEGRATION_0_8 § 4](history/INTEGRATION_0_8.md#4-known-issues) for documents
   written by 0.8.2 or earlier.
 
 ## 2026-11-09 — RM422: a `resolution.csv` row for a variant the module no longer names is reported (patch, cut as `v0.8.3`)
@@ -1319,7 +1319,7 @@ and `just-dna-enricher` each changed since `v0.7.3` and each takes `0.8.0` (PyPI
 format 0.7.1, compiler 0.7.2, enricher 0.7.3). Every intra-workspace floor is `>=0.8.0`; `polars>=1.42.0`
 stays, because just-dna-lite stays on polars 1.x. Publishing is the maintainer's, and the tag `v0.8.0`
 follows the publish. Every entry below headed *(0.8, uncut)* ships in it. The surface delta and the
-per-consumer lists are [INTEGRATION_0_8.md](INTEGRATION_0_8.md).
+per-consumer lists are [INTEGRATION_0_8.md](history/INTEGRATION_0_8.md).
 
 - **Consumer pre-integration was SKIPPED**, by the maintainer's call: an intentional, expedited shipment
   (RELEASE_CYCLE.md § Minors step 6 lets only the maintainer skip it). The consumers integrate against the
@@ -1345,7 +1345,7 @@ per-consumer lists are [INTEGRATION_0_8.md](INTEGRATION_0_8.md).
   the record's `evidence`, not declared, since no reach grammar confines a declaration to the examples.
   `sweep --toolchain-before … --release 0.8.0`: *release record for 0.8.0 covers the measurement*. RM342's
   tests pass under polars 1.44.2 and 2.1.0, and a manifest polars 1.44.2 wrote reads under both.
-- **Known issues** ([INTEGRATION_0_8 § 4](INTEGRATION_0_8.md#4-known-issues)): RM385 (offline enrich
+- **Known issues** ([INTEGRATION_0_8 § 4](history/INTEGRATION_0_8.md#4-known-issues)): RM385 (offline enrich
   cannot left-align an indel, for 0.9), RM376 (an offline and an online fill of one snapshot can differ),
   RM388 (placement readers that bypass `usable_loci`, parked), RM390 (the enricher does not say what
   compile will refuse, parked) and RM386 (publish pinning with no live run yet).
@@ -1449,7 +1449,7 @@ line was uncut.
 **Cut as 0.8.0 on 2026-11-05**, with the rest of the `0.8` branch; the entry below was written while the
 line was uncut.
 
-- **[INTEGRATION_0_8 § 4](INTEGRATION_0_8.md#4-known-issues)** lists what 0.8 ships with unfixed, each
+- **[INTEGRATION_0_8 § 4](history/INTEGRATION_0_8.md#4-known-issues)** lists what 0.8 ships with unfixed, each
   line with its item: RM385 (offline enrich cannot left-align an indel, for 0.9), RM376 (an offline and an
   online fill differ), RM388 and RM390 (parked, each with its return condition), and RM386's first live
   run being the next real snapshot publish. The status section says the release candidate holds every
@@ -1515,7 +1515,7 @@ line was uncut.
   function that calls an `httpx` transport, drives each function with a 410, a 503 and a refused
   connection, and asserts the 410's *type*. A second walk checks each `stream_to_file` call's
   `retired=` against its `error_cls`. Record:
-  [ROADMAP_HISTORY § RM361](ROADMAP_HISTORY.md), [INTEGRATION_0_8 § 1.26](INTEGRATION_0_8.md).
+  [ROADMAP_HISTORY § RM361](ROADMAP_HISTORY.md), [INTEGRATION_0_8 § 1.26](history/INTEGRATION_0_8.md).
 
 ## 2026-11-05 — RM386: a publish refuses a concurrent writer, and a snapshot's description describes the bytes that were sent (0.8, uncut)
 
@@ -1647,7 +1647,7 @@ line was uncut.
 **Cut as 0.8.0 on 2026-11-05**, with the rest of the `0.8` branch; the entry below was written while the
 line was uncut.
 
-- **[INTEGRATION_0_8.md](INTEGRATION_0_8.md) now covers every § 1 item from § 2 and § 3**: an upgrade order
+- **[INTEGRATION_0_8.md](history/INTEGRATION_0_8.md) now covers every § 1 item from § 2 and § 3**: an upgrade order
   (format, compiler, enricher pins; `uv lock`; the `ensembl_variations` cache moving to the split release;
   recompile; `enrich --rederive` after the snapshot switch), § 2 steps 12–21 for RM267 through RM379, and
   per-consumer lists for just-dna-registry (checked against its M1–M11 map), just-dna-lite,
@@ -1857,7 +1857,7 @@ line was uncut.
   name the release it records (or `release not recorded`) and give `--rederive` as the remedy. The probe's
   `rs646776` `A/C` refusal blamed only the author or ClinVar.
 - See [COMPILER § One rsID, one placement set](COMPILER.md#one-rsid-one-placement-set-rm374-08) and
-  [INTEGRATION_0_8 § 1.30](INTEGRATION_0_8.md#130-one-rsid-one-placement-set-in-resolutioncsv-rm374-one-new-code).
+  [INTEGRATION_0_8 § 1.30](history/INTEGRATION_0_8.md#130-one-rsid-one-placement-set-in-resolutioncsv-rm374-one-new-code).
 
 ## 2026-11-04 — RM376: why one rsID fills three ALTs offline and one online on the same snapshot (0.8, uncut)
 
@@ -2164,7 +2164,7 @@ line was uncut.
   `compiler/check_paths.py` rosters the checks one path asks; `test_check_paths.py` holds the roster, the
   refusal placement and the flag forwarding as equalities over the code, and `test_one_verdict.py` holds
   verdicts and codes over the reference examples and a bad fixture per instance. No new warning code. Consumer
-  note in [INTEGRATION_0_8.md](INTEGRATION_0_8.md) § 1.23; the instance list is in
+  note in [INTEGRATION_0_8.md](history/INTEGRATION_0_8.md) § 1.23; the instance list is in
   [ROADMAP_HISTORY.md](ROADMAP_HISTORY.md) under RM367.
 
 ## 2026-11-04 — RM363: a gene, drug, DOI, PMID and contig compare by one rule in every tier (0.8, uncut)
@@ -2195,7 +2195,7 @@ field folds; an AST walk over the compiler and the enricher asserting no site co
 hand-typed `.lower()`/`.casefold()` on one, and `DOI_PATTERN` outside the module owning the DOI rule.
 Gene and drug cells stay as written. The duplicate-row refusal folds only on a table new in 0.8 (`meta.csv`,
 `model_organisms.csv`), where no published module holds a row it would refuse. Consumer view:
-[INTEGRATION_0_8 § 1.22](INTEGRATION_0_8.md).
+[INTEGRATION_0_8 § 1.22](history/INTEGRATION_0_8.md).
 
 ## 2026-11-04 — RM366: a column that means nothing without its companion is refused half-stated (0.8, uncut)
 
@@ -2402,7 +2402,7 @@ line was uncut.
   loses a warning.
 - The message keeps its pinned prefix and its tail now names the new arm: ` — nor among haplotypes.csv's
   defining variants, pharm_variants.csv's rows or the rows a meta.csv member reaches.`
-  ([INTEGRATION_0_8 § 1.15](INTEGRATION_0_8.md#115-which-study-rows-study_variant_orphan-reports-rm28-no-new-code)).
+  ([INTEGRATION_0_8 § 1.15](history/INTEGRATION_0_8.md#115-which-study-rows-study_variant_orphan-reports-rm28-no-new-code)).
 
 ## 2026-11-04 — RM359: under `--strict` an escalated finding is an error only, and the docs state no registry totals (0.8, uncut)
 
@@ -2416,7 +2416,7 @@ line was uncut.
   that refused, and a resolution ladder publishes its longer refusal instead of its warning
   (`ResolutionOutcome.channels(strict=)`). `best_effort` output is unchanged. No new warning code.
   Asserted over every ladder code by `compiler/tests/test_one_channel_under_strict.py`; consumer note in
-  [INTEGRATION_0_8.md](INTEGRATION_0_8.md) § 1.17.
+  [INTEGRATION_0_8.md](history/INTEGRATION_0_8.md) § 1.17.
 - **No counts in prose beside a generated roster.** SCHEMAS.md said `authoring_reference()["vocabularies"]`
   had "21 entries today" (47 now). That number and the other registry totals the maintained references
   stated with nothing re-deriving them are gone; the paragraph states the rule that generates the list.
@@ -2765,7 +2765,7 @@ licence table: a ClinVar-drafted, unedited `clin_sig` column now reads `clinvar`
 licence row naming the witness with no digest withholds the side. `rsid_coordinate_agreement` publishes
 the indel pairs its RM31 tolerance abstains on as `undecided` (`@tautology-zero`). **An old-reader
 break:** a 0.7 reader refuses a 0.8-written record (`extra="forbid"`, 0.7's `producer` shape again) —
-[INTEGRATION_0_8 § 1.13](INTEGRATION_0_8.md). No published `verification.signature` moved.
+[INTEGRATION_0_8 § 1.13](history/INTEGRATION_0_8.md). No published `verification.signature` moved.
 
 ## 2026-11-04 — RM335: model-organism evidence has a table of its own, `model_organisms.csv` (0.8, uncut)
 
@@ -2859,7 +2859,7 @@ and digests (`before_toolchain` / `after_toolchain`, `before_digests` / `after_d
 compiled by one compiler under polars 1.44.2 and 2.1.0 move `parquet_bytes` on 16 of 16 and
 `content_signature` on none. The Constitution's Goals sentence on integrity now names the recorded
 toolchain beside the pinned compiler version. A 0.7 `just-dna-format` refuses a serialized record
-carrying `kind: toolchain`; see [INTEGRATION_0_8.md](INTEGRATION_0_8.md) § 1.11.
+carrying `kind: toolchain`; see [INTEGRATION_0_8.md](history/INTEGRATION_0_8.md) § 1.11.
 
 ## 2026-11-04 — RM347: the HuggingFace publisher uploads the logs a module's manifest names (patch, on `main`)
 
@@ -2912,7 +2912,7 @@ member and writes `meta.parquet` (the authored rows, verbatim selectors, their m
 precedence and the columns withheld where two incomparable rows disagree). New manifest field
 `meta_selectors` (each member's match count); new warning codes `meta_selector_matches_nothing` and
 `meta_member_allele_ambiguous`. `meta.csv` alone is not a module. The enricher's rsID currency pass asks
-dbSNP about every rsID a member names. See [INTEGRATION_0_8.md](INTEGRATION_0_8.md) and
+dbSNP about every rsID a member names. See [INTEGRATION_0_8.md](history/INTEGRATION_0_8.md) and
 [COMPILER.md § The meta-table](COMPILER.md#the-meta-table-08--expansion-precedence-and-the-two-parquets).
 
 ## 2026-11-04 — RM303: the snapshot layout and `release.json`'s model move into `just-dna-format` (0.8, uncut)
@@ -2931,7 +2931,7 @@ one spelling: `license` (CIViC wrote `licence`), `row_count` for a total and `ro
 map (three builders wrote `rows` for one or the other); the old spellings of published snapshots are read
 and never written. ClinVar's builder now writes `dataset`, and a ClinVar snapshot built before reads its
 label from `clinvar_file_date` through the same formula, so `CacheLane.release_label`'s ClinVar override
-is gone and `cache status` prints the same labels. See [INTEGRATION_0_8 § 1.9](INTEGRATION_0_8.md).
+is gone and `cache status` prints the same labels. See [INTEGRATION_0_8 § 1.9](history/INTEGRATION_0_8.md).
 
 ## 2026-11-04 — RM253: the CPIC drafter defines UGT1A1 `*28`, spells CPIC's DEL/INS/repeat notation, and drafts HGVS-named genes (0.8, uncut)
 
@@ -2999,7 +2999,7 @@ cannot match (it reads text by PubMed id), is counted and reported as `unsupport
 quote, and a module citing only by DOI gets an `unsupported` existence record instead of a refusal.
 Every published module (the prod registry, 24 modules, all 47 versions, and `reference_examples/`) was
 scanned first: no `pmid` cell holds a DOI. A 0.7 reader refuses `NONE` and the new columns
-([INTEGRATION_0_8 § 1.5](INTEGRATION_0_8.md)).
+([INTEGRATION_0_8 § 1.5](history/INTEGRATION_0_8.md)).
 
 ## 2026-11-04 — RM304: a `vrs_id` says which VRS minted it, and the module pins one (0.8, uncut)
 
@@ -3040,7 +3040,7 @@ for equal content. Where a fresh compile meets a recorded digest, that case now 
 `TOOLCHAIN DIFFERS`, and the release sweep reports `bytes_reason: "toolchain_differs"` per module. If either
 manifest records no toolchain, or both record the same one, the old outcome stands. Principle 4 is amended:
 reproducibility is pinned via `compiler_version`, the recorded toolchain and the resolved reference.
-`verify_manifest` is unchanged. See [INTEGRATION_0_8.md](INTEGRATION_0_8.md).
+`verify_manifest` is unchanged. See [INTEGRATION_0_8.md](history/INTEGRATION_0_8.md).
 
 ## 2026-11-04 — RM337: a coded warning names each file under `logs/` that does not ship (0.8, uncut)
 
@@ -3048,7 +3048,7 @@ reproducibility is pinned via `compiler_version`, the recorded toolchain and the
 line was uncut.
 
 **format** — `VALID_WARNING_CODES` gains `log_file_not_shipped` (actionable). An older reader refuses a
-manifest that carries it ([INTEGRATION_0_8 § 1](INTEGRATION_0_8.md)).
+manifest that carries it ([INTEGRATION_0_8 § 1](history/INTEGRATION_0_8.md)).
 
 **compiler** — Every path under `logs/` that discovery leaves behind now draws one warning, in both
 modes and never a refusal: `<path> does not ship with the module: <reason>.` The reason is one of the fixed sentences

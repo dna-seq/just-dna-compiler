@@ -167,7 +167,7 @@ HLA allele off IPD-IMGT/HLA's grammar on `allele_function.csv`:
 
 `pmid` = `NONE` with the work's DOI in `doi` is the accepted way to cite a work with no PubMed record,
 such as a preprint. `reference_examples/longevity_studies` cites one that way and validates.
-[INTEGRATION_0_8.md](INTEGRATION_0_8.md) § 2 step 13 is the complete list.
+[INTEGRATION_0_8.md](history/INTEGRATION_0_8.md) § 2 step 13 is the complete list.
 
 ## New tables in 0.8
 

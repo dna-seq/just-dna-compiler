@@ -112,7 +112,7 @@ ordinary `enrich` draws only a currency line: its licence row names a ClinVar re
 one ClinVar publishes today.
 
 ```text
-  dataset moved on: clinvar (resolution): drafted from clinvar_2026-06-27, now clinvar_2026-11-01
+  dataset moved on: clinvar (resolution): drafted from clinvar_2026-06-27, now clinvar_2026-11-15
 ```
 
 | Flag | Asks |
@@ -230,6 +230,58 @@ bare `cache rebuild` pass it over, and `cache status` names the command that bui
   ensembl_rsid_index absent   — rsID → (chrom, start) over the Ensembl core, …; built only when named, … ; build it where it is read with `just-dna-enricher cache rebuild --only ensembl_rsid_index --out <base>`
 ```
 
+Name it to build it, beside the core it indexes. The index pins that core (its release and a digest of its
+files), so an index whose core moved under it is **`stale`** (since 0.9): `cache status` says so with the
+reason, `cache prepare` leaves it alone and reports it unavailable, and an rsID lookup refuses it with a
+warning and scans the core. Run on a scratch base whose fixture-sized core was replaced after its index
+was built (paths shortened to `<base>`):
+
+```bash
+just-dna-enricher cache status
+just-dna-enricher cache prepare --only ensembl_rsid_index
+just-dna-enricher cache rebuild --only ensembl_rsid_index --out <base>
+```
+
+```text
+  ensembl_rsid_index stale    <base>/ensembl_rsid_index  ensembl-variation-2026_07_13-vep116.0  0.0 MB — it pins release ensembl-variation-2026_07_13-vep116.0 over other files than the Ensembl core at <base>/ensembl_variations holds; built only when named, …
+  ensembl_rsid_index unavailable stale: it pins release ensembl-variation-2026_07_13-vep116.0 over other files than the Ensembl core at <base>/ensembl_variations holds; …
+0 of 1 cache(s) ready (0 pulled, 0 built, 0 already there). Run `cache status` to confirm.
+  ensembl_rsid_index built    12 rsID loci of ensembl-variation-2026_07_13-vep116.0, 0 MB in 5 s
+rebuilt 1, failed 0, not run 0 of 1 lane(s) into <base>
+```
+
+After the rebuild `cache status` says `present` again. On the real core the build is the 42 minutes above.
+A host that configures its paths itself passes the index's directory as `rsid_index=` to `lookup_variant`,
+`enrich` or `resolver.lookup_loci`, and `caches.lane_status(locations={...})` reports on the paths it
+names rather than on the environment.
+
+### The Ensembl lane's optional column groups
+
+The split Ensembl snapshot keeps every annotation value (consequence, clinical flags, frequencies, CADD and
+more) in `groups/<name>/` beside the core, joined to it on `(chrom, row_idx)`, which holds within one
+release only. Since 0.9 the lane pulls them, attested by the same manifest and re-pulled with the core
+whenever its release moves:
+
+```bash
+just-dna-enricher cache pull --only ensembl --groups consequence,clinical --use non-commercial
+```
+
+Read a group's directory from `locations.ensembl_group_dir(cache, group)`, which refuses a group of
+another release than the core's, never by spelling the path. Each group is licensed by its own licensor:
+`cadd` downloads under a `non-commercial` use, is refused under a commercial one and is skipped under an unstated
+one. The names come from the manifest, and two mistakes are refused before anything runs:
+
+```text
+$ just-dna-enricher cache pull --groups cadd
+│ Invalid value for --groups: --groups selects groups of the ensembl lane, so  │
+│ it is refused beside any other lane; with no --only every lane is selected.  │
+│ Pass --only ensembl.                                                         │
+$ just-dna-enricher cache pull --only ensembl --groups core
+│ Invalid value for --groups: `core` is not a group name: the core (data/) is  │
+│ always pulled, and a group selection names only the optional groups beside   │
+│ it.                                                                          │
+```
+
 A lane has three stages, and where one is absent the status says **why** as a field rather than
 leaving you to guess. A derived lane also names its parents: an absent parent is *could not run*,
 never *an empty result*, and a parent that moved and a parent that is gone are different instructions.
@@ -239,6 +291,50 @@ Snapshot builders (`clinvar`, `cpic`, `clinpgx`, `civic`, `mane`, `strchive`, `m
 operator surface — you build them once and the deployment reads them, rather than every request
 reaching the source. Which of them may be *published* is a licence question answered per source, and
 the command's help says which.
+
+## Read a lane this machine does not hold
+
+Since 0.9 a host with no local snapshot of a lane can read it remotely: from the registry's proxy, then
+from the lane's Hugging Face repository. Nothing does this unless you hold a `RemoteSnapshots`, so every
+existing call reads and fetches what it did before, and `--offline` never reads remotely. Install duckdb's
+`httpfs` once on the box (`python -c "import duckdb; duckdb.connect().install_extension('httpfs')"`),
+because it is loaded with auto-install off.
+
+```python
+from just_dna_enricher.clients import LookupClients
+from just_dna_enricher.lookup import lookup_variant
+from just_dna_enricher.remote import RemoteSnapshots
+
+with RemoteSnapshots(proxy_url="https://module-polygon.just-dna.life") as holder:
+    answer = holder.lookup("clinvar", "clinvar", {"rsid": ["rs429358"]})
+    print(len(answer.rows), answer.route)
+    hint = lookup_variant(rsid="rs429358", clients=LookupClients(snapshots=holder))
+print(hint.routes["clinvar"])
+print([(l["chrom"], l["start"], l["ref"], l["alts"]) for l in hint.loci])
+```
+
+Run against the registry's test server on a box with no ClinVar or Ensembl cache:
+
+```text
+1 RemoteRoute(route='proxy', release=None, served_from='local', revision=None)
+RemoteRoute(route='proxy', release=None, served_from='local', revision=None)
+[('19', 44908684, 'T', 'C')]
+```
+
+Every answer says where it came from. The proxy is `proxy_url=`, else `$JUST_DNA_SNAPSHOT_PROXY_URL`, and
+unset by default; a proxy answer's `release` is what its reply states, here nothing. With no proxy, or
+when it paces you, Hugging Face answers at a pinned commit with the release it read, and in seconds
+rather than tenths:
+
+```text
+1 RemoteRoute(route='hf', release='clinvar_2026-11-15', served_from=None, revision='50db2b896a42744f6d5a19c604eaf807a2dd2d31')
+```
+
+Ensembl is asked remotely by position only, so an rsID alone is placed by ClinVar, asked next. A route
+that could not be asked is a finding, never an empty answer (`SnapshotRouteUnavailable`); a wrong
+request, or a lookup on a holder already closed, raises. Close a holder you share only after its last
+lookup. [INTEGRATION_0_9.md § 1.2](INTEGRATION_0_9.md#12-remote-reads-just_dna_enricherremote-rm430-no-break-off-unless-a-caller-holds-one)
+has the rest.
 
 ## 4. Open Targets: genes, colocalisations and consequences
 
@@ -303,7 +399,7 @@ Since 0.8 every such refusal is an `upload.PublishRefused`, so a caller in Pytho
 type: a plan the module cannot satisfy (`ModuleNotPublishable`), a repo that moved since the plan read
 it (`RemoteMovedError`), a file that changed since it was hashed (`PlanChangedError`), and a
 versioned path already holding something else (`PublishCollisionError`).
-[INTEGRATION_0_8.md](INTEGRATION_0_8.md) § 1.27 and § 1.40 have the whole family.
+[INTEGRATION_0_8.md](history/INTEGRATION_0_8.md) § 1.27 and § 1.40 have the whole family.
 
 ## Look something up without writing anything
 

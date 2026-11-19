@@ -2,7 +2,7 @@
 
 **Status: concluded 2026-11-05, at the 0.8.0 cut.** Every item it planned landed on the `0.8` branch; each
 record is in [ROADMAP_HISTORY](../ROADMAP_HISTORY.md) with its **Residuals**, and what 0.8 shipped unfixed is in
-[INTEGRATION_0_8 § 4](../INTEGRATION_0_8.md#4-known-issues). It no longer overrides the roadmap files.
+[INTEGRATION_0_8 § 4](../history/INTEGRATION_0_8.md#4-known-issues). It no longer overrides the roadmap files.
 
 Written by the lead on 2026-11-04 from the pm's handout ("0.8 scope agreed: yours to plan and
 build") and its two addenda (the tag selector, then `column=value` selectors). This is RELEASE_CYCLE § Minors

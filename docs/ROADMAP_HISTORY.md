@@ -7245,7 +7245,7 @@ a re-curation never meets this check: ClinGen's `assertion_id` embeds the curati
 re-curation has a new primary key, and the grain fallback includes `dataset`. The currency checks keep
 that case.
 
-**The old-reader break** is recorded in the new [INTEGRATION_0_8.md](INTEGRATION_0_8.md) § 1, which
+**The old-reader break** is recorded in the new [INTEGRATION_0_8.md](history/INTEGRATION_0_8.md) § 1, which
 this item opened, and refusal at 1.0 is a line in ROADMAP § The 1.0 cleanup.
 
 **2026-11-05, RM374:** the cross-key form of this gap. One variant's facts under two keys (`variant_key` vs

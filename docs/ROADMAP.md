@@ -47,7 +47,7 @@ to [CHANGELOG.md](CHANGELOG.md) / [COMPILER.md](COMPILER.md).
 
 **Status:** **0.8.0 is cut, tagged and published** — all three packages at `0.8.0`, on 2026-11-05. The
 tag is `v0.8.0` at `e97339a3`, and PyPI has the three releases as of 19:56 UTC that day; what a
-consumer checks and changes is [INTEGRATION_0_8.md](INTEGRATION_0_8.md), and the cut's own entry is in
+consumer checks and changes is [INTEGRATION_0_8.md](history/INTEGRATION_0_8.md), and the cut's own entry is in
 [CHANGELOG.md](CHANGELOG.md). The previous cut was **`v0.7.3`** (2026-09-27: format 0.7.1, compiler
 0.7.2, enricher 0.7.3), the last of the 0.7 patches after `v0.7.1` (2026-09-21) and `v0.7.2`
 (2026-09-25).

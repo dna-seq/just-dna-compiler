@@ -29,7 +29,7 @@ added a public name, which a patch should not: 0.8.4's `GwasCatalogClient.size_r
 `Withholding.retired_met`, `net.retired_mark` and the optional `since=` on `net.withheld_reason` (RM446), and
 0.8.10's `CacheLane.payload_filename` and `net.check_batch_size` (RM455), all additive. No patch adds a field, table,
 flag or warning code (the RM449 and RM453 sentences borrow two existing codes until 0.9), so this file's surface delta is still the whole 0.7 → 0.8 boundary; what each patch changed, and what
-to do after upgrading to it, is its entry in the [CHANGELOG](CHANGELOG.md), and § 4 says which known issues each
+to do after upgrading to it, is its entry in the [CHANGELOG](../CHANGELOG.md), and § 4 says which known issues each
 one fixed.
 
 **Pin the release, not the branch, and floor on the latest patch:**
@@ -97,7 +97,7 @@ re-derivation's report by arm, carry reason and per-source remedy (§ 1.43); the
 Nothing else landed before the cut. Round 3's other eleven findings are parked in ROADMAP.md, and § 4
 lists what 0.8 ships with unfixed.
 
-[RM_TOC.md](RM_TOC.md) is the per-item record; a status sentence here goes stale when work lands, so
+[RM_TOC.md](../RM_TOC.md) is the per-item record; a status sentence here goes stale when work lands, so
 check it there.
 
 **Consumer pre-integration was skipped for 0.8, by the maintainer's call (2026-11-05): an intentional,
@@ -106,7 +106,7 @@ expedited shipment.** RELEASE_CYCLE.md
 only the maintainer skip it. The maintainer chose an expedited shipment ("I'm asking downstream to build
 because we're behind schedule on this"), so the consumers integrate after the fact, from this file,
 against the published 0.8.0. A defect a consumer finds is filed as an `Sn` in
-[CONSUMER_SUGGESTIONS.md](CONSUMER_SUGGESTIONS.md) like any other, and the release cycle sizes its fix
+[CONSUMER_SUGGESTIONS.md](../CONSUMER_SUGGESTIONS.md) like any other, and the release cycle sizes its fix
 (a patch on `main`, or the next minor).
 
 ---
@@ -117,7 +117,7 @@ against the published 0.8.0. A defect a consumer finds is filed as an `Sn` in
 is a closed vocabulary. A reader pinned to an older `just-dna-format` therefore **refuses** a manifest
 that carries a code added after its pin: `read_manifest` raises rather than ignoring the key. This is
 the same shape as 0.7's `verification.checks[].producer` break
-([INTEGRATION_0_7 § 1](history/INTEGRATION_0_7.md)), and the remedy is the same: **a consumer reading manifests
+([INTEGRATION_0_7 § 1](INTEGRATION_0_7.md)), and the remedy is the same: **a consumer reading manifests
 compiled by 0.8 upgrades `just-dna-format` to 0.8 with them.** Only a manifest whose module actually
 triggers one of these findings carries the code, so most 0.8 manifests still parse under 0.7; do not
 rely on that.
@@ -383,7 +383,7 @@ fields, all `null` on a record written before 0.8:
 **This breaks a 0.7 reader, unconditionally.** `VerificationRecord` forbids unknown keys, so a reader
 pinned to 0.7 refuses every 0.8-written `verification.json`, and every manifest whose `verification`
 block a 0.8 enricher wrote — unlike § 1's codes, which appear only when a module triggers them. It is
-0.7's `producer` break again ([INTEGRATION_0_7 § 1](history/INTEGRATION_0_7.md)), with the same remedy:
+0.7's `producer` break again ([INTEGRATION_0_7 § 1](INTEGRATION_0_7.md)), with the same remedy:
 upgrade `just-dna-format` to 0.8 before reading 0.8-attested modules. A 0.8 reader parses every older
 record and leaves the four fields `null`.
 
@@ -1249,7 +1249,7 @@ and its module seat authors and compiles with the just-module-creator plugin v0.
 
 ## 4. Known issues
 
-What 0.8 ships with, known and not fixed. Each line names its item; [RM_TOC.md](RM_TOC.md) has its state.
+What 0.8 ships with, known and not fixed. Each line names its item; [RM_TOC.md](../RM_TOC.md) has its state.
 
 - **Offline enrich cannot left-align an indel (RM385, for 0.9).** `--offline` turns off the reference as
   well as the network, so an offline run trims an indel's pieces but cannot prove them leftmost, and

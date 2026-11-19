@@ -3,7 +3,7 @@
 **Closed on 2026-11-05, when 0.8.0 was cut.** This was `docs/ROADMAP_0_8.md`: 0.8's scope from 2026-11-03,
 and before that the minor-deferral file. It is kept here for the record of what 0.8 took in and why.
 Every item it scoped shipped, and each record is in [ROADMAP_HISTORY.md](../ROADMAP_HISTORY.md); the
-known issues 0.8 shipped with are in [INTEGRATION_0_8.md § 4](../INTEGRATION_0_8.md#4-known-issues).
+known issues 0.8 shipped with are in [INTEGRATION_0_8.md § 4](INTEGRATION_0_8.md#4-known-issues).
 
 **Where its contents went.** The one item still waiting, RM28's predicate half, moved to
 [ROADMAP_0_9.md](../ROADMAP_0_9.md) unchanged but for the file it sits in; the decisions its combination

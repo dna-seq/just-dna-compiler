@@ -36,10 +36,9 @@ cut against compiler 0.8.10 on the 22 reference modules, records every axis unmo
 answers that a 0.8.10 artifact needs no recompile for 0.9's sake. Its evidence also quotes the measurement of `enrich`
 (§ 1.11).
 
-**Consumer pre-integration (RELEASE_CYCLE § Minors step 6) is not on record for 0.9.** No consumer is recorded as
-having tried the `0.9` branch before the cut; the registry read its surfaces (S145, S150, S154, S157 and its S36
-decision about `KEY_COMPARES`) but ran no recorded integration. Skipping the step is the maintainer's call, and it is
-put to them with this cut. A defect a consumer finds is filed as an `Sn` in
+**Consumer pre-integration (RELEASE_CYCLE § Minors step 6) runs on this cut.** The consumers try the cut branch
+before `0.9` merges into `main`, and the merge waits for their trial. The order of publishing is fixed as well:
+0.8.10 is published and tagged before 0.9.0. A defect a consumer finds is filed as an `Sn` in
 [CONSUMER_SUGGESTIONS.md](CONSUMER_SUGGESTIONS.md), and the release cycle sizes its fix.
 
 [RM_TOC.md](RM_TOC.md) is the per-item record, and the [CHANGELOG](CHANGELOG.md)'s 0.9 heading carries every change
@@ -208,7 +207,7 @@ INTEGRATION_0_8 § 3 told just-dna-pipelines to keep its own source for conseque
   before any download, and so is `--groups` beside any lane other than `ensembl`
   (`cache_commands.GROUPS_NEED_ENSEMBL_ONLY`).
 - **Licensed per group** by its licensor (`licensing.snapshot_group_terms`; `ENSEMBL_TERMS`, the new `CADD_TERMS`):
-  `--groups cadd` downloads under a research use, is refused under a commercial one (`REFUSED`, exit 1) and is skipped
+  `--groups cadd` downloads under a `non-commercial` use, is refused under a commercial one (`REFUSED`, exit 1) and is skipped
   under an unstated one; an unknown licensor is skipped quoting its licence. A group already current is not gated
   again (it fetches nothing).
 - **Sticky:** every later `ensure_snapshot` (so `cache prepare`, a plain `cache pull` and `enrich(download=True)` too)
@@ -300,7 +299,7 @@ enricher's log for one quotes the fragment listed there.
    (§ 1.11).
 4. **Optional, per box:** install duckdb's `httpfs` before any remote read (§ 1.2); build the rsID index where
    rsID lookups are hot, `just-dna-enricher cache rebuild --only ensembl_rsid_index` (about 42 minutes and 6 GB, § 1.5);
-   pull the Ensembl groups a reader needs, `just-dna-enricher cache pull --only ensembl --groups NAME --use research`
+   pull the Ensembl groups a reader needs, `just-dna-enricher cache pull --only ensembl --groups NAME --use non-commercial`
    (§ 1.7).
 
 ### Changes, by surface
@@ -412,4 +411,4 @@ What 0.9 ships with, known and not fixed. Each line names its item; [RM_TOC.md](
   rsID and a contig exactly, so a direct caller's `RS334` or `chr11` misses. A module never sends those spellings.
 - **Carried from 0.8, unchanged:** offline enrich cannot left-align an indel (RM385, now in 0.10's scope); placement
   readers that bypass `usable_loci` (RM388, parked); the enricher does not say what compile will refuse (RM390,
-  parked). [INTEGRATION_0_8 § 4](INTEGRATION_0_8.md#4-known-issues) has the full text of each.
+  parked). [INTEGRATION_0_8 § 4](history/INTEGRATION_0_8.md#4-known-issues) has the full text of each.

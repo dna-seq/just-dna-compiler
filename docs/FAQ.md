@@ -138,7 +138,7 @@ link whose every locus your genotype cannot sit on is a miss, so the next link i
 it you get its row, and if none can you get no row, an unresolved key and an `allele_mismatches` entry
 naming every link's loci. Check the genotype's alleles and strand. →
 [ENRICHER.md § Resolution is allele-aware in both directions](ENRICHER.md#resolution-is-allele-aware-in-both-directions),
-[INTEGRATION_0_8 § 1.36](INTEGRATION_0_8.md#136-a-rejected-resolution-answer-asks-the-next-link-and-is-never-a-not_found-row-rm382-no-new-code).
+[INTEGRATION_0_8 § 1.36](history/INTEGRATION_0_8.md#136-a-rejected-resolution-answer-asks-the-next-link-and-is-never-a-not_found-row-rm382-no-new-code).
 
 **Can `resolution.csv` be published as a parquet like the other tables?**
 No, and this is the first repair everyone proposes. It is a build-time lookup, not a published fact
