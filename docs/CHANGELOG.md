@@ -41,6 +41,13 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md). The `0.8` branch merged into `main` at the 0.8.0 cut (2026-11-05).
 
+## 2026-11-19 — RM456: `compile_module` no longer raises on Python 3.13 over a `logs/` directory it may list but not search (patch, compiler only, on `main`)
+
+Under a `logs/` subdirectory that may be listed but not searched (mode `0o444`), Python 3.13's `pathlib` raises
+`PermissionError` where 3.14 answers `False`, and `discover_logs` let it escape `compile_module`. That directory is
+named unreadable as RM348 promised, on both versions now, and the names under it are skipped; a name that cannot be
+stat'ed for any other reason is named itself. CI on `main` (py3.13, Linux) had been red on this since 2026-11-05.
+
 ## 2026-11-18 — RM455: the pre-0.9 instances of four classes 0.9 fixed in its own code (patch, enricher only, on `main`)
 
 0.9's review round 1 fixed four error classes in its own code; these are the older instances on `main`, each

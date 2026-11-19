@@ -2502,6 +2502,27 @@ the next sync, never on 0.9 (the trial rule: a defect older than the release is 
 here). Built with the rest: a fourth unreadable-record reader, `locations.snapshot_record_missing`, took the same
 fix; `acmg` took `payload_filename` beside `strchive`, since its resolver also finds a named root file.
 
+## RM456 — `discover_logs` raises `PermissionError` on Python 3.13 for a name under a `logs/` directory it may list but not search
+
+**Severity** medium · **Status** open — **a patch, built on `main` 2026-11-19 (ff7923ec), uncut, for 0.8.10** ·
+**Owner** compiler (`compiler/manifest.discover_logs`) · **Motivating case** CI on `main`, red since 2026-11-05 on
+`test_rm348_an_unreadable_file_stays_behind_instead_of_raising` (py3.13, Linux runners; seventy failed runs, each an
+email to the person), reported by the lead 2026-11-19 · *related* RM348
+
+**What was seen.** RM348's walk lists `logs/` with `rglob` and asks each name `is_symlink()`, `is_file()`,
+`is_dir()`. Under a directory that may be listed but not searched (mode `0o444`) the names come back and none can
+be stat'ed. Python 3.14's `pathlib` answers `False` to all three, so the name is skipped and the directory is named
+unreadable, as RM348 promises. Python 3.13's `pathlib` raises `PermissionError` from `lstat`, which escaped
+`compile_module` (through `validate._validate_spec`). Local suites never saw it: this checkout is on NTFS, which
+ignores modes, so the test skips, and the local interpreter is 3.14.
+
+**The fix.** An `OSError` from the probe is caught. When a directory above the name, under `logs/`, cannot be listed
+and searched (`_listable`), the name is skipped, since that directory is already named in its place; otherwise the
+name itself is named unreadable. Shown red under Python 3.13 locally on a tmpfs path and green on 3.13 and 3.14;
+the existing test is the regression test. Nothing a module resolves moves.
+
+**Residuals** none.
+
 # Not format scope
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.
