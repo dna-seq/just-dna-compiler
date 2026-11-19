@@ -2422,6 +2422,58 @@ named the alternative of sorting on every column, priced by them as too slow on 
 
 **Residuals** none yet.
 
+## RM467 — a re-derive cannot be scoped to the rows a reason reaches, and the verify passes re-read every carried row
+
+**Severity** medium · **Status** open — **a minor, release undecided** · **Owner** enricher
+(`enrich/orchestration.enrich`, `sequences.verify_reference_alleles`) · **Motivating case** S160 in
+CONSUMER_SUGGESTIONS_HISTORY.md (just-dna-registry, 2026-11-19) · *related* RM441, RM399, RM468
+
+**What was seen.** The registry re-derives a published module's `resolution.csv` online when a declared correction
+reaches it or its rows name no `source_release`. On its cardio module that re-asks ~75,000 rows to move about 30:
+12.5 h with `verify_ref` off, ~37 h on. Two things in the code make the cost whole-table:
+
+- `--rederive` re-asks every subject; an ordinary run gap-fills and never re-asks. Dropping the rows a reason reaches
+  and letting a gap-filling run fill them works today, but only the caller can choose the rows, and the record gives
+  no per-row reach (RM441 keeps `requires` at `None` for a derivation correction).
+- The verify passes read the whole merged table: carried rows join `out` before `verify_reference_alleles(out, …)`
+  (`enrich/orchestration.py`), so a gap-filling run pays the reference check over every row it kept. That is where
+  most of the 37 h goes.
+
+**What it would be.** Either half can land alone. (1) A run re-asks only the subjects a stated reason selects (a
+declared correction's reach, a stale `source_release`, an explicit list) and carries the rest byte for byte, with a
+report of which subjects were re-asked and which changed: `SubjectDrift` (`result.rederived`) already reports the changes. (2) The
+verify passes read only the rows this run wrote, unless asked for all. The reach of a correction per row is RM441's
+question, so (1)'s "reason" input waits for RM441's record or takes an explicit subject list first.
+
+**Against, for the pm.** Skipping verify on a carried row trades a re-check for trust in the run that wrote it. A
+row's `ref` cannot change under a fixed build, but a strict refusal raised by an earlier run's mismatch would no
+longer be re-raised by this one. So it is a new option, never a changed default: a minor, by the flag rule.
+
+**Residuals** none yet.
+
+## RM468 — the live clients keep no answers between runs, so a re-run under unchanged source releases spends the same egress again
+
+**Severity** medium · **Status** open — **a minor, release undecided** · **Owner** enricher (the live clients:
+Ensembl REST, E-utilities, ClinVar, the sequence proxy) · **Motivating case** S162 in CONSUMER_SUGGESTIONS_HISTORY.md
+(just-dna-registry, 2026-11-19) · *related* RM467, RM441, RM38
+
+**What was seen.** ENRICHER.md states it as an open question: the live clients are paced only, and persistence is the
+sidecars and the published snapshots. A held module re-run after a fix, a second module sharing rsIDs, or a sweep
+resumed in a new run asks the same questions again. A run killed mid-way does resume from its staged answers
+(`--keep-staging` says so); that covers one table, not a second run or a second module.
+
+**What it would be.** A persistent store of online answers, keyed by the source and the release that answered (the
+Ensembl release, the ClinVar release, the dbSNP build), so a moved release invalidates exactly its own answers; an
+answer whose source states no release is not stored. A location setting like the snapshot lanes' (`JUST_DNA_*_CACHE`),
+and a report saying which answers came from the store.
+
+**Design points.** A stored negative must keep the house's distinctions: answered-absent is storable, could-not-ask
+never is (`@unreachable-not-absent`). A licence-gated source's answers inherit its terms, so the store is per host
+and never published (`@gated-source-caches`). Ensembl REST's release lags the snapshot's (RM447), so the key is the
+release REST states, never the snapshot's. A new setting and a new lane-like location: a minor.
+
+**Residuals** none yet.
+
 # Not format scope
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.

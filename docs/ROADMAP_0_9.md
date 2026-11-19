@@ -894,9 +894,17 @@ it is a new change kind, as `toolchain` was (INTEGRATION_0_8 § 1.11). P9: near 
 
 **In 0.10's scope, the pm (2026-11-16)**: [desk #326](https://github.com/winternewt/desk/issues/326), item 2, applied on its default. 0.10 is a small minor right after 0.9. The status line below predates this.
 
+
+**S161 (just-dna-registry, 2026-11-19), triage:** the same route read from the other side. The registry keeps a
+re-derived `resolution.csv` when a later gate refuses the compile, and must discard it on any enricher version move,
+because nothing says a release changed no derivation: 0.8.9 → 0.8.10 moved none (RM455 is bookkeeping) and the rule
+still costs a 12.5–37 h re-run. The route answers it only if every release's record states its derive answer, a
+measured "nothing to re-derive" included, so a span with no re-derive entry reads as *keep*, and a release with no
+record stays *cannot say*. A per-row reach for a correction, which S161 and S160 both ask for, is ask 2 here and
+RM467.
 **Severity** low · **Status** open — **a minor, 0.9** (built with RM399, one design) · **Owner**
 format (`vocab.VALID_RELEASE_OUTPUT_AXES`, `release_records`) + compiler (`sweep`) · **Motivating case** S153
-(CONSUMER_SUGGESTIONS_HISTORY.md), S156 · *related* RM399, RM438, RM201, RM120
+(CONSUMER_SUGGESTIONS_HISTORY.md), S156, S161 · *related* RM399, RM438, RM201, RM120
 
 **The gap.** `VALID_RELEASE_OUTPUT_AXES` is `parquet_schema`, `parquet_bytes`, `content_signature`,
 `manifest_fields` and `warnings`. Every one is compiled output, and the sweep measures them by compiling the

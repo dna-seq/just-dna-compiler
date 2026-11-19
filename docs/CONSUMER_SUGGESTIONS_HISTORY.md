@@ -198,6 +198,9 @@ One line each; the verdict in full is the `**Status —**` paragraph inside the 
 - **S157** `enrich()` could not be pointed at a local reference, so an online re-derivation spent half its time on remote seqrepo reads — folded into RM404 (online) and RM385 (offline)
 - **S158** a re-derived production module was refused on indel duplicates, and some rsIDs came back with no row — filed as RM448 (a multi-allelic site read as a disagreement) and RM449 (an indel genotype hosted at both spellings)
 - **S159** a consumer restated `pharm_variants`' row key from memory and its output order went random — the key is public as `hints.key_fields`; CONSUMING.md now says so, and a read keyed by the lead parquet is RM457
+- **S160** a patch-level re-derive of one module costs 12.5 to 37 hours for ~30 moved rows — filed as RM467 (a re-derive scoped by a reason, verify over the rows a run wrote); verify does read carried rows today
+- **S161** any enricher version move makes a kept re-derivation stale — taken into RM441 (0.10), which must state a derive answer for every release
+- **S162** a re-run under the same source releases spends the same egress again — filed as RM468 (a store of online answers keyed by the answering release)
 
 **Keep this list one line per item.** It is a contents list, not a second copy of the replies: the
 detail belongs in each section's `**Status —**` paragraph, where it cannot drift out of step with the
@@ -8000,3 +8003,100 @@ RM457 would answer all of that in one call keyed by the parquet's name. Against 
 what you still restate is the stem map and the locus columns, both stable.
 
 <!-- triaged: RM457 filed (minor, low) and CONSUMING.md fixed · sha 70534f24a978 -->
+
+# From just-dna-registry's liaison, on what a patch-level re-derive costs across a catalog, 2026-11-19
+
+## S160 — a patch-level re-derive of one module costs 12.5 to 37 hours, for ~30 rows that move (just-dna-registry)
+
+**What we ran.** `registry upgrade --apply --online` re-derives a published module's `resolution.csv` when its rows
+name no `source_release` (pre-0.8) or when a declared correction reaches it. The enricher is handed the whole table
+and re-asks every subject. On our cardio module that is ~75,000 `resolution.csv` rows re-derived online to move
+about 30: 12.5 h with `verify_ref` off, ~37 h with it on, all of it egress to Ensembl/ClinVar/dbSNP that
+returns what the table already held.
+
+**Why it matters.** The registry carries a catalog of modules, and every correction you declare in an enricher
+patch reaches some of them. Our person, 2026-11-19: "These multi-days patch-enricher reruns of upgraded are not
+viable in the long run ... multiply that by 10 and a patch upgrade becomes a month cpu-time." The table is the
+enricher's, so the unit of re-derivation belongs to you (their words: "The table is all or nothing: upstream").
+
+**What exists.** An ordinary `enrich` run gap-fills and never re-asks (the `--rederive` help says so), so we can
+drop rows ourselves and let you fill the gaps. What we cannot know from outside is which rows a given correction
+or a moved source release reaches, nor whether the verify passes (`verify_ref`, the ClinVar cross-check) then run
+on the carried rows too, which is where most of the 37 h goes.
+
+**What we ask.** A row-level re-derive in the enricher: given a table and a reason (a declared correction, a
+stale `source_release`), re-derive only the rows that reason reaches, carry the rest byte-for-byte, and run the
+verify passes over the re-derived rows only. A report of which rows were re-asked and which changed would let us
+state the cost before a sweep starts. If the reach of a correction cannot be stated per row, saying so is an
+answer too: we then keep the whole-table path and know why.
+
+**Meanwhile.** Our lead is trying the drop-and-gap-fill route on cardio and measuring whether verify skips
+carried rows; we file the result here.
+
+**Status — filed as [RM467](ROADMAP.md#rm467--a-re-derive-cannot-be-scoped-to-the-rows-a-reason-reaches-and-the-verify-passes-re-read-every-carried-row), a minor, release undecided, medium, for the pm to size.**
+
+The answer to your open question, read from `main` (2026-11-19): **verify does not skip carried rows.** In
+`enrich/orchestration.py` the rows a run keeps join the same list the reference check reads
+(`verify_reference_alleles(out, …)`), so a drop-and-gap-fill run re-asks only the rows you dropped but still pays
+`verify_ref` over all ~75,000. Your lead's measurement will show the same.
+
+RM467 has two halves that can land apart: a run that re-asks only the subjects a stated reason or an explicit list
+selects, carries the rest byte for byte and reports what moved (`result.rederived` already reports changes); and the
+verify passes over only the rows this run wrote, as an option, never the default, since a carried row's earlier
+mismatch would then not be re-raised. The per-row reach of a declared correction is RM441's question (S161 below):
+until its record states one, the explicit list is the input you can drive.
+
+<!-- triaged: RM467 filed (minor, medium) · sha e88fac91ca4c -->
+
+## S161 — any enricher version move makes a kept re-derivation stale, even a patch that changes no derivation (just-dna-registry)
+
+**What happens.** The registry keeps a re-derived spec when a later gate refuses it (registry 0.33.1,
+`held.COMPILE_FAILED`), so a newer compiler can compile it without spending the online run again. That spec is
+reusable only under the same enricher release: we have no way to tell an enricher patch that moves a derivation
+from one that does not, so any version move discards it. 0.8.10 is the case at hand: your pm told us (2026-11-19)
+that since 0.8.9 the enricher changed only bookkeeping and validation (RM455) and nothing a module resolves moves,
+yet our rule must treat a 0.8.9-derived table as stale under 0.8.10, and the run it saves is 12.5 to 37 hours.
+
+**What we ask.** An enricher release record, the counterpart of format's `release_records` for compiled output:
+per release, whether it changes what a derivation writes into `resolution.csv` (and the sidecars), with a
+`correction` / `addition` split and, where you can state it, the rows or fields reached (S160 would read the same
+record). Then a consumer keeps a re-derived table across an interval that declares no derivation change, and
+re-derives only on one that does. A release with no record stays *cannot say*, as with `needs_recompile`.
+
+**Status — taken into [RM441](ROADMAP_0_9.md#rm441--a-release-record-has-no-axis-for-a-correction-to-a-derived-table-so-085s-reads-as-nothing-moved-although-rm438-corrected-resolutioncsv), already in 0.10's scope (a minor, built with RM399), as a motivating case.**
+
+RM441 gives the release record one route for "re-derive", with the cause named, beside the compiled-output axes.
+Your ask is that route read from the other side, and it holds only if every release states its derive answer,
+"nothing to re-derive" included, so a span with no re-derive entry reads as *keep*. That condition is now written
+into RM441's entry, with a release with no record staying *cannot say* as you put it. The per-row reach is RM441's
+second ask, and its scoping half is RM467 (S160).
+
+Meanwhile, for 0.8.9 → 0.8.10 specifically: our pm's statement stands, and the 0.8.10 CHANGELOG entries (RM453 for
+the compiler, RM455 and RM456) name no change to what the enricher writes into `resolution.csv` or the sidecars.
+
+<!-- triaged: taken into RM441 (0.10) · sha 1f54bdf35bb3 -->
+
+## S162 — a re-run under the same source releases spends the same egress again (just-dna-registry)
+
+**What happens.** An online re-derive asks Ensembl, ClinVar and dbSNP the same questions every time it runs,
+even when the source releases have not moved since the last run: a held module re-run after a fix, a sweep that
+stopped halfway and resumed, two modules sharing rsIDs. On our cardio module one run is 12.5 h with `verify_ref`
+off and ~37 h on, almost all of it waiting on paced, unauthenticated upstreams that throttle by IP.
+
+**What we ask.** A persistent cache of online answers in the enricher's clients, keyed by the source and the
+release that answered (Ensembl release, ClinVar release, dbSNP build), so a re-run under the same releases spends
+no egress, and a moved release invalidates exactly its own answers. Where a source states no release for an
+answer, not caching it is the right default. A location setting like the snapshot lanes' (so a server puts it on
+the disk it chooses) and a way to say "this answer came from the cache" in the report would be enough for us.
+
+**Status — filed as [RM468](ROADMAP.md#rm468--the-live-clients-keep-no-answers-between-runs-so-a-re-run-under-unchanged-source-releases-spends-the-same-egress-again), a minor, release undecided, medium, for the pm to size.**
+
+Confirmed as a known gap: ENRICHER.md lists "no response cache for the live clients" among its open questions. Two
+things exist today. A run killed mid-way resumes from its staged answers (`enrich --keep-staging` describes it), and a
+provisioned snapshot lane answers locally with no egress. Neither carries answers to a second run or a second module.
+RM468 takes your shape: keyed by the source and the release that answered, an answer from a source stating no release
+not stored, a location setting like the lanes', and a report line per answer from the store. Three constraints are
+written into the entry: could-not-ask is never stored, only answered-absent; a licence-gated source's answers stay
+on the host; and Ensembl REST's release (116) is the key for its answers, never the snapshot's (RM447).
+
+<!-- triaged: RM468 filed (minor, medium) · sha 0123b01f716f -->
