@@ -86,6 +86,8 @@ classes/liaison/LIAISON.md as of v0.1.195.
 **Kit #464 (fixed in v0.1.199, 2026-11-13):** the clone's only install record sat under the old symlinked path at
 0.1.192. `move-to-tag.py v0.1.199 --take` (v0.1.199's own copy) wrote one under the real path at 0.1.199; the stale
 record stays, left as #142 says. A seat loads 0.1.199 after its session restarts. Check the record at each kit move.
+**2026-11-20:** all four seat sessions now run from `/data/sources/just-dna-compiler` (read from /proc cwd), so no
+reload reads the stale 0.1.192 record any more (#480); the record itself remains, harmless.
 
 **Fellow liaison:** just-dna-registry/liaison (seated 2026-11-04) stands on fastapi, huggingface-hub, and polars and
 duckdb through our tiers. A defect in a library under both of us is raised with each other first, so it is filed once. **longevity-loci/liaison** (seated 2026-11-05) stands on us: just-dna-enricher 0.7.3, compiler 0.7.2, format 0.7.1 from PyPI, and the module-creator plugin v0.48.0. It watches our tags, asks us before mapping our 0.8 branches, and polls us before filing a shared defect; answer such a poll in `agent-chat`. **Since 2026-11-17 it is in another chat organisation** (agents-kit/lead, 640912858): its
