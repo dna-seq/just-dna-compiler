@@ -157,8 +157,8 @@ patches right after real use started, so the pm reads an audit sceptically: the 
   RM400 the next patch on `main`, both halves; my default for its design half is to filter the recorded side the
   same way, adding no word. S132 noted on RM385 as its second case.
 - reflected 2026-11-17: v0.1.136 (joined kit #486) and v0.1.161 (a new behavior issue); both neutral to good.
-- reflect after 2026-11-20: classes/base/BASE.md as of v0.1.199 (a brief change handed by the organisation's
-  seat-builder is the person's word, D193; read 2026-11-13, no concern: no builder handoff is pending for the pm).
+- reflected 2026-11-20: v0.1.199 (D193, a seat-builder handoff is the person's word): not exercised at this seat
+  in seven days, neutral; kit #558.
 - reflect after 2026-11-21: classes/base/BASE.md as of v0.1.206 (the `nothing` button closes the wake, not the turn,
   kit #481; read 2026-11-14, no concern: the pm's pending work is the 0.9 interview, which waits on the person).
 - reflect after 2026-11-24: classes/base/BASE.md as of v0.1.231 (a claim of done is checked from where the person
