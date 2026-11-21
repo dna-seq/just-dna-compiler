@@ -159,8 +159,9 @@ patches right after real use started, so the pm reads an audit sceptically: the 
 - reflected 2026-11-17: v0.1.136 (joined kit #486) and v0.1.161 (a new behavior issue); both neutral to good.
 - reflected 2026-11-20: v0.1.199 (D193, a seat-builder handoff is the person's word): not exercised at this seat
   in seven days, neutral; kit #558.
-- reflect after 2026-11-21: classes/base/BASE.md as of v0.1.206 (the `nothing` button closes the wake, not the turn,
-  kit #481; read 2026-11-14, no concern: the pm's pending work is the 0.9 interview, which waits on the person).
+- reflected 2026-11-21: v0.1.206 (the `nothing` button closes the wake, not the turn, kit #481): good, the pm checks
+  its pending list after each press; one side effect, a bare press counts a mixed listing's actionable message as
+  noise; kit #575.
 - reflect after 2026-11-24: classes/base/BASE.md as of v0.1.231 (a claim of done is checked from where the person
   looks; a claim of absence carries its time; read 2026-11-17, no concern: the pm checks the desk and origin live).
 - reflect after 2026-11-23: classes/base/BASE.md as of v0.1.224 (only a real fork goes to the person, kit #510; read
