@@ -8,7 +8,7 @@ The liaison's working state, rewritten to the present before each reset.
 642570028) gives the lead the duties `pin-mover automode-rules`; the lead's priming already names it ("No tooling
 seat here"). Once the lead commits that line in `.blueprints.toml`, kit releases no longer reach this seat at all.
 Until then the liaison reacts to a release announcement and leaves the pin alone: v0.1.259 left for the lead
-(the clone pins v0.1.258 as of 2026-11-22). Duckdb's ledger read mark is `2.0.1` since 2026-11-20 (01b9405d).
+(the lead moved it to v0.1.259 the same day, 7595689e). reflect after 2026-11-29: classes/base/BASE.md as of v0.1.259 (an unlocked worktree is said as a paste-ready `unlocked: to delete <cmd>` line). Duckdb's ledger read mark is `2.0.1` since 2026-11-20 (01b9405d).
 
 **Ledgers:** `docs/UPSTREAM_GA4GH_VRS.md`, `docs/UPSTREAM_POLARS.md`, `docs/UPSTREAM_DUCKDB.md`, `docs/UPSTREAM_ENSEMBL.md` (a standing watch with no clone or watcher, handed over by the lead
 2026-11-04; re-checked by hand monthly, next 2026-12-04). Read marks:
