@@ -8,7 +8,7 @@ The liaison's working state, rewritten to the present before each reset.
 642570028) gives the lead the duties `pin-mover automode-rules`; the lead's priming already names it ("No tooling
 seat here"). Once the lead commits that line in `.blueprints.toml`, kit releases no longer reach this seat at all.
 Until then the liaison reacts to a release announcement and leaves the pin alone: v0.1.259 left for the lead
-(the lead moved it to v0.1.259 the same day, 7595689e). reflect after 2026-11-29: classes/base/BASE.md as of v0.1.259 (an unlocked worktree is said as a paste-ready `unlocked: to delete <cmd>` line). Duckdb's ledger read mark is `2.0.1` since 2026-11-20 (01b9405d).
+(the lead moved it to v0.1.259 the same day, 7595689e). reflect after 2026-11-29: classes/base/BASE.md as of v0.1.259 (an unlocked worktree is said as a paste-ready `unlocked: to delete <cmd>` line). reflect after 2026-12-01: classes/base/BASE.md as of v0.1.266 (a diary beside the notes, "Your own reset", `watchdog.sh forward`, the watchdog's typed wake prompt). Duckdb's ledger read mark is `2.0.1` since 2026-11-20 (01b9405d).
 
 **Ledgers:** `docs/UPSTREAM_GA4GH_VRS.md`, `docs/UPSTREAM_POLARS.md`, `docs/UPSTREAM_DUCKDB.md`, `docs/UPSTREAM_ENSEMBL.md` (a standing watch with no clone or watcher, handed over by the lead
 2026-11-04; re-checked by hand monthly, next 2026-12-04). Read marks:
@@ -66,7 +66,7 @@ registry from the global endpoint and the test passes only within a day of a rea
 Lesson: before blaming a moved package, run the failing test on the old lock. **Second bump 2026-11-17** (830962e9): eleven moves, duckdb
 1.5.5 -> 1.5.6 (held on 1.x for RM344), suite 7446 green, no new warning. Re-measured the same run: data sources (clinvar
 and mitomap behind their sources, sent to the lead), the GWAS probe (unchanged), the VCF PRs (unchanged). The
-duckdb-python tag watcher went (finals only, as the index); polars' stays (its rc tags). Next bump: Tuesday 2026-11-24. Its worktree goes on disk, `sh $K/bin/wt.sh liaison/deps-<date>` (`.worktrees/`), never the scratchpad:
+duckdb-python tag watcher went (finals only, as the index); polars' stays (its rc tags). **Third bump 2026-11-24** (999469ec, pushed): seventeen moves, duckdb held on 1.5.6 (2.0.1 waits for RM344), suite 7569 green, no warning, ruff clean. Main had moved (the ledgers, ca0b9a47), so the lock landed as a copy of the branch's 5c98cc46; the branch `liaison/deps-2026-11-24` is unmerged by ancestry and handed to the person with its worktree. Re-measured: mitomap's dump moved (2026-11-18), GWAS opened a bulk Parquet export and lowered its rate limits (both sent to the lead, 643088167), VCF unchanged. Next time commit the ledgers after the lock, or land the lock from the main checkout, so the branch fast-forwards. Next bump: Tuesday 2026-12-01. Its worktree goes on disk, `sh $K/bin/wt.sh liaison/deps-<date>` (`.worktrees/`), never the scratchpad:
 /tmp here is a 32 GB tmpfs (RAM), and the three bump worktrees of 11-10/11-17 took 1.5 GB of it (base v0.1.236, kit #536).
 
 **GWAS Catalog REST v2** (`docs/UPSTREAM_GWAS_CATALOG.md`, since 2026-11-11, after RM428): a live service, no
