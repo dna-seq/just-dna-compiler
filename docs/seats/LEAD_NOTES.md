@@ -39,7 +39,7 @@ The lead's working state, rewritten to the present before each reset. Last rewri
 
 ## In flight
 
-- 0.8.10 cut 2026-11-19, awaiting the publish: cut commit 65cfa25b (format, compiler, enricher 0.8.10: RM453, RM455,
+- 0.8.10 cut 2026-11-19, awaiting the publish (blocked: desk #415, filed 2026-11-23; default: keep waiting): cut commit 65cfa25b (format, compiler, enricher 0.8.10: RM453, RM455,
   RM456), merged into main as ce98a26f. Gates at the cut: suite 7569, sweep --release 0.8.10, network pre-release 26,
   strict docs. Dists in the root `dist/`, twine check passed. After the publish: tag `v0.8.10` on 65cfa25b, GitHub
   release from scratchpad/release_notes_0_8_10.md, README.md:94 and CLAUDE.md:84 to name 0.8.10, done-line (the
