@@ -24,6 +24,12 @@ house algebra: an unknown is never written as a no).
 - **Re-measured 2026-11-17** (the weekly bump), every column live: the sources by `curl`/`gh`, built by `cache status`,
   published from each HF repo's `release.json`. Two lanes moved at the source: `clinvar` and `mitomap` (below, sent to
   the lead). Nothing else moved; no published label changed since 2026-11-07.
+- **Re-measured 2026-11-24** (the weekly bump), the same way. Every source reads as on 2026-11-17 (Ensembl 116,
+  ClinVar weekly `20261115`, gnomAD 4.1.2, CIViC `01-Nov-2026`, STRchive v2.28.0, MANE 1.5, Open Targets 26.09)
+  except `mitomap`: its dump moved again, `Last-Modified` 2026-11-18 06:01Z, sha256 `f7569c74…` where the published
+  `release.json` names the 2026-11-11 dump (`ce7bea0b…`, built 2026-11-17 03:58Z, dataset
+  `mitomap_2026-11-09+2026-11-03`). Whether its tables moved, and so its label, only a rebuild says: sent to the lead.
+  Built here and published: unchanged since 2026-11-17.
 - **Next:** weekly, with the dependency bump; earlier when a lane's builder or a source announces a release.
 
 ## The table (2026-11-07, re-measured 2026-11-17)
