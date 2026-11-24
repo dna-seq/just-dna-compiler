@@ -164,10 +164,14 @@ patches right after real use started, so the pm reads an audit sceptically: the 
   noise; kit #575.
 - reflect after 2026-11-29: classes/base/BASE.md as of v0.1.259 (an unlocked worktree is said as a paste-ready
   `unlocked: to delete <command>` line; read 2026-11-22, no concern: the pm makes no worktrees).
-- reflect after 2026-11-24: classes/base/BASE.md as of v0.1.231 (a claim of done is checked from where the person
-  looks; a claim of absence carries its time; read 2026-11-17, no concern: the pm checks the desk and origin live).
-- reflect after 2026-11-23: classes/base/BASE.md as of v0.1.224 (only a real fork goes to the person, kit #510; read
-  2026-11-16, applied at once: desk #326-#329 withdrawn under it, #347 filed as the one real fork).
+- reflected 2026-11-24: v0.1.231 (a claim of done checked from where the person looks, absence with its time):
+  neutral to good, the pm already checked live and now says "as of"; kit #624.
+- reflected 2026-11-24: v0.1.224 (only a real fork goes to the person): good, ~20 placements made without asking,
+  #347 held as the one fork; cost, daily still-true notes on unmoved facts; joined kit #607.
+- reflect after 2026-12-01: classes/base/BASE.md as of v0.1.274 (only the seats a post is for react; your own reset
+  and memory in three levels, the diary written by the nightly retro; an asked action is yours until it works; a
+  covered step taken, not asked; a procedure run before it is handed; no parking on a quota figure; read 2026-11-24,
+  no concern: the pm has no diary yet, it starts at its first nightly retro).
 - **RM442 filed 2026-11-14** (0d84b3d6), the lead's ask: the AlphaGenome licence rows' three strings, a patch on
   `main`; caution sent on the AVI bar (June 2025 Output Terms' restriction 2 may still bind a downstream holder).
 - **0.8's scope, agreed 2026-11-04.**
