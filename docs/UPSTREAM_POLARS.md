@@ -138,6 +138,12 @@ The verdict above stands. Every entry that could reach us was checked against th
   `polars>=1.40.0,<2.2`, and its `main` says the same. No issue or pull request there names 2.2. So just-dna-lite
   and just-vcf stay on 2.1.x until polars-bio widens, as this ledger expected on 2026-11-16.
 
+- **A regression that does not reach us** (reported by just-vcf's upstream liaison, reproduced here 2026-11-24 19:00Z):
+  a grouped `median` over a filter whose mask is `concat_list([pl.lit(False), <list col>]).list.any()`, the list
+  column null in every row, panics on 2.2.0 ("validity mask length must match the number of values"); 2.1.0
+  returns nulls. We call none of `concat_list`, `list.any` or `median` (grepped). No open issue on polars'
+  tracker carries the message (searched 19:03Z); filing it is just-vcf's, on its person's word.
+
 **Sorted: breaks us in the digest only, as every 2.x release does** (the 2.0/2.1 verdict above). Our lock takes
 2.2.0 at the weekly bump of 2026-12-01; the release after it moves every `artifact.digest` with the content equal,
 which the cut's release record declares (RELEASE_CYCLE §9, a toolchain move). The lead told the same day. No cap
