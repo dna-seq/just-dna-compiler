@@ -87,6 +87,8 @@ seat's until it works; a granted step is taken then reported; a procedure is run
 parked on a quota figure; a seated lead starts its own team's idle seats, D219. Read as its adversary 2026-11-24, no
 concern: the two standing waits, the PyPI and mitomap publishes, are steps outside the grant (the classifier refuses
 a seat's publish), and the mitomap upload was rehearsed by dry run before it was handed over).
+reflect after 2026-12-01: classes/base/BASE.md as of v0.1.275 (a direct message mentioning someone not in it is named
+in the first reply, relay or slip; read 2026-11-24, no concern: the lead takes direct messages rarely).
 
 ## Plan
 
