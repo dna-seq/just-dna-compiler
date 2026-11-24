@@ -82,6 +82,11 @@ looks; read 2026-11-17, no concern).
 reflect after 2026-11-23: classes/base/BASE.md as of v0.1.224 (only a real fork goes to the person; read as its
 adversary 2026-11-16, no concern: the lead's only standing wait is the PyPI publish, a step that is the person's, not
 a choice).
+reflect after 2026-12-01: classes/base/BASE.md and classes/lead/LEAD.md as of v0.1.272 (an asked action is the
+seat's until it works; a granted step is taken then reported; a procedure is run before it is handed over; no work
+parked on a quota figure; a seated lead starts its own team's idle seats, D219. Read as its adversary 2026-11-24, no
+concern: the two standing waits, the PyPI and mitomap publishes, are steps outside the grant (the classifier refuses
+a seat's publish), and the mitomap upload was rehearsed by dry run before it was handed over).
 
 ## Plan
 
