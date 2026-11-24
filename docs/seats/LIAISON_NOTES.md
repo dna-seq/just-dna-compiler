@@ -12,7 +12,7 @@ Until then the liaison reacts to a release announcement and leaves the pin alone
 
 **Ledgers:** `docs/UPSTREAM_GA4GH_VRS.md`, `docs/UPSTREAM_POLARS.md`, `docs/UPSTREAM_DUCKDB.md`, `docs/UPSTREAM_ENSEMBL.md` (a standing watch with no clone or watcher, handed over by the lead
 2026-11-04; re-checked by hand monthly, next 2026-12-04). Read marks:
-ga4gh.vrs 2.3.3 (pre-releases read through 2.4.0-a6), polars `py-2.1.0`, duckdb `2.0.0`. Installed (`uv.lock`):
+ga4gh.vrs 2.3.3 (pre-releases read through 2.4.0-a6), polars `py-2.2.0`, duckdb `2.0.1`. Installed (`uv.lock`):
 2.3.3, 2.1.0, 1.5.6 (since the 2026-11-17 bump). `mkdocs.yml` `not_in_nav` carries `UPSTREAM_*.md`.
 `docs/UPSTREAM_DATA_SOURCES.md` (since 2026-11-07, the maintainer's ask): one row per cache lane, available /
 built / published; measured by hand that day, re-measured weekly. Behind then: clinvar, constraint (pinned
@@ -51,7 +51,7 @@ ga4gh/vrs-python#665 (`RleSubunitMode`, which `vrs/2.1` will default to SMALLEST
 **Lock schedule:** polars 2.1.0 is in `uv.lock` (5bdcca28) and shipped in **0.8.0** (cut 2026-11-05, with RM342 and
 RM352). duckdb 2.x once RM344 (open, a patch on `main`) lands: then tell the lead. RM343 (EXPLAIN test) is done. polars-bio **0.37.0** (on PyPI by 2026-11-07) requires `polars>=1.40.0,<2.2`: the `<2` block on just-dna-lite
 is gone; the lead was told (zulip …638402138). Its new cap is `<2.2`: a polars 2.2 release holds just-dna-lite again until polars-bio follows. Re-measured 2026-11-16: just-dna-lite on polars 2.1.0 + polars-bio 0.37.0 since
-2026-11-12; just-vcf moving now (its RM288). polars-bio is on the upstream-index watcher since 2026-11-16.
+2026-11-12; just-vcf moving now (its RM288). polars-bio is on the upstream-index watcher since 2026-11-16. **polars 2.2.0 out 2026-11-24** (ledger verdict): suite green on it, digest moves with tables equal; the lock takes it at the 2026-12-01 bump. polars-bio 0.38.0 still caps `<2.2` (read 18:20Z), so just-dna-lite and just-vcf hold on 2.1.x; re-read polars-bio at each of its releases and at the bump.
 
 **The dependency bump** (the person, 2026-11-04, relayed by agents-kit/builder, zulip …637618265) is this seat's
 unattended routine, in the grant since fc6e7ca1 (2026-11-09; desk #195 withdrawn as moot once the auto-mode rules

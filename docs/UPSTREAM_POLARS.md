@@ -6,8 +6,9 @@ liaison rather than writing in this file. Upstream: <https://github.com/pola-rs/
 
 ## Marks
 
-- **Read mark: `py-2.1.0`** (2026-11-04): the release notes of `py-2.0.0-rc.1`, `py-2.0.0-rc.2`, `py-2.0.0` and
-  `py-2.1.0`, and the 2.0 migration guide (`docs/source/releases/upgrade/2.md` at `py-2.1.0`), read entry by entry.
+- **Read mark: `py-2.2.0`** (2026-11-24; on PyPI 18:15Z, tag and GitHub release 18:19Z): its release notes, the
+  three breaking entries read against our code, the parquet entries by title. Before: `py-2.1.0` (2026-11-04), with
+  the notes of `py-2.0.0-rc.1`, `py-2.0.0-rc.2`, `py-2.0.0` and the 2.0 migration guide read entry by entry.
 - **Installed:** `2.1.0` (`uv.lock`, since 5bdcca28 on `0.8`, shipped in 0.8.0). Pins: `polars>=1.42.0` in `compiler/pyproject.toml` (core) and in the
   enricher's `dev` extra (builders only). **No upper bound.**
 
@@ -118,6 +119,30 @@ The verdict above stands. Every entry that could reach us was checked against th
   their dictionaries as strings for `is_in` (#29882, #29885). Out-of-core spilling is on by default from 2.0
   (#29741, #29734), at 80 % of RAM and up to 64 GB of disk. The AVI builder avoided the streaming engine on
   purpose (`alphagenome_avi_build.py:588`), so neither change applies to it.
+
+### py-2.2.0 — the digest moves again; polars-bio's `<2.2` holds two consumers (2026-11-24)
+
+- **Breaking list, three entries, none ours.** `Expr.str.find(_many)` returns character offsets (#31026), SQL
+  `DELETE` changes the registered table in a `SQLContext` (#30869): neither is called anywhere in `schema/`,
+  `compiler/` or `enricher/`. Scalar function arguments are required at plan time (#30914: `slice`, `top_k`,
+  `replace`, `pct_change`, `int_range`, `str.slice` and kin): no call of ours passes an expression there (grepped),
+  and the suite agrees.
+- **Suite:** `uv run --isolated --all-packages --all-extras --all-groups --with polars==2.2.0 pytest -n 4`: 7595
+  passed, 124 skipped, no warning (13 min 50 s, nice 19).
+- **Bytes:** `pathogenic_clinvar` and `apoe_epsilon` compiled under 2.1.0 (the lock) and 2.2.0. Every parquet's
+  table reads back equal; every file's bytes before the footer differ, not only the footer, and every file grows
+  0.6 to 2.2 % (`weights.parquet` 62002 → 62396, `diplotypes.parquet` 6172 → 6308). `artifact.digest` moves (`pathogenic_clinvar` `…a426b9334b` →
+  `…8679cff008`). Not measured which entry moved the pages; the candidates by title are #30410 (byte-array sizes in
+  the statistics), #30653 (pages split by byte size for variable-length columns) and #30982 (parquet writes).
+- **Who holds polars-bio, read live 2026-11-24 18:20Z:** 0.38.0 (2026-11-17) is still the newest, requiring
+  `polars>=1.40.0,<2.2`, and its `main` says the same. No issue or pull request there names 2.2. So just-dna-lite
+  and just-vcf stay on 2.1.x until polars-bio widens, as this ledger expected on 2026-11-16.
+
+**Sorted: breaks us in the digest only, as every 2.x release does** (the 2.0/2.1 verdict above). Our lock takes
+2.2.0 at the weekly bump of 2026-12-01; the release after it moves every `artifact.digest` with the content equal,
+which the cut's release record declares (RELEASE_CYCLE §9, a toolchain move). The lead told the same day. No cap
+here (the person, 2026-11-04). Asking polars-bio to widen its cap is first agreed with just-vcf's upstream
+liaison, who watches it too (told the same day); a post upstream is the person's word.
 
 ## Our pieces that duplicate an upstream feature
 
