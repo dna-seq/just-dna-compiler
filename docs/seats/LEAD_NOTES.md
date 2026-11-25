@@ -40,7 +40,7 @@ The lead's working state, rewritten to the present before each reset. Last rewri
 ## In flight
 
 - mitomap behind source (liaison 643088167, 2026-11-24): the dump moved 2026-11-18 (mmutation edited 2026-11-17, 603 rows, +6 citation links). Built as mitomap_2026-11-17+2026-11-03 into `data/caches/rebuild-2026-11-24/mitomap`, upload rehearsed (5 files). `blocked: the person` (the classifier refuses a seat's publish, kit #529): `uv run just-dna-enricher mitomap publish data/caches/rebuild-2026-11-24/mitomap`. After it: `cache pull --only mitomap`, then `mitomap miss` (mitomap_miss follows its parents).
-- 0.8.10 cut 2026-11-19, awaiting the publish (blocked: desk #415, filed 2026-11-23; default: keep waiting): cut commit 65cfa25b (format, compiler, enricher 0.8.10: RM453, RM455,
+- 0.8.10 cut 2026-11-19, awaiting the publish (desk #415 answered 2026-11-25 "publish now"; its Your move posted, the publish is the person's): cut commit 65cfa25b (format, compiler, enricher 0.8.10: RM453, RM455,
   RM456), merged into main as ce98a26f. Gates at the cut: suite 7569, sweep --release 0.8.10, network pre-release 26,
   strict docs. Dists in the root `dist/`, twine check passed. After the publish: tag `v0.8.10` on 65cfa25b, GitHub
   release from scratchpad/release_notes_0_8_10.md, README.md:94 and CLAUDE.md:84 to name 0.8.10, done-line (the
