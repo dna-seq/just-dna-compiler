@@ -173,6 +173,14 @@ a second consumer maps a parquet's row grain by hand or asks for the read. RM450
 5. The cut is redone: the release record, INTEGRATION_0_9 (its known issues shrink to RM459), the CHANGELOG, the docs
    pass. About 2 hours. Then the maintainer's publish.
 
+**Placed from the builds (the pm, 2026-11-26).** All nine merged; four findings, none a blocker. (1) RM461's
+pinned-text walk over every module needs a registry of emitted texts (387 unregistered in 64 modules), so it goes to
+0.10 as its own RM, named in RM461's Residuals. (2) RM462 sends two requests, not one: the proxy ANDs its columns, and a
+combined Hugging Face read loses the row-group pruning; the third merge is won't fix for that reason. (3) opentargets'
+reader still takes `parts_read >= parts_total` as whole: RM465's own class, so part of RM465 in 0.9, the reader calling
+the predicate. (4) The gene-metrics pass indexes the snapshot answer by the authored spelling, so a mixed-case gene
+reads `not_found` offline: RM454's own class, so part of RM454 in 0.9.
+
 About a day and a half to the cut. 0.10 then holds RM399 + RM441 (S156), RM435, RM265, RM385, RM460 and RM468, and
 RM459 once the registry moves; the pm sorts it again when it opens.
 
