@@ -40,18 +40,15 @@ The lead's working state, rewritten to the present before each reset. Last rewri
 ## In flight
 
 - mitomap behind source (liaison 643088167, 2026-11-24): the dump moved 2026-11-18 (mmutation edited 2026-11-17, 603 rows, +6 citation links). Built as mitomap_2026-11-17+2026-11-03 into `data/caches/rebuild-2026-11-24/mitomap`, upload rehearsed (5 files). `blocked: the person` (the classifier refuses a seat's publish, kit #529): `uv run just-dna-enricher mitomap publish data/caches/rebuild-2026-11-24/mitomap`. After it: `cache pull --only mitomap`, then `mitomap miss` (mitomap_miss follows its parents).
-- **0.9.0, the cut redone: ready, the publish is the person's (desk #461, a Your move posted 7203264617).**
-  `cut/v0.9.0-2` at 93160691, pushed (`.worktrees/cut-090-2`, locked). Beyond the rescope it carries RM470 (ClinVar-GKM
-  v1/1.2, folded in on the person's word: "merge gkm into 0.9.0 if built") and a `compat` extra (polars[rtcompat];
-  the person's Ivy Bridge server has no AVX2: "Also bundle into 0.9"). Gates: suite 8353 passed, docs strict green;
-  sweep 22/22 unmoved; real runs 176 clean; a real clinvar-gkm build 310,938 rows; network 45+1 (the 1 fixed by RM470,
-  live test green). `dist/` holds the six rebuilt files, twine PASSED. The liaison's emulated Ivy Bridge full suite
-  was still running. **After the publish (RELEASE_CYCLE step 10):** tag `v0.9.0` on 93160691 (annotated, the three
-  versions), GitHub release, README/CLAUDE.md say 0.9.0 current; merge the cut into 0.9; 0.9 into main after the
-  consumers' trial (desk #370: "should"; longevity-loci mid-trial); `item-next.py --release` RM458-RM470 (rows
-  uncommitted in the primary RM_TOC.md, never staged); LEAD.md/PM.md point at ROADMAP_0_10 (change-priming).
-  `build/09-rm470` is in the cut (ff), so `-d` takes it after the merge. `.worktrees/cut-090` (cut/v0.9.0)
-  superseded, unlocked, its branch the person's `-D`.
+- **0.9.0 published 2026-11-26** (PyPI 21:11Z, all three; desk #461 Done). Tag `v0.9.0` on 93160691, pushed; GitHub
+  release up (notes in the session scratchpad); `0.9` fast-forwarded to the cut (origin and `.worktrees/09`). It
+  carries the rescope, RM470 (ClinVar-GKM v1/1.2) and the `compat` extra (polars[rtcompat], only on a CPU without
+  AVX2). **Left:** merge `0.9` into `main` after the consumers' trial (desk #370 answered "should"; longevity-loci
+  mid-trial; the merge is also the docs refresh: README/CLAUDE.md on main still say 0.8.10); then `item-next.py
+  --release` RM458-RM470 (rows uncommitted in the primary RM_TOC.md, never staged), LEAD.md/PM.md point at
+  ROADMAP_0_10 (change-priming), `git branch -d` for build/09-* and cut/v0.9.0-2, unlock `.worktrees/cut-090-2`,
+  `09-rm470` and `09`'s lock stays until the merge. The liaison's emulated Ivy Bridge suite result is still owed.
+  `.worktrees/cut-090` (cut/v0.9.0) superseded, unlocked, its branch the person's `-D`.
 - 0.8.10 published 2026-11-26 (PyPI 11:11Z, all three; desk #415): tag `v0.8.10` on 65cfa25b, GitHub release,
   README.md:94 and CLAUDE.md:84 name 0.8.10, done-line to releases, the registry told. The 0.9 merge is now unblocked
   by the tag; it still waits on the two trials or the person's "skip" (desk #370). Branches cut/v0.8.9, land/v0.8.9,
