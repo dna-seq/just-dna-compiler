@@ -163,12 +163,23 @@ a second consumer maps a parquet's row grain by hand or asks for the read. RM450
 2. The lead runs the nine as one batch on Codex builders (LEAD.md, 27de1246), each in its worktree, and checks and
    merges each. About half a day of builds in parallel, and half a day of checks and merges.
 3. **No third review round.** 0.9 has had its two, and the rule is two per minor; the lead's check at each merge is
-   the review of what was added. Anything a build turns up comes to the pm: a blocker is fixed in 0.9, the rest goes
-   to 0.10.
+   the review of what was added. The maintainer, on this exact point (2026-11-26): "I meant post-build audits...
+   despite serious firepower and multi-model runs, these find some obscure bugs, yet the real ones crept into 0.8.x".
+   Most of 0.8.8 to 0.8.10's fixes were found by a real run on a real module (the registry's, S158; the lead's on
+   `pathogenic_clinvar`, RM451 and RM453), one class by a review round (RM455). So the gate that catches the real ones
+   is step 4, and the cut waits on it. Anything a build turns up comes to the pm: a blocker is fixed in 0.9, the rest goes to 0.10.
 4. The consumers' trial ([desk #370](https://github.com/winternewt/desk/issues/370)) goes on against the rescoped
    branch. The liaison tells the four consumers what was added; the two that reported are not asked again.
 5. The cut is redone: the release record, INTEGRATION_0_9 (its known issues shrink to RM459), the CHANGELOG, the docs
    pass. About 2 hours. Then the maintainer's publish.
+
+**Placed from the builds (the pm, 2026-11-26).** All nine merged; four findings, none a blocker. (1) RM461's
+pinned-text walk over every module needs a registry of emitted texts (387 unregistered in 64 modules), so it goes to
+0.10 as its own RM, named in RM461's Residuals. (2) RM462 sends two requests, not one: the proxy ANDs its columns, and a
+combined Hugging Face read loses the row-group pruning; the third merge is won't fix for that reason. (3) opentargets'
+reader still takes `parts_read >= parts_total` as whole: RM465's own class, so part of RM465 in 0.9, the reader calling
+the predicate. (4) The gene-metrics pass indexes the snapshot answer by the authored spelling, so a mixed-case gene
+reads `not_found` offline: RM454's own class, so part of RM454 in 0.9.
 
 About a day and a half to the cut. 0.10 then holds RM399 + RM441 (S156), RM435, RM265, RM385, RM460 and RM468, and
 RM459 once the registry moves; the pm sorts it again when it opens.

@@ -133,7 +133,9 @@ reported, never asked about, and they never freeze scope.
    monitors the branch meanwhile and processes whatever arrived during the build.
    - **At most two review rounds per minor** (the maintainer, 2026-11-26, after 0.9's trial of the rule: "iterative
      release audits aren't really productive. Stalling is real, and the result is 10 patches after that anyway. I
-     propose to limit the iterations to 2 max per minor even with triage in place"). After the second round the pm
+     propose to limit the iterations to 2 max per minor even with triage in place"; and of what the rounds are: "I meant
+     post-build audits... despite serious firepower and multi-model runs, these find some obscure bugs, yet the real ones
+     crept into 0.8.x"). After the second round the pm
      places its classes once more: a blocker is fixed in the release, checked by its builder's tests and the lead's
      review at the merge, with no third round; the rest is a known issue filed for the next minor, or a patch on
      `main` where it is patch class. Triage working the branch adds no round. Agreed: nothing checks it.
