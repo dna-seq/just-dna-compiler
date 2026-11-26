@@ -224,6 +224,7 @@ def test_an_answer_is_its_rows_and_the_route_record_never_a_copy_of_its_fields()
         "release",
         "served_from",
         "revision",
+        "release_unreadable",
     ]
 
 
@@ -575,6 +576,59 @@ def test_a_proxy_reply_that_states_its_release_carries_it(clinvar_root: Path) ->
     with _with_proxy(RemoteSnapshots(proxy_url=PROXY, huggingface=False), proxy) as holder:
         answer = holder.lookup("clinvar", "clinvar", {"rsid": ["rs334"]})
     assert answer.route == RemoteRoute("proxy", "clinvar_2026-11-01", "local", None)
+
+
+@pytest.mark.parametrize(
+    ("flags", "expected"),
+    [
+        ([True], True),
+        ([False], False),
+        ([None], None),
+        (["false"], None),
+        ([0], None),
+        ([True, True], True),
+        ([False, False], False),
+        ([False, None], None),
+        ([True, False], None),
+    ],
+)
+def test_proxy_carries_the_stated_release_unreadable_flag(
+    clinvar_root: Path, flags: list[object], expected: bool | None
+) -> None:
+    registry = _Proxy({"clinvar": clinvar_root})
+    stated = iter(flags)
+
+    def proxy(request: httpx.Request) -> httpx.Response:
+        body = registry(request).json()
+        return httpx.Response(200, json={**body, "release_unreadable": next(stated)})
+
+    keys = {"chrom": ["1", "11"][: len(flags)], "start": [943234, 5227002][: len(flags)]}
+    with _with_proxy(RemoteSnapshots(proxy_url=PROXY, huggingface=False), proxy) as holder:
+        answer = holder.lookup("clinvar", "clinvar", keys)
+    assert answer.rows == remote._stable(_registry_rows(clinvar_root, keys))
+    assert answer.route.release_unreadable is expected
+
+
+@pytest.mark.parametrize("truncated", [False, True], ids=["key-limit", "row-limit"])
+def test_a_position_lookup_splits_its_longest_column(clinvar_root: Path, truncated: bool) -> None:
+    position = {"chrom": ["11"], "start": [5227002]}
+    rows = _registry_rows(clinvar_root, position)
+    ids = sorted({row["variation_id"] for row in rows})
+    assert len(ids) > 1
+    if truncated:
+        most_for_one_id = max(sum(row["variation_id"] == value for row in rows) for value in ids)
+        proxy = _Proxy({"clinvar": clinvar_root}, max_rows=most_for_one_id)
+    else:
+        ids.extend(f"missing{i}" for i in range(remote.PROXY_MAX_KEY_VALUES))
+        proxy = _Proxy({"clinvar": clinvar_root})
+    with _with_proxy(RemoteSnapshots(proxy_url=PROXY, huggingface=False), proxy) as holder:
+        answer = holder.lookup("clinvar", "clinvar", {**position, "variation_id": ids})
+    assert answer.route.route == "proxy"
+    assert answer.rows == remote._stable(rows)
+    assert len(proxy.asked) > 1
+    assert all(
+        keys["chrom"] == position["chrom"] and keys["start"] == position["start"] for _, keys in proxy.asked
+    )
 
 
 def test_a_lookup_is_cut_to_the_proxys_key_limit_one_chromosome_per_request(clinvar_root: Path) -> None:
@@ -1202,8 +1256,12 @@ def _never(request: httpx.Request) -> httpx.Response:
     raise AssertionError(f"the proxy was asked {request.url}")
 
 
-#: Two exact columns whose values leave no room in one proxy request: `start` is split, `id` is not.
-OVER_THE_LIMIT = {"chrom": ["1"], "start": [100], "id": [f"x{i}" for i in range(remote.PROXY_MAX_KEY_VALUES)]}
+#: Whichever column is split, the other columns fill the proxy's limit.
+OVER_THE_LIMIT = {
+    "chrom": ["1"],
+    "start": list(range(remote.PROXY_MAX_KEY_VALUES)),
+    "id": [f"x{i}" for i in range(remote.PROXY_MAX_KEY_VALUES)],
+}
 
 
 @pytest.mark.parametrize("lane", sorted(REMOTE_LANES))
@@ -1216,10 +1274,11 @@ def test_a_request_over_the_proxys_limit_skips_it_and_is_never_a_wrong_request(l
     with holder, pytest.raises(SnapshotRouteUnavailable) as failed:
         holder.lookup(lane, "t", OVER_THE_LIMIT)
     assert failed.value.route is None
+    fixed = len(OVER_THE_LIMIT["id"]) + len(OVER_THE_LIMIT["chrom"])
     assert str(failed.value) == (
         f"{lane}: no remote route was asked: the registry's proxy answers at most "
-        f"{remote.PROXY_MAX_KEY_VALUES} key values a request, and 101 besides 'start' leave no room, so the "
-        "proxy is not asked, and Hugging Face is off"
+        f"{remote.PROXY_MAX_KEY_VALUES} key values a request, and {fixed} besides 'start' leave no room, "
+        "so the proxy is not asked, and Hugging Face is off"
     )
 
 

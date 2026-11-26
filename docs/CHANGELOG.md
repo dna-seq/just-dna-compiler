@@ -365,6 +365,13 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   read returns no bases, and the build is retried at the proxy's next read.`, then what the missing bases cost
   (an indel's VRS id unminted, the reference-allele check not made) and that a run's view asks for the build
   once per run; the same prefix, pinned with the 0.9 texts.
+- **RM430's remote reads state what they read** (RM461, the rescope). `RemoteRoute.release_unreadable`
+  carries the proxy's boolean about its copy of `release.json`, when every reply of a split lookup states the
+  same one; missing, malformed or disagreeing flags, and the Hugging Face route, give `None`. A proxy lookup is
+  split along the column holding the most values (`start` on a tie), not always along `start`. `lane_status`
+  refuses a URL in `locations`, also one a `Path` already collapsed (`hf:/…`), with `ValueError` naming the
+  `RemoteSnapshots` holder: status stays a question about the local disk. The pinned-text walk over every module
+  is not built: it needs a registry of the texts already emitted (387 in 64 modules), placed in 0.10.
 
 ## 2026-11-19 — `v0.8.10`: format, compiler and enricher 0.8.10 (a patch, cut from `main`)
 

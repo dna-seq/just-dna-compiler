@@ -181,14 +181,17 @@ class RemoteRoute:
     `release_id`) at the pinned commit for `hf`, and what the proxy's reply states for `proxy`, `None`
     when it states none (withheld, never guessed). `served_from` is the proxy's (`local`, or
     `remote:<repo>`), `None` on `hf`. `revision` is the Hub commit read, `None` where none was stated.
-    A proxy answer cut into several requests states each of the three only when every reply states the
-    same one; a reply stating none, or two stating different ones, withholds it (`None`).
+    For a split lookup the release and revision require agreement across replies. If every reply
+    names its serving place, `served_from` joins those places.
+    `release_unreadable` carries the proxy's boolean about its copy of `release.json` when every
+    contributing reply states the same value. Otherwise it is `None`, including on the Hub route.
     """
 
     route: str
     release: str | None = None
     served_from: str | None = None
     revision: str | None = None
+    release_unreadable: bool | None = None
 
 
 @dataclass(frozen=True)
@@ -368,10 +371,8 @@ def _requests(keys: _Keys) -> list[dict[str, list[Any]]]:
 
 
 def _batch_column(request: Mapping[str, list[Any]]) -> str:
-    """The column a request is split along: `start` for a position, else the one with most values."""
-    if "start" in request:
-        return "start"
-    return max(request, key=lambda column: (len(request[column]), column))
+    """Split the longest column, retaining the preference for `start` when lengths tie."""
+    return max(request, key=lambda column: (len(request[column]), column == "start", column))
 
 
 def _passed_over(lane: RemoteLane, table: str, wanted: _Keys) -> str | None:
@@ -455,8 +456,8 @@ class _ProxyReply(BaseModel):
     proxy with no fall-through. Strict on what the client reads (types are not coerced: `"false"` is no
     bool), and blind to what it does not (`extra="ignore"`), so a field the registry adds later costs
     nothing. `lane`, `table`, `rows` and `truncated` are in every reply since the proxy's first version
-    (registry 0.30); `served_from`, `release` and `revision` came later and may be absent or `null`, and one
-    of another kind is withheld rather than refused.
+    (registry 0.30). The optional provenance fields may be absent or `null`, and one of another
+    kind is withheld.
     """
 
     model_config = ConfigDict(extra="ignore", strict=True)
@@ -468,6 +469,12 @@ class _ProxyReply(BaseModel):
     served_from: str | None = None
     release: str | None = None
     revision: str | None = None
+    release_unreadable: bool | None = None
+
+    @field_validator("release_unreadable", mode="before")
+    @classmethod
+    def _withheld_unless_bool(cls, value: object) -> bool | None:
+        return value if isinstance(value, bool) else None
 
     @field_validator("served_from", "release", "revision", mode="before")
     @classmethod
@@ -689,6 +696,7 @@ class RemoteSnapshots:
             for chunk in _proxy_chunks(request):
                 replies.extend(self._proxy_untruncated(lane, table, chunk))
         rows = [row for reply in replies for row in reply.rows]
+        flags = {reply.release_unreadable for reply in replies}
         return RemoteAnswer(
             rows=_stable(rows),
             route=RemoteRoute(
@@ -696,6 +704,7 @@ class RemoteSnapshots:
                 release=_agreed(lane, "releases", [reply.release for reply in replies]),
                 served_from=_places([reply.served_from for reply in replies]),
                 revision=_agreed(lane, "revisions", [reply.revision for reply in replies]),
+                release_unreadable=flags.pop() if len(flags) == 1 else None,
             ),
         )
 
