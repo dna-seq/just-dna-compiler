@@ -2,7 +2,7 @@
 
 The fixture is `assets/clinvar_gkm_slice/`: 22 whole rows of the real `allele.parquet` and the 22 real
 variations that define them (projected to the three columns the builder reads), plus the source's own
-`manifest.json` and `index.json` as served on 2026-11-04. Its README says how each row was chosen.
+`manifest.json` and `index.json` as served on 2026-11-26. Its README says how each row was chosen.
 
 The download path is driven through a real HTTP server on localhost, not a mocked client: the failure
 this lane guards against is bytes that are not the file the manifest states (a partial body, or the set
@@ -15,8 +15,10 @@ import json
 import threading
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
+from datetime import date, timedelta
 from pathlib import Path
 
+import httpx
 import polars as pl
 import pytest
 from just_dna_enricher.caches import LANES_BY_NAME, RebuildRequest
@@ -28,6 +30,7 @@ from just_dna_enricher.clinvar_gkm import (
     ClinVarGkmClient,
     ClinVarGkmError,
     ClinVarGkmMismatch,
+    ClinVarGkmRetired,
     ClinVarGkmUnavailable,
     ClinVarGkmWitness,
     GkmManifest,
@@ -40,6 +43,7 @@ from just_dna_enricher.clinvar_gkm_build import (
     build_snapshot,
     download_and_build,
     download_input,
+    indel_slice,
 )
 from just_dna_enricher.currency import (
     PROBE_SOURCES,
@@ -49,6 +53,7 @@ from just_dna_enricher.currency import (
 )
 from just_dna_enricher.licensing import CLINVAR_GKM_TERMS, TERMS_BY_SOURCE
 from just_dna_enricher.locations import resolve_clinvar_gkm_reference
+from just_dna_enricher.net import PacingGate
 from just_dna_format.snapshot import SNAPSHOT_LICENSE_FILENAME, read_release
 from typer.testing import CliRunner
 
@@ -164,6 +169,15 @@ def test_the_slice_keeps_net_indels_and_accounts_for_every_allele_it_read(built:
     assert set(frame["chrom"]) >= {"MT", "X", "Y"}, "the contig tokens a lookup normalizes to"
 
 
+@pytest.mark.parametrize("missing", [("expressions",), ("state",), ("expressions", "state")])
+def test_a_slice_missing_typed_columns_names_them(tmp_path: Path, missing: tuple[str, ...]) -> None:
+    allele = tmp_path / ALLELE_FILE
+    pl.read_parquet(SLICE / ALLELE_FILE).drop(missing).write_parquet(allele)
+    with pytest.raises(ClinVarGkmError) as caught:
+        indel_slice(allele)
+    assert all(column in str(caught.value) for column in missing)
+
+
 def test_rs72613567_and_rs77944059_resolve_to_their_known_ids(built: Path) -> None:
     witness = ClinVarGkmWitness.load(built)
     for rsid, (vrs_id, vcf_key, variation) in KNOWN.items():
@@ -230,7 +244,7 @@ def test_a_rebuild_of_the_same_bytes_writes_the_same_slice(built: Path, tmp_path
 
 
 def test_a_local_file_the_manifest_does_not_describe_is_refused(tmp_path: Path) -> None:
-    """The real manifest describes the full 1.1 GB file, not the slice: a stale or foreign copy."""
+    """The real manifest describes the full allele file, not the slice: a stale or foreign copy."""
     real = parse_manifest((SLICE / "manifest.json").read_text(encoding="utf-8"))
     with pytest.raises(ClinVarGkmMismatch, match="manifest.json states"):
         build_snapshot(SLICE / ALLELE_FILE, SLICE / VARIATION_FILE, tmp_path / "out", manifest=real)
@@ -262,6 +276,8 @@ def test_a_file_overwritten_after_the_manifest_was_read_is_refused(tmp_path: Pat
 
 def test_the_whole_download_builds_and_a_release_landing_mid_build_is_named(tmp_path: Path) -> None:
     manifest_text = _slice_manifest_text().encode()
+    source_release = json.loads(manifest_text)["source_release"]
+    next_release = (date.fromisoformat(source_release) + timedelta(weeks=1)).isoformat()
     index = (SLICE / "index.json").read_bytes()
     routes: dict[str, Route] = {
         "/parquet/manifest.json": _static(manifest_text),
@@ -276,13 +292,13 @@ def test_the_whole_download_builds_and_a_release_landing_mid_build_is_named(tmp_
         result = download_and_build(tmp_path / "ok", client=client)
         assert result.row_count == ClinVarGkmWitness.load(tmp_path / "ok").frame.height
         assert result.latest_release == json.loads(index)["latest_release"]
-        assert result.source_lags is True, "on 2026-11-04 the set held 2026-10-24 and the line 2026-10-31"
-        assert not (tmp_path / "ok" / "_downloads").exists(), "the 5 GB of inputs are not kept by default"
+        assert result.source_lags == (source_release < json.loads(index)["latest_release"])
+        assert not (tmp_path / "ok" / "_downloads").exists(), "downloaded inputs are removed by default"
 
         # Now the source publishes mid-build: the manifest moves, and the variation file with it.
         calls = {"n": 0}
         moved = json.loads(manifest_text)
-        moved["source_release"] = "2026-10-31"
+        moved["release"] = moved["source_release"] = next_release
 
         def manifest_route(_handler: http.server.BaseHTTPRequestHandler) -> tuple[int, dict[str, str], bytes]:
             calls["n"] += 1
@@ -290,7 +306,9 @@ def test_the_whole_download_builds_and_a_release_landing_mid_build_is_named(tmp_
 
         routes["/parquet/manifest.json"] = manifest_route
         routes["/parquet/variation.parquet"] = _static(b"PAR1" + b"\0" * 64 + b"PAR1")
-        with pytest.raises(ClinVarGkmMismatch, match="published 2026-10-31 while this build was downloading"):
+        with pytest.raises(
+            ClinVarGkmMismatch, match=f"published {next_release} while this build was downloading"
+        ):
             download_and_build(tmp_path / "moved", client=client)
 
         # The same release overwritten in place says so, rather than naming one release twice.
@@ -301,7 +319,7 @@ def test_the_whole_download_builds_and_a_release_landing_mid_build_is_named(tmp_
                 entry["sha256"] = "f" * 64
         moved.clear()
         moved.update(overwritten)
-        with pytest.raises(ClinVarGkmMismatch, match="overwrote its 2026-10-24 Parquet set in place"):
+        with pytest.raises(ClinVarGkmMismatch, match=f"overwrote its {source_release} Parquet set in place"):
             download_and_build(tmp_path / "inplace", client=client)
 
         # A pinned manifest is the one built: the live one moving afterwards does not change the build.
@@ -310,7 +328,7 @@ def test_the_whole_download_builds_and_a_release_landing_mid_build_is_named(tmp_
         pinned = download_and_build(
             tmp_path / "pinned", client=client, manifest=parse_manifest(manifest_text.decode())
         )
-        assert pinned.source_release == "2026-10-24"
+        assert pinned.source_release == source_release
 
 
 def test_an_unreachable_source_is_its_own_type_never_an_httpx_one(tmp_path: Path) -> None:
@@ -319,6 +337,91 @@ def test_an_unreachable_source_is_its_own_type_never_an_httpx_one(tmp_path: Path
     client = ClinVarGkmClient(manifest_url=f"{dead}/parquet/manifest.json", index_url=f"{dead}/index.json")
     with pytest.raises(ClinVarGkmUnavailable):
         client.parquet_manifest()
+
+
+# The frozen index still answers 200 and names the last release on that line.
+FROZEN_INDEX = {
+    "line": "v1/1.1",
+    "status": "frozen",
+    "superseded_by": "v1/1.2",
+    "latest_release": "2026-10-31",
+}
+FROZEN_MESSAGE = "ClinVar-GKM line v1/1.1 is frozen, superseded by v1/1.2"
+
+
+def _line_client(index: httpx.Response, line: str = "v1/1.1") -> tuple[ClinVarGkmClient, list[str]]:
+    requests: list[str] = []
+    base = f"https://data.clinvar-gkm.org/{line}"
+
+    def serve_line(request: httpx.Request) -> httpx.Response:
+        requests.append(request.url.path)
+        if request.url.path == f"/{line}/index.json":
+            return index
+        assert request.url.path == f"/{line}/parquet/manifest.json"
+        return httpx.Response(404)
+
+    client = ClinVarGkmClient(
+        client=httpx.Client(transport=httpx.MockTransport(serve_line)),
+        manifest_url=f"{base}/parquet/manifest.json",
+        index_url=f"{base}/index.json",
+        gate=PacingGate(interval=0),
+    )
+    return client, requests
+
+
+@pytest.mark.parametrize("index_names_line", [True, False], ids=["line-in-index", "line-in-url"])
+def test_latest_release_refuses_a_frozen_line(index_names_line: bool) -> None:
+    index = FROZEN_INDEX.copy()
+    if not index_names_line:
+        del index["line"]
+    client, _ = _line_client(httpx.Response(200, json=index))
+    with pytest.raises(ClinVarGkmRetired) as caught:
+        client.latest_release()
+    assert FROZEN_MESSAGE in str(caught.value)
+
+
+def test_latest_release_or_none_logs_why_a_frozen_line_was_withheld(caplog: pytest.LogCaptureFixture) -> None:
+    client, _ = _line_client(httpx.Response(200, json=FROZEN_INDEX))
+    assert client.latest_release_or_none() is None
+    assert any(
+        FROZEN_MESSAGE in record.message and record.levelname == "WARNING" for record in caplog.records
+    )
+
+
+@pytest.mark.parametrize("legacy", [False, True], ids=["current", "without-status"])
+def test_latest_release_reads_current_and_legacy_indexes(legacy: bool) -> None:
+    index = json.loads((SLICE / "index.json").read_bytes())
+    if legacy:
+        del index["status"]
+    client, _ = _line_client(httpx.Response(200, json=index), line=index["line"])
+    assert client.index_url == ClinVarGkmClient().index_url
+    assert client.latest_release() == index["latest_release"]
+
+
+def test_a_manifest_404_names_the_lines_successor() -> None:
+    client, requests = _line_client(httpx.Response(200, json=FROZEN_INDEX))
+    with pytest.raises(ClinVarGkmRetired) as caught:
+        client.parquet_manifest()
+    assert FROZEN_MESSAGE in str(caught.value)
+    assert requests == ["/v1/1.1/parquet/manifest.json", "/v1/1.1/index.json"]
+
+
+@pytest.mark.parametrize(
+    "index",
+    [
+        httpx.Response(200, text="invalid JSON"),
+        httpx.Response(410),
+        httpx.Response(503),
+        httpx.Response(200, json={"status": "current"}),
+    ],
+    ids=["invalid-json", "index-gone", "index-unavailable", "current"],
+)
+def test_a_manifest_404_stands_when_the_index_cannot_explain_it(index: httpx.Response) -> None:
+    client, requests = _line_client(index)
+    with pytest.raises(ClinVarGkmUnavailable, match="Parquet manifest.*404") as caught:
+        client.parquet_manifest()
+    assert not isinstance(caught.value, ClinVarGkmRetired)
+    assert requests == ["/v1/1.1/parquet/manifest.json", "/v1/1.1/index.json"]
 
 
 # ── currency: three questions, kept apart ───────────────────────────────────────────────────────
@@ -343,12 +446,14 @@ def test_currency_reports_behind_drifted_and_the_sources_own_lag_apart(built: Pa
     assert (same.behind, same.drifted, same.source_lags) == (False, False, False)
     assert same.sentences() == []
 
-    lagging = _currency_against(built, pinned, index)
+    next_release = (date.fromisoformat(pinned["source_release"]) + timedelta(weeks=1)).isoformat()
+    weekly = {**index, "latest_release": next_release}
+    lagging = _currency_against(built, pinned, weekly)
     assert (lagging.behind, lagging.drifted, lagging.source_lags) == (False, False, True)
     assert "no Parquet exists" in " ".join(lagging.sentences())
 
-    newer = {**pinned, "source_release": "2026-10-31"}
-    ahead = _currency_against(built, newer, index)
+    newer = {**pinned, "release": next_release, "source_release": next_release}
+    ahead = _currency_against(built, newer, weekly)
     assert (ahead.behind, ahead.source_lags) == (True, False)
     assert ahead.drifted is None, "a different release is not drift; drift is the same label, other bytes"
 
@@ -404,7 +509,7 @@ def test_the_dataset_probe_reads_the_parquet_set_and_translates_both_failures() 
         with pytest.raises(ReleaseProbeError) as caught:
             default_probes(clinvar_gkm=unreadable)[CLINVAR_GKM_SOURCE]()
         assert not isinstance(caught.value, ReleaseUnavailable), "answered, unreadable: not unreachable"
-        missing = ClinVarGkmClient(manifest_url=f"{base}/gone.json")
+        missing = ClinVarGkmClient(manifest_url=f"{base}/gone.json", index_url=f"{base}/index.json")
         with pytest.raises(ReleaseUnavailable):
             default_probes(clinvar_gkm=missing)[CLINVAR_GKM_SOURCE]()
 

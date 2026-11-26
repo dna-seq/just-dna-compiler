@@ -16,8 +16,9 @@ substitutions, same-length MNVs, and the reference-agreeing `ReferenceLengthExpr
 carries them. An allele with no SPDI expression (GRCh37- or transcript-only names) and one off the
 GRCh38 primary assembly (one T2T accession) are dropped too; the build counts each class.
 
-**Where the bytes come from.** One Parquet set under `https://data.clinvar-gkm.org/v1/1.1/parquet/`,
-**overwritten in place every week**, with no dated or archived copies (docs/probes/LANES_0_8.md §3.1).
+**Where the bytes come from.** On 2026-11-26 the published Parquet set had moved from the frozen
+`v1/1.1` line to `https://data.clinvar-gkm.org/v1/1.2/parquet/`. The set is **overwritten in place
+every week**, with no dated or archived copies (docs/probes/LANES_0_8.md §3.1).
 So a release cannot be pinned by URL. The pin is `(source_release, sha256)` from the set's own
 `manifest.json`, and the builder refuses bytes that do not match it: a file overwritten between the
 manifest read and the download is **drift**, and a build from it would describe one release with
@@ -82,9 +83,8 @@ logger = logging.getLogger(__name__)
 #: `(source, layer)` row.
 CLINVAR_GKM_SOURCE = "clinvar_gkm"
 
-#: The release line this tier reads. 1.1.0 moved every URL here; `v1/1.0` is frozen and carries no
-#: Parquet (`v1/1.0/parquet/allele.parquet` answers 404).
-CLINVAR_GKM_BASE_URL = "https://data.clinvar-gkm.org/v1/1.1"
+#: The current line as of 2026-11-26. Its predecessor v1/1.1 keeps a frozen index and no Parquet.
+CLINVAR_GKM_BASE_URL = "https://data.clinvar-gkm.org/v1/1.2"
 PARQUET_MANIFEST_URL = f"{CLINVAR_GKM_BASE_URL}/parquet/manifest.json"
 RELEASE_INDEX_URL = f"{CLINVAR_GKM_BASE_URL}/index.json"
 ALLELE_FILE = "allele.parquet"
@@ -133,7 +133,7 @@ class ClinVarGkmUnavailable(ClinVarGkmError):
 
 
 class ClinVarGkmRetired(ClinVarGkmUnavailable, EndpointRetired):
-    """The source answered HTTP 410: it retired the file asked for (RM354).
+    """The source answered HTTP 410 or its index identifies a retired release line.
 
     A fact about the source, not an outage, and not retried. A `ClinVarGkmUnavailable` so every existing
     handler still catches it; the message says the file moved rather than that the host was down.
@@ -232,6 +232,14 @@ def clinvar_gkm_release_label(source_release: str | None) -> str | None:
     return f"{CLINVAR_GKM_DATASET_PREFIX}{stated}" if stated else None
 
 
+def _parse_index(text: str) -> dict[str, object]:
+    try:
+        raw = json.loads(text)
+    except ValueError as exc:
+        raise ClinVarGkmError(f"the release index is not JSON: {exc}") from exc
+    return raw if isinstance(raw, dict) else {}
+
+
 @dataclass
 class ClinVarGkmClient:
     """The two small JSON documents that say what the source publishes now.
@@ -268,16 +276,25 @@ class ClinVarGkmClient:
         reraise=True,
     )
     def _get_text(self, url: str) -> str:
+        return self._get_text_once(url)
+
+    def _get_text_once(self, url: str) -> str:
         assert self.gate is not None
         self.gate.wait()
         response = self._http().get(url)
         response.raise_for_status()
         return response.text
 
-    def _fetch(self, url: str, what: str) -> str:
+    def _fetch(self, url: str, what: str, *, diagnose_manifest_404: bool = False) -> str:
         try:
             return self._get_text(url)
         except httpx.HTTPError as exc:
+            if (
+                diagnose_manifest_404
+                and isinstance(exc, httpx.HTTPStatusError)
+                and exc.response.status_code == 404
+            ):
+                self._check_missing_manifest()
             raise_if_retired(exc, ClinVarGkmRetired, "ClinVar-GKM")
             raise ClinVarGkmUnavailable(f"could not read ClinVar-GKM's {what} ({url}): {exc}") from exc
 
@@ -287,7 +304,15 @@ class ClinVarGkmClient:
 
     def parquet_manifest(self) -> GkmManifest:
         """The published Parquet set's manifest. Raises `ClinVarGkmUnavailable` when unreachable."""
-        return parse_manifest(self._fetch(self.manifest_url, "Parquet manifest"))
+        return parse_manifest(self._fetch(self.manifest_url, "Parquet manifest", diagnose_manifest_404=True))
+
+    def _check_missing_manifest(self) -> None:
+        """Spend one paced request to see whether the line status explains the manifest's 404."""
+        try:
+            index = _parse_index(self._get_text_once(self.index_url))
+        except (httpx.HTTPError, ClinVarGkmError):
+            return
+        self._raise_if_line_retired(index)
 
     def latest_release_or_none(self) -> str | None:
         """`latest_release`, withheld as `None` when the index cannot be read.
@@ -302,13 +327,24 @@ class ClinVarGkmClient:
             logger.warning("ClinVar-GKM's release index could not be read (%s); the lag is unknown.", exc)
             return None
 
+    def _raise_if_line_retired(self, index: dict[str, object]) -> None:
+        if "status" in index and index["status"] != "current":
+            line = (
+                index.get("line")
+                or httpx.URL(self.index_url).path.rpartition("/")[0].strip("/")
+                or self.index_url
+            )
+            successor = index.get("superseded_by")
+            detail = f", superseded by {successor}" if successor else ", no successor named"
+            raise ClinVarGkmRetired(
+                f"ClinVar-GKM line {line} is {index['status']}{detail}; upgrade the enricher"
+            )
+
     def latest_release(self) -> str | None:
-        """The release line's newest weekly release, or `None` when the index states none."""
-        try:
-            raw = json.loads(self._fetch(self.index_url, "release index"))
-        except ValueError as exc:
-            raise ClinVarGkmError(f"the release index is not JSON: {exc}") from exc
-        stated = str(raw.get("latest_release") or "").strip() if isinstance(raw, dict) else ""
+        """The line's newest weekly release, or `None` when unstated. A superseded line is refused."""
+        index = _parse_index(self._fetch(self.index_url, "release index"))
+        self._raise_if_line_retired(index)
+        stated = str(index.get("latest_release") or "").strip()
         return stated or None
 
     def current_release(self) -> str | None:

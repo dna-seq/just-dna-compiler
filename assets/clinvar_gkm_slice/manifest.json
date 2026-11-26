@@ -1,12 +1,319 @@
 {
+ "label": "derived from the bundle; may be regenerated",
  "derived": true,
- "build_date": "2026-10-27T19:50:32Z",
- "source_release": "2026-10-24",
- "dataset": "clinvar_2026_10_24_v2_6_1",
- "builder": "BigQuery export",
- "table_spec_version": null,
- "schema_version": "1.1.0",
- "note": "One Parquet set, rebuilt from the newest release and overwritten every release. It is derived from the JSON bundle; past states are rebuilt from the monthly bundles.",
+ "note": "Parquet tables derived from the JSON bundle listed under inputs by gkm-bundle-parquet 2.0.0 (table spec sections 2.0). The bundle is the record; these files may be regenerated.",
+ "build_date": "2026-11-24T21:28:12Z",
+ "source_release": "2026-11-22",
+ "release": "2026-11-22",
+ "builder": "gkm-bundle-parquet 2.0.0",
+ "dataset": "clinvar_2026_11_22_v2_7_1",
+ "files": [
+  {
+   "name": "allele.parquet",
+   "size": 701542726,
+   "sha256": "6bdb8425b1adf0ca6087766313494c7965dbfb7c94be7f1e66e9203da1dc7241"
+  },
+  {
+   "name": "condition.parquet",
+   "size": 1958418,
+   "sha256": "dc9f070cf8512cedd623407cc057dc33121b3ad7a160cf8ce544e70707c8c11a"
+  },
+  {
+   "name": "conditionSet.parquet",
+   "size": 4981351,
+   "sha256": "a8e49103428ccda2879bd4660e6a3162ef4455699768c4796aa41c78878039aa"
+  },
+  {
+   "name": "copyNumberChange.parquet",
+   "size": 3266410,
+   "sha256": "1c37a3f0d0c8bc90a945ae5a15657e8a8de06eed838738edf7fde81751337ac5"
+  },
+  {
+   "name": "copyNumberCount.parquet",
+   "size": 4891494,
+   "sha256": "623eba0ef8d28d3e9713d204b5fcc80380e4fb03c2477f7930b25ba8fc7a3772"
+  },
+  {
+   "name": "evidenceLine.parquet",
+   "size": 265075356,
+   "sha256": "b70c1e609bee4de630cdf58bd3ef32e5a6e541bead32945a22097f288075baad"
+  },
+  {
+   "name": "gene.parquet",
+   "size": 3385282,
+   "sha256": "9eee0f4d98641afcd03e0520220ab7a97fa085e2e1ce1a0e2f5ea2cc4c238a25"
+  },
+  {
+   "name": "location.parquet",
+   "size": 427753504,
+   "sha256": "3b44ab640f9d437df0ecc430e3b16388200c84559dd92a984b1647ccb246f63b"
+  },
+  {
+   "name": "propositionClinvarCustom.parquet",
+   "size": 2429139,
+   "sha256": "7c689da8c9abd50b8aebfb6bd14336f1399d403db025873fef2cbb0e7c6248ce"
+  },
+  {
+   "name": "propositionOncogenicity.parquet",
+   "size": 153598,
+   "sha256": "8a7c06a6160af5c34250f16aac395fb7f16703d3552e5f5c19baa3ce41d0d077"
+  },
+  {
+   "name": "propositionPathogenicity.parquet",
+   "size": 402635850,
+   "sha256": "b1a239c9befeb6443465811a2ff4f00de54b1188ee919f199cadd913ea0c2373"
+  },
+  {
+   "name": "propositionSomaticClinicalImpact.parquet",
+   "size": 146805,
+   "sha256": "d63482adfb1c3831cad69d6905028228d9acce0775e038f16822efc6c097c377"
+  },
+  {
+   "name": "rcv.parquet",
+   "size": 185244985,
+   "sha256": "21fce3a0c0dab09f7b7fab689699a15300e51f736ffb21510447790704c6848c"
+  },
+  {
+   "name": "scv.parquet",
+   "size": 785356410,
+   "sha256": "48503dd08c7ba2195549f9d32a1c30b2bf5e132c1fd6e2df300560187e77138f"
+  },
+  {
+   "name": "sequenceReference.parquet",
+   "size": 19744,
+   "sha256": "2148919aa39a004e8b791439e7f895e02c590ecfbd2e6934e476f305aff51aab"
+  },
+  {
+   "name": "submitter.parquet",
+   "size": 138561,
+   "sha256": "4f2a0e38bae5ad5d6b669eee243367d36ff64584d02a0cdb9a8231f1fa4efeb2"
+  },
+  {
+   "name": "therapy.parquet",
+   "size": 5087,
+   "sha256": "90c16e10a985783adffe0007c14a381fbede376f6c7f84e2af37d138b0ed8b15"
+  },
+  {
+   "name": "therapyGroup.parquet",
+   "size": 5588,
+   "sha256": "c2a38c01266787e536a3b769b77ac6557d30da44952fec16a26bb61fd4aaa0a0"
+  },
+  {
+   "name": "variation.parquet",
+   "size": 1663691402,
+   "sha256": "7e48f98235d704538f2f22d7f9d240627e47999f090e10a9ace739b3ba5eee11"
+  },
+  {
+   "name": "vcv.parquet",
+   "size": 148441281,
+   "sha256": "1c994c2618d2e76d4c43ad1b94bf2e44cedc5ace2f588b238e9a8efef776dfd9"
+  }
+ ],
+ "tool_version": "2.0.0",
+ "table_spec": {
+  "name": "sections",
+  "version": "2.0",
+  "builtin": true,
+  "sha256": "8f87c3bcc6cc4ee22da9c3c0f2b8a2cf666d848fbafee2d949ea17ab0a9a3b32",
+  "schema_set_sha256": "3b3920180d08f3343d7466ce55bbcb95f5cbc467c505a4e03797b8f3c48d6798",
+  "column_set_sha256": "e07436add989762e1ffaefe157565e660a5b5ee57178fcffdeb23b3826e7a6fd",
+  "file": "table-spec.json",
+  "policy_version": "2.0",
+  "column_set_kind": "default",
+  "projection": null
+ },
+ "table_spec_version": "2.0",
+ "table_spec_status": "released",
+ "bundle_schema_version": "1.2.0",
+ "schema_version": "1.2.0",
+ "duckdb_version": "1.5.4",
+ "source_bundle_sha256": "5fbe22bb7ea2c579aa80261de4b2aec74240e45f71772a685a1aabdac786ce46",
+ "inputs": {
+  "full": {
+   "source": "https://data.clinvar-gkm.org/v1/1.2/weekly/clinvar-gkm_2026-1122.json.gz",
+   "name": "clinvar-gkm_2026-1122.json.gz",
+   "expected_sha256": "5fbe22bb7ea2c579aa80261de4b2aec74240e45f71772a685a1aabdac786ce46",
+   "sha256_source": "explicit",
+   "sha256": "5fbe22bb7ea2c579aa80261de4b2aec74240e45f71772a685a1aabdac786ce46",
+   "size": 4881887312,
+   "schema_version": "1.2.0"
+  }
+ },
+ "sections": {
+  "allele": 4620679,
+  "condition": 23462,
+  "conditionSet": 101120,
+  "copyNumberChange": 31760,
+  "copyNumberCount": 47574,
+  "evidenceLine": 21649945,
+  "gene": 93019,
+  "location": 4231305,
+  "propositionClinvarCustom": 186537,
+  "propositionOncogenicity": 12238,
+  "propositionPathogenicity": 28026107,
+  "propositionSomaticClinicalImpact": 12607,
+  "rcv": 12127110,
+  "scv": 6897454,
+  "sequenceReference": 216,
+  "submitter": 3609,
+  "therapy": 38,
+  "therapyGroup": 10,
+  "variation": 4714028,
+  "vcv": 9211357
+ },
+ "tables": {
+  "allele": {
+   "file": "allele.parquet",
+   "rows": 4620679,
+   "sha256": "6bdb8425b1adf0ca6087766313494c7965dbfb7c94be7f1e66e9203da1dc7241",
+   "size": 701542726
+  },
+  "condition": {
+   "file": "condition.parquet",
+   "rows": 23462,
+   "sha256": "dc9f070cf8512cedd623407cc057dc33121b3ad7a160cf8ce544e70707c8c11a",
+   "size": 1958418
+  },
+  "conditionSet": {
+   "file": "conditionSet.parquet",
+   "rows": 101120,
+   "sha256": "a8e49103428ccda2879bd4660e6a3162ef4455699768c4796aa41c78878039aa",
+   "size": 4981351
+  },
+  "copyNumberChange": {
+   "file": "copyNumberChange.parquet",
+   "rows": 31760,
+   "sha256": "1c37a3f0d0c8bc90a945ae5a15657e8a8de06eed838738edf7fde81751337ac5",
+   "size": 3266410
+  },
+  "copyNumberCount": {
+   "file": "copyNumberCount.parquet",
+   "rows": 47574,
+   "sha256": "623eba0ef8d28d3e9713d204b5fcc80380e4fb03c2477f7930b25ba8fc7a3772",
+   "size": 4891494
+  },
+  "evidenceLine": {
+   "file": "evidenceLine.parquet",
+   "rows": 21649945,
+   "sha256": "b70c1e609bee4de630cdf58bd3ef32e5a6e541bead32945a22097f288075baad",
+   "size": 265075356
+  },
+  "gene": {
+   "file": "gene.parquet",
+   "rows": 93019,
+   "sha256": "9eee0f4d98641afcd03e0520220ab7a97fa085e2e1ce1a0e2f5ea2cc4c238a25",
+   "size": 3385282
+  },
+  "location": {
+   "file": "location.parquet",
+   "rows": 4231305,
+   "sha256": "3b44ab640f9d437df0ecc430e3b16388200c84559dd92a984b1647ccb246f63b",
+   "size": 427753504
+  },
+  "propositionClinvarCustom": {
+   "file": "propositionClinvarCustom.parquet",
+   "rows": 186537,
+   "sha256": "7c689da8c9abd50b8aebfb6bd14336f1399d403db025873fef2cbb0e7c6248ce",
+   "size": 2429139
+  },
+  "propositionOncogenicity": {
+   "file": "propositionOncogenicity.parquet",
+   "rows": 12238,
+   "sha256": "8a7c06a6160af5c34250f16aac395fb7f16703d3552e5f5c19baa3ce41d0d077",
+   "size": 153598
+  },
+  "propositionPathogenicity": {
+   "file": "propositionPathogenicity.parquet",
+   "rows": 28026107,
+   "sha256": "b1a239c9befeb6443465811a2ff4f00de54b1188ee919f199cadd913ea0c2373",
+   "size": 402635850
+  },
+  "propositionSomaticClinicalImpact": {
+   "file": "propositionSomaticClinicalImpact.parquet",
+   "rows": 12607,
+   "sha256": "d63482adfb1c3831cad69d6905028228d9acce0775e038f16822efc6c097c377",
+   "size": 146805
+  },
+  "rcv": {
+   "file": "rcv.parquet",
+   "rows": 12127110,
+   "sha256": "21fce3a0c0dab09f7b7fab689699a15300e51f736ffb21510447790704c6848c",
+   "size": 185244985
+  },
+  "scv": {
+   "file": "scv.parquet",
+   "rows": 6897454,
+   "sha256": "48503dd08c7ba2195549f9d32a1c30b2bf5e132c1fd6e2df300560187e77138f",
+   "size": 785356410
+  },
+  "sequenceReference": {
+   "file": "sequenceReference.parquet",
+   "rows": 216,
+   "sha256": "2148919aa39a004e8b791439e7f895e02c590ecfbd2e6934e476f305aff51aab",
+   "size": 19744
+  },
+  "submitter": {
+   "file": "submitter.parquet",
+   "rows": 3609,
+   "sha256": "4f2a0e38bae5ad5d6b669eee243367d36ff64584d02a0cdb9a8231f1fa4efeb2",
+   "size": 138561
+  },
+  "therapy": {
+   "file": "therapy.parquet",
+   "rows": 38,
+   "sha256": "90c16e10a985783adffe0007c14a381fbede376f6c7f84e2af37d138b0ed8b15",
+   "size": 5087
+  },
+  "therapyGroup": {
+   "file": "therapyGroup.parquet",
+   "rows": 10,
+   "sha256": "c2a38c01266787e536a3b769b77ac6557d30da44952fec16a26bb61fd4aaa0a0",
+   "size": 5588
+  },
+  "variation": {
+   "file": "variation.parquet",
+   "rows": 4714028,
+   "sha256": "7e48f98235d704538f2f22d7f9d240627e47999f090e10a9ace739b3ba5eee11",
+   "size": 1663691402
+  },
+  "vcv": {
+   "file": "vcv.parquet",
+   "rows": 9211357,
+   "sha256": "1c994c2618d2e76d4c43ad1b94bf2e44cedc5ace2f588b238e9a8efef776dfd9",
+   "size": 148441281
+  }
+ },
+ "started_at": "2026-11-24T20:06:48+00:00",
+ "ended_at": "2026-11-24T20:55:09+00:00",
+ "generated_at": "2026-11-24T20:55:09+00:00",
+ "records_sha256": "a662bf8cf328a43a8c91a696ea23807ab5b3d51d4ccfe19be210110e9b5d4870",
+ "source_root": [
+  "schema_version",
+  "sequenceReference",
+  "location",
+  "allele",
+  "copyNumberCount",
+  "copyNumberChange",
+  "gene",
+  "variation",
+  "condition",
+  "conditionSet",
+  "therapy",
+  "therapyGroup",
+  "submitter",
+  "propositionPathogenicity",
+  "propositionOncogenicity",
+  "propositionSomaticClinicalImpact",
+  "propositionClinvarCustom",
+  "evidenceLine",
+  "scv",
+  "vcv",
+  "rcv"
+ ],
+ "round_trip": {
+  "promise": "record-identical",
+  "source_layout": "line"
+ },
  "source": {
   "name": "ClinVar",
   "publisher": "National Center for Biotechnology Information (NCBI), U.S. National Library of Medicine",
@@ -20,117 +327,5 @@
   "id": "CC0-1.0",
   "scope": "CC0 covers ClinGen's contribution (the code and this published transformation) only. It adds no restriction, and it cannot grant rights that NCBI or ClinVar's submitters hold."
  },
- "data_use": "https://dataexchange.clinicalgenome.org/clinvar-gkm/data-use/",
- "files": [
-  {
-   "name": "allele.parquet",
-   "size": 1119974942,
-   "sha256": "cfd29e5464c9903c7645e7ca4359c6b0bc660e329ba0176635037f0ac45bc625"
-  },
-  {
-   "name": "condition.parquet",
-   "size": 4684278,
-   "sha256": "c43d99a684c056a3f13f6f5608f78b980f9d62110ab6e948d6720c614100cde4"
-  },
-  {
-   "name": "conditionSet.parquet",
-   "size": 10908417,
-   "sha256": "a8e54abf7d421fcc02bc71b9177105d4ba6ca46f645cbce9d8506c06728968e8"
-  },
-  {
-   "name": "copyNumberChange.parquet",
-   "size": 5822435,
-   "sha256": "a008678a3f935f0bfd4c91368317e320b3efdc6822e9a6d6a989799cf4561e32"
-  },
-  {
-   "name": "copyNumberCount.parquet",
-   "size": 8698659,
-   "sha256": "0bdd6763f011d0059d4cc5548e12c269b0da5bf9934954b529dfdcf646412871"
-  },
-  {
-   "name": "evidenceLine.parquet",
-   "size": 153221,
-   "sha256": "db7bc394d16a3119293fbf91d9e56df2c801a87a169aa3a0147d4d9514b5ee92"
-  },
-  {
-   "name": "gene.parquet",
-   "size": 5355976,
-   "sha256": "4d395d1a05f5272a4e32d04f8f4d36e9936eba1c682b3b2d103e83350afc7cd2"
-  },
-  {
-   "name": "location.parquet",
-   "size": 714136812,
-   "sha256": "84a6458cf972cb1f855aaf568eaed98e8e9a038ed5c35f0db1df80ec55fe6e9e"
-  },
-  {
-   "name": "propositionClinvarCustom.parquet",
-   "size": 10285877,
-   "sha256": "7b35406c48b376a01969d73e7d022581cf1bdcd8756179a18635143dc9b89467"
-  },
-  {
-   "name": "propositionOncogenicity.parquet",
-   "size": 573395,
-   "sha256": "92faabf64aa52f4d7202c1862c20f53f416c430fe229c336d1df42a02c86d404"
-  },
-  {
-   "name": "propositionPathogenicity.parquet",
-   "size": 1485029399,
-   "sha256": "76a0f7d992a764f3b3ddec2fb8483655c479b747846838168f74f88e7ce1b919"
-  },
-  {
-   "name": "propositionSomaticClinicalImpact.parquet",
-   "size": 733496,
-   "sha256": "6a7750269c3b2fd710ce97ee42a398479e32de439feb838008037f5d058a3094"
-  },
-  {
-   "name": "rcv.parquet",
-   "size": 862881514,
-   "sha256": "509242090f56907e304ae8f98920e9005135ab0d3614eeb340ba83e5d23fab1a"
-  },
-  {
-   "name": "rcv_evidenceLine.parquet",
-   "size": 645666584,
-   "sha256": "5615ccc186f3a8a661ce06020dcf02d61e025fd69ff6575fcc39be8b51a2828d"
-  },
-  {
-   "name": "scv.parquet",
-   "size": 3202110801,
-   "sha256": "ae315d45364a3849724fe0c9f55b698246d8e837daa6ea3c23fce9c405398934"
-  },
-  {
-   "name": "sequenceReference.parquet",
-   "size": 28947,
-   "sha256": "59791473332f64030689c047266c1326a74abe28496be1cb31b5dbd229ddc5ce"
-  },
-  {
-   "name": "submitter.parquet",
-   "size": 276356,
-   "sha256": "bd9a746727a1ebc0e226d5cf67ec8f7581545074d2ccef8566137dcbb11a7d46"
-  },
-  {
-   "name": "therapy.parquet",
-   "size": 4768,
-   "sha256": "1064eecf2d36c27b04e185816f2b64be95b51a3c818b1880a4b9ce03b6f77413"
-  },
-  {
-   "name": "therapyGroup.parquet",
-   "size": 8002,
-   "sha256": "3b733b57fb1967ee81415574bacee3ac1706f44d5dd855f294c518afa3eb0a84"
-  },
-  {
-   "name": "variation.parquet",
-   "size": 3914257911,
-   "sha256": "136b0db54d39fe74a570a3e59e00acc2aa7d24de1f937d8a441b0b52392740f1"
-  },
-  {
-   "name": "vcv.parquet",
-   "size": 664730263,
-   "sha256": "8aa2ebf54a25f88f0ef52fc5cf21d008a32853ad60d6c7692da0d8e62c58fa4a"
-  },
-  {
-   "name": "vcv_evidenceLine.parquet",
-   "size": 510994886,
-   "sha256": "ce1c071ec2291e5828db47f0cb91ba80716f4b32ed6d0880334438a86469343c"
-  }
- ]
+ "data_use": "https://dataexchange.clinicalgenome.org/clinvar-gkm/data-use/"
 }

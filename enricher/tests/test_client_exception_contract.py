@@ -505,9 +505,10 @@ PERMANENT_STATUSES = (400, 404, 410)
 #: A (client, status) whose first request is asked once more as a **different** request, never the same
 #: one re-sent. The GWAS Catalog's 400 to a page size above its ceiling is asked again with no `size`
 #: (RM428): the server decides the ceiling and dropped it once in a week, and its 400 does not name it.
+#: ClinVar-GKM asks its line index once when its Parquet manifest answers 404 (RM470).
 #: The contract this file pins is that a permanent 4xx is never re-sent; a declared second request is
 #: asserted to differ from the first, and to be the last.
-ASKED_AGAIN_DIFFERENTLY = {("gwas", 400)}
+ASKED_AGAIN_DIFFERENTLY = {("gwas", 400), ("clinvar_gkm", 404)}
 
 
 def test_every_client_names_its_410() -> None:
