@@ -176,6 +176,11 @@ lead and the pm (643975731); the server's real flags decide whether it needs it.
 server is an Intel Xeon E5-1620 v2 (Ivy Bridge, 2013): plain AVX, no AVX2, FMA, BMI1, BMI2 or LZCNT, no AVX-512. So the
 default runtime cannot load there and compat is required. The open risk moves to the line "Not proven" above: a CPU
 without AVX2 is now a real target, so the other native libraries are proven only by a run on that server.
+**Run under emulation the same day:** qemu-user 10.0 with `-cpu IvyBridge` (control: AVX runs; AVX2, BMI2 and FMA
+instructions die with SIGILL), our whole suite with `polars[rtcompat]` 2.1.0, in four single-process shards: 7593
+passed, 124 skipped, 2 failed, no illegal instruction anywhere. Of the two, one ran past its 5 s regex limit under the
+emulator and passes natively; the other is the `v0.9.0` tag meeting a main that does not list 0.9.0 yet, and fails
+natively too. Without compat, `import polars` dies there with SIGILL. So nothing else we ship needs AVX2.
 
 ## Our pieces that duplicate an upstream feature
 
