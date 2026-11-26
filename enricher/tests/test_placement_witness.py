@@ -19,6 +19,8 @@ first test proves the windows: the two RM270 alleles mint the ids RM270 and Clin
 import gzip
 import hashlib
 import json
+from datetime import UTC, datetime, tzinfo
+from importlib.metadata import version
 from pathlib import Path
 
 import httpx
@@ -27,7 +29,6 @@ import pytest
 from ga4gh.vrs.dataproxy import _DataProxy
 from just_dna_compiler.compiler import compile_module, load_csv_rows
 from just_dna_enricher.caches import LANES_BY_NAME
-from just_dna_enricher.clients import LookupClients
 from just_dna_enricher.clinvar_gkm import ALLELE_FILE, VARIATION_FILE, WITNESS_PARQUET, parse_manifest
 from just_dna_enricher.clinvar_gkm_build import build_snapshot
 from just_dna_enricher.enrich import EnrichmentError, enrich
@@ -38,6 +39,7 @@ from just_dna_enricher.ensembl import EnsemblResolver
 from just_dna_enricher.eutils import EutilsClient, EutilsSettings
 from just_dna_enricher.events import Allele, same_event
 from just_dna_enricher.licensing import sources_path
+from just_dna_enricher.lookup import LookupClients
 from just_dna_enricher.net import PacingGate
 from just_dna_enricher.placement import _dbsnp_placements, compare_placements
 from just_dna_enricher.sequences import SequenceProxy, normalize_locus, spelling_verdict
@@ -692,6 +694,76 @@ class _CallerEutils(EutilsClient):
     def close(self) -> None:
         self.closes += 1
         super().close()
+
+
+class _RecordingClock(datetime):
+    """The wall clock used by both the tagged recorder and the regression test."""
+
+    @classmethod
+    def now(cls, tz: tzinfo | None = None) -> datetime:
+        return datetime(2026, 11, 7, 12, tzinfo=UTC).astimezone(tz)
+
+
+def _rm466_run(root: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, dict[Path, bytes]]:
+    """Replay two placements at a fixed UTC time, returning the spec and its original authored bytes."""
+    rsids = ("rs8176719", "rs77944059")
+    spec = _spec(root, {rsid: GENOTYPES[rsid] for rsid in rsids})
+    authored = {path.relative_to(spec): path.read_bytes() for path in spec.iterdir()}
+    # licensing.csv's fetched_at, verification.json's produced_at and records[].checked_at.
+    # Freeze the clock underneath the formatter so the timestamp spelling is checked too.
+    monkeypatch.setattr("just_dna_format.normalize.datetime", _RecordingClock)
+    monkeypatch.setattr("just_dna_enricher.sequences.create_dataproxy", lambda uri: _RecordedBases())
+    dbsnp = _Dbsnp()
+    # offline=True would skip dbSNP and seqrepo. Replay their inputs below the real clients.
+    with httpx.Client(transport=httpx.MockTransport(dbsnp.handler)) as ncbi:
+        monkeypatch.setattr(EutilsClient, "_http", lambda self: ncbi)
+        result = enrich(
+            spec,
+            ensembl_cache=_ensembl_snapshot(root),
+            clinvar_cache=_clinvar_snapshot(root, {"rs77944059": CLINVAR["rs77944059"]}),
+            download=False,
+            verify_datasets=False,
+        )
+
+    (row,) = result.rows
+    assert (row.rsid, row.source, row.placement_witness, row.placement_verdict, row.vrs_id) == (
+        "rs77944059",
+        "cache",
+        "clinvar",
+        "same_event",
+        RS77944059_ID,
+    )
+    assert result.placement is not None and result.placement.withheld == ["rs8176719"]
+    (finding,) = result.placement.disagreements
+    assert (finding.authority, finding.witness) == ("ensembl", "dbsnp")
+    assert set(dbsnp.uids) == {rsid.removeprefix("rs") for rsid in rsids}
+    return spec, authored
+
+
+@pytest.mark.usefixtures("no_ambient_caches")
+def test_enrich_without_new_arguments_writes_v0810_bytes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Compare the complete module tree with the authored inputs and the sidecars written by v0.8.10.
+
+    The goldens came from running this file's _rm466_run in the tagged workspace (65cfa25b),
+    with all cache lanes pointed at an absent directory, and copying the three new files verbatim
+    (re-recorded there by the lead, 2026-11-26: identical). Clock fields are fixed by the clock;
+    the `producer` version is the one field substituted.
+    """
+    spec, expected = _rm466_run(tmp_path, monkeypatch)
+    goldens = SLICE.parent / "enrich_v0_8_10"
+    # The one field that must move between releases: `verification.json`'s `producer` names the
+    # enricher that wrote it. The recorded release is swapped for the running one, so a version bump
+    # is not read as a byte difference and every other byte still has to be 0.8.10's.
+    producer = (b"just-dna-enricher 0.8.10", f"just-dna-enricher {version('just-dna-enricher')}".encode())
+    for path in goldens.rglob("*"):
+        if path.is_file():
+            expected[path.relative_to(goldens)] = path.read_bytes().replace(*producer)
+    actual = {path.relative_to(spec): path for path in spec.rglob("*") if path.is_file()}
+    assert actual.keys() == expected.keys()
+    for name, path in actual.items():
+        assert path.read_bytes() == expected[name], name
 
 
 def test_rm404_a_callers_eutils_serves_the_witness_and_the_merge_check_one_fetch_per_record(

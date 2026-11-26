@@ -388,6 +388,11 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   the resolved alleles, so a question with an rsID and a position makes one rsID read and one position read,
   over the proxy or Hugging Face alike. One request is not possible: the registry's proxy matches every column
   it is given, and a single Hugging Face read of both questions would lose the keyed row-group pruning.
+- **`enrich` given none of 0.9's new arguments is tested to write 0.8.10's bytes** (RM466, the rescope). A
+  fixed offline input reaching the Ensembl snapshot, the ClinVar witness, dbSNP and the sequence is enriched
+  under a fixed clock, and the written tree is compared byte for byte with goldens recorded from `v0.8.10`
+  (`assets/enrich_v0_8_10/`); `verification.json`'s `producer` is the one field substituted, the running
+  release for 0.8.10. This replaces the cut's one-off measurement.
 
 ## 2026-11-19 — `v0.8.10`: format, compiler and enricher 0.8.10 (a patch, cut from `main`)
 
