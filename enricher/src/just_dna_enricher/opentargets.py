@@ -239,8 +239,8 @@ def _part_counts(release: SnapshotRelease, dataset: str) -> tuple[int, int] | No
     `parts_total` that is not a map at all, or a map holding a value pydantic cannot read as an int
     (`null`, `1.5`, `"x"`), is dropped whole and read as unstated, while pydantic's lax mode reads a
     per-dataset `"1"`, `1.0` or `true` as 1. Nothing is coerced here, and an unstated count is the
-    unknown arm (RM361). The strict reading is the publish gate's (`upload._refuse_an_unreadable_record`,
-    RM412), which refuses every count that is not a whole number, `null` included.
+    unknown arm (RM361). The publish gate calls the format tier's `is_whole_build` on the raw record,
+    which refuses every count that is not a whole number, `null` included.
     """
     read = (release.parts_read or {}).get(dataset)
     total = (release.parts_total or {}).get(dataset)

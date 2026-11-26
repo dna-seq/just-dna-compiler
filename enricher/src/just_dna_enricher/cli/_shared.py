@@ -7,7 +7,6 @@ from pathlib import Path
 import typer
 from just_dna_compiler.draft import DraftError
 from just_dna_format.manifest import VerificationRecord
-from just_dna_format.snapshot import release_label
 from just_dna_format.vocab import VALID_DECLARED_USE, match_vocab
 
 from just_dna_enricher.enrich import EnrichmentError
@@ -40,20 +39,41 @@ def _mode(strict: bool) -> str:
     return "strict" if strict else "best_effort"
 
 
-def _warn_if_unlabelled(snapshot_dir: Path, source: str, build_command: str) -> None:
-    """Warn, and refuse nothing, when a snapshot about to be published states no release label (RM412).
+def _publish_lane(
+    snapshot_dir: Path,
+    repo: str,
+    dry_run: bool,
+    commit_message: str | None,
+    *,
+    unlabelled_warning: str,
+    payload: str | None = None,
+) -> None:
+    """Publish a built lane or report the outcome of rehearsing its upload."""
+    from just_dna_enricher.upload import PublishRefused, _run_snapshot_publish
 
-    The warning `mitomap publish` and `strchive publish` give, in their words, for the two publish
-    commands 0.9 added (`opentargets publish`, `clinvar-gkm publish`): an unlabelled snapshot can be
-    pulled and read, but nobody who pulls it can say which release they read. Those two siblings keep
-    their own inline copies; folding them in is the publish-command refactor RM412 sends to a patch.
-    """
-    if release_label(snapshot_dir) is None:
+    def warn_unlabelled() -> None:
+        typer.secho(unlabelled_warning, fg=typer.colors.YELLOW, err=True)
+
+    try:
+        plan = _run_snapshot_publish(
+            snapshot_dir,
+            repo,
+            payload=payload,
+            commit_message=commit_message,
+            dry_run=dry_run,
+            warn_unlabelled=warn_unlabelled,
+        )
+    except (PublishRefused, PermissionError, ImportError) as exc:
+        if dry_run:
+            typer.secho(f"WOULD BE REFUSED: {exc}", fg=typer.colors.RED, err=True)
+            return
+        typer.secho(f"PUBLISH FAILED: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+    if dry_run:
+        typer.echo(f"would upload {len(plan.files)} file(s) to {plan.repo_id}: {plan.files}")
+    else:
         typer.secho(
-            f"  this snapshot carries no release label, so everyone who pulls it inherits a snapshot that "
-            f"cannot name its own {source} release. Rebuild it with `{build_command}`.",
-            fg=typer.colors.YELLOW,
-            err=True,
+            f"published: {snapshot_dir} → {plan.repo_id} ({len(plan.files)} files)", fg=typer.colors.GREEN
         )
 
 

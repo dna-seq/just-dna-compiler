@@ -26,6 +26,7 @@ from just_dna_format.snapshot import (
     begin_snapshot_write,
     clinvar_release_label,
     holds_snapshot_payload,
+    is_whole_build,
     parse_release,
     read_release,
     release_is_unreadable,
@@ -422,3 +423,36 @@ def test_read_release_warns_with_the_path_through_the_shared_parser(
         caplog.records[0].getMessage()
         == f"{path}: row_count do not fit the snapshot record; read as unstated."
     )
+
+
+@pytest.mark.parametrize(
+    ("read", "total", "expected"),
+    [
+        ({}, {}, None),
+        (None, {"study": 2}, None),
+        ({"study": 2}, {"other": 2}, None),
+        ({"study": 2}, {"study": 2, "other": 1}, None),
+        ({"study": 2}, {"study": 2}, True),
+        ({"study": 0}, {"study": 2, "other": 1}, False),
+    ],
+)
+def test_is_whole_build_withholds_unknown_part_counts(read, total, expected) -> None:
+    record = SnapshotRelease(parts_read=read, parts_total=total)
+    assert is_whole_build(record) is expected
+    assert is_whole_build(json.loads(record.to_json())) is expected
+
+
+def test_is_whole_build_refuses_a_contradictory_record() -> None:
+    read = {"study": 2}
+    total = {"study": read["study"] - 1}
+    with pytest.raises(ValueError) as refused:
+        is_whole_build(SnapshotRelease(parts_read=read, parts_total=total))
+    assert str(refused.value) == f'parts_read["study"] is {read["study"]}, above parts_total {total["study"]}'
+
+
+def test_is_whole_build_names_every_short_dataset_in_order() -> None:
+    read = {"study": 1, "complete": 2, "l2g": 0, "unknown": 3}
+    total = {"study": 2, "l2g": 1, "complete": read["complete"]}
+    short = {}
+    assert is_whole_build({"parts_read": read, "parts_total": total}, short_reads=short) is False
+    assert list(short.items()) == [(name, (read[name], total[name])) for name in ("l2g", "study")]

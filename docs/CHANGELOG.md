@@ -393,6 +393,15 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   under a fixed clock, and the written tree is compared byte for byte with goldens recorded from `v0.8.10`
   (`assets/enrich_v0_8_10/`); `verification.json`'s `producer` is the one field substituted, the running
   release for 0.8.10. This replaces the cut's one-off measurement.
+- **`just_dna_format.snapshot.is_whole_build(record)`** (RM465, the rescope): whether every dataset a
+  `release.json` names was read in full, `None` when its part counts cannot say, and `ValueError` for a count
+  that is not a whole number or a `parts_read` above its `parts_total` (which published as whole before). The
+  publish gate calls it on the record as written, and the part-count keys are derived from `SnapshotRelease`'s
+  marked fields rather than kept by hand.
+- **The four per-lane `publish` commands share one body** (RM464, the rescope): `mitomap`, `strchive`,
+  `opentargets` and `clinvar-gkm publish` read and parse `release.json` once and hash and upload those same
+  bytes. A rehearsal (`--dry-run`) the gate would refuse prints `WOULD BE REFUSED: …` and exits 0, as
+  `cache rebuild --publish` does; a refused real publish exits 1.
 
 ## 2026-11-19 — `v0.8.10`: format, compiler and enricher 0.8.10 (a patch, cut from `main`)
 

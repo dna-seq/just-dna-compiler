@@ -3074,6 +3074,14 @@ through the same `clinvar_release_label` the model uses to read an older snapsho
 formula on both sides and the per-lane reader is gone. `builder` (ACMG's, a module path) is not a
 version and is not an alias of `builder_version`; it rides in extra.
 
+**`snapshot.is_whole_build(record) -> bool | None`** checks the dataset part counts. It returns
+`True` when every named dataset has matching counts, `False` when any dataset is short, and
+`None` when the record has insufficient counts to decide. Malformed counts or reads above the
+stated total raise `ValueError`. Pass the decoded JSON object for the same strict check the
+publisher makes. A `SnapshotRelease` answers for its already-parsed counts. Callers that need to
+name the short datasets can pass an empty dictionary as `short_reads=` to collect their
+`(read, total)` pairs.
+
 **`read_release(dir) -> SnapshotRelease | None`** answers `None` for an absent file and for an
 unreadable one (does not parse, or is not an object), with a warning for the second. A typed key holding
 the wrong kind of value costs that key and never the record: it is dropped, read as unstated, with a

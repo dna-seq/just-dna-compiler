@@ -82,20 +82,21 @@ def test_the_dry_run_names_the_lanes_repo_and_the_files_the_rebuild_route_would_
     assert f"would upload {len(expected.files)} file(s) to {repo}: {expected.files}" in result.output
 
 
-@pytest.mark.parametrize("lane", sorted(_GROUPS))
+@pytest.mark.parametrize("command", [*_GROUPS.values(), "strchive", "mitomap"])
 def test_a_directory_with_nothing_built_is_refused_in_the_dry_run_as_in_the_real_run(
-    lane: str, fake_hub: type[_Api], tmp_path: Path
+    command: str, fake_hub: type[_Api], tmp_path: Path
 ) -> None:
     empty = tmp_path / "empty"
     empty.mkdir()
     runner = CliRunner()
 
-    rehearsed = runner.invoke(app, [_GROUPS[lane], "publish", str(empty), "--dry-run"])
-    real = runner.invoke(app, [_GROUPS[lane], "publish", str(empty)])
+    rehearsed = runner.invoke(app, [command, "publish", str(empty), "--dry-run"])
+    real = runner.invoke(app, [command, "publish", str(empty)])
 
-    assert rehearsed.exit_code == 1 and real.exit_code == 1
-    assert "WOULD BE REFUSED: no data/*.parquet" in rehearsed.output
-    assert "PUBLISH FAILED: no data/*.parquet" in real.output
+    assert rehearsed.exit_code == 0 and real.exit_code == 1
+    missing = "STRchive-loci.json" if command == "strchive" else "data/*.parquet"
+    assert f"WOULD BE REFUSED: no {missing}" in rehearsed.output
+    assert f"PUBLISH FAILED: no {missing}" in real.output
 
 
 def test_the_rehearsal_runs_the_orphan_check_the_real_publish_refuses_on(
@@ -107,7 +108,7 @@ def test_the_rehearsal_runs_the_orphan_check_the_real_publish_refuses_on(
 
     result = CliRunner().invoke(app, ["clinvar-gkm", "publish", str(snapshot), "--dry-run"])
 
-    assert result.exit_code == 1, result.output
+    assert result.exit_code == 0, result.output
     assert "WOULD BE REFUSED" in result.output
 
 
@@ -156,7 +157,7 @@ def test_a_partial_build_is_refused_in_the_dry_run_and_before_the_real_run_touch
     rehearsed = runner.invoke(app, [_GROUPS[lane], "publish", str(snapshot), "--dry-run"])
     real = runner.invoke(app, [_GROUPS[lane], "publish", str(snapshot)])
 
-    assert rehearsed.exit_code == 1, rehearsed.output
+    assert rehearsed.exit_code == 0, rehearsed.output
     assert f"WOULD BE REFUSED: {expected}" in " ".join(rehearsed.output.split())
     # The fake hub's `create_repo` raises: a refusal that came after it would surface as that error.
     assert isinstance(real.exception, SystemExit), real.exception
@@ -241,7 +242,7 @@ def test_an_unlabelled_partial_build_is_warned_about_first_and_then_refused(
 
     result = CliRunner().invoke(app, ["opentargets", "publish", str(snapshot), "--dry-run"])
 
-    assert result.exit_code == 1, result.output
+    assert result.exit_code == 0, result.output
     said = " ".join(result.output.split())
     assert said.index(_UNLABELLED) < said.index("WOULD BE REFUSED")
 
@@ -294,7 +295,7 @@ def _assert_refused_in_both_runs(lane: str, snapshot: Path, expected: str) -> No
     rehearsed = runner.invoke(app, [_GROUPS[lane], "publish", str(snapshot), "--dry-run"])
     real = runner.invoke(app, [_GROUPS[lane], "publish", str(snapshot)])
 
-    assert rehearsed.exit_code == 1, rehearsed.output
+    assert rehearsed.exit_code == 0, rehearsed.output
     assert f"WOULD BE REFUSED: {expected}" in " ".join(rehearsed.output.split())
     # The fake hub's `create_repo` raises: a refusal that came after it would surface as that error.
     assert isinstance(real.exception, SystemExit), real.exception
@@ -455,7 +456,7 @@ def test_a_read_of_zero_parts_is_not_this_checks_refusal(fake_hub: type[_Api], t
 
     result = CliRunner().invoke(app, ["opentargets", "publish", str(snapshot), "--dry-run"])
 
-    assert result.exit_code == 1, result.output
+    assert result.exit_code == 0, result.output
     assert "Rebuild the snapshot before publishing" not in result.output
     assert "is a partial build" in result.output and "l2g 0 of 12 parts" in result.output
 
@@ -512,3 +513,25 @@ def test_the_four_refusals_say_four_different_things(tmp_path: Path) -> None:
         said[name] = str(refused.value).replace(str(snapshot), "<dir>")
 
     assert len(set(said.values())) == len(said), said
+
+
+def test_the_publish_gate_refuses_more_parts_read_than_exist(tmp_path: Path) -> None:
+    total = _PARTS_TOTAL["study"]
+    read = total + 1
+    snapshot = _with_release(
+        tmp_path, "opentargets", {"parts_read": {"study": read}, "parts_total": {"study": total}}
+    )
+    with pytest.raises(SnapshotNotPublishable) as refused:
+        plan_reference_snapshot(snapshot)
+    assert str(refused.value) == _miscounted_refusal(
+        snapshot, [f'parts_read["study"] is {read}, above parts_total {total}']
+    )
+
+
+def test_planning_still_warns_about_an_unrelated_mistyped_field(tmp_path: Path, caplog) -> None:
+    snapshot = _with_release(tmp_path, "opentargets", {"dataset": "labelled", "row_count": []})
+    assert RELEASE_FILENAME in plan_reference_snapshot(snapshot).files
+    assert (
+        f"{snapshot / RELEASE_FILENAME}: row_count do not fit the snapshot record; read as unstated."
+        in caplog.messages
+    )
