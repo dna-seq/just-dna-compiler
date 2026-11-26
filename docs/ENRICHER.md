@@ -4512,7 +4512,9 @@ flattens it into `data/`: `variants.parquet` (the allele table, alleles from col
 `credible_set_members-*.parquet` (GWAS sets only, `locus` exploded), `l2g.parquet`, and
 `colocalisations-*.parquet` (GWAS left × molecular-QTL right, with the right study's `geneId` and
 `biosampleId` joined on). `--source <dir>` builds from parts already on disk; `--parts N` reads the first
-N parts of each dataset, and `release.json` then records `parts_read` beside `parts_total`. The tables are
+N parts of each dataset, and `release.json` then records `parts_read` beside `parts_total`.
+`OpenTargetsBuildResult.partial` holds the `(read, total)` pairs the build CLI reports. The builder
+checks the counts with `is_whole_build` before replacing the snapshot. The tables are
 written to `data.building/` and swapped in only when the build finishes, so a failed build leaves the
 previous snapshot whole; a mirror the command downloaded (`<out>/source/<release>/`, ~22 GB) is deleted
 once the snapshot is written, and `--source` parts are left alone. The full build took 15 minutes here
@@ -4540,7 +4542,9 @@ refuses a snapshot built from part of the release, and one that does not record 
 completeness is not completeness). **`best_effort` answers only from what it read whole (RM361)**:
 `READS` names the source datasets each table and the posterior come from, and
 `opentargets.read_is_complete` asks `release.json` whether each was read in full (`False` for a partial
-one, `None` when the record does not say). Anything but `True` answers no key for that table: rows the
+one, `None` when the record does not say). Both enrichment modes use the publish gate's
+`is_whole_build` predicate. They refuse malformed counts and overcounts as written in the JSON,
+before reading any tables. Anything but `True` answers no key for that table: rows the
 snapshot did yield are merged in, every existing row is kept, a key that did not join the allele table is
 `not_read` rather than `not_in_release`, and the posterior on `gwas_effects.csv` is left as it was
 (`posterior.not_read`). Two module keys on one release allele have that allele's L2G and coloc

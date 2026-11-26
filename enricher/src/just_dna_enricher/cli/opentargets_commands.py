@@ -84,14 +84,10 @@ def opentargets_build_(
         raise typer.Exit(code=1) from exc
     typer.secho(f"snapshot: {result.out_dir}", fg=typer.colors.GREEN)
     typer.echo(", ".join(f"{name} {count}" for name, count in result.row_counts.items()))
-    partial = {
-        name: (got, result.parts_total[name])
-        for name, got in result.parts_read.items()
-        if name in result.parts_total and got < result.parts_total[name]
-    }
-    if partial:
+    if result.partial:
         typer.secho(
-            "  partial: " + ", ".join(f"{n} {got} of {total} parts" for n, (got, total) in partial.items()),
+            "  partial: "
+            + ", ".join(f"{n} {got} of {total} parts" for n, (got, total) in result.partial.items()),
             fg=typer.colors.YELLOW,
         )
 

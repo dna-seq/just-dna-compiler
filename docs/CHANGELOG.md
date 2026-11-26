@@ -397,7 +397,10 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   `release.json` names was read in full, `None` when its part counts cannot say, and `ValueError` for a count
   that is not a whole number or a `parts_read` above its `parts_total` (which published as whole before). The
   publish gate calls it on the record as written, and the part-count keys are derived from `SnapshotRelease`'s
-  marked fields rather than kept by hand.
+  marked fields rather than kept by hand. Open Targets' reader and its builder call it too, so an overcount or a
+  malformed count is refused there as well, in both modes, where the reader took `read >= total` as whole; an
+  AST walk holds every reader of the part counts to the predicate. `read_release` and `parse_release` take an
+  optional `short_reads` that checks the counts as written and collects each short dataset.
 - **The four per-lane `publish` commands share one body** (RM464, the rescope): `mitomap`, `strchive`,
   `opentargets` and `clinvar-gkm publish` read and parse `release.json` once and hash and upload those same
   bytes. A rehearsal (`--dry-run`) the gate would refuse prints `WOULD BE REFUSED: …` and exits 0, as
