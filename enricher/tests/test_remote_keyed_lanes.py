@@ -432,11 +432,12 @@ def _clinvar_probe(request: pytest.FixtureRequest, remote_: _Recorder) -> tuple[
 def _constraint_probe(request: pytest.FixtureRequest, remote_: _Recorder) -> tuple[Path, object, object]:
     root = request.getfixturevalue("constraint_root")
     stored = _first_cell(root, "gnomad_constraint", "gene")
-    genes = [stored, stored.lower(), "NOT_A_GENE"]
+    genes = [f"\t{stored.lower()} ", "NOT_A_GENE"]
     local = gene_metrics.lookup_snapshot(root, genes)
     rows = remote_.lookup("constraint", "gnomad_constraint", {"gene": genes}).rows
     for row in rows:
         row["constraint_flags"] = gene_metrics.normalize_constraint_flags(row["constraint_flags"])
+    assert list(local) == [stored]
     return root, local, {row["gene"]: row for row in rows}
 
 
@@ -588,13 +589,29 @@ def test_cpic_partner_genes_names_no_partner_for_a_row_with_no_gene(tmp_path: Pa
     assert cpic.CpicSnapshotClient(root).partner_genes("CYP2C9", "warfarin") == ["VKORC1"]
 
 
-def test_every_declared_compare_is_on_a_key_column_of_a_remote_lane_and_names_its_readers_tables() -> None:
-    """`key_compare.KEY_COMPARES` is the one registry: each entry a remote lane's, on a key column, under
-    the table name its reader's module states, with that module's own separator."""
-    assert set(key_compare.KEY_COMPARES) <= set(REMOTE_LANES)
-    declared = {c for lane in REMOTE_LANES.values() for cols in lane.compares.values() for c in cols}
-    assert declared and declared <= set(remote.KEY_COLUMNS)
+def test_every_keyed_reader_declares_its_tables_and_keys() -> None:
+    """Local-only lookup columns also belong here, without extending the proxy's protocol."""
     tables = {lane: set(entry) for lane, entry in key_compare.KEY_COMPARES.items()}
+    assert set(tables) == set(REMOTE_LANES) | {"mane", "pubmind", "pharmvar"}
+    expected = {
+        "ensembl": {"homo_sapiens": {"chrom", "start", "id"}},
+        "clinvar": {
+            "clinvar": {"chrom", "start", "ref", "alt", "rsid", "gene"},
+            "citations": {"variation_id"},
+        },
+        "constraint": {"gnomad_constraint": {"gene"}},
+        "mane": {"summary": {"symbol"}},
+        "pubmind": {"pubmind": {"chrom", "start", "ref", "alt"}},
+        "pharmvar": {"alleles": {"gene"}, "variants": {"gene"}},
+        "clinvar_gkm": {clinvar_gkm.REMOTE_WITNESS_TABLE: {"rsid", "chrom", "pos"}},
+        "opentargets": {
+            opentargets.REMOTE_VARIANTS_TABLE: {"chrom", "position", "ref", "alt"},
+            opentargets.REMOTE_CONSEQUENCES_TABLE: {"variant_id"},
+            opentargets.REMOTE_MEMBERS_TABLE: {"variant_id"},
+        },
+    }
+    for lane, keys in expected.items():
+        assert {table: set(cols) for table, cols in key_compare.KEY_COMPARES[lane].items()} == keys
     assert tables["clinpgx"] == {clinpgx.REMOTE_ANNOTATIONS_TABLE}
     assert tables["drug_labels"] == {drug_labels.REMOTE_LABELS_TABLE}
     assert tables["civic"] == {civic_draft.REMOTE_CIVIC_TABLE}
@@ -756,5 +773,33 @@ def test_the_proxy_answers_every_lane_it_compares_alike_and_is_not_asked_where_i
         for column, values in keys.items()
         if not spec.compare(table, column).exact and column not in ("chrom", "start")
     ), "a key read in another spelling (an rsID) reaches the proxy as the snapshot spells it"
-    if any(not c.cell_exact for columns in spec.compares.values() for c in columns.values()):
+    if any(not spec.proxy_compares(table, columns) for table, columns, _ in asked):
         assert any(route == "hf" for *_, route in asked), "the lane's folded key went to the Hub"
+
+
+def test_constraint_gene_spelling_returns_the_snapshot_record(constraint_root: Path) -> None:
+    gene = _first_cell(constraint_root, "gnomad_constraint", "gene")
+    asked = f"\t{gene.lower()} "
+    expected = gene_metrics.lookup_snapshot(constraint_root, [gene])[gene]
+    assert gene_metrics.lookup_snapshot(constraint_root, [asked]) == {gene: expected}
+
+
+@pytest.mark.parametrize("lane", ["ensembl", "clinvar"])
+def test_lookup_loci_answers_each_spelling_of_a_fixture_key(
+    lane: str, request: pytest.FixtureRequest
+) -> None:
+    root = request.getfixturevalue(f"{lane}_root")
+    reader = resolver.lookup_loci if lane == "ensembl" else clinvar.lookup_loci
+    rsid = "rs1555461597" if lane == "ensembl" else "rs334"
+    canonical, _, warnings = reader(root, [rsid], [])
+    assert not warnings
+    locus = canonical[rsid][0]
+    position = (locus["chrom"], locus["start"], None, None)
+    _, expected, _ = reader(root, [], [position])
+    assert rsid in expected[position]
+    raw = f"\t{rsid.upper()} "
+    prefixed = (f" Chr{position[0]}\t", *position[1:])
+    forward, reverse, warnings = reader(root, [raw, rsid], [prefixed, position])
+    assert forward.get(raw) == forward[rsid], raw
+    assert reverse[prefixed] == expected[position]
+    assert not warnings

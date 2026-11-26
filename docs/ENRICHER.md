@@ -488,7 +488,7 @@ core was ported, not depended on, dropping `fastmcp`/`eliot`). In the workspace:
 | `strchive_build` | RM165 builder: download `STRchive-loci.json` + `release.json`. Core `httpx` only, no parquet and no `[dev]` extra | `httpx` |
 | `strchive_draft` | RM165: STRchive → `repeat_alleles.csv` **partial** rows — identity only, bands left to a human | `strchive`, compiler `draft` |
 | `ensembl` | live Ensembl REST (the beta GraphQL leg was retired on 2026-11-04), tenacity | `httpx`, `tenacity` |
-| `key_compare` | **0.9** (the RM430 follow-up): how each keyed function compares a key with a cell on every route, `KeyCompare` (`fold` by `gene_key`, `separator` for a joined cell) and `EXACT`, and `KEY_COMPARES`, the one registry by lane, table and column that the keyed functions' local SQL and the remote holder both read (`lane_compare`). A leaf | format (`spelling`) |
+| `key_compare` | **0.9** (the RM430 follow-up): how each keyed function compares a key with a cell on every route, `KeyCompare` (`fold` by `gene_key`, `separator` for a joined cell) and `EXACT`, and `KEY_COMPARES`, the one registry by lane, table and column that the keyed functions' local SQL and the remote holder both read (`lane_compare`). A leaf | format (`spelling`, `vrs`) |
 | `ensembl_rsid_index_build` | **0.9** (RM431 ask 4): the Ensembl rsID index, rsID → (chrom, start) sorted by rsID, built in duckdb from the split core on disk (`build_rsid_index`), and `core_pin`, what an index pins of its core (the manifest's `release_id` and a digest of its attested `data/` files). A derived lane, local only; `resolver.lookup_loci` reads it | `duckdb`, `locations` |
 | `upload` | publisher surface — push a compiled module or a reference snapshot to HF (`[dev]`) | `huggingface_hub` (lazy) |
 | `litvar` | RM167: LitVar2/PubTator3 literature coverage per locus, **with the tier that answered** (allele node / position node / absent). Reports only; writes no row and no `SourceRow` | `httpx`, `tenacity`, `clingen_allele` |
@@ -2677,31 +2677,31 @@ with RemoteSnapshots(declared_use="non_commercial") as snapshots:      # proxy f
     A gene is compared by its `key_compare.KEY_COMPARES` entry on every route, member by member of the cell (361 of 1,433
     labels on the 2026-08 snapshot name several); the proxy is not asked for a gene (below).
   - **The remote compare is the local compare** (the pm, 2026-11-18, fixed as a class).
-    `key_compare.KeyCompare(fold=False, separator=None, rsid=False)` is how a keyed function compares a key with
-    a cell: `fold` by `spelling.gene_key` (`lower(trim(…))` in SQL), `separator` member by member of a joined
-    cell, and `rsid` (0.9, review round 1) the key read as an rsID (`RS334` and `334` are `rs334`) against the
-    whole cell; `key_compare.EXACT` is the whole cell, byte for byte. `exact` is no reading on either side;
-    `cell_exact` is the whole cell byte for byte against the key as read, which the proxy compares too when
-    the holder sends it the key as read, as it does: so an rsID still goes to the proxy, a gene does not. `key`, `members(cell)`, `predicate(column, *,
-    negated=False)` (SQL over one bound `VARCHAR[]`; a `NULL` cell matches neither way, so `negated` is true only
-    for a stated cell that answers to none, as SQL's `<>` read it), `parameter(values)` and `described` are the one
-    reading of it. `key_compare.KEY_COMPARES` (lane → table → column → `KeyCompare`, read with `lane_compare`) is the one
-    registry: `clinpgx` (`gene`, folded, `;`; `rsid`), `drug_labels` (`genes`, folded, `;`), `civic` (`gene`,
-    folded; `rsid`), `clinvar_gkm` (`rsid`) and `cpic` (`gene` of every table, folded). The walk asks the holder
-    with the keys as a host types them (`RS334`, ` Brca1 `), never through a reader's private key builder. The keyed functions build their local SQL from their entry, and
-    `remote.RemoteLane.compares` is the lane's entry, derived from its name, so the holder's Hugging Face SQL
-    compares as the local reader does; a column the registry does not name compares exactly on both routes.
-    `RemoteLane.compare(table, column)` reads one, and `RemoteLane.proxy_compares(table, columns)` says whether
-    the registry's proxy, which compares a whole cell exactly, compares them all as the local reader does.
-    Where it does not, the proxy is not asked and Hugging Face answers, so the answer's route is `hf`; with
-    Hugging Face off that is could-not-ask (`…the registry's proxy compares a whole cell exactly, and
-    <lane>/<table> compares <column> <how>, as its local reader does, so the proxy is not asked, and Hugging
-    Face is off`, `<how>` being the compare's `described`). A folded or split compare is a function of the
-    column, so on the Hub it prunes no row group by it; the four lanes that declare one read small tables. One walk in `test_remote_keyed_lanes.py` runs the same keys, a key in
-    another case and one inside a joined cell among them, through the local and the remote route of every lane
-    in `REMOTE_LANES`, on Hugging Face and again with a `MockTransport` registry in front, and asserts the
-    answers equal. The constraint lane's local `lookup_snapshot` compares a gene exactly, so it does remotely
-    too.
+    `key_compare.KEY_COMPARES` declares snapshot lookup keys by lane, payload table and column.
+    `lane_compare(lane, table, column)` reads a declaration. `KeyCompare.fold` compares a gene using
+    `spelling.gene_key`, including Unicode case folding and surrounding whitespace. `separator` splits
+    a joined cell before folding each member. `rsid` reads `RS334` and `334` as `rs334`. The optional
+    `KeyCompare.normalize` callable reads an input key when the snapshot already stores the comparison
+    spelling. For example, Ensembl accepts an rsID in another case and preserves a COSV identifier verbatim.
+    `key_compare.EXACT` compares the whole cell byte for byte.
+  - **Direct lookups.** `gene_metrics.lookup_snapshot` accepts alternate gene spellings and returns
+    the records keyed by the snapshot's gene symbols. Ensembl and ClinVar
+    `lookup_loci` accept padded rsIDs and primary contigs such as `chr11` and `chrM`. The dictionaries
+    use the requested rsID or position tuple. Ensembl applies the same rule before scanning or consulting
+    the rsID index.
+  - **Using a declaration.** `KeyCompare.key(value)` reads one key and `members(cell)` reads the
+    members of a stored cell. `KeyCompare.spellings(values)` groups the requested spellings by key in input order.
+    `predicate(column, negated=False)` and `parameter(values)` supply a DuckDB predicate and its single
+    bound `VARCHAR[]`. A missing cell is withheld in both the positive and negated queries.
+    Genes in the constraint, ClinVar, MANE, PharmVar, CIViC and CPIC snapshots are compared whole.
+    ClinPGx and the drug labels compare the members of their semicolon-joined gene cells.
+  - **Remote routes.** `RemoteLane.compare(table, column)` reads the same declaration. `exact` means
+    the raw key matches the cell byte for byte. `cell_exact` means the input can be normalized before an
+    exact cell comparison, so an rsID can still go to the proxy. `RemoteLane.proxy_compares(table, columns)`
+    checks the requested columns. A gene lookup requiring a cell fold or split goes to Hugging Face.
+    With Hugging Face off, the holder reports that the lookup could not be asked and gives the comparison's
+    `described` text. Local-only keys in the registry do not extend the proxy protocol.
+    The tests walk every declared key and compare the local and remote answers over fixture snapshots.
 - **`remote_url(base, *parts)`** builds every URL a holder asks; the root `conftest.py` wraps it, so a
   test that would hand duckdb a host other than this machine is refused and recorded like a socket reach.
   The fence holds only while nothing else builds a URL duckdb opens, so an AST walk

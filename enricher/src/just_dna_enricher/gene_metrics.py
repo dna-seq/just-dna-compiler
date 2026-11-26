@@ -46,6 +46,7 @@ from just_dna_enricher.gnomad import (
     normalize_constraint_flags,
 )
 from just_dna_enricher.identifiers import _id_bearing_tables, authored_rows
+from just_dna_enricher.key_compare import lane_compare
 from just_dna_enricher.licensing import (
     record_table_sources,
     require_sources_file,
@@ -192,6 +193,7 @@ def module_genes(spec_dir: Path) -> list[str]:
 def lookup_snapshot(reference: Path, genes: list[str]) -> dict[str, dict]:
     """`gene symbol -> metrics dict` from the offline constraint snapshot. Never fetches.
 
+    Keys and records retain the snapshot's own gene spelling.
     Mirrors `clinvar.lookup_loci`'s shape: a batch lookup over an injected parquet directory via an
     in-memory DuckDB view, so the core install stays polars-free (polars is the builder's, `[dev]`).
 
@@ -204,14 +206,14 @@ def lookup_snapshot(reference: Path, genes: list[str]) -> dict[str, dict]:
     parquet = _snapshot_parquet(reference)
     if parquet is None:
         raise FileNotFoundError(f"no gnomAD constraint snapshot parquet at {reference}")
+    compare = lane_compare("constraint", CONSTRAINT_LANE, "gene")
     con = duckdb.connect(":memory:")
     try:
         pattern = str(parquet).replace("'", "''")
         con.execute(f"CREATE VIEW constraint_metrics AS SELECT * FROM read_parquet('{pattern}')")
-        placeholders = ", ".join("?" for _ in genes)
         rows = con.execute(
-            f"SELECT * FROM constraint_metrics WHERE gene IN ({placeholders}) ORDER BY gene",
-            genes,
+            f"SELECT * FROM constraint_metrics WHERE {compare.predicate('gene')} ORDER BY gene",
+            [compare.parameter(genes)],
         ).fetchall()
         columns = [d[0] for d in con.description]
     finally:

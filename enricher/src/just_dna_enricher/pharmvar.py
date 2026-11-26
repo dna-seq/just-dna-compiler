@@ -40,6 +40,7 @@ from just_dna_format.base import coordinate_key
 from just_dna_format.snapshot import SnapshotRelease, read_release
 from tenacity import retry
 
+from just_dna_enricher.key_compare import lane_compare
 from just_dna_enricher.locations import SNAPSHOT_DATA_DIRNAME, env_value
 from just_dna_enricher.net import (
     EndpointRetired,
@@ -406,15 +407,17 @@ class PharmVarSnapshotClient:
             )
         alleles_path = str(self._data_dir / "alleles.parquet").replace("'", "''")
         variants_path = str(self._data_dir / "variants.parquet").replace("'", "''")
+        alleles_gene = lane_compare("pharmvar", "alleles", "gene")
+        variants_gene = lane_compare("pharmvar", "variants", "gene")
         rows = self._query(
             f"SELECT gene, allele, function, activity_value, evidence_level "
-            f"FROM read_parquet('{alleles_path}') WHERE gene = ? ORDER BY allele",
-            [gene],
+            f"FROM read_parquet('{alleles_path}') WHERE {alleles_gene.predicate('gene')} ORDER BY allele",
+            [alleles_gene.parameter([gene])],
         )
         variants = self._query(
             f"SELECT allele, rsid, chrom, start, ref, alt FROM read_parquet('{variants_path}') "
-            f"WHERE gene = ? ORDER BY allele, variant_index",
-            [gene],
+            f"WHERE {variants_gene.predicate('gene')} ORDER BY allele, variant_index",
+            [variants_gene.parameter([gene])],
         )
         by_allele: dict[str, list[PharmVarVariant]] = {}
         for v in variants:

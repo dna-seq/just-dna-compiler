@@ -53,7 +53,7 @@ from just_dna_enricher.locations import (
     SNAPSHOT_DATA_DIRNAME,
     resolve_clinpgx_reference,
 )
-from just_dna_enricher.resolver import _asked_genes, _asked_rsids, _typed_rows_connection
+from just_dna_enricher.resolver import _typed_rows_connection
 from just_dna_enricher.verification import examples, ran, record_verification, skipped
 
 logger = logging.getLogger(__name__)
@@ -287,7 +287,7 @@ def _select_annotations(con: duckdb.DuckDBPyConnection, where: str, params: list
 
 def _rsids_over(con: duckdb.DuckDBPyConnection, rsids: Sequence[str]) -> dict[str, list[dict]]:
     """`lookup_rsids`' query over a connection exposing `annotations`: the one copy."""
-    asked = _asked_rsids(rsids)
+    asked = _RSID.spellings(rsids)
     if not asked:
         return {}
     # Each key read as `_RSID` reads it, then the cell compared whole with `IN`, which prunes row groups.
@@ -330,7 +330,7 @@ def _rsids_from_rows(rows: Sequence[Mapping[str, object]], rsids: Sequence[str])
 
 def _genes_over(con: duckdb.DuckDBPyConnection, genes: Sequence[str]) -> dict[str, list[dict]]:
     """`lookup_genes`' query over a connection exposing `annotations`: the one copy."""
-    asked = _asked_genes(genes)
+    asked = _GENE.spellings(genes)
     if not asked:
         return {}
     rows = _select_annotations(con, _GENE.predicate("gene"), [_GENE.parameter(sorted(asked))])

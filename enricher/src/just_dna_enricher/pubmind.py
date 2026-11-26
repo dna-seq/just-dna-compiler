@@ -27,8 +27,9 @@ from pathlib import Path
 import duckdb
 from just_dna_format.snapshot import release_label
 
+from just_dna_enricher.key_compare import lane_compare
 from just_dna_enricher.locations import SNAPSHOT_DATA_DIRNAME
-from just_dna_enricher.resolver import probe_table
+from just_dna_enricher.resolver import _allele_spellings, probe_table
 
 logger = logging.getLogger(__name__)
 
@@ -95,6 +96,9 @@ def _connect(reference: Path) -> duckdb.DuckDBPyConnection:
     return con
 
 
+_CHROM = lane_compare("pubmind", "pubmind", "chrom")
+
+
 def lookup_pubmind_calls(
     reference: Path,
     alleles: list[tuple[str, int, str, str]],
@@ -113,14 +117,14 @@ def lookup_pubmind_calls(
         return {}
     con = _connect(reference)
     try:
-        wanted = list(dict.fromkeys(alleles))
+        asked = _allele_spellings(alleles, _CHROM)
         # `probe_table` is the shared batch-probe helper: a temp table beats an `IN` list that grows
         # with the module, and it is the same plan the ClinVar reader is measured on (`@hash-the-probe`).
         probe_table(
             con,
             "_wanted_alleles",
             [("chrom", "VARCHAR"), ("start", "BIGINT"), ("ref", "VARCHAR"), ("alt", "VARCHAR")],
-            wanted,
+            list(dict.fromkeys([*alleles, *asked])),
         )
         rows = con.execute(
             """
@@ -136,7 +140,7 @@ def lookup_pubmind_calls(
         con.close()
     result: dict[tuple[str, int, str, str], list[dict]] = defaultdict(list)
     for chrom, start, ref, alt, pvid, clin_sig, raw, score, confidence, derivation in rows:
-        result[(str(chrom), int(start), str(ref), str(alt))].append(
+        result[(_CHROM.key(chrom), int(start), str(ref), str(alt))].append(
             {
                 "pvid": pvid,
                 "clin_sig": clin_sig,
@@ -146,4 +150,4 @@ def lookup_pubmind_calls(
                 "derivation": derivation,
             }
         )
-    return dict(result)
+    return {spelling: records for key, records in result.items() for spelling in asked[key]}
