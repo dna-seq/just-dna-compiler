@@ -21,8 +21,10 @@ rescoped: it builds its own leftovers before its cut is redone, and 0.10 is six 
   where an anonymous client also runs out of requests after a few large lookups.
 
 **Next**
-1. ⏳ 0.9, rescoped (2026-11-26, your word): nine of its own leftovers built on Codex builders, checked and merged by
-   the lead, no third review round, then the cut redone. About a day and a half to the cut, then your publish.
+1. ⏳ 0.9.0 — rescoped and rebuilt the same day: nine of its own leftovers built on Codex builders and merged, full
+   suite 8,338 passed, the cut redone with real runs over the reference modules as its gate. Waiting on your publish
+   (desk #461). Then 0.9.1 at once: ClinVar-GKM retired the data line our snapshot builder reads (RM470); nothing a
+   consumer reads breaks, only a rebuild of that snapshot does.
 2. ✅ 0.8.10 released: the registry's four online rsIDs are accepted; its production upgrade can go ahead.
 3. ✅ Two rules from you: at most two review rounds per minor; builds go to Codex GPT-6.2 Astra, the lead merges and checks.
 4. ❓ Three items you placed in 0.9 by name were parked by the small cut: parked, a 0.11, or 0.10 (desk #347).
