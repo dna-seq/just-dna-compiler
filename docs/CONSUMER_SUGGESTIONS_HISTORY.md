@@ -8033,7 +8033,7 @@ answer too: we then keep the whole-table path and know why.
 **Meanwhile.** Our lead is trying the drop-and-gap-fill route on cardio and measuring whether verify skips
 carried rows; we file the result here.
 
-**Status — filed as [RM467](ROADMAP_0_9.md#rm467--a-re-derive-cannot-be-scoped-to-the-rows-a-reason-reaches-and-the-verify-passes-re-read-every-carried-row), a minor, release undecided, medium, for the pm to size.**
+**Status — filed as [RM467](ROADMAP_HISTORY.md#rm467--a-re-derive-cannot-be-scoped-to-the-rows-a-reason-reaches-and-the-verify-passes-re-read-every-carried-row), a minor, release undecided, medium, for the pm to size.**
 
 The answer to your open question, read from `main` (2026-11-19): **verify does not skip carried rows.** In
 `enrich/orchestration.py` the rows a run keeps join the same list the reference check reads
@@ -8063,7 +8063,7 @@ per release, whether it changes what a derivation writes into `resolution.csv` (
 record). Then a consumer keeps a re-derived table across an interval that declares no derivation change, and
 re-derives only on one that does. A release with no record stays *cannot say*, as with `needs_recompile`.
 
-**Status — taken into [RM441](ROADMAP_0_9.md#rm441--a-release-record-has-no-axis-for-a-correction-to-a-derived-table-so-085s-reads-as-nothing-moved-although-rm438-corrected-resolutioncsv), already in 0.10's scope (a minor, built with RM399), as a motivating case.**
+**Status — taken into [RM441](ROADMAP_0_10.md#rm441--a-release-record-has-no-axis-for-a-correction-to-a-derived-table-so-085s-reads-as-nothing-moved-although-rm438-corrected-resolutioncsv), already in 0.10's scope (a minor, built with RM399), as a motivating case.**
 
 RM441 gives the release record one route for "re-derive", with the cause named, beside the compiled-output axes.
 Your ask is that route read from the other side, and it holds only if every release states its derive answer,
@@ -8089,7 +8089,7 @@ no egress, and a moved release invalidates exactly its own answers. Where a sour
 answer, not caching it is the right default. A location setting like the snapshot lanes' (so a server puts it on
 the disk it chooses) and a way to say "this answer came from the cache" in the report would be enough for us.
 
-**Status — filed as [RM468](ROADMAP.md#rm468--the-live-clients-keep-no-answers-between-runs-so-a-re-run-under-unchanged-source-releases-spends-the-same-egress-again), a minor, release undecided, medium, for the pm to size.**
+**Status — filed as [RM468](ROADMAP_0_10.md#rm468--the-live-clients-keep-no-answers-between-runs-so-a-re-run-under-unchanged-source-releases-spends-the-same-egress-again), a minor, release undecided, medium, for the pm to size.**
 
 Confirmed as a known gap: ENRICHER.md lists "no response cache for the live clients" among its open questions. Two
 things exist today. A run killed mid-way resumes from its staged answers (`enrich --keep-staging` describes it), and a

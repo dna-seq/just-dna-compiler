@@ -979,7 +979,7 @@ longer be re-raised by this one. So it is a new option, never a changed default:
 
 **Built in the rescope (the pm, 2026-11-26)**: decided in [history/ROADMAP_0_9.md](history/ROADMAP_0_9.md), built by a Codex builder and checked and merged by the lead. The status line below predates this.
 
-**Severity** low · **Status** open — **a minor, 0.9** (rescoped 2026-11-26, [ROADMAP_0_9.md](ROADMAP_0_9.md); its home, `key_compare.KEY_COMPARES`, is 0.9's) ·
+**Severity** low · **Status** open — **a minor, 0.9** (rescoped 2026-11-26, [history/ROADMAP_0_9.md](history/ROADMAP_0_9.md); its home, `key_compare.KEY_COMPARES`, is 0.9's) ·
 **Owner** enricher (`gene_metrics.lookup_snapshot`, `clinvar.lookup_loci`, `resolver.lookup_loci`,
 `key_compare`) · **Motivating case** the RM430 follow-up's deferred findings (a) to (c), the lead's 0.9 run
 (2026-11-18, merged as 15668c1e) · *related* RM363, RM430, RM431
