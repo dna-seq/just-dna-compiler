@@ -163,8 +163,11 @@ a second consumer maps a parquet's row grain by hand or asks for the read. RM450
 2. The lead runs the nine as one batch on Codex builders (LEAD.md, 27de1246), each in its worktree, and checks and
    merges each. About half a day of builds in parallel, and half a day of checks and merges.
 3. **No third review round.** 0.9 has had its two, and the rule is two per minor; the lead's check at each merge is
-   the review of what was added. Anything a build turns up comes to the pm: a blocker is fixed in 0.9, the rest goes
-   to 0.10.
+   the review of what was added. The maintainer, on this exact point (2026-11-26): "I meant post-build audits...
+   despite serious firepower and multi-model runs, these find some obscure bugs, yet the real ones crept into 0.8.x".
+   Most of 0.8.8 to 0.8.10's fixes were found by a real run on a real module (the registry's, S158; the lead's on
+   `pathogenic_clinvar`, RM451 and RM453), one class by a review round (RM455). So the gate that catches the real ones
+   is step 4, and the cut waits on it. Anything a build turns up comes to the pm: a blocker is fixed in 0.9, the rest goes to 0.10.
 4. The consumers' trial ([desk #370](https://github.com/winternewt/desk/issues/370)) goes on against the rescoped
    branch. The liaison tells the four consumers what was added; the two that reported are not asked again.
 5. The cut is redone: the release record, INTEGRATION_0_9 (its known issues shrink to RM459), the CHANGELOG, the docs
