@@ -199,6 +199,27 @@ def _advisory(column: str, value: str, source: str, note: str) -> Alteration:
     )
 
 
+@dataclass
+class _ClinVarSites:
+    """Complete position answers held only for this hint, including positions answered empty."""
+
+    covered: set[tuple[str, int]] = field(default_factory=set)
+    rows: list[dict] = field(default_factory=list)
+    route: RemoteRoute | None = None
+
+    def read(self, hint: VariantHint, remote: RemoteSnapshots, sites: list[tuple[str, int]]) -> None:
+        """Fetch only the positions a previous complete reply has yet to cover."""
+        canonical = dict.fromkeys((normalize_chrom(c) or c, s) for c, s in sites)
+        missing = [site for site in canonical if site not in self.covered]
+        if missing:
+            keys = {"chrom": [c for c, _ in missing], "start": [s for _, s in missing]}
+            answer = _ask_remote(remote, "clinvar", keys)
+            _record_route(hint, "clinvar", answer)
+            self.rows.extend(answer.rows)
+            self.covered.update(missing)
+            self.route = self.route or answer.route
+
+
 def lookup_variant(
     *,
     rsid: str | None = None,
@@ -243,9 +264,20 @@ def lookup_variant(
     # The remote step sits where the local snapshot sits (RM430), and only with a holder: `--offline`
     # keeps zero egress at zero.
     remote = None if offline else clients.snapshots
+    clinvar_sites = _ClinVarSites()
     try:
         _lookup_from_cache(
-            hint, rsid, chrom, start, ref, alts, ensembl_cache, clinvar_cache, remote, rsid_index=rsid_index
+            hint,
+            rsid,
+            chrom,
+            start,
+            ref,
+            alts,
+            ensembl_cache,
+            clinvar_cache,
+            remote,
+            clinvar_sites,
+            rsid_index=rsid_index,
         )
         if not offline:
             # The live coordinate link, in `enrich()`'s own order: caches first, live Ensembl for what
@@ -263,7 +295,7 @@ def lookup_variant(
                 Finding(None, None, "info", "offline: rsID currency and frequencies were not checked")
             )
 
-        _lookup_clin_sig(hint, clinvar_cache, remote)
+        _lookup_clin_sig(hint, clinvar_cache, remote, clinvar_sites)
         _lookup_pubmind(hint, pubmind_cache, (chrom, start, ref, alts))
         if hint.ambiguous and ambiguity:
             hint.findings.append(
@@ -313,7 +345,8 @@ def _lookup_from_cache(
     alts: str | None,
     ensembl_cache: Path | None,
     clinvar_cache: Path | None,
-    remote: RemoteSnapshots | None = None,
+    remote: RemoteSnapshots | None,
+    clinvar_sites: _ClinVarSites,
     *,
     rsid_index: Path | None = None,
 ) -> None:
@@ -344,7 +377,7 @@ def _lookup_from_cache(
                 hint.snapshots[label] = str(reference)
                 by_rsid, by_position, warnings = lookup(reference, [rsid] if rsid else [], positions)
             else:
-                answered = _remote_loci(hint, label, rsid, positions, remote)
+                answered = _remote_loci(hint, label, rsid, positions, remote, clinvar_sites)
                 if answered is None:
                     continue
                 by_rsid, by_position, warnings = answered
@@ -400,6 +433,7 @@ def _remote_loci(
     rsid: str | None,
     positions: list[tuple[str | None, int | None, str | None, str | None]],
     remote: RemoteSnapshots,
+    clinvar_sites: _ClinVarSites | None = None,
 ) -> tuple[dict[str, list[dict]], dict[tuple, list[str]], list[str]] | None:
     """One link's answer from `remote`, through the link's own reader SQL; `None` when it asks nothing.
 
@@ -424,16 +458,34 @@ def _remote_loci(
         answer = _ask_remote(remote, label, position_key)
         _record_route(hint, label, answer)
         return resolver._loci_from_rows(answer.rows, [], positions)
-    asks = ([{"rsid": [rsid]}] if rsid else []) + ([position_key] if position_key else [])
-    if not asks:
+    if not rsid and not positions:
         return None
-    answers = [_ask_remote(remote, label, keys) for keys in asks]
-    for answer in answers:
+    if clinvar_sites is None:
+        clinvar_sites = _ClinVarSites()
+    rows: list[dict] = []
+    route: RemoteRoute | None = None
+    sites = [(chrom, start)] if chrom is not None and start is not None else []
+    if rsid:
+        # The proxy matches every column it is given (AND), so the rsID and the position stay two
+        # questions; a combined read on Hugging Face would lose the keyed row-group pruning (RM462).
+        answer = _ask_remote(remote, label, {"rsid": [rsid]})
         _record_route(hint, label, answer)
-    rows = [row for answer in answers for row in answer.rows]
-    first = answers[0]
+        rows.extend(answer.rows)
+        route = answer.route
+        placed, _, _ = clinvar._loci_from_rows(answer.rows, [rsid], [], "")
+        sites.extend((locus["chrom"], locus["start"]) for locus in placed.get(rsid, []))
+    if positions:
+        # One read of the question's position and the rsID's placements together, so the clinical calls
+        # at the resolved alleles read the same reply (`_lookup_clin_sig`). Only when the question has a
+        # position: this read is then the link's own, and its failure fails the link as it always did. An
+        # rsID-only question leaves the placements to the clinical-call read, whose failure is a finding.
+        clinvar_sites.read(hint, remote, sites)
+        rows.extend(clinvar_sites.rows)
+        route = route or clinvar_sites.route
     searched = (
-        f"the ClinVar snapshot read over {first.route.route} (release {first.route.release or 'unstated'})"
+        f"the ClinVar snapshot read over {route.route} (release {route.release or 'unstated'})"
+        if route
+        else ""
     )
     return clinvar._loci_from_rows(rows, [rsid] if rsid else [], positions, searched)
 
@@ -638,15 +690,18 @@ def _lookup_frequencies(hint: VariantHint, clients: LookupClients, alts: str | N
 
 
 def _lookup_clin_sig(
-    hint: VariantHint, clinvar_cache: Path | None, remote: RemoteSnapshots | None = None
+    hint: VariantHint,
+    clinvar_cache: Path | None,
+    remote: RemoteSnapshots | None,
+    clinvar_sites: _ClinVarSites,
 ) -> None:
     """ClinVar's own call at each resolved allele — advisory in the strongest sense.
 
     Writing it would have the format adopt ClinVar's clinical opinion, and the charter forbids the
     format arbitrating a clinical dispute (which is why `verify_clin_sig` warns in *both* modes).
 
-    With no local ClinVar snapshot and a `remote` holder, the alleles' positions are asked remotely and
-    the same query runs over the rows that came back (RM430)."""
+    With a remote holder the same query reads the position replies already held for this hint.
+    A resolved allele at a position first learned from live Ensembl can need another read."""
     reference = resolve_clinvar_reference(clinvar_cache)
     if reference is None and remote is None:
         return
@@ -665,10 +720,8 @@ def _lookup_clin_sig(
         if reference is not None:
             found = lookup_clin_sig(reference, alleles)
         else:
-            keys = {"chrom": [a[0] for a in alleles], "start": [a[1] for a in alleles]}
-            answer = _ask_remote(remote, "clinvar", keys)
-            _record_route(hint, "clinvar", answer)
-            found = clinvar._clin_sig_from_rows(answer.rows, alleles)
+            clinvar_sites.read(hint, remote, [(a[0], a[1]) for a in alleles])
+            found = clinvar._clin_sig_from_rows(clinvar_sites.rows, alleles)
     except SnapshotRouteUnavailable as exc:
         hint.findings.append(
             Finding(

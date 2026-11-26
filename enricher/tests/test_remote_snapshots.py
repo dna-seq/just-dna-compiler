@@ -917,6 +917,69 @@ def test_the_proxy_answers_a_lookup_and_its_route_says_so(
     assert hint.routes == {"clinvar": RemoteRoute("proxy", None, "local", None)}
 
 
+def test_two_hf_clinvar_reads_serve_placement_candidates_and_clinical_calls(
+    no_ambient_caches,
+    clinvar_root: Path,
+    ensembl_root: Path,
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The rsID and position ask different questions. An intersection would lose both answers.
+    question = {"rsid": "rs334", "chrom": "1", "start": 943234}
+    expected = lookup_variant(
+        offline=True, ensembl_cache=ensembl_root, clinvar_cache=clinvar_root, **question
+    )
+    assert expected.loci and expected.rsid_candidates and expected.clin_sig
+    with RemoteSnapshots() as holder, caplog.at_level(logging.INFO):
+        # Give the Hub reader the pinned files on disk so the real query runs without a socket.
+        for lane, root in (("clinvar", clinvar_root), ("ensembl", ensembl_root)):
+            files = tuple(str(p.relative_to(root)) for p in root.glob("data/*.parquet"))
+            holder._pins[lane] = remote._Pin(str(root), COMMIT_A, files, None, {}, duckdb.connect())
+        monkeypatch.setattr(holder, "_file_url", lambda pin, path: str(Path(pin.repo) / path))
+        hint, _ensembl = _ask(tmp_path, holder, **question)
+    assert (hint.loci, hint.rsid_candidates, hint.clin_sig) == (
+        expected.loci,
+        expected.rsid_candidates,
+        expected.clin_sig,
+    )
+    # One read by rsID and one by position, the latter also serving the clinical calls (RM462): the
+    # unchanged code asked a third time for them.
+    answers = [line for line in _remote_log(caplog) if line.startswith("clinvar/clinvar:")]
+    assert len(answers) == 2
+
+
+@pytest.mark.parametrize(
+    ("rsid", "chrom", "start"),
+    [("rs334", "11", 5227002), ("rs368250686", "1", 943234)],
+    ids=["same-position", "distinct-positions"],
+)
+def test_the_proxy_position_reply_also_answers_clinical_calls(
+    no_ambient_caches,
+    clinvar_root: Path,
+    ensembl_root: Path,
+    tmp_path: Path,
+    rsid: str,
+    chrom: str,
+    start: int,
+) -> None:
+    question = {"rsid": rsid, "chrom": chrom, "start": start}
+    expected = lookup_variant(
+        offline=True, ensembl_cache=ensembl_root, clinvar_cache=clinvar_root, **question
+    )
+    proxy = _Proxy({"clinvar": clinvar_root, "ensembl": ensembl_root})
+    with _with_proxy(RemoteSnapshots(proxy_url=PROXY, huggingface=False), proxy) as holder:
+        hint, _ensembl = _ask(tmp_path, holder, **question)
+    assert expected.loci and expected.rsid_candidates and expected.clin_sig
+    assert (hint.loci, hint.rsid_candidates, hint.clin_sig) == (
+        expected.loci,
+        expected.rsid_candidates,
+        expected.clin_sig,
+    )
+    positions = [keys for lane, keys in proxy.asked if lane == "clinvar" and "start" in keys]
+    assert len(positions) == 1
+
+
 def test_the_remote_ensembl_link_withholds_the_rsids_placement_and_clinvar_is_asked(
     no_ambient_caches, clinvar_root: Path, tmp_path: Path
 ) -> None:
