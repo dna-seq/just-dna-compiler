@@ -40,6 +40,18 @@ The lead's working state, rewritten to the present before each reset. Last rewri
 ## In flight
 
 - mitomap behind source (liaison 643088167, 2026-11-24): the dump moved 2026-11-18 (mmutation edited 2026-11-17, 603 rows, +6 citation links). Built as mitomap_2026-11-17+2026-11-03 into `data/caches/rebuild-2026-11-24/mitomap`, upload rehearsed (5 files). `blocked: the person` (the classifier refuses a seat's publish, kit #529): `uv run just-dna-enricher mitomap publish data/caches/rebuild-2026-11-24/mitomap`. After it: `cache pull --only mitomap`, then `mitomap miss` (mitomap_miss follows its parents).
+- **0.10 batch, opened 2026-11-27 (the pm, 644000283; the maintainer: "push on it", Codex heavily while Astra has
+  quota).** Branch `0.10` off main at 4daaf10d, pushed. Decided, build now, each in its own worktree off `0.10` by the
+  `codex-builder` agent, the lead checking and merging: **RM399 + RM441** (one design, with S156), **RM435**, **RM385**
+  (decided today from its trial, ec3bcb75: a FASTA by URI, identity checked per contig), **RM468**, **RM460** (its one
+  open arm is desk #469: build on #469's default, the arm a one-line switch). Waiting on desk epic #466: RM265 (#468),
+  RM302, RM350, RM294 (#467, #470); the pm places their answers in ROADMAP_0_10.md. Even minor: the consumers' preview
+  before the first audit round; at most two rounds. How a brief looked: `.worktrees/09-rm470/data/interim/rm470/BRIEF.md`
+  (gone once the person removes the worktree; the shape: upstream facts, what is already done, the change numbered,
+  tests shown failing first, docs and CHANGELOG/ROADMAP entry, the full enricher run). Codex has no network: a step
+  that fetches (a fixture, a live probe) is the lead's, done before the build. Read each item's entry in
+  ROADMAP_0_10.md in full before its brief; RM399/RM441 touch format and compiler, so read the Constitution (P3, P8)
+  against the design first.
 - **0.9.0 released and merged, 2026-11-27.** PyPI 2026-11-26 21:11Z (all three), tag `v0.9.0` on 93160691, GitHub
   release up, `0.9` merged into `main` (7f79299b, landed 28fa1719) without waiting for longevity-loci's trial: a
   published release cannot change, and main was red on the tag (the pm agreed, 643997014). Main's suite 8353 passed,
