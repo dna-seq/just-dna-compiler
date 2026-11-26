@@ -210,6 +210,24 @@ def test_gene_metrics_from_the_snapshot_offline(tmp_path: Path, constraint_cache
     assert brca1.oe_lof_lower <= brca1.oe_lof <= brca1.loeuf
 
 
+def test_gene_metrics_offline_resolves_mixed_case_and_writes_authored_spelling(
+    tmp_path: Path, constraint_cache: Path
+) -> None:
+    """The authored symbol keeps its spelling when it matches the snapshot's BRCA1."""
+    (tmp_path / "variants.csv").write_text("rsid,genotype,state,conclusion,gene\nrs1,A/G,risk,x,BrCa1\n")
+    expected = gene_metrics.lookup_snapshot(constraint_cache, ["BRCA1"])["BRCA1"]
+
+    result = enrich_gene_metrics(tmp_path, offline=True, constraint_cache=constraint_cache)
+    rows, errors, _ = load_csv_rows(tmp_path / "gene_metrics.csv", GeneMetricsRow, "gene_metrics.csv")
+    assert not errors
+    (row,) = rows
+    assert row.status == "resolved"
+    assert row.gene == "BrCa1"
+    assert row.loeuf == expected["loeuf"]
+    assert result.covered == ["BrCa1"]
+    assert result.missing == []
+
+
 def test_snapshot_and_api_are_labelled_as_the_different_routes_they_are(
     tmp_path: Path, constraint_cache: Path
 ) -> None:

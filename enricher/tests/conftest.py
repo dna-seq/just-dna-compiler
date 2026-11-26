@@ -54,15 +54,18 @@ import ast
 import functools
 import gzip
 import hashlib
+import http.server
 import json
 import os
 import re
+import threading
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
+import duckdb
 import httpx
 import huggingface_hub
 import pytest
@@ -86,8 +89,8 @@ _REAL_CACHE_BASE: Path = Path(
 _REAL_CACHE_ROOTS: tuple[Path, ...] = (_REAL_CACHE_BASE,) + tuple(
     Path(value).resolve() for lane in CACHE_LANES if (value := locations.env_value(lane.env_var))
 )
-#: The two bodies every `ensure_*` provisions through; `test_the_hub_is_fenced.py` asserts the set.
-_PROVISIONERS: tuple[str, ...] = ("_provision_snapshot", "_provision_root_file_snapshot")
+#: The bodies every `ensure_*` provisions through (the third pulls the Ensembl groups, RM437); `test_the_hub_is_fenced.py` asserts the set.
+_PROVISIONERS: tuple[str, ...] = ("_provision_snapshot", "_provision_root_file_snapshot", "_provision_groups")
 _REAL_HF_FILESYSTEM = huggingface_hub.HfFileSystem
 _REAL_HF_HUB_DOWNLOAD = huggingface_hub.hf_hub_download
 
@@ -879,3 +882,248 @@ def fake_hub(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Callable[..., F
         return hub
 
     return install
+
+
+# ── a Hugging Face stand-in on loopback, for the remote snapshot reads (RM430) ──────────────────
+
+
+class LoopbackHub:
+    """The two Hub routes a `RemoteSnapshots` reads, served from local directories on 127.0.0.1.
+
+    `GET /api/datasets/<repo>/revision/<rev>` answers the commit and its file list, as the Hub does, and
+    `HEAD`/`GET /datasets/<repo>/resolve/<commit>/<path>` serves a file with HTTP range requests (206),
+    which is how duckdb's `httpfs` reads a parquet footer and the row groups it needs. A repo is
+    published as a directory under a commit; publishing it again under another commit moves `main` and
+    keeps the old commit readable, so a pinned reader can be shown to stay on its commit.
+
+    Every request is recorded (`requests`: method, path, range) with the bytes it was sent
+    (`bytes_sent`), and `fail` maps a path fragment to a status the next matching requests get, which
+    is how a 429 or an outage is staged on one file.
+    """
+
+    def __init__(self) -> None:
+        self.repos: dict[str, dict[str, Path]] = {}
+        self.main: dict[str, str] = {}
+        self.requests: list[tuple[str, str, str | None]] = []
+        #: The `Authorization` header of every request, in order (`None` where none was sent).
+        self.authorization: list[str | None] = []
+        self.bytes_sent = 0
+        self.fail: dict[str, int] = {}
+        self._lock = threading.Lock()
+        hub = self
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def log_message(self, *args: object) -> None:  # the suite's output stays quiet
+                pass
+
+            def do_GET(self) -> None:
+                hub._serve(self, head=False)
+
+            def do_HEAD(self) -> None:
+                hub._serve(self, head=True)
+
+        self._server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
+        self._thread.start()
+        self.base_url = f"http://127.0.0.1:{self._server.server_address[1]}"
+
+    def publish(self, repo: str, root: Path, commit: str) -> str:
+        """Serve `root` as `repo` at `commit`, which `main` now names."""
+        self.repos.setdefault(repo, {})[commit] = Path(root)
+        self.main[repo] = commit
+        return commit
+
+    def paths(self, method: str | None = None) -> list[str]:
+        """The paths asked, in order (only `method`'s when given)."""
+        return [path for m, path, _range in self.requests if method is None or m == method]
+
+    def close(self) -> None:
+        self._server.shutdown()
+        self._server.server_close()
+
+    def _send(
+        self,
+        handler: http.server.BaseHTTPRequestHandler,
+        status: int,
+        body: bytes,
+        head: bool,
+        **headers: str,
+    ) -> None:
+        handler.send_response(status)
+        for name, value in {"Content-Length": str(len(body)), **headers}.items():
+            handler.send_header(name, value)
+        handler.end_headers()
+        if not head:
+            handler.wfile.write(body)
+            with self._lock:
+                self.bytes_sent += len(body)
+
+    def _serve(self, handler: http.server.BaseHTTPRequestHandler, *, head: bool) -> None:
+        path = handler.path.split("?", 1)[0]
+        with self._lock:
+            self.requests.append((handler.command, path, handler.headers.get("Range")))
+            self.authorization.append(handler.headers.get("Authorization"))
+        failing = next((status for fragment, status in self.fail.items() if fragment in path), None)
+        if failing is not None:
+            self._send(
+                handler,
+                failing,
+                b"refused by the test",
+                head,
+                **({"Retry-After": "46"} if failing == 429 else {}),
+            )
+            return
+        if path.startswith("/api/datasets/") and "/revision/" in path:
+            repo, revision = path.removeprefix("/api/datasets/").split("/revision/", 1)
+            commit = self.main.get(repo) if revision == "main" else revision
+            root = self.repos.get(repo, {}).get(commit or "")
+            if root is None:
+                self._send(handler, 404, b'{"error": "Repository not found"}', head)
+                return
+            files = sorted(p.relative_to(root).as_posix() for p in root.rglob("*") if p.is_file())
+            body = json.dumps(
+                {"id": repo, "sha": commit, "siblings": [{"rfilename": f} for f in files]}
+            ).encode()
+            self._send(handler, 200, body, head, **{"Content-Type": "application/json"})
+            return
+        for repo, commits in self.repos.items():
+            prefix = f"/datasets/{repo}/resolve/"
+            if not path.startswith(prefix):
+                continue
+            commit, _, relative = path.removeprefix(prefix).partition("/")
+            root = commits.get(commit)
+            target = root / relative if root is not None else None
+            if target is None or not target.is_file():
+                break
+            data = target.read_bytes()
+            wanted = handler.headers.get("Range")
+            if wanted:
+                first, last = re.match(r"bytes=(\d+)-(\d*)", wanted).groups()
+                start, end = int(first), int(last) if last else len(data) - 1
+                end = min(end, len(data) - 1)
+                self._send(
+                    handler,
+                    206,
+                    data[start : end + 1],
+                    head,
+                    **{"Content-Range": f"bytes {start}-{end}/{len(data)}", "Accept-Ranges": "bytes"},
+                )
+            else:
+                self._send(handler, 200, data, head, **{"Accept-Ranges": "bytes"})
+            return
+        self._send(handler, 404, b"Entry not found", head)
+
+
+@pytest.fixture
+def loopback_hub():
+    """A `LoopbackHub` for the test, shut down after it (RM430's Hugging Face stand-in)."""
+    hub = LoopbackHub()
+    try:
+        yield hub
+    finally:
+        hub.close()
+
+
+def _httpfs_loads() -> bool:
+    """Whether duckdb's `httpfs` loads from this machine's install, auto-install off (nothing is fetched)."""
+    connection = duckdb.connect(":memory:")
+    try:
+        connection.execute("SET autoinstall_known_extensions = false")
+        connection.execute("LOAD httpfs")
+    except duckdb.Error:
+        return False
+    finally:
+        connection.close()
+    return True
+
+
+#: Why a test that reads over HTTP through duckdb is skipped: the extension is installed ahead of time
+#: (`python -c "import duckdb; duckdb.connect().install_extension('httpfs')"`, CI does it), never
+#: fetched by a test.
+HTTPFS_MISSING = "duckdb's httpfs extension is not installed here, and no test fetches it"
+
+
+@pytest.fixture
+def httpfs() -> None:
+    """Skip a test that reads over HTTP through duckdb when `httpfs` is not installed (RM430)."""
+    if not _httpfs_loads():
+        pytest.skip(HTTPFS_MISSING)
+
+
+# ── a split Ensembl core attested by its manifest (RM431's rsID index) ─────────────────────────
+
+#: The release RM381's slice was copied from (its README): the label a split core fixture states.
+ENSEMBL_SPLIT_RELEASE = "ensembl-variation-2026_07_13-vep116.0"
+_SPLIT_SLICE = (
+    Path(__file__).resolve().parents[2]
+    / "assets"
+    / "ensembl_split_multialt"
+    / "split"
+    / "data"
+    / "homo_sapiens-split.parquet"
+)
+#: Rows added to RM381's slice, from `test_ensembl_non_nucleotide.py`'s snapshot (real records): an
+#: empty alt, a lengthless symbolic alt, and `rs1603142144` at two loci (an N-masked chrY row and a
+#: placeable chrX one), so an rsID with no nucleotide allele and an rsID at two places are both covered.
+_SPLIT_EXTRA_ROWS = (
+    ("1", 2651767, "T", "", "rs2100212723"),
+    ("1", 13191002, "AAAGAA", "<.>", "rs1553186440"),
+    ("Y", 10277, "C" + "N" * 40, "CCC", "rs1603142144"),
+    ("X", 10277, "C", "CCC", "rs1603142144"),
+)
+
+
+@pytest.fixture
+def ensembl_split_core() -> Callable[..., Path]:
+    """A factory: a split Ensembl core at `root`, one file per chromosome, attested by a `manifest.json`.
+
+    RM381's real slice plus `_SPLIT_EXTRA_ROWS`, typed as the published files are (`start` and `row_idx`
+    `UINTEGER`), with the manifest's per-file size and sha256 and its `release_id` (`release`, by default
+    the slice's own); `drop` removes an rsID's rows. A pull record is not written: an unrecorded cache is
+    the one a reader takes as is.
+    """
+
+    def build(
+        root: Path,
+        *,
+        release: str = ENSEMBL_SPLIT_RELEASE,
+        drop: tuple[str, ...] = (),
+    ) -> Path:
+        data = Path(root) / "data"
+        data.mkdir(parents=True)
+        con = duckdb.connect()
+        try:
+            added = ", ".join(
+                f"('{chrom}', {start}, '{ref}', '{alt}', '{rsid}', {900000000 + i})"
+                for i, (chrom, start, ref, alt, rsid) in enumerate(_SPLIT_EXTRA_ROWS)
+            )
+            con.execute(
+                f"CREATE TABLE core AS SELECT chrom, start, ref, alt, id, row_idx FROM read_parquet('{_SPLIT_SLICE}') "
+                f"UNION ALL SELECT c, CAST(s AS UINTEGER), r, a, i, CAST(x AS UINTEGER) FROM (VALUES {added}) "
+                "AS t(c, s, r, a, i, x)"
+            )
+            if drop:
+                con.execute("DELETE FROM core WHERE id IN (" + ", ".join(f"'{d}'" for d in drop) + ")")
+            files = []
+            for (chrom,) in con.execute("SELECT DISTINCT chrom FROM core ORDER BY 1").fetchall():
+                target = data / f"homo_sapiens-chr{chrom}.parquet"
+                con.execute(
+                    f"COPY (SELECT * FROM core WHERE chrom = '{chrom}' ORDER BY start, row_idx) TO '{target}' "
+                    "(FORMAT parquet)"
+                )
+                payload = target.read_bytes()
+                files.append(
+                    {
+                        "path": f"data/{target.name}",
+                        "group": "core",
+                        "chrom": chrom,
+                        "bytes": len(payload),
+                        "sha256": hashlib.sha256(payload).hexdigest(),
+                    }
+                )
+        finally:
+            con.close()
+        (Path(root) / "manifest.json").write_text(json.dumps({"release_id": release, "files": files}))
+        return Path(root)
+
+    return build

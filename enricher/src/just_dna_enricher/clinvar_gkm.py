@@ -16,8 +16,9 @@ substitutions, same-length MNVs, and the reference-agreeing `ReferenceLengthExpr
 carries them. An allele with no SPDI expression (GRCh37- or transcript-only names) and one off the
 GRCh38 primary assembly (one T2T accession) are dropped too; the build counts each class.
 
-**Where the bytes come from.** One Parquet set under `https://data.clinvar-gkm.org/v1/1.1/parquet/`,
-**overwritten in place every week**, with no dated or archived copies (docs/probes/LANES_0_8.md §3.1).
+**Where the bytes come from.** On 2026-11-26 the published Parquet set had moved from the frozen
+`v1/1.1` line to `https://data.clinvar-gkm.org/v1/1.2/parquet/`. The set is **overwritten in place
+every week**, with no dated or archived copies (docs/probes/LANES_0_8.md §3.1).
 So a release cannot be pinned by URL. The pin is `(source_release, sha256)` from the set's own
 `manifest.json`, and the builder refuses bytes that do not match it: a file overwritten between the
 manifest read and the download is **drift**, and a build from it would describe one release with
@@ -43,17 +44,19 @@ comparison uses on every row; the caller supplies it left-normalized, since the 
 import json
 import logging
 import re
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 
+import duckdb
 import httpx
 from just_dna_format.base import coordinate_key
 from just_dna_format.snapshot import SNAPSHOT_DATA_DIRNAME, SnapshotRelease, read_release
 from just_dna_format.vrs import vrs_spec_release
 from tenacity import retry
 
+from just_dna_enricher.key_compare import _rsid_token, lane_compare
 from just_dna_enricher.net import (
     EndpointRetired,
     PacingGate,
@@ -65,6 +68,7 @@ from just_dna_enricher.net import (
     raise_if_retired,
     retry_if_transient,
 )
+from just_dna_enricher.resolver import _typed_rows_connection
 
 try:  # the one guarded optional import (CLAUDE.md): polars reads the slice
     import polars as pl
@@ -79,9 +83,8 @@ logger = logging.getLogger(__name__)
 #: `(source, layer)` row.
 CLINVAR_GKM_SOURCE = "clinvar_gkm"
 
-#: The release line this tier reads. 1.1.0 moved every URL here; `v1/1.0` is frozen and carries no
-#: Parquet (`v1/1.0/parquet/allele.parquet` answers 404).
-CLINVAR_GKM_BASE_URL = "https://data.clinvar-gkm.org/v1/1.1"
+#: The current line as of 2026-11-26. Its predecessor v1/1.1 keeps a frozen index and no Parquet.
+CLINVAR_GKM_BASE_URL = "https://data.clinvar-gkm.org/v1/1.2"
 PARQUET_MANIFEST_URL = f"{CLINVAR_GKM_BASE_URL}/parquet/manifest.json"
 RELEASE_INDEX_URL = f"{CLINVAR_GKM_BASE_URL}/index.json"
 ALLELE_FILE = "allele.parquet"
@@ -130,7 +133,7 @@ class ClinVarGkmUnavailable(ClinVarGkmError):
 
 
 class ClinVarGkmRetired(ClinVarGkmUnavailable, EndpointRetired):
-    """The source answered HTTP 410: it retired the file asked for (RM354).
+    """The source answered HTTP 410 or its index identifies a retired release line.
 
     A fact about the source, not an outage, and not retried. A `ClinVarGkmUnavailable` so every existing
     handler still catches it; the message says the file moved rather than that the host was down.
@@ -229,6 +232,14 @@ def clinvar_gkm_release_label(source_release: str | None) -> str | None:
     return f"{CLINVAR_GKM_DATASET_PREFIX}{stated}" if stated else None
 
 
+def _parse_index(text: str) -> dict[str, object]:
+    try:
+        raw = json.loads(text)
+    except ValueError as exc:
+        raise ClinVarGkmError(f"the release index is not JSON: {exc}") from exc
+    return raw if isinstance(raw, dict) else {}
+
+
 @dataclass
 class ClinVarGkmClient:
     """The two small JSON documents that say what the source publishes now.
@@ -265,16 +276,25 @@ class ClinVarGkmClient:
         reraise=True,
     )
     def _get_text(self, url: str) -> str:
+        return self._get_text_once(url)
+
+    def _get_text_once(self, url: str) -> str:
         assert self.gate is not None
         self.gate.wait()
         response = self._http().get(url)
         response.raise_for_status()
         return response.text
 
-    def _fetch(self, url: str, what: str) -> str:
+    def _fetch(self, url: str, what: str, *, diagnose_manifest_404: bool = False) -> str:
         try:
             return self._get_text(url)
         except httpx.HTTPError as exc:
+            if (
+                diagnose_manifest_404
+                and isinstance(exc, httpx.HTTPStatusError)
+                and exc.response.status_code == 404
+            ):
+                self._check_missing_manifest()
             raise_if_retired(exc, ClinVarGkmRetired, "ClinVar-GKM")
             raise ClinVarGkmUnavailable(f"could not read ClinVar-GKM's {what} ({url}): {exc}") from exc
 
@@ -284,7 +304,15 @@ class ClinVarGkmClient:
 
     def parquet_manifest(self) -> GkmManifest:
         """The published Parquet set's manifest. Raises `ClinVarGkmUnavailable` when unreachable."""
-        return parse_manifest(self._fetch(self.manifest_url, "Parquet manifest"))
+        return parse_manifest(self._fetch(self.manifest_url, "Parquet manifest", diagnose_manifest_404=True))
+
+    def _check_missing_manifest(self) -> None:
+        """Spend one paced request to see whether the line status explains the manifest's 404."""
+        try:
+            index = _parse_index(self._get_text_once(self.index_url))
+        except (httpx.HTTPError, ClinVarGkmError):
+            return
+        self._raise_if_line_retired(index)
 
     def latest_release_or_none(self) -> str | None:
         """`latest_release`, withheld as `None` when the index cannot be read.
@@ -299,13 +327,24 @@ class ClinVarGkmClient:
             logger.warning("ClinVar-GKM's release index could not be read (%s); the lag is unknown.", exc)
             return None
 
+    def _raise_if_line_retired(self, index: dict[str, object]) -> None:
+        if "status" in index and index["status"] != "current":
+            line = (
+                index.get("line")
+                or httpx.URL(self.index_url).path.rpartition("/")[0].strip("/")
+                or self.index_url
+            )
+            successor = index.get("superseded_by")
+            detail = f", superseded by {successor}" if successor else ", no successor named"
+            raise ClinVarGkmRetired(
+                f"ClinVar-GKM line {line} is {index['status']}{detail}; upgrade the enricher"
+            )
+
     def latest_release(self) -> str | None:
-        """The release line's newest weekly release, or `None` when the index states none."""
-        try:
-            raw = json.loads(self._fetch(self.index_url, "release index"))
-        except ValueError as exc:
-            raise ClinVarGkmError(f"the release index is not JSON: {exc}") from exc
-        stated = str(raw.get("latest_release") or "").strip() if isinstance(raw, dict) else ""
+        """The line's newest weekly release, or `None` when unstated. A superseded line is refused."""
+        index = _parse_index(self._fetch(self.index_url, "release index"))
+        self._raise_if_line_retired(index)
+        stated = str(index.get("latest_release") or "").strip()
         return stated or None
 
     def current_release(self) -> str | None:
@@ -502,11 +541,7 @@ class WitnessPlacement:
 
 def normalize_chrom(chrom: str) -> str:
     """A contig as the `gnomad` expression spells it: no `chr`, upper case, `M` read as `MT`."""
-    token = chrom.strip()
-    if token[:3].lower() == "chr":
-        token = token[3:]
-    token = token.upper()
-    return "MT" if token == "M" else token
+    return _CHROM.key(chrom)
 
 
 @dataclass
@@ -557,8 +592,7 @@ class ClinVarGkmWitness:
         return self._rows(pl.col("vrs_id") == vrs_id.strip())
 
     def by_rsid(self, rsid: str) -> list[WitnessPlacement]:
-        token = rsid.strip().lower()
-        return self._rows(pl.col("rsid") == (token if token.startswith("rs") else f"rs{token}"))
+        return self._rows(pl.col("rsid") == _rsid_token(rsid))
 
     def by_rsids(self, rsids: Iterable[str]) -> dict[str, list[WitnessPlacement]]:
         """`by_rsid` over many rsIDs in one filter, keyed by the rsID as asked; an absent one is absent.
@@ -566,7 +600,7 @@ class ClinVarGkmWitness:
         One pass over the slice rather than one per rsID: a module asks about every rsID it places
         (RM267), and the slice is every ClinVar indel.
         """
-        asked = {(t if (t := r.strip().lower()).startswith("rs") else f"rs{t}"): r for r in rsids}
+        asked = {_rsid_token(r): r for r in rsids}
         found: dict[str, list[WitnessPlacement]] = {}
         for row in self._rows(pl.col("rsid").is_in(list(asked))):
             found.setdefault(asked[str(row.rsid)], []).append(row)
@@ -598,3 +632,167 @@ class ClinVarGkmWitness:
         raise ValueError(
             f"{key!r} is not a VRS id, an rsID or a one-ALT coordinate key (chrom:start:ref:alt)"
         )
+
+
+# ── the keyed functions (0.9, RM431 ask 5) ──────────────────────────────────────────────────────
+#
+# Beside `ClinVarGkmWitness.load`, which reads the whole slice with polars and stays as it is. These read
+# in duckdb (a runtime pass, `@duckdb-vs-polars`), one SQL body per key over a connection exposing
+# `witness`: the local reader runs it over the slice's parquet, and a remote answer's rows
+# (`remote.RemoteSnapshots.lookup`, table `REMOTE_WITNESS_TABLE`) run it through `_variants_from_rows` /
+# `_rsids_from_rows`. The VRS id is not a key here: it is not one of the keys a remote route answers
+# (`remote.KEY_COLUMNS`), and `ClinVarGkmWitness.by_vrs_id` answers it locally.
+
+#: The slice's columns, typed for a remote answer's rows. Held equal to `clinvar_gkm_build`'s
+#: `_witness_schema()` by a test rather than derived from it: that schema is polars'.
+_WITNESS_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("vrs_id", "VARCHAR"),
+    ("chrom", "VARCHAR"),
+    ("pos", "BIGINT"),
+    ("ref", "VARCHAR"),
+    ("alt", "VARCHAR"),
+    ("gnomad", "VARCHAR"),
+    ("spdi", "VARCHAR"),
+    ("state_type", "VARCHAR"),
+    ("clinvar_variation_id", "VARCHAR"),
+    ("rsid", "VARCHAR"),
+)
+#: The table a remote route names for the slice (`remote.table_name` of `data/clinvar_gkm-indels.parquet`).
+REMOTE_WITNESS_TABLE = "clinvar_gkm-indels"
+#: How `lookup_rsids` compares an rsID with the `rsid` cell, on every route: the key read as an rsID, the cell
+#: whole (`key_compare.KEY_COMPARES`, which the holder reads too).
+_CHROM = lane_compare("clinvar_gkm", REMOTE_WITNESS_TABLE, "chrom")
+_RSID = lane_compare("clinvar_gkm", REMOTE_WITNESS_TABLE, "rsid")
+
+
+def _witness_connection(reference: Path) -> duckdb.DuckDBPyConnection:
+    """A connection exposing the slice as `witness`, or `ClinVarGkmError` naming what could not be read."""
+    path = Path(reference) / SNAPSHOT_DATA_DIRNAME / WITNESS_PARQUET
+    if not path.is_file():
+        raise ClinVarGkmError(f"{reference} holds no {SNAPSHOT_DATA_DIRNAME}/{WITNESS_PARQUET}")
+    con = duckdb.connect(":memory:")
+    try:
+        # A local path from the caller's own cache, quoted defensively: a view cannot bind a parameter.
+        quoted = str(path).replace("'", "''")
+        con.execute(f"CREATE VIEW witness AS SELECT * FROM read_parquet('{quoted}')")
+        con.execute("SELECT * FROM witness LIMIT 0")
+    except duckdb.Error as exc:
+        con.close()
+        raise ClinVarGkmError(f"{path} could not be read: {exc}") from exc
+    return con
+
+
+def _select_witness(con: duckdb.DuckDBPyConnection, where: str, params: list) -> list[dict]:
+    """The placements matching `where`, every column, in one total order both routes reproduce."""
+    names = ", ".join(f'"{name}"' for name, _ in _WITNESS_COLUMNS)
+    cursor = con.execute(f"SELECT {names} FROM witness WHERE {where} ORDER BY ALL", params)
+    columns = [d[0] for d in cursor.description]
+    return [dict(zip(columns, values, strict=True)) for values in cursor.fetchall()]
+
+
+def _asked_positions(positions: Sequence[tuple[str, int]]) -> dict[tuple[str, int], list[tuple[str, int]]]:
+    """`(chrom, pos)` as the witness spells it (`normalize_chrom`) → the keys asked so, in order."""
+    asked: dict[tuple[str, int], list[tuple[str, int]]] = {}
+    for chrom, pos in positions:
+        key = (chrom, int(pos))
+        spelled = asked.setdefault((normalize_chrom(str(chrom)), int(pos)), [])
+        if key not in spelled:
+            spelled.append(key)
+    return asked
+
+
+def _variant_keys(positions: Sequence[tuple[str, int]]) -> dict[str, list]:
+    """The keys a remote route is asked for `positions`: `chrom` and `start` paired, as the witness spells them."""
+    wanted = list(_asked_positions(positions))
+    return {"chrom": [chrom for chrom, _ in wanted], "start": [pos for _, pos in wanted]}
+
+
+def _variants_over(
+    con: duckdb.DuckDBPyConnection, positions: Sequence[tuple[str, int]]
+) -> dict[tuple[str, int], list[dict]]:
+    """`lookup_variants`' query over a connection exposing `witness`: the one copy."""
+    asked = _asked_positions(positions)
+    if not asked:
+        return {}
+    # Literals for the positions, as the remote route renders them: a bound integer prunes no row group.
+    starts = ", ".join(str(int(pos)) for _, pos in asked)
+    chroms = sorted({chrom for chrom, _ in asked})
+    rows = _select_witness(
+        con, f"pos IN ({starts}) AND chrom IN ({', '.join('?' for _ in chroms)})", list(chroms)
+    )
+    answer: dict[tuple[str, int], list[dict]] = {}
+    for row in rows:
+        for key in asked.get((str(row["chrom"]), int(row["pos"])), ()):
+            answer.setdefault(key, []).append(dict(row))
+    return {key: answer[key] for keys in asked.values() for key in keys if key in answer}
+
+
+def lookup_variants(
+    reference: Path, positions: Sequence[tuple[str, int]]
+) -> dict[tuple[str, int], list[dict]]:
+    """`(chrom, pos)` → every placement the witness holds there, as plain dicts (RM431).
+
+    Compared as the witness spells a contig (`normalize_chrom`: no `chr`, `M` read as `MT`) and keyed as
+    asked; each row is the slice's own columns. A position the witness holds nothing at is not a key, and
+    is **not witnessed**, never *placed wrong* (the class docstring's reading). A slice that is absent or
+    cannot be read raises `ClinVarGkmError`. Read-only, and it never fetches.
+    """
+    if not positions:
+        return {}
+    con = _witness_connection(reference)
+    try:
+        return _variants_over(con, positions)
+    finally:
+        con.close()
+
+
+def _variants_from_rows(
+    rows: Sequence[Mapping[str, object]], positions: Sequence[tuple[str, int]]
+) -> dict[tuple[str, int], list[dict]]:
+    """`lookup_variants`' answer over a remote answer's rows of `REMOTE_WITNESS_TABLE`."""
+    con = _typed_rows_connection(("witness", _WITNESS_COLUMNS, rows))
+    try:
+        return _variants_over(con, positions)
+    finally:
+        con.close()
+
+
+def _rsids_over(con: duckdb.DuckDBPyConnection, rsids: Sequence[str]) -> dict[str, list[dict]]:
+    """`lookup_rsids`' query over a connection exposing `witness`: the one copy."""
+    asked = _RSID.spellings(rsids)
+    if not asked:
+        return {}
+    # Each key read as `_RSID` reads it, then the cell compared whole with `IN`, which prunes row groups.
+    tokens = _RSID.parameter(list(asked))
+    rows = _select_witness(con, f"rsid IN ({', '.join('?' for _ in tokens)})", tokens)
+    answer: dict[str, list[dict]] = {}
+    for row in rows:
+        for spelling in asked[str(row["rsid"])]:
+            answer.setdefault(spelling, []).append(dict(row))
+    return {rsid: answer[rsid] for spellings in asked.values() for rsid in spellings if rsid in answer}
+
+
+def lookup_rsids(reference: Path, rsids: Sequence[str]) -> dict[str, list[dict]]:
+    """An rsID → every placement the witness holds under it, as plain dicts (RM431).
+
+    Compared as `ClinVarGkmWitness.by_rsid` compares (lower case, `rs` prefixed) and keyed as asked. An
+    rsID naming two alleles answers both and picks neither (`@multiplicity-is-a-finding`); about 29% of the
+    indels carry no rsID, so an absent key is not witnessed, not absent from ClinVar. A slice that is
+    absent or cannot be read raises `ClinVarGkmError`. Read-only, and it never fetches.
+    """
+    if not any(rsid.strip() for rsid in rsids):
+        return {}
+    con = _witness_connection(reference)
+    try:
+        return _rsids_over(con, rsids)
+    finally:
+        con.close()
+
+
+def _rsids_from_rows(rows: Sequence[Mapping[str, object]], rsids: Sequence[str]) -> dict[str, list[dict]]:
+    """`lookup_rsids`' answer over a remote answer's rows of `REMOTE_WITNESS_TABLE`."""
+    con = _typed_rows_connection(("witness", _WITNESS_COLUMNS, rows))
+    try:
+        return _rsids_over(con, rsids)
+    finally:
+        con.close()

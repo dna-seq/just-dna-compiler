@@ -39,6 +39,44 @@ def _mode(strict: bool) -> str:
     return "strict" if strict else "best_effort"
 
 
+def _publish_lane(
+    snapshot_dir: Path,
+    repo: str,
+    dry_run: bool,
+    commit_message: str | None,
+    *,
+    unlabelled_warning: str,
+    payload: str | None = None,
+) -> None:
+    """Publish a built lane or report the outcome of rehearsing its upload."""
+    from just_dna_enricher.upload import PublishRefused, _run_snapshot_publish
+
+    def warn_unlabelled() -> None:
+        typer.secho(unlabelled_warning, fg=typer.colors.YELLOW, err=True)
+
+    try:
+        plan = _run_snapshot_publish(
+            snapshot_dir,
+            repo,
+            payload=payload,
+            commit_message=commit_message,
+            dry_run=dry_run,
+            warn_unlabelled=warn_unlabelled,
+        )
+    except (PublishRefused, PermissionError, ImportError) as exc:
+        if dry_run:
+            typer.secho(f"WOULD BE REFUSED: {exc}", fg=typer.colors.RED, err=True)
+            return
+        typer.secho(f"PUBLISH FAILED: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+    if dry_run:
+        typer.echo(f"would upload {len(plan.files)} file(s) to {plan.repo_id}: {plan.files}")
+    else:
+        typer.secho(
+            f"published: {snapshot_dir} → {plan.repo_id} ({len(plan.files)} files)", fg=typer.colors.GREEN
+        )
+
+
 def _use(value: str) -> str:
     """Normalize the `--use` spelling to the `VALID_DECLARED_USE` member.
 

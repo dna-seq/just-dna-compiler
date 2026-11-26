@@ -213,7 +213,7 @@ named `licensing.csv` (older spelling `sources.csv`), but the artifact keeps the
 ## 5. What 0.8 added to the artifact
 
 Most additions are a new parquet, a new column or a new manifest key, which a 0.7 reader ignores. The
-exceptions are the old-reader breaks in [INTEGRATION_0_8.md](INTEGRATION_0_8.md) § 1 (a 0.7
+exceptions are the old-reader breaks in [INTEGRATION_0_8.md](history/INTEGRATION_0_8.md) § 1 (a 0.7
 `just-dna-format` refuses a manifest carrying a warning code it does not know), so upgrade the format
 tier first. The additions a reporting consumer meets:
 
@@ -287,7 +287,7 @@ print(loci.select("variant_key", "chrom", "start", "source_release").unique(main
 └─────────────┴───────┴───────────┴─────────────────────────────────┘
 ```
 
-(Shapes and dtypes trimmed from polars' output.) [INTEGRATION_0_8.md](INTEGRATION_0_8.md) § 2 lists
+(Shapes and dtypes trimmed from polars' output.) [INTEGRATION_0_8.md](history/INTEGRATION_0_8.md) § 2 lists
 every change by surface, and [SCHEMAS.md](SCHEMAS.md) holds the columns.
 
 ## Where to go next
@@ -296,7 +296,9 @@ every change by surface, and [SCHEMAS.md](SCHEMAS.md) holds the columns.
 - **[MODULE_LIFECYCLE.md](MODULE_LIFECYCLE.md)** — where a module comes from and what a second version
   moves.
 - **[FAQ.md](FAQ.md)** — settled questions, keyed by the question you would actually ask.
-- **[Upgrading to 0.8](INTEGRATION_0_8.md)** — the 0.7 → 0.8 surface delta, the upgrade order, and
-  the old-reader breaks.
+- **[Upgrading to 0.9](INTEGRATION_0_9.md)** — the 0.8.10 → 0.9 surface delta, the upgrade order, and
+  the known issues. Nothing a compiled module carries moved.
+- **[Upgrading to 0.8](history/INTEGRATION_0_8.md)** (archived) — the 0.7 → 0.8 surface delta, the upgrade
+  order, and the old-reader breaks.
 - **[Upgrading to 0.7](history/INTEGRATION_0_7.md)** (archived) — the 0.6.6 → 0.7 surface delta,
   including the one break for an old reader. Read it first if you are still on 0.6.

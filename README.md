@@ -81,7 +81,7 @@ full map of `docs/` with a grep hint per file.
   non-goals, rules only. Wins over any plan; the reasoning behind each amendment is in
   [`CONSTITUTION_AMENDMENTS_HISTORY.md`](docs/CONSTITUTION_AMENDMENTS_HISTORY.md).
 - [`docs/ROADMAP.md`](docs/ROADMAP.md) — open items only, plus the idea-book and the reserved-namespace
-  and 1.0-cleanup trackers. Deferred items sit in [`ROADMAP_0_9.md`](docs/ROADMAP_0_9.md) and
+  and 1.0-cleanup trackers. Deferred items sit in [`ROADMAP_0_10.md`](docs/ROADMAP_0_10.md) and
   [`ROADMAP_1_0.md`](docs/ROADMAP_1_0.md), shipped ones with their rationale in
   [`ROADMAP_HISTORY.md`](docs/ROADMAP_HISTORY.md); [`RM_TOC.md`](docs/RM_TOC.md) indexes every item.
 - [`docs/CHANGELOG.md`](docs/CHANGELOG.md) — what shipped, newest first.
@@ -89,9 +89,10 @@ full map of `docs/` with a grep hint per file.
   [`docs/ENRICHER.md`](docs/ENRICHER.md) — one reference per tier.
 - [`docs/MODULE_LIFECYCLE.md`](docs/MODULE_LIFECYCLE.md) — origin → publish → a consumer's join, and
   what a second pass moves.
-- [`docs/INTEGRATION_0_8.md`](docs/INTEGRATION_0_8.md) — the surface delta a consumer upgrading from
-  0.7 checks against, with the upgrade order and the known issues the 0.8 line ships with; the current
-  release is 0.8.10. The earlier notes are archived: 0.6.6 → 0.7 is
+- [`docs/INTEGRATION_0_9.md`](docs/INTEGRATION_0_9.md) — the surface delta a consumer upgrading from
+  0.8.10 checks against, with the upgrade order and the known issues 0.9 ships with; the current
+  release is 0.9.0. The earlier notes are archived: 0.7 → 0.8 is
+  [`INTEGRATION_0_8.md`](docs/history/INTEGRATION_0_8.md), 0.6.6 → 0.7 is
   [`INTEGRATION_0_7.md`](docs/history/INTEGRATION_0_7.md), 0.5.4 → 0.6 is
   [`INTEGRATION_0_6.md`](docs/history/INTEGRATION_0_6.md).
 - [`docs/FAQ.md`](docs/FAQ.md) — settled questions, most of them a repair somebody proposed that was

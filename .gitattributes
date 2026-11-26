@@ -8,3 +8,5 @@
 # `core.autocrlf=true` or `=input` would silently renormalize the corpus on `git add`, moving seven
 # closures and defeating that test on its own precondition.
 reference_examples/** -text
+# Preserve the tagged enricher's CSV and JSON line endings for byte comparison.
+assets/enrich_v0_8_10/** -text

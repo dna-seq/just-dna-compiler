@@ -1880,4 +1880,39 @@ RELEASE_RECORDS: dict[str, ReleaseRecord] = {
             "picks the insertion. The record's manifest_fields and its axes come from the second sweep."
         ),
     ),
+    # Measured at the 0.9.0 cut (2026-11-19) and again at the redone cut (2026-11-26, after the rescope;
+    # PyPI's latest then 0.8.10, the same result). `previous` is 0.8.10, the newest cut compiler, and BEFORE was compiled by it (with format 0.8.10, at
+    # `65cfa25b`) from this tree's `reference_examples/`, pinned to the locked polars and Python: every
+    # module on both sides records polars 2.1.0 and Python 3.14.8, so no toolchain sweep. The lock did not
+    # move since 0.8.10 beyond the three workspace versions. A measured zero, with its denominator in
+    # `evidence`: the compiler's source did not change in 0.9 (it moves for its format floor only), and
+    # format's changes are `snapshot.parse_release` and `is_whole_build`, which no compile calls. The record measures compiled
+    # output only, so what the enricher writes is stated in `evidence` from a separate measurement (round
+    # 2's item B), which no axis here covers.
+    "0.9.0": ReleaseRecord(
+        version="0.9.0",
+        previous="0.8.10",
+        axes=dict.fromkeys(VALID_RELEASE_OUTPUT_AXES, False),
+        manifest_fields=[],
+        declared=[],
+        evidence=(
+            "22 reference module(s) compiled under 0.8.10 and 0.9.0 from one spec root, so the compiler "
+            "is the only variable; modules moved per axis: content_signature 0/22, manifest_fields 0/22, "
+            "parquet_bytes 0/22, parquet_schema 0/22, warnings 0/22. Enrich, measured apart (outside these "
+            "axes): on five reference examples (pathogenic_clinvar, apoe_epsilon, hboc_palb2, "
+            "hfe_hemochromatosis, shox_par1), online with warm caches, run both as shipped and with "
+            "resolution.csv removed, 0.9's `enrich` without the new arguments (no `clients`, `sequences` or "
+            "`rsid_index`) wrote byte-identical files to 0.8.10's, clock fields aside. `content_signature` "
+            "was equal in all 10 pairs. `artifact.digest` differed in 3 of 5 examples only through enrich "
+            "timestamps carried into parquet cells; cross-compiling showed both compilers give the same "
+            "digest for the same input. Clock fields set aside: verification.json produced_at and every "
+            "record's checked_at, clin_sig_authority_calls.csv and clin_sig_concordance.csv checked_at, "
+            "licensing.csv fetched_at. Its limits: the live sources reached were dbSNP and the reference "
+            "sequence; no run reached live Ensembl, gnomAD or the GRCh37 diagnosis; no rsID index was "
+            "present. Since RM466 a test holds the claim: a fixed offline input reaching the Ensembl "
+            "snapshot, the ClinVar witness, dbSNP and the sequence is enriched under a fixed clock and "
+            "compared byte for byte with goldens recorded from v0.8.10. The compile half was measured "
+            "again at the redone cut (2026-11-26, after the rescope), with the same result."
+        ),
+    ),
 }

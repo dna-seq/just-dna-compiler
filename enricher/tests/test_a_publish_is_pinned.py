@@ -358,3 +358,45 @@ def test_cache_prune_says_a_moved_repo_refused_rather_than_tracebacking(fake_hub
     assert result.exception is None, result.exception
     assert "PRUNE REFUSED" in cli_text(result)
     assert hub.tree()["data/clinvar.parquet"] == b"PAR1 republished PAR1"
+
+
+@pytest.mark.parametrize("command", ["opentargets", "clinvar-gkm", "strchive", "mitomap"])
+def test_lane_publishes_the_release_it_checked(
+    command: str, tmp_path: Path, fake_hub, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    snapshot = tmp_path / "snap"
+    files = _build(snapshot, "checked")
+    files[RELEASE_FILENAME] = b'{"dataset":"checked","parts_read":{"x":1},"parts_total":{"x":1}}\n'
+    (snapshot / RELEASE_FILENAME).write_bytes(files[RELEASE_FILENAME])
+    if command == "strchive":
+        (snapshot / "STRchive-loci.json").write_text("[]", encoding="utf-8")
+    path = snapshot / RELEASE_FILENAME
+    original_read = Path.read_bytes
+    original_loads = json.loads
+    reads = []
+    parses = []
+
+    def count_parses(data, *args, **kwargs):
+        if data in (files[RELEASE_FILENAME], files[RELEASE_FILENAME].decode("utf-8")):
+            parses.append(data)
+        return original_loads(data, *args, **kwargs)
+
+    def replace_after_read(file: Path) -> bytes:
+        data = original_read(file)
+        if file == path:
+            reads.append(data)
+            path.write_text('{"parts_read":{"x":2},"parts_total":{"x":1}}', encoding="utf-8")
+        return data
+
+    monkeypatch.setattr(Path, "read_bytes", replace_after_read)
+    monkeypatch.setattr(json, "loads", count_parses)
+    hub = fake_hub(_REPO)
+    result = CliRunner().invoke(
+        app, [command, "publish", str(snapshot), "--repo", _REPO, "-m", "checked release"]
+    )
+
+    assert reads == [files[RELEASE_FILENAME]]
+    assert len(parses) == 1
+    assert result.exit_code == 0, result.output
+    assert hub.tree()[RELEASE_FILENAME] == files[RELEASE_FILENAME]
+    assert "checked release" in hub.messages.values()

@@ -5,9 +5,9 @@ from pathlib import Path
 
 import typer
 
-from just_dna_enricher.cli._shared import _use
+from just_dna_enricher.cli._shared import _publish_lane, _use
 from just_dna_enricher.licensing import sidecar_path
-from just_dna_enricher.locations import repro_out
+from just_dna_enricher.locations import SNAPSHOT_REPO_IDS, repro_out
 from just_dna_enricher.opentargets import OWNED_TABLES, OpenTargetsError, enrich_opentargets, summarise
 from just_dna_enricher.opentargets_build import (
     DEFAULT_OPENTARGETS_BASE_URL,
@@ -84,14 +84,10 @@ def opentargets_build_(
         raise typer.Exit(code=1) from exc
     typer.secho(f"snapshot: {result.out_dir}", fg=typer.colors.GREEN)
     typer.echo(", ".join(f"{name} {count}" for name, count in result.row_counts.items()))
-    partial = {
-        name: (got, result.parts_total[name])
-        for name, got in result.parts_read.items()
-        if name in result.parts_total and got < result.parts_total[name]
-    }
-    if partial:
+    if result.partial:
         typer.secho(
-            "  partial: " + ", ".join(f"{n} {got} of {total} parts" for n, (got, total) in partial.items()),
+            "  partial: "
+            + ", ".join(f"{n} {got} of {total} parts" for n, (got, total) in result.partial.items()),
             fg=typer.colors.YELLOW,
         )
 
@@ -155,4 +151,46 @@ def opentargets_enrich_(
     typer.echo(
         "posterior on gwas_effects.csv: "
         + ", ".join(f"{name.replace('_', ' ')} {n}" for name, n in summary["posterior"].items())
+    )
+
+
+@opentargets_app.command("publish")
+def opentargets_publish_(
+    snapshot_dir: Path = typer.Argument(
+        ...,
+        exists=True,
+        file_okay=False,
+        help="Built snapshot directory (data/*.parquet + release.json), as `opentargets build` writes it.",
+    ),
+    repo: str = typer.Option(
+        SNAPSHOT_REPO_IDS["opentargets"],
+        "--repo",
+        help="Target HuggingFace dataset repo (owner/name).",
+    ),
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="Show what would be uploaded. Reads the repo's file list; uploads nothing.",
+    ),
+    commit_message: str | None = typer.Option(None, "--message", "-m", help="Commit message."),
+) -> None:
+    """Create-or-update the dataset repo and upload an Open Targets snapshot already built (publisher/dev).
+
+    The release is CC0-marked, so the snapshot may be published. Until 0.9 the lane published only
+    through `cache rebuild --only opentargets --publish`, which downloads and builds first (RM412); this
+    sends a snapshot you already hold, through the same publisher call that route makes.
+
+    A `--parts`-limited test build (its `release.json` records a dataset read short of its total) is
+    refused, in the dry run too, before the repo is touched; a snapshot with no release label is
+    published with a warning, as `mitomap publish` and `strchive publish` do.
+    """
+    _publish_lane(
+        snapshot_dir,
+        repo,
+        dry_run,
+        commit_message,
+        unlabelled_warning=(
+            "  this snapshot carries no release label, so everyone who pulls it inherits a snapshot that "
+            "cannot name its own Open Targets release. Rebuild it with `opentargets build`."
+        ),
     )

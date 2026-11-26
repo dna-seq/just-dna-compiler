@@ -30,7 +30,7 @@ class EnrichmentError(RuntimeError):
 
 @dataclass(frozen=True)
 class SubjectDrift:
-    """One subject whose recorded facts and freshly derived facts disagree, under `rederive=True`.
+    """One subject whose recorded facts and freshly derived facts disagree, during a full or selected re-derivation.
 
     The canary MODULE_LIFECYCLE describes, finally performed. Merge-not-clobber means an ordinary
     re-run never re-asks about a recorded row, so a source that silently *revised* an answer moves no
@@ -168,20 +168,18 @@ def _rederived_drift(
     after: Sequence[ResolutionRow],
     *,
     skip: Collection[tuple] = (),
+    compared_subjects: list[str] | None = None,
     mint: Mint = no_mint,
     read_window: ReadWindow | None = None,
 ) -> tuple[list[SubjectDrift], int, dict[str, int]]:
-    """`(what moved, how many subjects were re-asked, off-primary loci left out)` between two tables.
+    """`(what moved, number of recorded subjects compared, off-primary loci left out)` between two tables.
 
     Compared **only** over subjects present on both sides and not in `skip`. A recorded subject the run
     could not ask about this time produces no fresh row at all — the three branches that deliberately
     write nothing for an unanswerable subject — and calling that a drift would report the run's own
     reach as a change in the source.
 
-    `skip` is what the carry-forward put back, and it is not optional bookkeeping: the carried rows are
-    in `after` by the time this runs, so without it every un-asked subject would still land in the
-    denominator and the warning would publish "N of M **re-asked**" over an M that includes subjects
-    nothing asked. A count that travels with a finding has to be the count the sentence names.
+    When supplied, `compared_subjects` collects the sorted keys counted in the denominator.
 
     The recorded side is read through `_primary_rows` (RM400): a locus on a patch or alt contig is left
     out of the comparison, and the third value counts them per compared subject's `variant_key`, so the
@@ -192,13 +190,13 @@ def _rederived_drift(
     for row in after:
         fresh.setdefault(merge_key(row), []).append(row)
     drift: list[SubjectDrift] = []
-    compared = 0
+    compared: list[str] = []
     off_primary: dict[str, int] = {}
-    for key, recorded in before.items():
-        new_rows = fresh.get(key)
-        if new_rows is None or key in skipped:
+    for key, new_rows in fresh.items():
+        recorded = before.get(key)
+        if recorded is None or key in skipped:
             continue
-        compared += 1
+        compared.append(recorded[0].variant_key)
         old_rows, left_out = _primary_rows(recorded)
         if left_out:
             off_primary[old_rows[0].variant_key] = left_out
@@ -206,7 +204,9 @@ def _rederived_drift(
         if was != now:
             case = _drift_case(old_rows, new_rows, mint=mint, read_window=read_window)
             drift.append(SubjectDrift(old_rows[0].variant_key, was, now, RESPELLED_BY_CASE[case], case))
-    return sorted(drift, key=lambda d: d.variant_key), compared, dict(sorted(off_primary.items()))
+    if compared_subjects is not None:
+        compared_subjects.extend(sorted(compared))
+    return sorted(drift, key=lambda d: d.variant_key), len(compared), dict(sorted(off_primary.items()))
 
 
 @dataclass
@@ -348,11 +348,7 @@ class EnrichmentResult:
     # coordinates it judged, with the ones whose leftmost spelling differs named. `None` only for a
     # caller that built the result by hand; `enrich()` always sets it.
     spelling: SpellingCheck | None = None
-    # What a full re-derivation found had moved since the recorded table was written — `rederive=True`
-    # only. **`None` is not `[]`**: `None` says nobody re-derived, and an empty list says every
-    # recorded subject was re-asked and every one still answers the same. Only the second of those is
-    # a clean bill, and only the second is worth printing (an empty one prints nothing at all — a
-    # comparison that found nothing must not report a zero as though it were a finding).
+    #: Changes in recorded facts among the subjects with fresh answers. None on a gap-fill run.
     rederived: list[SubjectDrift] | None = None
     # Whether each release this module records having been drafted from is still the one its source
     # publishes (RM85). `--rederive`'s cheap neighbour: that one re-asks every source about every
@@ -361,6 +357,9 @@ class EnrichmentResult:
     # caller that built the result by hand; `enrich()` always sets it, carrying `not_checked` when the
     # pass could not run rather than an empty finding list that would read as a clean bill.
     dataset_currency: CurrencyCheck | None = None
+
+    reasked: list[str] | None = None
+    """Sorted recorded variant keys compared for drift. A gap-fill run returns None."""
 
     @property
     def fully_resolved(self) -> bool:

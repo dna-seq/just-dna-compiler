@@ -190,4 +190,10 @@ def test_every_gate_with_a_module_reads_its_recorded_declaration() -> None:
         "cli.pgx_commands.cpic_build_",
         "cli.pgx_commands.pharmvar_build_",
         "cli.clinvar_commands.pubmind_build_",
+        # The Ensembl lane's groups (RM437): a download, no module; a recorded group's declaration is the
+        # cache's pull record's, read by `download._effective_group_use` on `effective_declared_use`'s rule.
+        "download._admit_named_groups",
+        "download._pull_one_group",
+        # A remote snapshot read (RM430): an acquisition of keyed rows, no module directory to read.
+        "remote._admit",
     }, gates

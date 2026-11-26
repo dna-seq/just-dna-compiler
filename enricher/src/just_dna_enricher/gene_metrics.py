@@ -46,6 +46,7 @@ from just_dna_enricher.gnomad import (
     normalize_constraint_flags,
 )
 from just_dna_enricher.identifiers import _id_bearing_tables, authored_rows
+from just_dna_enricher.key_compare import lane_compare
 from just_dna_enricher.licensing import (
     record_table_sources,
     require_sources_file,
@@ -192,6 +193,7 @@ def module_genes(spec_dir: Path) -> list[str]:
 def lookup_snapshot(reference: Path, genes: list[str]) -> dict[str, dict]:
     """`gene symbol -> metrics dict` from the offline constraint snapshot. Never fetches.
 
+    Keys and records retain the snapshot's own gene spelling.
     Mirrors `clinvar.lookup_loci`'s shape: a batch lookup over an injected parquet directory via an
     in-memory DuckDB view, so the core install stays polars-free (polars is the builder's, `[dev]`).
 
@@ -204,14 +206,14 @@ def lookup_snapshot(reference: Path, genes: list[str]) -> dict[str, dict]:
     parquet = _snapshot_parquet(reference)
     if parquet is None:
         raise FileNotFoundError(f"no gnomAD constraint snapshot parquet at {reference}")
+    compare = lane_compare("constraint", CONSTRAINT_LANE, "gene")
     con = duckdb.connect(":memory:")
     try:
         pattern = str(parquet).replace("'", "''")
         con.execute(f"CREATE VIEW constraint_metrics AS SELECT * FROM read_parquet('{pattern}')")
-        placeholders = ", ".join("?" for _ in genes)
         rows = con.execute(
-            f"SELECT * FROM constraint_metrics WHERE gene IN ({placeholders}) ORDER BY gene",
-            genes,
+            f"SELECT * FROM constraint_metrics WHERE {compare.predicate('gene')} ORDER BY gene",
+            [compare.parameter(genes)],
         ).fetchall()
         columns = [d[0] for d in con.description]
     finally:
@@ -345,6 +347,7 @@ def enrich_gene_metrics(
     missing: list[str] = []
 
     # ── snapshot link (offline-capable, first) ─────────────────────────────────────────────────
+    snapshot_key = lane_compare("constraint", CONSTRAINT_LANE, "gene").key
     from_snapshot: dict[str, dict] = {}
     # Bound before the branch, not inside it (RM104): `constraint_routes_consulted` below reads this
     # unconditionally, so the two runs where `wanted` comes back empty — the **idempotent re-run**,
@@ -374,7 +377,10 @@ def enrich_gene_metrics(
                 )
         if reference is not None:
             try:
-                from_snapshot = lookup_snapshot(reference, wanted)
+                from_snapshot = {
+                    snapshot_key(symbol): record
+                    for symbol, record in lookup_snapshot(reference, wanted).items()
+                }
             except FileNotFoundError as exc:
                 # Could not read, never "read and found nothing" (RM432): the snapshot was not consulted,
                 # so no row may name its release, and offline the genes are reported as never asked.
@@ -394,7 +400,7 @@ def enrich_gene_metrics(
     # ── live API link (for what the snapshot missed, unless offline) ───────────────────────────
     from_api: dict[str, dict] = {}
     api_unanswered: set[str] = set()
-    still_missing = [g for g in wanted if g not in from_snapshot]
+    still_missing = [g for g in wanted if snapshot_key(g) not in from_snapshot]
     if still_missing and not offline:
         owned = client is None
         gnomad = client or GnomadClient()
@@ -421,7 +427,7 @@ def enrich_gene_metrics(
     constraint_routes_consulted = reference is not None or not offline
     unconsulted: list[str] = []
     for gene in wanted:
-        payload = from_snapshot.get(gene)
+        payload = from_snapshot.get(snapshot_key(gene))
         # The label follows the ROUTE, never the caller's `dataset` argument alone — the snapshot and
         # the API are different releases (see the module docstring), so one label for both would put
         # two different facts under one name.

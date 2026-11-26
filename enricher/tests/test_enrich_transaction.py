@@ -777,3 +777,91 @@ def test_the_written_columns_are_derived_from_the_model(tmp_path: Path) -> None:
     with path.open(newline="", encoding="utf-8") as handle:
         reloaded = [ResolutionRow.model_validate(row) for row in csv.DictReader(handle)]
     assert reloaded == [full]
+
+
+@pytest.mark.usefixtures("no_ambient_caches")
+def test_selected_rederive_reasks_one_subject_and_preserves_carried_csv_bytes(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    spec = _spec(tmp_path / "spec")
+    first = _run(spec, tmp_path, resolver=_StubResolver(), keep_staging=True)
+    chosen = first.rows[0].variant_key
+    # A historical spelling and line ending the canonical CSV writer would normalize.
+    header, *records = _table(spec).read_bytes().splitlines(keepends=True)
+    carried = [line.replace(b"GRCh38", b'"GRCh38"').replace(b"\r\n", b"\n") for line in records[1:]]
+    _table(spec).write_bytes(header + records[0] + b"".join(carried))
+    revised = _Revised(chosen, first.rows[0].start + 1)
+    result = _run(spec, tmp_path, resolver=revised, rederive_subjects=[chosen, chosen], mint_vrs=True)
+    assert revised.asked == [chosen]
+    assert result.reasked == [chosen]
+    assert [drift.variant_key for drift in result.rederived] == [chosen]
+    assert "1 of 1 re-asked subject(s)" in caplog.text
+    assert result.rows[0].vrs_id
+    assert result.rows[1:] == first.rows[1:]
+    assert _table(spec).read_bytes().splitlines(keepends=True)[2:] == carried
+
+
+@pytest.mark.usefixtures("no_ambient_caches")
+def test_selected_keys_leave_unasked_gaps_unresolved_and_unanswered_recordings_intact(tmp_path: Path) -> None:
+    spec = _spec(tmp_path / "spec")
+    old = _recorded("rs7412", "19", 42, "C", "T")
+    _write_recorded(spec, [old])
+    before = _table(spec).read_bytes()
+    for selection in ([], [old.variant_key]):
+        resolver = _UnreachableFor(old.variant_key)
+        result = _run(
+            spec, tmp_path, resolver=resolver, rederive_subjects=selection, verify_written_only=True
+        )
+        assert resolver.asked == selection
+        assert result.reasked == result.rederived == []
+        assert set(result.unresolved) == set(_ANSWERS) - {old.variant_key}
+        assert _table(spec).read_bytes() == before
+
+
+@pytest.mark.usefixtures("no_ambient_caches")
+def test_selected_rederive_keeps_legacy_column_order_and_multiline_cells(tmp_path: Path) -> None:
+    from just_dna_compiler.compiler import load_csv_rows
+
+    spec = _spec(tmp_path / "spec")
+    chosen, kept = "rs7412", "rs1801133"
+    header = b"chrom,variant_key,start,ref,alts,source,rsid\n"
+    carried = f'19,"{kept}",0042,C,T,"old\r\nsource",{kept}'.encode()
+    _table(spec).write_bytes(header + f"1,{chosen},99,G,A,manual,{chosen}\n".encode() + carried)
+    result = _run(spec, tmp_path, resolver=_StubResolver(), rederive_subjects=[chosen])
+    assert _table(spec).read_bytes().endswith(carried)
+    rows, errors, _ = load_csv_rows(_table(spec), ResolutionRow, "resolution.csv")
+    assert not errors
+    assert sorted(rows, key=lambda r: r.variant_key) == result.rows
+    assert next(row for row in rows if row.variant_key == kept).source == "old\r\nsource"
+
+
+def test_selected_write_refuses_a_new_nonnullable_column_that_breaks_carried_records(tmp_path: Path) -> None:
+    spec = _spec(tmp_path / "spec")
+    kept = _recorded("rs7412", "19", 42, "C", "T")
+    fresh = _recorded("rs1801133", "1", 99, "G", "A")
+    fresh.locus_index = 1
+    original = b"variant_key,chrom,start,ref,alts\nrs7412,19,42,C,T\n"
+    _table(spec).write_bytes(original)
+    with pytest.raises(
+        EnrichmentError, match="Selected re-derivation needs locus_index, absent from the recorded header"
+    ):
+        _write_resolution_csv([fresh, kept], _table(spec), recorded=[kept], preserve={id(kept)})
+    assert _table(spec).read_bytes() == original
+
+
+@pytest.mark.usefixtures("no_ambient_caches")
+def test_selected_subject_replaces_all_its_loci_and_keeps_the_other_group(tmp_path: Path) -> None:
+    spec = _spec(tmp_path / "spec")
+    groups = {}
+    for rsid, answers in _ANSWERS.items():
+        locus = answers[0]
+        primary = _recorded(rsid, **locus)
+        groups[rsid] = [primary, primary.model_copy(update={"start": primary.start + 1, "locus_index": 1})]
+    _write_recorded(spec, [row for group in groups.values() for row in group])
+    chosen, *kept = sorted(groups)
+    result = _run(spec, tmp_path, resolver=_StubResolver(), rederive_subjects=[chosen])
+    assert result.reasked == [chosen]
+    assert [d.variant_key for d in result.rederived] == [chosen]
+    assert [r.start for r in result.rows if r.variant_key == chosen] == [r["start"] for r in _ANSWERS[chosen]]
+    for key in kept:
+        assert [r for r in result.rows if r.variant_key == key] == groups[key]

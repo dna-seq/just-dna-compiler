@@ -132,16 +132,6 @@ def _witness_schema() -> dict:
     }
 
 
-#: What each allele's `data` JSON is decoded as. Only these fields are read; the rest is ignored.
-def _data_dtype():
-    return pl.Struct(
-        {
-            "expressions": pl.List(pl.Struct({"syntax": pl.Utf8, "value": pl.Utf8})),
-            "state": pl.Struct({"type": pl.Utf8}),
-        }
-    )
-
-
 @dataclass
 class SliceCounts:
     """How every allele read was classified. Each dropped class is counted, never silently lost."""
@@ -154,10 +144,9 @@ class SliceCounts:
     indels: int = 0
 
 
-def _expression(syntax: str):
+def _expression(syntax: str) -> "pl.Expr":
     return (
-        pl.col("_data")
-        .struct.field("expressions")
+        pl.col("expressions")
         .list.eval(pl.element().filter(pl.element().struct.field("syntax") == syntax).struct.field("value"))
         .list.first()
     )
@@ -166,18 +155,16 @@ def _expression(syntax: str):
 def indel_slice(allele_path: Path) -> tuple["pl.DataFrame", SliceCounts]:
     """The net insertions and net deletions of `allele.parquet`, keyed by VRS id and VCF spelling."""
     require_polars()
-    frame = (
-        pl.scan_parquet(allele_path)
-        .select("id", "data")
-        .with_columns(_data=pl.col("data").str.json_decode(_data_dtype()))
-        .select(
-            vrs_id=pl.col("id"),
-            state_type=pl.col("_data").struct.field("state").struct.field("type"),
-            spdi=_expression("spdi"),
-            gnomad=_expression("gnomad"),
-        )
-        .collect(engine="streaming")
-    )
+    scan = pl.scan_parquet(allele_path)
+    missing = sorted({"id", "expressions", "state"}.difference(scan.collect_schema().names()))
+    if missing:
+        raise ClinVarGkmError(f"{ALLELE_FILE} is missing required columns: {', '.join(missing)}")
+    frame = scan.select(
+        vrs_id=pl.col("id"),
+        state_type=pl.col("state").struct.field("type"),
+        spdi=_expression("spdi"),
+        gnomad=_expression("gnomad"),
+    ).collect(engine="streaming")
     counts = SliceCounts(alleles=frame.height)
     parts = frame["spdi"].str.split(":")
     frame = frame.with_columns(

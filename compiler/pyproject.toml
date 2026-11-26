@@ -1,6 +1,6 @@
 [project]
 name = "just-dna-compiler"
-version = "0.8.10"
+version = "0.9.0"
 description = "Reference compiler for just-dna annotation modules: spec directory → parquet artifact + manifest"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -14,11 +14,20 @@ maintainers = [
 # consumed from an injected resolution.csv; the DuckDB reference path moved to just-dna-enricher (the
 # deprecated ensembl_cache surface routes there via a guarded optional import, retired at 1.0).
 dependencies = [
-    "just-dna-format>=0.8.10",
+    "just-dna-format>=0.9.0",
     "polars>=1.42.0",
     "pyyaml>=6.0.2",
     "typer>=0.12.0",
 ]
+
+[project.optional-dependencies]
+# A host whose CPU lacks AVX2 (polars' default runtime is built for x86-64-v3: AVX2, FMA, BMI1/2; an Ivy
+# Bridge Xeon has plain AVX only) installs `just-dna-compiler[compat]`: `polars[rtcompat]` adds
+# `polars-runtime-compat` (SSE4.2, popcnt, cmpxchg16b), and polars loads that runtime first whenever it is
+# installed (`polars._plr`'s preference order), so the extra slows polars on a machine that has AVX2: only
+# where the default runtime refuses. The floor is the core `polars` floor above, one number written
+# twice; `test_compat_extra.py` holds them equal.
+compat = ["polars[rtcompat]>=1.42.0"]
 
 [project.scripts]
 just-dna-compiler = "just_dna_compiler.cli:app"

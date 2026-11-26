@@ -68,7 +68,7 @@ from just_dna_enricher.drafting import DRAFT_PROVIDERS, licence_commit, record_d
 from just_dna_enricher.enrich import EnrichmentError, source_build_mismatch
 from just_dna_enricher.licensing import CPIC_TERMS, LicenseRefusal, check_declared_use, effective_declared_use
 from just_dna_enricher.locations import resolve_cpic_reference
-from just_dna_enricher.sequences import SequenceProxy
+from just_dna_enricher.sequences import SequenceProxy, held_by_one_run
 
 #: This provider's registry entry (RM228).
 _PROVIDER = DRAFT_PROVIDERS["cpic"]
@@ -146,6 +146,8 @@ def _reference_reader(sequences: SequenceProxy, *, offline: bool) -> ReadWindow:
     `offline` outranks an injected proxy, as it outranks an injected client: a run documented as
     making no requests makes none, whoever built the reader.
     """
+
+    sequences = held_by_one_run(sequences)
 
     def read_window(chrom: str, start: int, end: int) -> str | None:
         if offline:

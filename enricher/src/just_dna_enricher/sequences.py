@@ -33,6 +33,8 @@ one tier that has the sequence to do it with.
 """
 
 import logging
+import threading
+from collections import OrderedDict
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 
@@ -51,6 +53,15 @@ DEFAULT_SEQREPO_URI = "seqrepo+https://services.genomicmedlab.org/seqrepo"
 _ACGT = frozenset("ACGT")
 
 
+#: How many reads one `SequenceProxy` remembers, least recently used first out (0.9, RM404). A proxy a
+#: host shares may live as long as the service, so its memo is bounded; this is large enough that one
+#: run's re-reads still hit (a ClinVar-scale table of about 58,000 rows is read a few times per row).
+#: It counts entries, not bytes: most are a single base or a ref's width, but an indel's mint window is
+#: about 2 kb (`vrs._MINT_WINDOW` each side) and a left-alignment read 1 kb, so a memo filled with indel
+#: windows alone would hold about half a gigabyte.
+_MEMO_SIZE = 262_144
+
+
 @dataclass
 class SequenceProxy:
     """Lazy, cached access to reference bases. `offline` makes every read return `None`.
@@ -59,51 +70,149 @@ class SequenceProxy:
     once and only if actually needed** (a module of pure substitutions never touches the network for
     minting), and reads are **memoized** by `(accession, start, end)` — a module commonly asks about
     the same locus several times, and each miss is an HTTP round trip.
+
+    **One proxy may be shared across threads and runs (0.9, RM404).** `enrich(sequences=)` takes a
+    caller's proxy, and the motivating host runs several `enrich()` calls at once through one. The lazy
+    build and the memo are bookkeeping under one lock; the remote read is not, so threads wait on each
+    other only for a dictionary, never for the network (`@shared-pacing-gate`). The build itself is
+    under the lock, so a second reader arriving while the first is inside `create_dataproxy` waits for
+    it rather than reading `None`. Two threads missing the same key at once may each read it; both get
+    the same bases.
+
+    **It memoizes answers only.** A failed build, a read that raised and a read that came back empty
+    are not stored: a proxy that outlives a run would otherwise carry one run's outage into every later
+    one. The failure is held by the run that saw it, through a view of the proxy for that run
+    (`held_by_one_run`): `enrich`, `verify_reference_alleles`, the minter and the drafters each read
+    through one, so a run asks a failed read once and a failed build once, and the next run asks again.
+    Read directly, outside any such view, this object asks again on every call. **The memo is bounded**
+    at 262,144 reads (`_MEMO_SIZE`), the least recently used evicted first.
     """
 
     uri: str = DEFAULT_SEQREPO_URI
     offline: bool = False
     _proxy: object = None
-    _tried: bool = False
-    _cache: dict[tuple[str, int, int], str | None] = field(default_factory=dict)
+    _cache: OrderedDict[tuple[str, int, int], str] = field(default_factory=OrderedDict)
+    _lock: threading.Lock = field(default_factory=threading.Lock, repr=False, compare=False)
 
     def proxy(self):
         """The underlying `ga4gh.vrs` data proxy, or `None` when offline or unreachable.
 
         `None` is a normal outcome, not an error: an offline run legitimately has no sequence access,
-        and callers degrade (leave an id unminted, skip a check) rather than fail.
+        and callers degrade (leave an id unminted, skip a check) rather than fail. A failed build is
+        not remembered here: the next call tries again, and a run's view is what holds it (see the
+        class docstring).
         """
-        if self.offline or self._tried and self._proxy is None:
+        if self.offline:
             return None
-        if self._proxy is None:
-            self._tried = True
-            try:
-                self._proxy = create_dataproxy(self.uri)
-            except Exception as exc:
-                logger.warning(
-                    "Could not reach the sequence service at %s (%s); sequence-dependent work "
-                    "(indel VRS ids, the reference-allele check) is skipped this run.",
-                    self.uri,
-                    exc,
-                )
-                return None
-        return self._proxy
+        with self._lock:
+            if self._proxy is None:
+                try:
+                    self._proxy = create_dataproxy(self.uri)
+                except Exception as exc:
+                    # What happens, not a promise about a run (review round 2, I): this proxy remembers no
+                    # failure, so its next read builds again; a run's view is what stops asking (`_RunSequences`).
+                    logger.warning(
+                        "Could not reach the sequence service at %s (%s); this read returns no bases, and the "
+                        "build is retried at the proxy's next read. Without bases an indel's VRS id is left "
+                        "unminted and the reference-allele check is not made; a run reading through its own "
+                        "view asks for the build once per run.",
+                        self.uri,
+                        exc,
+                    )
+                    return None
+            return self._proxy
 
     def subsequence(self, accession: str, start: int, end: int) -> str | None:
         """Uppercased reference bases over the interbase interval `[start, end)`, or `None`."""
         key = (accession, start, end)
-        if key in self._cache:
-            return self._cache[key]
+        with self._lock:
+            if key in self._cache:
+                self._cache.move_to_end(key)
+                return self._cache[key]
         proxy = self.proxy()
-        result: str | None = None
-        if proxy is not None:
-            try:
-                fetched = proxy.get_sequence(f"ga4gh:{accession}", start, end)
-                result = fetched.upper() if fetched else None
-            except Exception as exc:
-                logger.warning("Sequence read failed for %s:[%d,%d) (%s)", accession, start, end, exc)
-        self._cache[key] = result
-        return result
+        if proxy is None:
+            return None
+        try:
+            fetched = proxy.get_sequence(f"ga4gh:{accession}", start, end)
+        except Exception as exc:
+            logger.warning("Sequence read failed for %s:[%d,%d) (%s)", accession, start, end, exc)
+            return None
+        if not fetched:
+            return None
+        bases = fetched.upper()
+        with self._lock:
+            self._cache[key] = bases
+            self._cache.move_to_end(key)
+            while len(self._cache) > _MEMO_SIZE:
+                self._cache.popitem(last=False)
+        return bases
+
+
+class _RunSequences(SequenceProxy):
+    """One run's view of a `SequenceProxy`: the proxy's answers, and this run's failures (RM404).
+
+    Every read goes through the viewed proxy's public `proxy()` and `subsequence()`, so its memo, its
+    lock and any subclass's own reads are the ones used. What the view adds is the run's memory of what
+    failed: a key whose read came back `None` is not asked again by this run. For a stock
+    `SequenceProxy`, whose reads go through its data proxy, a run that found none (offline, or
+    `create_dataproxy` raised) asks for it no more and reads nothing more, so a failed build costs one
+    attempt per run. (A REST seqrepo's data proxy is built without touching the network, so a service
+    that is down is met read by read, once per distinct interval.) A subclass that reads its own way is
+    held per key only, since its `proxy()` says nothing about whether its reads can answer, and its
+    `proxy()` is asked again each time.
+
+    Compared by identity, never by the dataclass fields it inherits and does not use.
+    """
+
+    __eq__ = object.__eq__
+    __hash__ = object.__hash__
+
+    def __init__(self, viewed: SequenceProxy) -> None:
+        # Read with defaults: a caller's stand-in need not have run `SequenceProxy.__init__`.
+        super().__init__(
+            uri=getattr(viewed, "uri", DEFAULT_SEQREPO_URI), offline=getattr(viewed, "offline", False)
+        )
+        self._viewed = viewed
+        kind = type(viewed)
+        self._stock = (
+            getattr(kind, "proxy", None) is SequenceProxy.proxy
+            and getattr(kind, "subsequence", None) is SequenceProxy.subsequence
+        )
+        self._no_data_proxy = False
+        self._unread: set[tuple[str, int, int]] = set()
+
+    def __repr__(self) -> str:
+        return f"_RunSequences({self._viewed!r})"
+
+    def proxy(self):
+        if self._no_data_proxy:
+            return None
+        built = self._viewed.proxy()
+        self._no_data_proxy = built is None and self._stock
+        return built
+
+    def subsequence(self, accession: str, start: int, end: int) -> str | None:
+        key = (accession, start, end)
+        if key in self._unread or (self._stock and self._no_data_proxy):
+            return None
+        bases = self._viewed.subsequence(accession, start, end)
+        if bases is not None:
+            return bases
+        # A stock proxy holding no data proxy after a failed read found none: offline, or the build
+        # failed. Read off its field rather than asked again, which would be a second build attempt.
+        if self._stock and self._viewed._proxy is None:
+            self._no_data_proxy = True
+        else:
+            self._unread.add(key)
+        return None
+
+
+def held_by_one_run(sequences: SequenceProxy) -> SequenceProxy:
+    """Return a view that holds failed sequence reads for one run and shares successful reads.
+
+    Pass the same view to every reader in the run. Wrapping that view again returns it unchanged.
+    """
+    return sequences if isinstance(sequences, _RunSequences) else _RunSequences(sequences)
 
 
 #: How far left `_left_align` reads before it withholds. A shift longer than this is a repeat longer
@@ -533,7 +642,7 @@ def verify_reference_alleles(
     one row this tier has no sequence for and belongs outside `subjects` exactly as it is today, while
     an unbuilt *assembly* means the question cannot be put for any row in the module.
     """
-    sequences = sequences or SequenceProxy(offline=offline)
+    sequences = held_by_one_run(sequences or SequenceProxy(offline=offline))
     builds = {row.genome_build for row in rows if row.genome_build}
     if builds and all(not refget_supports_build(build) for build in builds):
         logger.info(
@@ -563,7 +672,9 @@ def verify_reference_alleles(
             continue
         if accession is None:
             continue
-        actual, shift = _read_with_neighbours(sequences, accession, row.start, len(claimed), claimed)
+        actual, shift = _read_with_neighbours(
+            sequences.subsequence, accession, row.start, len(claimed), claimed
+        )
         if actual is None:
             unread += 1
             continue
@@ -589,7 +700,7 @@ def verify_reference_alleles(
 
 
 def _read_with_neighbours(
-    sequences: SequenceProxy, accession: str, start: int, width: int, claimed: str
+    subsequence: Callable[[str, int, int], str | None], accession: str, start: int, width: int, claimed: str
 ) -> tuple[str | None, int | None]:
     """The bases at `start`, plus which neighbouring offset (if any) carries `claimed` instead.
 
@@ -604,15 +715,15 @@ def _read_with_neighbours(
     left_edge = start - 2  # interbase index of the base one to the LEFT of the claimed span
     if left_edge < 0:
         # At the very start of a contig there is no left neighbour; ask the plain question.
-        actual = sequences.subsequence(accession, start - 1, start - 1 + width)
-        after = sequences.subsequence(accession, start, start + width)
+        actual = subsequence(accession, start - 1, start - 1 + width)
+        after = subsequence(accession, start, start + width)
         return actual, (1 if after == claimed and actual != claimed else None)
 
-    window = sequences.subsequence(accession, left_edge, start + width)
+    window = subsequence(accession, left_edge, start + width)
     if window is None or len(window) < width + 2:
         # A short window means a contig edge on the right; fall back to the unadorned comparison
         # rather than slicing a string that does not hold what the offsets assume.
-        return sequences.subsequence(accession, start - 1, start - 1 + width), None
+        return subsequence(accession, start - 1, start - 1 + width), None
 
     actual = window[1 : 1 + width]
     before, after = window[0:width], window[2 : 2 + width]

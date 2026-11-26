@@ -60,6 +60,13 @@ Three choices in it are load-bearing:
   stubs; `uv sync` generates them at build time (RM196), so a synced checkout collects offline, and an
   unsynced one now says so at collection instead of fetching.
 
+**And one fence above the socket, for duckdb (RM430).** duckdb's `httpfs` opens its sockets in C++, where
+none of the patches above can see them, so the enricher builds every remote URL it hands duckdb (and its
+own `httpx` reads) through one function, `just_dna_enricher.remote.remote_url`, and this file wraps it:
+without the opt-in, a URL whose host is not this machine is refused and recorded exactly as a socket
+reach is. Imported guarded, since the format and compiler tiers' own environments may not hold the
+enricher.
+
 Loopback and Unix sockets stay open: several tests serve real HTTP on `127.0.0.1` on purpose. Set
 `JUST_DNA_NETWORK_GUARD_LOG` to a file to have every refusal append `test<TAB>host<TAB>via` there,
 which is how the reaching tests were enumerated.
@@ -69,6 +76,7 @@ import ipaddress
 import os
 import socket
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import pytest
 
@@ -76,6 +84,11 @@ try:
     import grpc
 except ImportError:  # the enricher's optional AlphaGenome extra; the other tiers never install it
     grpc = None
+
+try:
+    from just_dna_enricher import remote
+except ImportError:  # a format- or compiler-only environment holds no enricher, and no duckdb URL to fence
+    remote = None
 
 os.environ["TERM"] = "dumb"
 
@@ -211,11 +224,24 @@ def _fenced_grpc(module, name: str):
     return fenced
 
 
+def _fenced_remote_url(real):
+    """`remote.remote_url`, refusing a host that is not this machine before duckdb opens a socket on it."""
+
+    def fenced(base: str, *parts: str) -> str:
+        url = real(base, *parts)
+        _guard(urlsplit(url).hostname, "duckdb httpfs (remote.remote_url)")
+        return url
+
+    return fenced
+
+
 socket.getaddrinfo = _fenced_getaddrinfo
 socket.socket.connect = _fenced_connect
 socket.socket.connect_ex = _fenced_connect_ex
 for _module, _name in _REAL_GRPC_CHANNELS:
     setattr(_module, _name, _fenced_grpc(_module, _name))
+if remote is not None:
+    remote.remote_url = _fenced_remote_url(remote.remote_url)
 
 
 class NetworkFence:

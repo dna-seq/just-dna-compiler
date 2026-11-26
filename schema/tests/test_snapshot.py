@@ -26,6 +26,8 @@ from just_dna_format.snapshot import (
     begin_snapshot_write,
     clinvar_release_label,
     holds_snapshot_payload,
+    is_whole_build,
+    parse_release,
     read_release,
     release_is_unreadable,
     release_label,
@@ -322,3 +324,135 @@ def test_a_block_write_with_no_record_writes_one_with_the_block(tmp_path: Path) 
     assert json.loads((directory / RELEASE_FILENAME).read_text(encoding="utf-8")) == {
         "citations": {"row_count": 2}
     }
+
+
+# ── 0.9 (RM430 decision 6): one parser for the record's content, which a remote reader shares ────────
+
+#: Old spellings, a ClinVar date with no `dataset`, a recorded `null` and a key the model does not
+#: type: every rule the record's reading applies.
+_EVERY_RULE = {
+    "licence": "CC0-1.0",
+    "rows": 12,
+    "clinvar_file_date": "2026-11-01",
+    "source_sha256": "sha256:" + "ab" * 32,
+    "built_at": None,
+    "builder": "just_dna_enricher.clinvar_build",
+}
+
+#: The same record stated in the canonical spellings, independently of the parser under test.
+_EVERY_RULE_READ = SnapshotRelease(
+    license="CC0-1.0",
+    row_count=12,
+    clinvar_file_date="2026-11-01",
+    source_sha256="sha256:" + "ab" * 32,
+    built_at=None,
+    builder="just_dna_enricher.clinvar_build",
+    dataset="clinvar_2026-11-01",
+)
+
+
+@pytest.mark.parametrize("as_bytes", [True, False], ids=["bytes", "str"])
+def test_parse_release_reads_the_content_as_read_release_reads_the_file(
+    tmp_path: Path, as_bytes: bool
+) -> None:
+    directory = _release_file(tmp_path / "snap", _EVERY_RULE)
+    text = (directory / RELEASE_FILENAME).read_text(encoding="utf-8")
+    parsed = parse_release(text.encode("utf-8") if as_bytes else text)
+    assert parsed == _EVERY_RULE_READ
+    assert read_release(directory) == _EVERY_RULE_READ
+    assert parsed.model_fields_set == _EVERY_RULE_READ.model_fields_set
+
+
+def test_a_record_json_loads_reads_stays_readable(tmp_path: Path) -> None:
+    """An unpaired surrogate escape: `json.loads` reads it, pydantic's JSON parser refuses it.
+
+    The record was read with `json.loads` before 0.9, so a file holding one was readable whole; the
+    shared parser keeps it so, rather than turning a readable snapshot into an unstated one.
+    """
+    content = '{"dataset": "x_1", "note": "\\ud800"}'
+    assert parse_release(content).dataset == "x_1"
+    directory = tmp_path / "snap"
+    directory.mkdir()
+    (directory / RELEASE_FILENAME).write_text(content, encoding="utf-8")
+    assert release_label(directory) == "x_1"
+    assert release_is_unreadable(directory) is False
+
+
+@pytest.mark.parametrize(
+    "content",
+    [b"{not json", b"", b"\xff", '{"dataset": ', b"[1]", b'"dataset"'],
+    ids=["not_json", "empty", "not_utf8", "truncated_text", "a_list", "a_string"],
+)
+def test_parse_release_answers_none_for_an_unreadable_record_and_warns_naming_the_source(
+    content: bytes | str, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Lenient as `read_release` is (RM430, 2026-11-17): the same bytes give the same answer on every route."""
+    with caplog.at_level("WARNING"):
+        assert parse_release(content, source="hf://example/release.json") is None
+    assert [r.levelname for r in caplog.records] == ["WARNING"]
+    assert "Could not read hf://example/release.json (" in caplog.records[0].getMessage()
+    assert "treating the release as unstated" in caplog.records[0].getMessage()
+
+
+def test_parse_release_drops_a_mistyped_key_with_a_warning_as_read_release_does(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A mistyped key costs that key, on the fetched bytes exactly as on the file."""
+    directory = _release_file(tmp_path / "snap", {"dataset": "x_1", "row_count": "many", "licence": "MIT"})
+    content = (directory / RELEASE_FILENAME).read_bytes()
+    with caplog.at_level("WARNING"):
+        parsed = parse_release(content)
+    assert parsed is not None
+    assert (parsed.dataset, parsed.row_count, parsed.license) == ("x_1", None, "MIT")
+    assert parsed == read_release(directory)
+    assert [r.getMessage() for r in caplog.records][0] == (
+        f"{RELEASE_FILENAME}: row_count do not fit the snapshot record; read as unstated."
+    )
+    assert release_is_unreadable(directory) is True
+
+
+def test_read_release_warns_with_the_path_through_the_shared_parser(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """`read_release` hands its path to `parse_release`, so its warnings still name the file."""
+    directory = _release_file(tmp_path / "snap", {"dataset": "x_1", "row_count": "many"})
+    with caplog.at_level("WARNING"):
+        assert read_release(directory).dataset == "x_1"
+    path = directory / RELEASE_FILENAME
+    assert (
+        caplog.records[0].getMessage()
+        == f"{path}: row_count do not fit the snapshot record; read as unstated."
+    )
+
+
+@pytest.mark.parametrize(
+    ("read", "total", "expected"),
+    [
+        ({}, {}, None),
+        (None, {"study": 2}, None),
+        ({"study": 2}, {"other": 2}, None),
+        ({"study": 2}, {"study": 2, "other": 1}, None),
+        ({"study": 2}, {"study": 2}, True),
+        ({"study": 0}, {"study": 2, "other": 1}, False),
+    ],
+)
+def test_is_whole_build_withholds_unknown_part_counts(read, total, expected) -> None:
+    record = SnapshotRelease(parts_read=read, parts_total=total)
+    assert is_whole_build(record) is expected
+    assert is_whole_build(json.loads(record.to_json())) is expected
+
+
+def test_is_whole_build_refuses_a_contradictory_record() -> None:
+    read = {"study": 2}
+    total = {"study": read["study"] - 1}
+    with pytest.raises(ValueError) as refused:
+        is_whole_build(SnapshotRelease(parts_read=read, parts_total=total))
+    assert str(refused.value) == f'parts_read["study"] is {read["study"]}, above parts_total {total["study"]}'
+
+
+def test_is_whole_build_names_every_short_dataset_in_order() -> None:
+    read = {"study": 1, "complete": 2, "l2g": 0, "unknown": 3}
+    total = {"study": 2, "l2g": 1, "complete": read["complete"]}
+    short = {}
+    assert is_whole_build({"parts_read": read, "parts_total": total}, short_reads=short) is False
+    assert list(short.items()) == [(name, (read[name], total[name])) for name in ("l2g", "study")]

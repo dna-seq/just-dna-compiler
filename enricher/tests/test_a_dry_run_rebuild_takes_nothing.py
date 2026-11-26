@@ -140,3 +140,73 @@ def test_a_gated_lane_says_in_the_dry_run_what_the_real_run_says(
         return next(line for line in result.output.splitlines() if line.lstrip().startswith("cpic"))
 
     assert lane_line(["--dry-run"]) == lane_line([])
+
+
+def test_a_partial_build_already_at_the_lane_is_rehearsed_as_refused(
+    monkeypatch: pytest.MonkeyPatch, no_ambient_caches: Path, tmp_path: Path
+) -> None:
+    """The one rebuild route a `--parts` build reaches: `opentargets build --parts N --out <out>/opentargets`.
+
+    The real `--publish` run rebuilds the lane whole before it uploads, but the dry run rehearses what is
+    already there, so it must say the publisher would refuse it (RM412). The exit stays 0, as for any
+    upload the rebuild's rehearsal predicts refused.
+    """
+    _install(monkeypatch, _Hub({}))
+    out = tmp_path / "caches"
+    built = out / "opentargets"
+    (built / "data").mkdir(parents=True)
+    pl.DataFrame({"study_locus_id": ["x"]}).write_parquet(built / "data" / "l2g.parquet")
+    read, total = {"l2g": 1, "study": 1}, {"l2g": 12, "study": 1}
+    (built / RELEASE_FILENAME).write_text(
+        json.dumps({"dataset": "opentargets_26.09", "parts_read": read, "parts_total": total}),
+        encoding="utf-8",
+    )
+
+    result = CliRunner().invoke(
+        app, ["cache", "rebuild", "--out", str(out), "--only", "opentargets", "--publish", "--dry-run"]
+    )
+
+    assert result.exit_code == 0, result.output
+    said = " ".join(result.output.split())
+    assert (
+        f"WOULD BE REFUSED: {built} is a partial build: its {RELEASE_FILENAME} records l2g {read['l2g']} of "
+        f"{total['l2g']} parts read" in said
+    )
+    assert "would upload" not in said
+
+
+@pytest.mark.parametrize(
+    ("raw", "said_after_the_path"),
+    [
+        (b"{", "cannot be read ("),
+        (
+            json.dumps({"dataset": "opentargets_26.09", "parts_read": "1"}).encode(),
+            'records parts_read is "1"',
+        ),
+    ],
+    ids=["unparsable", "miscounted"],
+)
+def test_an_unreadable_record_already_at_the_lane_is_rehearsed_as_refused(
+    raw: bytes,
+    said_after_the_path: str,
+    monkeypatch: pytest.MonkeyPatch,
+    no_ambient_caches: Path,
+    tmp_path: Path,
+) -> None:
+    """The rebuild's rehearsal plans through the same gate: a record that cannot say whether the build is whole (RM412)."""
+    _install(monkeypatch, _Hub({}))
+    out = tmp_path / "caches"
+    built = out / "opentargets"
+    (built / "data").mkdir(parents=True)
+    pl.DataFrame({"study_locus_id": ["x"]}).write_parquet(built / "data" / "l2g.parquet")
+    (built / RELEASE_FILENAME).write_bytes(raw)
+
+    result = CliRunner().invoke(
+        app, ["cache", "rebuild", "--out", str(out), "--only", "opentargets", "--publish", "--dry-run"]
+    )
+
+    assert result.exit_code == 0, result.output
+    said = " ".join(result.output.split())
+    assert f"WOULD BE REFUSED: {built / RELEASE_FILENAME} {said_after_the_path}" in said
+    assert "Rebuild the snapshot before publishing." in said
+    assert "would upload" not in said

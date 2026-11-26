@@ -8,8 +8,11 @@ into `just-dna-pipelines` and never downloads anything — provisioning the refe
 caller's responsibility (the marketplace pins one reference for the whole ecosystem).
 """
 
+import json
 import logging
+import os
 import re
+import threading
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
 from collections.abc import Set as AbstractSet
@@ -31,11 +34,13 @@ from just_dna_compiler.resolution_findings import (
 from just_dna_format.alleles import split_genotype
 from just_dna_format.base import derive_variant_key
 from just_dna_format.findings import CodedWarning
+from just_dna_format.snapshot import SNAPSHOT_DATA_DIRNAME
 from just_dna_format.spec import VariantRow
 from just_dna_format.vocab import ALLELE_PATTERN
 from just_dna_format.vrs import normalize_chrom
 
 from just_dna_enricher.ensembl import _placeable_alleles
+from just_dna_enricher.ensembl_rsid_index_build import INDEX_GLOB, _moved_parent, core_pin
 from just_dna_enricher.events import (
     Mint,
     ReadWindow,
@@ -45,10 +50,21 @@ from just_dna_enricher.events import (
     names_event,
     no_mint,
 )
-from just_dna_enricher.locations import DUCKDB_NAME, resolve_ensembl_reference
+from just_dna_enricher.key_compare import KeyCompare, lane_compare
+from just_dna_enricher.locations import (
+    DUCKDB_NAME,
+    ENSEMBL_RSID_INDEX_CACHE_VAR,
+    ENSEMBL_RSID_INDEX_SUBDIR,
+    default_ensembl_rsid_index_cache_dir,
+    resolve_ensembl_reference,
+    resolve_ensembl_rsid_index_reference,
+)
 from just_dna_enricher.sequences import per_alt_loci, trim_allele
 
 logger = logging.getLogger(__name__)
+
+_ID = lane_compare("ensembl", "homo_sapiens", "id")
+_CHROM = lane_compare("ensembl", "homo_sapiens", "chrom")
 
 
 class EnsemblReferenceError(FileNotFoundError):
@@ -319,18 +335,28 @@ def lookup_loci(
     rsids: list[str],
     positions: list[tuple[str | None, int | None, str | None, str | None]],
     non_nucleotide: set[str] | None = None,
+    *,
+    rsid_index: Path | None = None,
 ) -> tuple[dict[str, list[dict]], dict[tuple, list[str]], list[str]]:
     """Public cache lookup the enricher uses to *build* a resolution table (0.5).
 
     Returns `(rsid -> [loci], (chrom,start,ref,alt) -> [candidate rsids], warnings)` from an injected
     Ensembl reference. The reverse map is **allele-aware** (matches the authored `alt` when given) and
     returns *all* candidate rsIDs at that exact allele — never a silent first-pick — so the caller can
-    take a deterministic pick and flag a genuine multi-rsid allele as ambiguous. Inject-only.
+    take a deterministic pick and flag a genuine multi-rsid allele as ambiguous. Both maps retain the
+    requested spellings of rsIDs and positions. Inject-only.
 
     `non_nucleotide`, when given, receives the rsIDs the snapshot holds with no nucleotide allele at
     any locus (RM271), so a caller can name them rather than read them out of the log (RM272).
+
+    `rsid_index` is the `ensembl_rsid_index` lane's directory, for a host that passes its lanes' paths
+    explicitly rather than through the environment (0.9, RM431; the registry's proxy, S154): beside
+    `reference`, as `reference` is the Ensembl core's. Given, it is the only place looked in, never the
+    environment; `None` keeps the lane's ladder (`$JUST_DNA_ENSEMBL_RSID_INDEX_CACHE`, else
+    `<base>/ensembl_rsid_index`, no `.env` loaded). Either way an index is read only when it pins
+    `reference`, and the answer is the scan's.
     """
-    return _lookup_loci(reference, rsids, positions, non_nucleotide)
+    return _lookup_loci(reference, rsids, positions, non_nucleotide, rsid_index=rsid_index)
 
 
 def _lookup_loci(
@@ -339,26 +365,207 @@ def _lookup_loci(
     positions: list[tuple[str | None, int | None, str | None, str | None]],
     non_nucleotide: set[str] | None = None,
     candidate_loci: dict[tuple, dict[str, list[LocusSpelling]]] | None = None,
+    *,
+    rsid_index: Path | None = None,
 ) -> tuple[dict[str, list[dict]], dict[tuple, list[str]], list[str]]:
     """`lookup_loci`, plus each reverse candidate's alleles at its position into `candidate_loci` (RM438).
 
     What `enrich` calls, so its back-fill narrows the candidates by the row's alleles (`_hosting_rsids`)
     from the same query. Private, so the public signature `clinvar.lookup_loci` mirrors stays as it was.
     """
-    warnings: list[str] = []
+    index_files = _rsid_index_beside(Path(reference), rsid_index) if rsids else None
     con = _connect(reference)
     try:
-        rsid_to_loci = (
-            _lookup_positions_by_rsid(con, sorted(set(rsids)), warnings, non_nucleotide) if rsids else {}
-        )
-        pos_candidates = (
-            _lookup_rsid_candidates(con, "ensembl_variations", "id", positions, candidate_loci)
-            if positions
-            else {}
-        )
+        return _loci_over(con, rsids, positions, non_nucleotide, candidate_loci, index_files)
     finally:
         con.close()
+
+
+def _rebuild_instruction(index_dir: Path, *, build: bool = False, explicit: bool = False) -> str:
+    """The command that (re)builds the index where the reader looks for it (`cache rebuild` writes `<out>/<lane>`).
+
+    `cache prepare` never builds the index (it is built only when named, `CacheLane.named_only`), so the
+    instruction is a rebuild into the index's own place: the builder withdraws `release.json` before it
+    moves a file, and a reader in between scans. `build` words it for a place that holds no index yet.
+    `explicit` is a place the caller passed (`lookup_loci(rsid_index=…)`): one not named for the lane is
+    pointed at by passing it again, never by the environment, which such a host does not configure.
+    """
+    command = "just-dna-enricher cache rebuild --only ensembl_rsid_index"
+    if index_dir.name == ENSEMBL_RSID_INDEX_SUBDIR:
+        verb = "Build it" if build else "Rebuild it in place"
+        return f"{verb} with `{command} --out {index_dir.parent}`."
+    point = (
+        f"pass <dir>/{ENSEMBL_RSID_INDEX_SUBDIR} as `rsid_index`"
+        if explicit
+        else f"point ${ENSEMBL_RSID_INDEX_CACHE_VAR} at <dir>/{ENSEMBL_RSID_INDEX_SUBDIR}"
+    )
+    return f"{'Build' if build else 'Rebuild'} it with `{command} --out <dir>` and {point}."
+
+
+#: `(index, core)` pairs whose refusal was already logged: said once per process, not per lookup.
+_REFUSED_INDEXES: set[tuple[Path, Path]] = set()
+#: Set once a scan for want of an index has been noted (`_note_scan`): said once per process (RM431).
+_SCAN_NOTED = threading.Event()
+#: Makes `_note_scan`'s test-and-set one step, so two first lookups on two threads say it once.
+_SCAN_NOTE_LOCK = threading.Lock()
+
+
+def _note_scan(place: Path, reference: Path, *, explicit: bool = False) -> None:
+    """Say once per process, at `info`, that rsIDs are scanned for want of an index, and how to build one.
+
+    The pm's reading 2 (2026-11-18): the index is built only when named, so a host that never named it
+    learns here that it exists. `info`, because a scan is a normal state on a host that chose not to pay
+    the build, not a fault: the answers are the same, only slower.
+    """
+    with _SCAN_NOTE_LOCK:
+        if _SCAN_NOTED.is_set():
+            return
+        _SCAN_NOTED.set()
+    logger.info(
+        "No rsID index was found at %s, so rsIDs in the Ensembl core at %s are looked up by scanning its whole "
+        "`id` column. An index (the `ensembl_rsid_index` lane) makes each a pruned read, and it is built only "
+        "when named. %s",
+        place,
+        reference,
+        _rebuild_instruction(place, build=True, explicit=explicit),
+    )
+
+
+def _rsid_index_beside(reference: Path, explicit: Path | None = None) -> Path | None:
+    """The rsID index's files (a glob) to read for `reference`'s rsIDs (RM431), or `None` to scan the core.
+
+    The index is the `ensembl_rsid_index` lane's: at `explicit` when the caller passed one (and nowhere
+    else), else found as its resolver finds it from the process environment
+    (`$JUST_DNA_ENSEMBL_RSID_INDEX_CACHE`, else `<base>/ensembl_rsid_index`; the `.env` is not loaded
+    here, as `lookup_loci` never loaded it). It is read only when its `release.json` pins this
+    core (`ensembl_rsid_index_build.core_pin`: the release and the files its manifest attests); an index
+    of another core is refused with a warning naming both and the rebuild, and the core is scanned. With
+    no index there, the core is scanned and the first such lookup of the process says so at `info`, with
+    the command that builds one where the reader looked (`_note_scan`). A core that cannot be pinned (no
+    manifest, a `.duckdb` handed directly) is scanned with nothing said: no index could ever be its.
+    """
+    current = core_pin(reference)
+    if current is None:
+        return None
+    index_dir = resolve_ensembl_rsid_index_reference(explicit, load_dotenv_file=False)
+    if index_dir is None:
+        looked_in = str(explicit) if explicit is not None else os.getenv(ENSEMBL_RSID_INDEX_CACHE_VAR)
+        _note_scan(
+            Path(looked_in) if looked_in else default_ensembl_rsid_index_cache_dir(load_dotenv_file=False),
+            reference,
+            explicit=explicit is not None,
+        )
+        return None
+    payload = index_dir / SNAPSHOT_DATA_DIRNAME / INDEX_GLOB
+    # The one verdict `cache status` and `cache prepare` read too, so they call stale what is refused here.
+    moved = _moved_parent(index_dir, reference)
+    if moved is None and any(payload.parent.glob(payload.name)):
+        return payload
+    if (index_dir, reference) not in _REFUSED_INDEXES:
+        _REFUSED_INDEXES.add((index_dir, reference))
+        logger.warning(
+            "The rsID index at %s was not built from the Ensembl core at %s (%s), so rsIDs are looked up by "
+            "scanning the core. %s",
+            index_dir,
+            reference,
+            moved or "it holds no index file",
+            _rebuild_instruction(index_dir, explicit=explicit is not None),
+        )
+    return None
+
+
+def _loci_over(
+    con: duckdb.DuckDBPyConnection,
+    rsids: list[str],
+    positions: list[tuple[str | None, int | None, str | None, str | None]],
+    non_nucleotide: set[str] | None = None,
+    candidate_loci: dict[tuple, dict[str, list[LocusSpelling]]] | None = None,
+    rsid_index: Path | None = None,
+) -> tuple[dict[str, list[dict]], dict[tuple, list[str]], list[str]]:
+    """The Ensembl reader's queries over a connection exposing `ensembl_variations`: the one copy (RM430).
+
+    The local reader runs them over the snapshot's glob; a remote answer's rows run them through
+    `_loci_from_rows`, so a lookup answered remotely is read by the same SQL as one answered from disk.
+    `rsid_index` is the rsID index to bound the rsID query by (RM431), when one pins this core.
+    """
+    warnings: list[str] = []
+    rsid_to_loci = (
+        _lookup_positions_by_rsid(con, sorted(set(rsids)), warnings, non_nucleotide, rsid_index)
+        if rsids
+        else {}
+    )
+    pos_candidates = (
+        _lookup_rsid_candidates(con, "ensembl_variations", "id", positions, candidate_loci)
+        if positions
+        else {}
+    )
     return rsid_to_loci, pos_candidates, warnings
+
+
+#: The Ensembl snapshot's columns the readers read, and how a remote answer's rows are typed for them.
+_ENSEMBL_READ_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("chrom", "VARCHAR"),
+    ("start", "BIGINT"),
+    ("ref", "VARCHAR"),
+    ("alt", "VARCHAR"),
+    ("id", "VARCHAR"),
+)
+
+
+def _rows_connection(
+    name: str, columns: Sequence[tuple[str, str]], rows: Sequence[Mapping[str, object]]
+) -> duckdb.DuckDBPyConnection:
+    """An in-memory connection holding `rows` as table `name` with `columns`, for a reader's SQL (RM430).
+
+    A remote answer is the snapshot's own rows; loading them under the view name the reader queries
+    lets the reader's one copy of its SQL run over them unchanged. A column a row lacks is `NULL`.
+    """
+    con = duckdb.connect(":memory:")
+    probe_table(con, name, columns, [tuple(row.get(column) for column, _ in columns) for row in rows])
+    return con
+
+
+def _typed_rows_connection(
+    *tables: tuple[str, Sequence[tuple[str, str]], Sequence[Mapping[str, object]]],
+) -> duckdb.DuckDBPyConnection:
+    """`_rows_connection` for tables with list, boolean or floating-point columns (RM431).
+
+    Each of `tables` is `(name, columns, rows)`. `probe_table` renders every cell as an integer or a
+    quoted string, which is right for the scalar columns RM430's readers read and wrong for Open
+    Targets' `rs_ids` (a list) or its `canonical` (a boolean). Here a table's rows go to duckdb as one
+    JSON document, typed by `from_json` against `columns`, so a list stays a list and a `NULL` a
+    `NULL`; one bound string, where a bound list of structs costs about 15 s per 20,000 rows in
+    duckdb's Python binding (measured). A column a row lacks is `NULL`.
+    """
+    con = duckdb.connect(":memory:")
+    try:
+        for name, columns, rows in tables:
+            shape = json.dumps(dict(columns)).replace("'", "''")
+            document = json.dumps(
+                [{column: row.get(column) for column, _ in columns} for row in rows], default=str
+            )
+            con.execute(
+                f"CREATE TABLE {name} AS SELECT s.* FROM "
+                f"(SELECT unnest(from_json(?::JSON, '[{shape}]')) AS s)",
+                [document],
+            )
+    except BaseException:
+        con.close()
+        raise
+    return con
+
+
+def _loci_from_rows(
+    rows: Sequence[Mapping[str, object]],
+    rsids: list[str],
+    positions: list[tuple[str | None, int | None, str | None, str | None]],
+) -> tuple[dict[str, list[dict]], dict[tuple, list[str]], list[str]]:
+    """`lookup_loci`'s answer over a remote answer's rows rather than a snapshot directory (RM430)."""
+    con = _rows_connection("ensembl_variations", _ENSEMBL_READ_COLUMNS, rows)
+    try:
+        return _loci_over(con, rsids, positions)
+    finally:
+        con.close()
 
 
 def probe_table(
@@ -424,12 +631,25 @@ def _sql_literal(cell: object, numeric: bool) -> str:
     return "'" + str(cell).replace("'", "''") + "'"
 
 
+def _allele_spellings(
+    alleles: Sequence[tuple[str, int, str, str]], chrom_compare: KeyCompare
+) -> dict[tuple[str, int, str, str], list[tuple[str, int, str, str]]]:
+    """Group allele probes by snapshot contig while retaining their requested dictionary keys."""
+    asked: dict[tuple[str, int, str, str], list[tuple[str, int, str, str]]] = {}
+    for allele in dict.fromkeys(alleles):
+        chrom, start, ref, alt = allele
+        asked.setdefault((chrom_compare.key(chrom), start, ref, alt), []).append(allele)
+    return asked
+
+
 def _lookup_rsid_candidates(
     con: duckdb.DuckDBPyConnection,
     table: str,
     id_col: str,
     positions: list[tuple[str | None, int | None, str | None, str | None]],
     candidate_loci: dict[tuple, dict[str, list[LocusSpelling]]] | None = None,
+    *,
+    chrom_compare: KeyCompare = _CHROM,
 ) -> dict[tuple, list[str]]:
     """Allele-aware reverse lookup: `(chrom,start,ref,alt) -> sorted [candidate rsids]`.
 
@@ -444,10 +664,15 @@ def _lookup_rsid_candidates(
     `_hosting_rsids` (RM438) without a second query.
     """
     uniq = list(dict.fromkeys(positions))
-    concrete = [(c, s) for c, s, r, a in uniq if c is not None and s is not None]
+    concrete = {
+        (form, start)
+        for chrom, start, _, _ in uniq
+        if chrom is not None and start is not None
+        for form in (chrom, chrom_compare.key(chrom))
+    }
     if not concrete:
         return {pt: [] for pt in uniq}
-    probe_table(con, "_wanted_positions", [("chrom", "VARCHAR"), ("start", "BIGINT")], sorted(set(concrete)))
+    probe_table(con, "_wanted_positions", [("chrom", "VARCHAR"), ("start", "BIGINT")], sorted(concrete))
     rows = con.execute(
         f"SELECT DISTINCT t.chrom, t.start, t.ref, t.alt, t.{id_col} FROM {table} t "
         f"JOIN _wanted_positions w ON t.chrom = w.chrom AND t.start = w.start "
@@ -456,13 +681,13 @@ def _lookup_rsid_candidates(
     ).fetchall()
     by_pos: dict[tuple, list[tuple]] = defaultdict(list)
     for chrom, start, ref, alt, rid in rows:
-        by_pos[(str(chrom), int(start))].append((str(ref), str(alt), str(rid)))
+        by_pos[(chrom_compare.key(chrom), int(start))].append((str(ref), str(alt), str(rid)))
     result: dict[tuple, list[str]] = {}
     for chrom, start, ref, alt in uniq:
         cands: list[str] = []
         matched: dict[str, list[tuple[str, int, str, str]]] = {}
         # RM452: a probe with no start is no position, as one with no chrom is (`concrete` above).
-        here = (str(chrom), int(start)) if chrom is not None and start is not None else ()
+        here = (chrom_compare.key(chrom), int(start)) if chrom is not None and start is not None else ()
         for rref, ralt, rid in by_pos.get(here, []):
             placed = _placeable_alleles(rref, _snapshot_alleles(ralt))
             if placed is None:
@@ -480,7 +705,9 @@ def _lookup_rsid_candidates(
                 continue
             if rid not in cands:  # rows already ordered by ... id
                 cands.append(rid)
-            matched.setdefault(rid, []).extend((str(chrom), int(start), placed[0], a) for a in named)
+            matched.setdefault(rid, []).extend(
+                (chrom_compare.key(chrom), int(start), placed[0], a) for a in named
+            )
         result[(chrom, start, ref, alt)] = cands
         if candidate_loci is not None:
             candidate_loci[(chrom, start, ref, alt)] = {
@@ -592,11 +819,83 @@ def _snapshot_alleles(cell: object) -> list[str]:
     return [a for a in re.split(r"[,|]", str(cell)) if a]
 
 
+def _rsid_rows(
+    con: duckdb.DuckDBPyConnection, rsids: list[str], rsid_index: Path | None
+) -> list[tuple[str, str, int, str, str]]:
+    """`(id, chrom, start, ref, alt)` for `rsids`, distinct, ordered by all five.
+
+    With no index this is the scan it always was: every row group's `id` spans rs1 to rs9…, so nothing
+    prunes. With one (RM431), the rsIDs of the `rs` + digits form are first located in the index (sorted
+    by rsID, so a row group or two each), and the core is read only at those `(chrom, start)`, as
+    literals so its position-sorted files prune; the `id` filter still decides which rows answer. An
+    rsID the index does not hold is not in the core it pins, so it reads nothing. An `id` of another form
+    is scanned for as before.
+    """
+    marks = ", ".join("?" for _ in rsids)
+    select = "SELECT DISTINCT id, chrom, start, ref, alt FROM ensembl_variations"
+    if rsid_index is None:
+        return con.execute(
+            f"{select} WHERE id IN ({marks}) ORDER BY id, chrom, start, ref, alt", rsids
+        ).fetchall()
+    indexed = [rsid for rsid in rsids if _INDEXED_RSID.fullmatch(rsid)]
+    others = [rsid for rsid in rsids if not _INDEXED_RSID.fullmatch(rsid)]
+    rows: list[tuple[str, str, int, str, str]] = []
+    if others:
+        rows.extend(
+            con.execute(f"{select} WHERE id IN ({', '.join('?' for _ in others)})", others).fetchall()
+        )
+    if indexed:
+        numbers = ", ".join(str(int(rsid[2:])) for rsid in indexed)
+        try:
+            located = con.execute(
+                f"SELECT DISTINCT chrom, start FROM read_parquet(?) WHERE rs IN ({numbers})",
+                [str(rsid_index)],
+            ).fetchall()
+        except (duckdb.IOException, duckdb.InvalidInputException) as exc:
+            # An index being rebuilt in place loses its files for a moment; one that cannot be read is
+            # no answer, so the core is scanned, as with no index.
+            logger.warning("The rsID index %s could not be read (%s); scanning the core.", rsid_index, exc)
+            return _rsid_rows(con, rsids, None)
+        if located:
+            # A core row with no `start` or no `chrom` is indexed with that cell empty, and the scan reads
+            # it, so the bounded read must too: `IS NULL` beside the literals, never a dropped row.
+            starts = sorted({int(start) for _, start in located if start is not None})
+            chroms = sorted({str(chrom) for chrom, _ in located if chrom is not None})
+            start_clause = " OR ".join(
+                ([f"start IN ({', '.join(str(start) for start in starts)})"] if starts else [])
+                + (["start IS NULL"] if any(start is None for _, start in located) else [])
+            )
+            chrom_clause = " OR ".join(
+                (
+                    [f"chrom IN ({', '.join(_sql_literal(chrom, False) for chrom in chroms)})"]
+                    if chroms
+                    else []
+                )
+                + (["chrom IS NULL"] if any(chrom is None for chrom, _ in located) else [])
+            )
+            rows.extend(
+                con.execute(
+                    f"{select} WHERE id IN ({', '.join('?' for _ in indexed)}) AND ({start_clause}) "
+                    f"AND ({chrom_clause})",
+                    indexed,
+                ).fetchall()
+            )
+    # duckdb's order (NULLs last) for the merged rows, so the index changes nothing a caller sees.
+    return sorted(
+        set(rows), key=lambda row: tuple((cell is None, cell if cell is not None else "") for cell in row)
+    )
+
+
+#: The rsID spelling the index holds (`ensembl_rsid_index_build.RSID_PATTERN`).
+_INDEXED_RSID = re.compile(r"rs[0-9]+")
+
+
 def _lookup_positions_by_rsid(
     con: duckdb.DuckDBPyConnection,
     rsids: list[str],
     warnings: list[str],
     non_nucleotide: set[str] | None = None,
+    rsid_index: Path | None = None,
 ) -> dict[str, list[dict]]:
     """Batch lookup: rsid -> [{chrom, start, ref, alts}, ...] (ALL loci, deterministically ordered).
 
@@ -607,16 +906,8 @@ def _lookup_positions_by_rsid(
     sorts both the loci and their alts, so the emitted order is stable across runs (Principle 7)."""
     if not rsids:
         return {}
-    placeholders = ", ".join("?" for _ in rsids)
-    rows = con.execute(
-        f"""
-        SELECT DISTINCT id, chrom, start, ref, alt
-        FROM ensembl_variations
-        WHERE id IN ({placeholders})
-        ORDER BY id, chrom, start, ref, alt
-        """,
-        rsids,
-    ).fetchall()
+    asked = _ID.spellings(rsids)
+    rows = _rsid_rows(con, sorted(asked), rsid_index) if asked else []
     alleles: dict[str, list[tuple[str, int, str, str]]] = defaultdict(list)
     unplaceable: set[str] = set()
     unpositioned: set[str] = set()
@@ -647,7 +938,7 @@ def _lookup_positions_by_rsid(
         )
     only_unplaceable = sorted(unplaceable - set(result))
     if non_nucleotide is not None:
-        non_nucleotide.update(only_unplaceable)
+        non_nucleotide.update(spelling for token in only_unplaceable for spelling in asked[token])
     if only_unplaceable:
         # In the snapshot, so "not in the injected snapshot" would be false; said once, not per rsID.
         logger.warning(
@@ -658,7 +949,7 @@ def _lookup_positions_by_rsid(
             ", ".join(only_unplaceable),
         )
     for rsid in rsids:
-        if rsid not in result and rsid not in unplaceable:
+        if _ID.key(rsid) not in result and _ID.key(rsid) not in unplaceable:
             # Two things this line must not do, and it did each of them in turn. It must not speak
             # for Ensembl — "in the injected snapshot", not "in Ensembl", because a partial snapshot
             # missing rs1799945 says nothing about the HFE H63D locus Ensembl serves at 6:26090951.
@@ -672,7 +963,7 @@ def _lookup_positions_by_rsid(
                     unresolved_rsid(rsid, searched="the injected Ensembl snapshot"),
                 )
             )
-    return dict(result)
+    return {spelling: loci for token, loci in result.items() for spelling in asked[token]}
 
 
 @dataclass(frozen=True)
@@ -959,7 +1250,7 @@ def _lookup_rsid_sets_by_position(
     if not concrete:
         return {}
     # By position, the ref compared below: a padded snapshot ref is not the spelling a probe names (RM381).
-    places = list(dict.fromkeys((chrom, start) for chrom, start, _ in concrete))
+    places = sorted({(form, start) for chrom, start, _ in concrete for form in (chrom, _CHROM.key(chrom))})
     conditions = " OR ".join("(chrom = ? AND start = ?)" for _ in places)
     params: list[object] = []
     for chrom, start in places:

@@ -19,6 +19,8 @@ first test proves the windows: the two RM270 alleles mint the ids RM270 and Clin
 import gzip
 import hashlib
 import json
+from datetime import UTC, datetime, tzinfo
+from importlib.metadata import version
 from pathlib import Path
 
 import httpx
@@ -37,6 +39,7 @@ from just_dna_enricher.ensembl import EnsemblResolver
 from just_dna_enricher.eutils import EutilsClient, EutilsSettings
 from just_dna_enricher.events import Allele, same_event
 from just_dna_enricher.licensing import sources_path
+from just_dna_enricher.lookup import LookupClients
 from just_dna_enricher.net import PacingGate
 from just_dna_enricher.placement import _dbsnp_placements, compare_placements
 from just_dna_enricher.sequences import SequenceProxy, normalize_locus, spelling_verdict
@@ -647,25 +650,32 @@ class _Dbsnp:
         self.requested: list[list[str]] = []
         self.status = status
 
-    def install(self, monkeypatch: pytest.MonkeyPatch) -> "_Dbsnp":
-        def handler(request: httpx.Request) -> httpx.Response:
-            assert request.url.host == "eutils.ncbi.nlm.nih.gov", f"asked {request.url}, not NCBI"
-            ids = request.url.params["id"].split(",")
-            self.requested.append(ids)
-            if self.status != 200:
-                return httpx.Response(self.status, text="Service unavailable")
-            result: dict[str, object] = {"uids": ids}
-            for uid in ids:
-                result[uid] = (
-                    {"uid": uid, "snp_id": int(uid), "spdi": DBSNP_SPDI[uid]}
-                    if uid in DBSNP_SPDI
-                    else {"uid": uid, "error": "cannot get document summary"}
-                )
-            return httpx.Response(200, json={"result": result})
+    def handler(self, request: httpx.Request) -> httpx.Response:
+        assert request.url.host == "eutils.ncbi.nlm.nih.gov", f"asked {request.url}, not NCBI"
+        ids = request.url.params["id"].split(",")
+        self.requested.append(ids)
+        if self.status != 200:
+            return httpx.Response(self.status, text="Service unavailable")
+        result: dict[str, object] = {"uids": ids}
+        for uid in ids:
+            result[uid] = (
+                {"uid": uid, "snp_id": int(uid), "spdi": DBSNP_SPDI[uid]}
+                if uid in DBSNP_SPDI
+                else {"uid": uid, "error": "cannot get document summary"}
+            )
+        return httpx.Response(200, json={"result": result})
 
-        def client() -> _RecordedEutils:
+    def caller_client(self) -> "_CallerEutils":
+        """A host's own NCBI client over the same records, for `enrich(clients=…)` (RM404)."""
+        built = _CallerEutils(settings=EutilsSettings(email=None), gate=PacingGate(0.0))
+        built._client = httpx.Client(transport=httpx.MockTransport(self.handler))
+        return built
+
+    def install(self, monkeypatch: pytest.MonkeyPatch) -> "_Dbsnp":
+        def client(inner: EutilsClient | None = None) -> _RecordedEutils:
+            assert inner is None, "no caller's client was passed, so the run's own wrapper asks"
             built = _RecordedEutils(settings=EutilsSettings(email=None), gate=PacingGate(0.0))
-            built._client = httpx.Client(transport=httpx.MockTransport(handler))
+            built._client = httpx.Client(transport=httpx.MockTransport(self.handler))
             return built
 
         monkeypatch.setattr("just_dna_enricher.enrich.orchestration._dbsnp_client", client)
@@ -674,6 +684,171 @@ class _Dbsnp:
     @property
     def uids(self) -> list[str]:
         return [uid for request in self.requested for uid in request]
+
+
+class _CallerEutils(EutilsClient):
+    """A caller's client, counting `close()`: `enrich` must never call it (RM404)."""
+
+    closes: int = 0
+
+    def close(self) -> None:
+        self.closes += 1
+        super().close()
+
+
+class _RecordingClock(datetime):
+    """The wall clock used by both the tagged recorder and the regression test."""
+
+    @classmethod
+    def now(cls, tz: tzinfo | None = None) -> datetime:
+        return datetime(2026, 11, 7, 12, tzinfo=UTC).astimezone(tz)
+
+
+def _rm466_run(root: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, dict[Path, bytes]]:
+    """Replay two placements at a fixed UTC time, returning the spec and its original authored bytes."""
+    rsids = ("rs8176719", "rs77944059")
+    spec = _spec(root, {rsid: GENOTYPES[rsid] for rsid in rsids})
+    authored = {path.relative_to(spec): path.read_bytes() for path in spec.iterdir()}
+    # licensing.csv's fetched_at, verification.json's produced_at and records[].checked_at.
+    # Freeze the clock underneath the formatter so the timestamp spelling is checked too.
+    monkeypatch.setattr("just_dna_format.normalize.datetime", _RecordingClock)
+    monkeypatch.setattr("just_dna_enricher.sequences.create_dataproxy", lambda uri: _RecordedBases())
+    dbsnp = _Dbsnp()
+    # offline=True would skip dbSNP and seqrepo. Replay their inputs below the real clients.
+    with httpx.Client(transport=httpx.MockTransport(dbsnp.handler)) as ncbi:
+        monkeypatch.setattr(EutilsClient, "_http", lambda self: ncbi)
+        result = enrich(
+            spec,
+            ensembl_cache=_ensembl_snapshot(root),
+            clinvar_cache=_clinvar_snapshot(root, {"rs77944059": CLINVAR["rs77944059"]}),
+            download=False,
+            verify_datasets=False,
+        )
+
+    (row,) = result.rows
+    assert (row.rsid, row.source, row.placement_witness, row.placement_verdict, row.vrs_id) == (
+        "rs77944059",
+        "cache",
+        "clinvar",
+        "same_event",
+        RS77944059_ID,
+    )
+    assert result.placement is not None and result.placement.withheld == ["rs8176719"]
+    (finding,) = result.placement.disagreements
+    assert (finding.authority, finding.witness) == ("ensembl", "dbsnp")
+    assert set(dbsnp.uids) == {rsid.removeprefix("rs") for rsid in rsids}
+    return spec, authored
+
+
+@pytest.mark.usefixtures("no_ambient_caches")
+def test_enrich_without_new_arguments_writes_v0810_bytes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Compare the complete module tree with the authored inputs and the sidecars written by v0.8.10.
+
+    The goldens came from running this file's _rm466_run in the tagged workspace (65cfa25b),
+    with all cache lanes pointed at an absent directory, and copying the three new files verbatim
+    (re-recorded there by the lead, 2026-11-26: identical). Clock fields are fixed by the clock;
+    the `producer` version is the one field substituted.
+    """
+    spec, expected = _rm466_run(tmp_path, monkeypatch)
+    goldens = SLICE.parent / "enrich_v0_8_10"
+    # The one field that must move between releases: `verification.json`'s `producer` names the
+    # enricher that wrote it. The recorded release is swapped for the running one, so a version bump
+    # is not read as a byte difference and every other byte still has to be 0.8.10's.
+    producer = (b"just-dna-enricher 0.8.10", f"just-dna-enricher {version('just-dna-enricher')}".encode())
+    for path in goldens.rglob("*"):
+        if path.is_file():
+            expected[path.relative_to(goldens)] = path.read_bytes().replace(*producer)
+    actual = {path.relative_to(spec): path for path in spec.rglob("*") if path.is_file()}
+    assert actual.keys() == expected.keys()
+    for name, path in actual.items():
+        assert path.read_bytes() == expected[name], name
+
+
+def test_rm404_a_callers_eutils_serves_the_witness_and_the_merge_check_one_fetch_per_record(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, no_ambient_caches: Path
+) -> None:
+    """S117's case with the NCBI client the host holds: the run wraps it in its own `_RecordedEutils`, so
+    the merge check still asks only what the witness did not (RM398), and the host's client stays open."""
+    spec = _spec(tmp_path)
+    dbsnp = _Dbsnp()
+    caller = dbsnp.caller_client()
+    result = _enrich(
+        spec,
+        tmp_path,
+        monkeypatch,
+        clinvar_cache=_clinvar_snapshot(tmp_path, _without("rs8176719")),
+        clinvar_gkm_cache=_gkm_snapshot(tmp_path),
+        verify_rsids=True,
+        clients=LookupClients(eutils=caller),
+    )
+    assert dbsnp.requested[0] == ["8176719"]
+    assert len(dbsnp.uids) == len(set(dbsnp.uids)) and len(dbsnp.requested) == 2
+    assert result.placement is not None and result.placement.withheld == ["rs8176719"]
+    assert all(r.rsid_status is not None for r in result.rows)  # the merge check read the records too
+    assert caller.closes == 0 and caller._client is not None
+
+
+class _CountingSequences(RecordedSequences):
+    """The recorded windows, counting every read: `proxy()` (the minter, the check's gate) and bases."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.proxy_calls = 0
+        self.reads = 0
+
+    def proxy(self) -> _DataProxy:
+        self.proxy_calls += 1
+        return super().proxy()
+
+    def subsequence(self, accession: str, start: int, end: int) -> str | None:
+        self.reads += 1
+        return super().subsequence(accession, start, end)
+
+
+def test_rm404_a_passed_proxy_is_the_only_sequence_source_the_run_reads(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, no_ambient_caches: Path
+) -> None:
+    """S157: `verify_ref`, left-alignment (the hosting and placement reads) and the minter all take the
+    passed proxy. Any other `SequenceProxy` the run built would reach `create_dataproxy` on its first read,
+    and the run's own construction raises here; the rows equal a run on its own recorded proxy."""
+    built: list[str] = []
+    monkeypatch.setattr("just_dna_enricher.sequences.create_dataproxy", built.append)
+    options = {"verify_ref": True, "mint_vrs": True}
+    own_root, passed_root = tmp_path / "own", tmp_path / "passed"
+    roots = {}
+    for root in (own_root, passed_root):
+        root.mkdir()
+        roots[root] = {
+            "clinvar_cache": _clinvar_snapshot(root),
+            "clinvar_gkm_cache": _gkm_snapshot(root),
+        }
+    own = _enrich(_spec(own_root), own_root, monkeypatch, **options, **roots[own_root])
+
+    def no_second_proxy(*_args: object, **_kwargs: object) -> SequenceProxy:
+        raise AssertionError("the run built a SequenceProxy of its own beside the passed one")
+
+    monkeypatch.setattr("just_dna_enricher.enrich.orchestration.SequenceProxy", no_second_proxy)
+    passed = _CountingSequences()
+    result = enrich(
+        _spec(passed_root),
+        ensembl_cache=_ensembl_snapshot(passed_root),
+        download=False,
+        use_gnomad=False,
+        verify_clinsig=False,
+        verify_rsids=False,
+        verify_datasets=False,
+        resolver=_NoLiveEnsembl(),
+        sequences=passed,
+        **options,
+        **roots[passed_root],
+    )
+    assert built == []
+    assert passed.proxy_calls > 0 and passed.reads > 0
+    drop = {"fetched_at"}
+    assert [r.model_dump(exclude=drop) for r in result.rows] == [r.model_dump(exclude=drop) for r in own.rows]
+    assert any(r.vrs_id for r in result.rows if r.ref and r.alts and len(r.ref) != len(r.alts))
 
 
 def test_dbsnp_withholds_s117_when_no_loaded_witness_holds_it(

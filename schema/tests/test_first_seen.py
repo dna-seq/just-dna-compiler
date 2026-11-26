@@ -85,8 +85,10 @@ _RELEASES: frozenset[str] = frozenset(
         # below adds every workspace package's version, not format's only.
         "0.8.8",
         "0.8.9",
-        # Uncut until its tag: the release `_UNCUT` names while the 0.8.10 cut is on `main`.
+        # Cut on `main` 2026-11-19, published and tagged 2026-11-26, before 0.9.0 (the lead's order).
         "0.8.10",
+        # Uncut until its tag: the minor the `0.9` branch lands in, which `_UNCUT` names.
+        "0.9.0",
     }
 )
 

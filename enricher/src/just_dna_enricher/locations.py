@@ -38,7 +38,7 @@ from just_dna_format.snapshot import holds_snapshot_payload as holds_snapshot_pa
 from just_dna_format.snapshot import read_release as read_release
 from just_dna_format.snapshot import release_label as snapshot_release_label
 from platformdirs import user_cache_dir
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 logger = logging.getLogger(__name__)
 
@@ -189,7 +189,7 @@ OPENTARGETS_SUBDIR: str = "opentargets"
 #: outright, and what was missing was plumbing rather than permission.
 MITOMAP_SUBDIR: str = "mitomap"
 
-#: The **derived** cache, and the only one in the registry that is not a download (RM171). Its acquire
+#: The first **derived** cache, a lane that is not a download (RM171; `ensembl_rsid_index` is the second). Its acquire
 #: stage is *both parents on disk*: it is the join of the MITOMAP snapshot against the ClinVar chrMT
 #: parquet, and it exists as a snapshot rather than as a computation inside `draft` so the increment
 #: has an identity a currency check can talk about. Its `release.json` pins both parents, which is
@@ -211,6 +211,13 @@ ALPHAGENOME_AVI_SUBDIR: str = "alphagenome_avi"
 #: lane, and this one is read only to ask where an indel sits. CC0 over ClinGen's transformation of
 #: public-domain ClinVar, so it may be published.
 CLINVAR_GKM_SUBDIR: str = "clinvar_gkm"
+
+#: The second **derived** cache (0.9, RM431 ask 4): the Ensembl split core's rsIDs, each with the
+#: `(chrom, start)` it sits at, sorted by rsID so a lookup by rsID reads a row group or two instead of
+#: the core's whole `id` column (about 6.1 GB, which no row group prunes). Built from the core on disk by
+#: `cache rebuild --only ensembl_rsid_index`, never pulled and never published: its `release.json` pins
+#: the core it indexes, and `resolver.lookup_loci` reads it only beside that core.
+ENSEMBL_RSID_INDEX_SUBDIR: str = "ensembl_rsid_index"
 
 
 # ── The override variables, one per lane, plus the shared base ──────────────────────────────────
@@ -239,6 +246,7 @@ MITOMAP_MISS_CACHE_VAR: str = "JUST_DNA_MITOMAP_MISS_CACHE"
 ALPHAGENOME_AVI_CACHE_VAR: str = "JUST_DNA_ALPHAGENOME_AVI_CACHE"
 CLINVAR_GKM_CACHE_VAR: str = "JUST_DNA_CLINVAR_GKM_CACHE"
 OPENTARGETS_CACHE_VAR: str = "JUST_DNA_OPENTARGETS_CACHE"
+ENSEMBL_RSID_INDEX_CACHE_VAR: str = "JUST_DNA_ENSEMBL_RSID_INDEX_CACHE"
 
 
 _PARQUET_MAGIC = b"PAR1"
@@ -364,6 +372,19 @@ def pulled_from(cache_dir: Path, repo: str) -> str | None:
 # ── a snapshot's per-file manifest (RM372) ──────────────────────────────────────────────────────
 
 
+#: The manifest-group warnings already said in this process: a manifest is read many times per lookup
+#: (`core_pin`, `manifest_coverage`, `ensembl_group_dir`), and one unread field is one finding, said once.
+_SAID: set[str] = set()
+
+
+def _warn_once(template: str, *args: object) -> None:
+    """`logger.warning(template, *args)`, the first time this process would say that message."""
+    message = template % args
+    if message not in _SAID:
+        _SAID.add(message)
+        logger.warning(template, *args)
+
+
 class SnapshotManifestFile(BaseModel):
     """One file `manifest.json` attests: its path under the snapshot root, its size and its sha256.
 
@@ -381,12 +402,32 @@ class SnapshotManifestFile(BaseModel):
     sha256: str | None = None
 
 
+class SnapshotManifestGroup(BaseModel):
+    """One optional column group a split Ensembl release publishes under `groups/<name>/` (RM437).
+
+    Typed for what the provisioner acts on: the group's `licence`, the sentence the declared-use gate
+    reads its licensor from (`licensing.snapshot_group_terms`). `description`, `default` and
+    `per_transcript` are carried for a reader that names a group to its operator; the column list is
+    the builder's own and is dropped (`extra="ignore"`).
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    name: str | None = None
+    description: str | None = None
+    licence: str | None = None
+    default: bool | None = None
+    per_transcript: bool | None = None
+
+
 class SnapshotManifest(BaseModel):
     """prepare-annotations' `manifest.json`, the record its Ensembl release carries instead of `release.json`.
 
-    Typed for the four things a reader here acts on: which release (`release_id`), when it was cut,
-    the layout version, and the files it attests. The rest of the file (the VEP header, the column
-    groups, per-chromosome counts) is the builder's own and is not read here.
+    Typed for the five things a reader here acts on: which release (`release_id`), when it was cut,
+    the layout version, the files it attests, and since RM437 the optional column `groups` it publishes
+    beside the core (name → its record, licence included). The core is not a group: it is the `data/`
+    payload every pull takes, and the manifest's own `files` tag it `core`. The rest of the file (the
+    VEP header, the core columns, per-chromosome counts) is the builder's own and is not read here.
     """
 
     model_config = ConfigDict(extra="ignore")
@@ -394,11 +435,56 @@ class SnapshotManifest(BaseModel):
     release_id: str | None = None
     layout_version: int | None = None
     built_at: str | None = None
+    groups: dict[str, SnapshotManifestGroup] | None = None
     files: list[SnapshotManifestFile] | None = None
+
+    @field_validator("groups", mode="before")
+    @classmethod
+    def _groups_member_by_member(cls, value: object) -> object:
+        """`groups` read group by group and field by field, so no group costs the core (review round 1, item 3).
+
+        Read whole, one group field of a kind this reader does not type (`default: "auto"`, a structured
+        `licence`) failed the whole manifest, and the core's release, coverage and pin went with it. Now
+        that field alone reads as unstated, with a warning naming it; a group record that is not an object
+        keeps its name with nothing stated, so it is never "no such group", and a licence not read is no
+        licence, which never admits (`licensing.snapshot_group_terms`). `groups` that are not a map are
+        unstated, with a warning.
+        """
+        if value is None:
+            return None
+        if not isinstance(value, dict):
+            _warn_once("The snapshot manifest's groups are not a map of name to record; read as unstated.")
+            return None
+        read: dict[object, dict[str, object]] = {}
+        for name, record in value.items():
+            if not isinstance(record, dict):
+                _warn_once(
+                    "The snapshot manifest's %s group is not an object; read with nothing stated.", name
+                )
+                read[name] = {}
+                continue
+            bad = []
+            for key, field_value in record.items():
+                try:
+                    SnapshotManifestGroup.model_validate({key: field_value})
+                except ValidationError:
+                    bad.append(str(key))
+            if bad:
+                _warn_once(
+                    "The snapshot manifest's %s group: %s do not fit; read as unstated.",
+                    name,
+                    ", ".join(sorted(bad)),
+                )
+            read[name] = {key: field_value for key, field_value in record.items() if str(key) not in bad}
+        return read
 
     def entry(self, relative: str) -> SnapshotManifestFile | None:
         """The attestation for `relative` (`data/<name>`), or `None` when the manifest names no such file."""
         return next((f for f in self.files or () if f.path == relative), None)
+
+    def group_files(self, group: str) -> list[SnapshotManifestFile]:
+        """Every file the manifest attests for `group`, in the manifest's order (RM437)."""
+        return [f for f in self.files or () if f.group == group]
 
 
 def read_snapshot_manifest(path: Path) -> SnapshotManifest | None:
@@ -445,8 +531,8 @@ class ManifestCoverage:
     `unattested`: payload files present that the manifest does not name, or names at another size,
     so another release's. `absent`: files the manifest attests under `data/` that are not there, so
     the snapshot is incomplete. Either one withholds the whole cache; neither is a guess about the
-    other. Files outside `data/` (prepare-annotations' `groups/*`) are the manifest's and not pulled,
-    so they are not counted as absent.
+    other. Files outside `data/` (prepare-annotations' `groups/*`) are pulled only when selected and
+    checked by `ensembl_group_dir` (RM437), so they are not counted as absent here.
     """
 
     unattested: tuple[str, ...]
@@ -546,6 +632,174 @@ def ensembl_release_label(reference: Path) -> str | None:
     manifest = read_snapshot_manifest(reference / SNAPSHOT_MANIFEST_FILENAME)
     label = (manifest.release_id or "").strip() if manifest is not None else ""
     return label or None
+
+
+# ── the split release's optional groups (RM437) ─────────────────────────────────────────────────
+
+#: The directory a split Ensembl snapshot's optional column groups sit in, one subdirectory per group,
+#: a sibling of `data/` (RM437). The enricher's name and not the format tier's: only this lane has
+#: groups, and only the provisioner and `ensembl_group_dir` spell it.
+ENSEMBL_GROUPS_DIRNAME = "groups"
+
+#: What a split manifest's `files` call the `data/` payload. Never a group name: the core is pulled
+#: always, and naming it as a group is refused with `CORE_IS_NOT_A_GROUP`.
+ENSEMBL_CORE_GROUP = "core"
+
+#: The refusal for `core` named as a group, pinned by a test (`@warning-text-is-api`).
+CORE_IS_NOT_A_GROUP = (
+    "`core` is not a group name: the core (data/) is always pulled, and a group selection names only the "
+    "optional groups beside it."
+)
+
+#: The pull-record key naming the groups a pull took (RM437): group name → `{"release_id", "files",
+#: "declared_use"}`. `release_id` is the manifest release the group's files were attested against, and
+#: is `null` while that group's pull is under way, so an interrupted one is never taken for current.
+#: `declared_use` is the declaration the group was admitted under, which a later pull of the lane reads
+#: when its own is `unstated` (`licensing.effective_declared_use`'s rule, applied to a cache). Every
+#: writer of the record carries this key over, because the selection is sticky: a later `ensure` of the
+#: lane re-pulls these groups when the core's release moves.
+PULL_RECORD_GROUPS_KEY = "groups"
+
+
+class EnsemblGroupReleaseError(FileNotFoundError):
+    """A split Ensembl snapshot's group is not attested to be the core's release, so it may not be read (RM437).
+
+    A group joins the core on `(chrom, row_idx)`, which holds within one `release_id` only, so a group
+    of another release (or of an unknown one) joins to the wrong variants silently. Raised by
+    `ensembl_group_dir`, which every reader of a group takes its path from. A `FileNotFoundError`, as
+    the lane's other could-not-use errors are: the usable group is not on disk.
+    """
+
+
+def pulled_groups(ensembl_cache: Path) -> dict[str, dict]:
+    """The groups `ensembl_cache`'s pull record names, by name (`PULL_RECORD_GROUPS_KEY`); `{}` with none.
+
+    An absent record, and one naming no groups, answer `{}`. **A record that is there and cannot be read
+    raises `EnsemblGroupReleaseError`** (review round 1, item 3): one that is not UTF-8 or not JSON, not an
+    object, whose `groups` is not an object, or with a group entry that is not one. Read as no groups, it
+    ended a sticky selection silently, since the next pull rewrote it without them, and the guard blamed a
+    group "not taken by a pull"; nothing can say which groups it held, so nothing reads past it.
+    """
+    if not Path(ensembl_cache).is_dir():
+        return {}  # a `.duckdb` handed as the cache, or nothing there: no pull record, and no groups
+    path = Path(ensembl_cache) / PULL_RECORD_FILENAME
+    try:
+        payload = json.loads(path.read_bytes().decode("utf-8"))
+    except FileNotFoundError:
+        return {}
+    except (OSError, ValueError) as exc:  # UnicodeDecodeError and JSONDecodeError are both ValueErrors
+        raise _unreadable_pull_record(path, f"{type(exc).__name__}: {exc}") from exc
+    if not isinstance(payload, dict):
+        raise _unreadable_pull_record(path, "it is not a JSON object")
+    groups = payload.get(PULL_RECORD_GROUPS_KEY)
+    if groups is None:
+        return {}
+    if not isinstance(groups, dict) or not all(isinstance(entry, dict) for entry in groups.values()):
+        raise _unreadable_pull_record(path, f"its {PULL_RECORD_GROUPS_KEY!r} is not a map of group to record")
+    return {str(name): entry for name, entry in groups.items()}
+
+
+def _unreadable_pull_record(path: Path, why: str) -> EnsemblGroupReleaseError:
+    """The refusal for a pull record that is there and cannot be read: what is wrong, and the remedy."""
+    return EnsemblGroupReleaseError(
+        f"The pull record at {path} is there and could not be read ({why}), so nothing says which groups a pull "
+        f"took or which release each is. Move it aside and re-pull the lane with the groups you want "
+        f"(`just-dna-enricher cache pull --only ensembl --groups NAME[,NAME]`)."
+    )
+
+
+def _unnamed_group_files(cache: Path, group: str, manifest: SnapshotManifest | None) -> list[str]:
+    """The parquet files under `groups/<group>/` that `manifest` does not attest for the group, by path."""
+    directory = Path(cache) / ENSEMBL_GROUPS_DIRNAME / group
+    attested = {f.path for f in manifest.group_files(group)} if manifest is not None else set()
+    present = (
+        (f"{ENSEMBL_GROUPS_DIRNAME}/{group}/{p.name}" for p in directory.glob("*.parquet"))
+        if directory.is_dir()
+        else ()
+    )
+    return sorted(relative for relative in present if relative not in attested)
+
+
+def ensembl_group_dir(ensembl_cache: Path, group: str) -> Path:
+    """The directory of a split Ensembl snapshot's `group`, once its release is attested to be the core's (RM437).
+
+    **The path and the check are one call**, so no reader spells the layout and none reads a group
+    without the check. The core's release is its `manifest.json`'s `release_id`, the record that
+    attests the core's files; the group's is the one its pull recorded. Eight refusals, each its own
+    sentence (`@answered-is-not-absent`), all `EnsemblGroupReleaseError`: the pull record is there and
+    cannot be read (`pulled_groups`), it names no such group (absent, or placed by hand), the group's pull
+    did not finish, the core states no release, the two releases differ, the manifest states no size for
+    a file it attests for the group (the publisher's to fix: no pull can fetch such a file, review round 2,
+    H), an attested file is missing or of another size, and a parquet there is not one the manifest names
+    for the group (the last two compared by size, as the core is read). `core` itself raises `ValueError`
+    (`CORE_IS_NOT_A_GROUP`).
+    """
+    if group == ENSEMBL_CORE_GROUP:
+        raise ValueError(CORE_IS_NOT_A_GROUP)
+    cache = Path(ensembl_cache)
+    directory = cache / ENSEMBL_GROUPS_DIRNAME / group
+    entry = pulled_groups(cache).get(group)
+    if entry is None:
+        raise EnsemblGroupReleaseError(
+            f"The {group} group at {directory} was not taken by a pull of this cache (its "
+            f"{PULL_RECORD_FILENAME} names no such group), so nothing says which release it is. Pull it "
+            f"with `just-dna-enricher cache pull --only ensembl --groups {group}`."
+        )
+    recorded = entry.get("release_id")
+    if not isinstance(recorded, str) or not recorded:
+        raise EnsemblGroupReleaseError(
+            f"The {group} group at {directory} is a pull that did not finish, so its files may be of two "
+            f"releases. Re-run `just-dna-enricher cache pull --only ensembl` to finish it."
+        )
+    manifest = read_snapshot_manifest(cache / SNAPSHOT_MANIFEST_FILENAME)
+    core = (manifest.release_id or "").strip() if manifest is not None else ""
+    if not core:
+        raise EnsemblGroupReleaseError(
+            f"The Ensembl cache at {cache} states no release in its {SNAPSHOT_MANIFEST_FILENAME}, so the "
+            f"{group} group (release {recorded}) cannot be matched to its core. Re-run "
+            f"`just-dna-enricher cache pull --only ensembl`."
+        )
+    if recorded != core:
+        raise EnsemblGroupReleaseError(
+            f"The {group} group at {directory} is release {recorded} and the core beside it is {core}: a "
+            f"group joins the core on (chrom, row_idx), which holds within one release only. Re-run "
+            f"`just-dna-enricher cache pull --only ensembl` to re-pull it."
+        )
+    # The directory as the manifest attests it, both directions and by size (a `stat`, as
+    # `manifest_coverage` reads the core). Three refusals with three remedies: a file the manifest states
+    # no size for is the publisher's (no pull can fetch it: `manifest_attests` attests nothing without a
+    # size); an attested file missing or of another size is re-pulled; a parquet the manifest does not
+    # name is no pull's to remove, so it is moved aside (the core's foreign-file warning says the same).
+    # Each withholds the group whole.
+    attested = {f.path: f.size for f in manifest.group_files(group)} if manifest is not None else {}
+    unsized = sorted(relative for relative, size in attested.items() if size is None)
+    if unsized:
+        raise EnsemblGroupReleaseError(
+            f"The {group} group at {directory} is recorded as release {core}, but its "
+            f"{SNAPSHOT_MANIFEST_FILENAME} states no size for {len(unsized)} file(s) it attests "
+            f"({_named(tuple(unsized))}), so no reader can check them and no pull can fetch them: a re-pull "
+            f"cannot clear this. The snapshot's publisher must state each file's size (`bytes`) in its "
+            f"{SNAPSHOT_MANIFEST_FILENAME}."
+        )
+    differing = [
+        relative
+        for relative, size in sorted(attested.items())
+        if not (cache / relative).is_file() or (cache / relative).stat().st_size != size
+    ]
+    if differing:
+        raise EnsemblGroupReleaseError(
+            f"The {group} group at {directory} is recorded as release {core}, but {len(differing)} file(s) its "
+            f"{SNAPSHOT_MANIFEST_FILENAME} attests are missing there or of another size "
+            f"({_named(tuple(differing))}). Re-run `just-dna-enricher cache pull --only ensembl` to re-pull it."
+        )
+    unnamed = _unnamed_group_files(cache, group, manifest)
+    if unnamed:
+        raise EnsemblGroupReleaseError(
+            f"The {group} group at {directory} holds {len(unnamed)} parquet file(s) its "
+            f"{SNAPSHOT_MANIFEST_FILENAME} does not name for the group ({_named(tuple(unnamed))}), so it is "
+            f"not one release. No pull removes a file it did not put there: move them aside."
+        )
+    return directory
 
 
 def load_env(override: bool = False) -> str | None:
@@ -1100,6 +1354,28 @@ def resolve_clinvar_gkm_reference(
         clinvar_gkm_cache,
         CLINVAR_GKM_CACHE_VAR,
         default_clinvar_gkm_cache_dir(load_dotenv_file=load_dotenv_file),
+        load_dotenv_file=load_dotenv_file,
+    )
+
+
+def default_ensembl_rsid_index_cache_dir(*, load_dotenv_file: bool = True) -> Path:
+    """The `<base>/ensembl_rsid_index` directory — see `ENSEMBL_RSID_INDEX_SUBDIR`."""
+    return _cache_dir(ENSEMBL_RSID_INDEX_SUBDIR, load_dotenv_file=load_dotenv_file)
+
+
+def resolve_ensembl_rsid_index_reference(
+    ensembl_rsid_index_cache: Path | None = None, *, load_dotenv_file: bool = True
+) -> Path | None:
+    """Locate a built Ensembl rsID index (`$JUST_DNA_ENSEMBL_RSID_INDEX_CACHE`), without building one.
+
+    Present says the index is on disk, never that it indexes a given core: `resolver.lookup_loci` reads
+    it only when its `release.json` pins the core it was handed (`ensembl_rsid_index_build.core_pin`),
+    and scans otherwise.
+    """
+    return _resolve_parquet_cache(
+        ensembl_rsid_index_cache,
+        ENSEMBL_RSID_INDEX_CACHE_VAR,
+        default_ensembl_rsid_index_cache_dir(load_dotenv_file=load_dotenv_file),
         load_dotenv_file=load_dotenv_file,
     )
 

@@ -407,7 +407,7 @@ core was ported, not depended on, dropping `fastmcp`/`eliot`). In the workspace:
 |---|---|---|
 | `enrich` | A package since RM260 — `__init__` re-exports every name `enrich.py` carried; the code is in `subjects`, `outcome`, `build_declaration`, `orchestration`, `verification_records` and `resolution_csv`. Orchestration: `enrich()` runs the resolver chain, writes `resolution.csv` | compiler `_load_csv_rows`, format `ResolutionRow` |
 | `transaction` | **0.7** (RM128): the run's durability — staged answers beside the target, the advisory `flock` over the read-modify-write window, and the `(done, total)` progress unit | format `atomic_writer`, stdlib `fcntl` |
-| `resolver` | the DuckDB rsid↔coord resolver (moved from the compiler in 0.5) | `duckdb`, format |
+| `resolver` | the DuckDB rsid↔coord resolver (moved from the compiler in 0.5); since 0.9 `lookup_loci` by rsID reads the `ensembl_rsid_index` lane first when it pins the core (RM431) | `duckdb`, format, `ensembl_rsid_index_build` |
 | `events` | **0.8** (RM375): the one tri-state judge of whether two spellings of a position name one event (`same_event`, `names_event`; `covers`, one direction, since RM394), asked by the placement check, the rsid↔coordinate check, `--rederive`'s respelling test and the `authored_event` stamp | `sequences`, format |
 | `clinvar` | the DuckDB ClinVar resolver link (`lookup_loci`) + the annotation reader (`lookup_clin_sig`) | `duckdb`, format |
 | `clinical` | the `clin_sig` cross-check over the ClinVar snapshot (offline, reports only) | format |
@@ -430,7 +430,7 @@ core was ported, not depended on, dropping `fastmcp`/`eliot`). In the workspace:
 | `gwas` | RM90: the GWAS Catalog REST API (v2 since RM354) → `gwas_effects.csv` (published effect sizes **with their units**). Fills no `weight` | `httpx`, format |
 | `expression` | RM194/RM200: the Atlas `ListDenseVariantScores` RNA_SEQ interval → `expression_effects.csv` (per-gene direction, **with the distance beside it**). Non-commercial, so an undeclared run writes nothing | `atlas_client`, `gene_spans`, format |
 | `ld_pairs` | **0.8** (RM331): Ensembl REST pairwise LD → `ld_pairs.csv`, r² between each study's `proxy_rsid` and its lead in the study's one superpopulation. Online only | `httpx`, `tenacity`, format |
-| `opentargets` | **0.8** (RM333/RM239/RM236): the Open Targets snapshot → `locus_to_gene.csv`, `colocalisations.csv`, `consequences.csv`, and the fine-mapping posterior on `gwas_effects.csv`. Reads only the snapshot; coordinates from `resolution.csv` | `duckdb`, `opentargets` lane, format |
+| `opentargets` | **0.8** (RM333/RM239/RM236): the Open Targets snapshot → `locus_to_gene.csv`, `colocalisations.csv`, `consequences.csv`, and the fine-mapping posterior on `gwas_effects.csv`. Reads only the snapshot; coordinates from `resolution.csv`. **0.9** (RM431): the keyed functions `lookup_variants` (chrom + position) and `lookup_consequences` (`variant_id`) | `duckdb`, `opentargets` lane, format |
 | `gene_spans` | RM194: gene symbol → GRCh38 span, out of the operator-built MANE snapshot. A module with a plain name rather than a private helper, so the second caller can find it. RM259 added the reverse, `genes_covering`: a GRCh38 position → every gene whose span plus the 512 kb attribution horizon covers it, a **query hint** for a row with no authored `gene`, never an attribution (50 candidates at HFE H63D, 34 at APOE) | `polars`, `mane` lane |
 | `atlas_client` | RM192: the AlphaGenome Atlas gRPC client — `ListDenseVariantScores` and the interval RPCs, on `[atlas]` (grpcio + protobuf, 19 MB measured) rather than the 550 MB upstream wheel | `grpcio`, `protobuf` (extra) |
 | `atlas_protos` | RM192/RM196: fetch the Apache-2.0 `.proto` sources at a pinned commit and generate the bindings. The repository carries the **pin** — a commit id and a sha256 per file — and neither the sources nor the generated code | `grpc_tools` (extra) |
@@ -451,23 +451,25 @@ core was ported, not depended on, dropping `fastmcp`/`eliot`). In the workspace:
 | `civic_api` | RM160: CIViC's GraphQL API — the one surface carrying evidence attached to a variant no dated file can place, because a VCF record needs a POS | `httpx`, `tenacity` |
 | `civic_identities` | RM159: identities CIViC states in a variant's **name** and never in its identifier columns (`N150fs (c.448delA)`, `IVS2+1G>A`) | `clingen_allele`, `ensembl` |
 | `civic_citations` | RM160: the citations those variants carry, and the canary that says when the dated file has caught up | `civic_api`, format |
-| `civic_draft` | RM152: CIViC snapshot → `direction`-axis rows. **The axis is `direction`, not `clin_sig`** — the measurement refused the latter | `polars`, compiler `draft` |
+| `civic_draft` | RM152: CIViC snapshot → `direction`-axis rows. **The axis is `direction`, not `clin_sig`** — the measurement refused the latter. **0.9** (RM431): the keyed functions `lookup_genes` and `lookup_rsids`, in duckdb | `polars`, `duckdb`, compiler `draft` |
 | `civic_refutation` | RM170: an authored `direction` over a variant CIViC has published a refutation of — the pair `contested_variants` cannot see. Warns in both modes | `polars`, format |
 | `mitomap` | RM171: MITOMAP's published `pg_dump` reader, and the **two-token grammar** its `status` column is written in | `duckdb` |
 | `mitomap_build` | RM171 builder: the 63 MB gzipped SQL dump → snapshot parquet + `release.json`. CC BY 3.0 with commercial use stated free, so a deployment may publish it | `polars` (lazy), `httpx` |
 | `mitomap_miss_build` | RM171: the **derived** lane — MITOMAP minus the ClinVar cache, recomputed from both parents rather than frozen as a diff | `polars` (lazy), `mitomap` + `clinvar` lanes |
-| `clinvar_gkm` | **0.8** (RM305): ClinGen's ClinVar-GKM as an indel-placement **witness**: the manifest/index client, the release label, the three-arm `lane_currency`, and `ClinVarGkmWitness`, the lookup by VRS id, VCF spelling or rsID a check calls. Runs no check of its own | `httpx`, `tenacity`, `polars` |
-| `clinvar_gkm_build` | RM305 builder: `allele.parquet` + `variation.parquet` downloaded whole and verified against the set's `manifest.json`, cut to the GRCh38 net insertions and deletions, joined to ClinVar variation and rsID | `polars` (lazy), `httpx` |
+| `clinvar_gkm` | **0.8** (RM305): ClinGen's ClinVar-GKM as an indel-placement **witness**: the manifest/index client, the release label, the three-arm `lane_currency`, and `ClinVarGkmWitness`, the lookup by VRS id, VCF spelling or rsID a check calls. Runs no check of its own. A superseded line is refused by name, with its status and successor, both when reading the weekly release and when diagnosing a manifest 404. **0.9** (RM431): the keyed functions `lookup_variants` and `lookup_rsids`, in duckdb | `httpx`, `tenacity`, `polars`, `duckdb` |
+| `clinvar_gkm_build` | RM305 builder: `allele.parquet` + `variation.parquet` downloaded whole from line `v1/1.2` and verified against the set's `manifest.json`, cut to the GRCh38 net insertions and deletions, joined to ClinVar variation and rsID. | `polars` (lazy), `httpx` |
 | `_rcrs` | RM273: the revised Cambridge Reference Sequence (NC_012920.1, GRCh38's chrM) as a vendored constant, so `mitomap_miss_build` left-aligns both sides' indels without a fetch | none |
 | `mitomap_draft` | RM171: the rated misses → `variants.csv` + `studies.csv`. Only the rated ones; the photocopies and `VUS*` are each refused for their own stated reason | `mitomap_miss`, compiler `draft` |
 | `clinvar_build` | `[dev]`: VCF → snapshot parquet; `var_citations.txt` → `citations/` (+ its own `release.json` block) | `polars`, `httpx` |
 | `lookup` | authoring lookups — rsID validity/loci, ref/alts + populations, which paper a PMID names. **Writes nothing** | every client above, compiler `hints` |
+| `remote` | **0.9** (RM430): the remote half of a lane's read order, `RemoteSnapshots`: the registry's proxy, then Hugging Face over duckdb `httpfs` at a pinned commit, one `lookup(lane, table, keys)` answering the proxy's contract on both routes, `RemoteAnswer`/`RemoteRoute` saying where each answer came from, `SnapshotRouteUnavailable` for could-not-ask, and `remote_url`, the one URL builder the test fence wraps. Off unless a caller holds one | `duckdb` (`httpfs`), `httpx`, `caches`, `licensing` |
+| `clients` | **0.9**: `LookupClients`, the network-client bundle a session holds, and its derived `CLIENT_FIELDS`. A leaf that imports only the client types it names, so `enrich` can import the bundle at module level; `lookup` re-exports both names | the clients it bundles |
 | `pharmvar` | star-allele definitions + function (`Api-Key` header, 2 rps) | `httpx`, `tenacity` |
 | `cpic` | allele function, diplotype→phenotype, defining variants (PostgREST) | `httpx`, `tenacity` |
 | `cpic_notation` | CPIC's `DEL<bases>`/`INS<bases>`/`UNIT(n)` → a VCF-anchored, left-normalized REF/ALT (RM253); never reads on its own, the caller passes the reference reader | `sequences` |
 | `pgx` | pass 5: cross-check star-allele tables, write the licence table | the three above |
 | `clinpgx_build` | `[dev]`: `summaryAnnotations.zip` → snapshot parquet + pinned `LICENSE.txt`; refuses the retired `clinicalAnnotations.zip` by name | `polars`, `httpx` |
-| `clinpgx` | pass 6: evidence-level cross-check over the snapshot (offline) | `duckdb` (core, not polars) |
+| `clinpgx` | pass 6: evidence-level cross-check over the snapshot (offline). **0.9** (RM431): the keyed functions `lookup_rsids` and `lookup_genes` | `duckdb` (core, not polars) |
 | `gnomad` | live gnomAD GraphQL: batched + paced rsid resolution, frequency, gene constraint | `httpx`, `tenacity` |
 | `frequencies` | pass 2: `resolution.csv` → `frequencies.csv` (per-ancestry-group AC/AN) | compiler `load_csv_rows`, format |
 | `gene_metrics` | pass 3: the module's genes → `gene_metrics.csv` (snapshot first, live API second) | `duckdb`, format |
@@ -486,9 +488,11 @@ core was ported, not depended on, dropping `fastmcp`/`eliot`). In the workspace:
 | `strchive_build` | RM165 builder: download `STRchive-loci.json` + `release.json`. Core `httpx` only, no parquet and no `[dev]` extra | `httpx` |
 | `strchive_draft` | RM165: STRchive → `repeat_alleles.csv` **partial** rows — identity only, bands left to a human | `strchive`, compiler `draft` |
 | `ensembl` | live Ensembl REST (the beta GraphQL leg was retired on 2026-11-04), tenacity | `httpx`, `tenacity` |
+| `key_compare` | **0.9** (the RM430 follow-up): how each keyed function compares a key with a cell on every route, `KeyCompare` (`fold` by `gene_key`, `separator` for a joined cell) and `EXACT`, and `KEY_COMPARES`, the one registry by lane, table and column that the keyed functions' local SQL and the remote holder both read (`lane_compare`). A leaf | format (`spelling`, `vrs`) |
+| `ensembl_rsid_index_build` | **0.9** (RM431 ask 4): the Ensembl rsID index, rsID → (chrom, start) sorted by rsID, built in duckdb from the split core on disk (`build_rsid_index`), and `core_pin`, what an index pins of its core (the manifest's `release_id` and a digest of its attested `data/` files). A derived lane, local only; `resolver.lookup_loci` reads it | `duckdb`, `locations` |
 | `upload` | publisher surface — push a compiled module or a reference snapshot to HF (`[dev]`) | `huggingface_hub` (lazy) |
 | `litvar` | RM167: LitVar2/PubTator3 literature coverage per locus, **with the tier that answered** (allele node / position node / absent). Reports only; writes no row and no `SourceRow` | `httpx`, `tenacity`, `clingen_allele` |
-| `drug_labels` | RM166: five regulators' drug labels — the `(gene[, allele], drug)` cross-check at two join tiers (offline, reports only, writes no `SourceRow`) | `duckdb`, format `pgx`, compiler `load_csv_rows` |
+| `drug_labels` | RM166: five regulators' drug labels — the `(gene[, allele], drug)` cross-check at two join tiers (offline, reports only, writes no `SourceRow`). **0.9** (RM431): the keyed function `lookup_genes` | `duckdb`, format `pgx`, compiler `load_csv_rows` |
 | `drug_labels_build` | **`[dev]`** builder (0.7, RM166): ClinPGx's `drugLabels.zip` → one parquet + `LICENSE.txt` + its own `release.json`, dated from the archive's own `CREATED_*.txt` | `polars` (lazy), `httpx` |
 | `caches` | The cache registry (`CACHE_LANES`) and the rebuild adapters behind `cache rebuild` — one entry per lane carrying its three stages and, for each stage it lacks, the reason as a field. Walked by a test against the `*_build` modules on disk (RM176) | — |
 | `cli` | A package since RM260 — `__init__` assembles the app and re-exports every name `cli.py` carried, one `*_commands` submodule per command group. Typer app: the runtime commands (`enrich`, `frequencies`, `gene-metrics`, `gene-validity`, `assertions`, `enrich-and-compile`), the authoring ones (`hint`, `draft-*`, the `check-*` family), `upload`, `cache status`/`pull`/`rebuild`/`prune`, `vrs mint`, and **one builder group per `CACHE_LANES` lane carrying a `build_command`** — a `publish` exists exactly where the lane names a `publish_repo`, and `pubmind publish` is the one that exists in order to refuse with its reason. The per-command flag tables are `--help` and the dated listing in [audit/](audit/README.md); a hand-kept copy here would be the second thing to update | `typer` |
@@ -546,7 +550,7 @@ per service, put a semaphore around your call site; the gate will not give you t
 | **ClinGen Allele Registry** (`reg.clinicalgenome.org/allele`) | `clingen_allele` → the identity-from-a-name procedure (0.7, RM153) | none published | `_REQUEST_INTERVAL=0.1` (courtesy) | none |
 | **Ensembl GRCh37 REST** (`grch37.rest.ensembl.org`) | `grch37.diagnose_wrong_build` (0.6), `hint recover` | Ensembl publishes **15 req/s** | `_REQUEST_INTERVAL=0.1` — keeps a whole panel inside it while still interactive | none |
 | **ClinVar release probe** | `currency.ClinVarReleaseClient` — one bounded read of the VCF's header (`HEADER_PROBE_BYTES`) per `--verify-datasets` run (0.7) | NCBI asks for no particular pacing on the FTP-over-HTTPS mirror | `CLINVAR_MIN_INTERVAL=0.5` — this tier paces every service it touches, and one probe per run is inside any budget | none |
-| **Ensembl REST** (`rest.ensembl.org`) | `ensembl` (the live link); until RM398 also the placement witness (0.8, RM267), for each snapshot indel no loaded witness holds. The link asks 20 rsIDs per `POST /variation/:species` since RM401 (`ensembl._REST_BATCH_SIZE`, fixed in the 0.8 patch line; 0.9 makes it a setting with RM404), with the POST's own read timeout (`_REST_BATCH_TIMEOUT`, 120 s), and one GET for an rsID a batch leaves out | **15 req/s** per IP, **~55 000 / rolling hour**; 429 + `Retry-After` / `X-RateLimit-*` | `_REQUEST_INTERVAL=0.1` (`EnsemblSettings.interval`), one `PacingGate` per resolver, waited once per attempt (since 2026-11-04); tenacity on transport, 5xx and 429, waiting at least the answer's `Retry-After` (`net.wait_retry_after`); one longer than `net.RETRY_AFTER_CEILING` (10 s) is not retried, and the resolver asks nothing until it passes | none |
+| **Ensembl REST** (`rest.ensembl.org`) | `ensembl` (the live link); until RM398 also the placement witness (0.8, RM267), for each snapshot indel no loaded witness holds. The link asks 20 rsIDs per `POST /variation/:species` since RM401 (`EnsemblSettings.batch_size` since 0.9, RM404; fixed in the 0.8 patch line; above Ensembl's ceiling of 200 or below 1 it is refused), with the POST's own read timeout (`EnsemblSettings.batch_timeout`, 120 s), and one GET for an rsID a batch leaves out | **15 req/s** per IP, **~55 000 / rolling hour**; 429 + `Retry-After` / `X-RateLimit-*` | `_REQUEST_INTERVAL=0.1` (`EnsemblSettings.interval`), one `PacingGate` per resolver, waited once per attempt (since 2026-11-04); tenacity on transport, 5xx and 429, waiting at least the answer's `Retry-After` (`net.wait_retry_after`); one longer than `net.RETRY_AFTER_CEILING` (10 s) is not retried, and the resolver asks nothing until it passes | none |
 | **CPIC** (`api.cpicpgx.org`) | `cpic` / `pgx_draft` | unpublished | **no `PacingGate`** — coarse PostgREST GETs (gene-scoped), not per-allele loops | none |
 | **ClinPGx** | `clinpgx` / `clinpgx_draft` | n/a at runtime | **offline snapshot only** for the check/draft path — no live poll budget | none (live API retired → snapshot) |
 | **seqrepo REST** (`services.genomicmedlab.org`) | `sequences` / VRS indel mint | unpublished | **no `PacingGate`**; in-process memo of window reads, one window per indel mint (RM407) | none |
@@ -595,8 +599,16 @@ Org limits apply **per member**, not shared. Source of truth:
   matched by name, then by the one record whose `synonyms` name it, and an rsID still unmatched is asked
   by GET, whose 400 is the only "no record" (RM361). An omission is never a negative. A batch that
   fails, a POST 400 included, is could-not-ask for every rsID in it. A batch size of 1 is one GET per
-  rsID, as before. The batching is private in the 0.8 patch line, so only `EnsemblResolver` batches and an
-  injected resolver is asked one rsID at a time; 0.9 publishes the capability and the knobs with RM404.
+  rsID, as before. The batching was private in the 0.8 patch line; **0.9 publishes it (RM404)**: an
+  injected resolver that implements `ensembl.BatchResolver` (`runtime_checkable`, one method,
+  `resolve_rsids_batched(rsids)`, yielding `(rsid, RsidAnswer)` in the order asked) is asked in batches,
+  and one without it one rsID at a time. The method's name is the only thing `isinstance` checks, so it
+  is one no other contract here uses (`GnomadClient.resolve_rsids` answers a dict). The knobs are
+  `EnsemblSettings.batch_size` (default 20) and `batch_timeout` (default 120 s, the POST's read timeout);
+  a `batch_size` above Ensembl's ceiling of 200 or below 1, and a `batch_timeout` that is not above 0, raise
+  `ValueError` when the settings are built, and again from `resolve_rsids_batched` before any request when a
+  field was set to one afterwards (the dataclass is mutable), never clamped (1 is one GET per rsID, the
+  off-switch). `_RestBatchWitness`, the witness's batch twin, stays private: nothing asks it since RM398.
 - **No response cache for the live clients.** NCBI / PharmVar / gnomAD GraphQL / Crossref / Europe PMC
   / OLS4 / HGNC / PGS Catalog / LitVar2 / the CIViC API / the ClinGen Allele Registry / GRCh37 Ensembl /
   the ClinVar release probe / live Ensembl are paced only. Persistence is the authored sidecars
@@ -731,14 +743,36 @@ That is the documented "inject what you already hold" escape.
 ## `enrich()` — the resolver chain
 
 ```python
-enrich(spec_dir, *, mode="best_effort", offline=False, ensembl_cache=None,
+enrich(spec_dir, *, mode="best_effort", offline=False, ensembl_cache=None, rsid_index=None,
        clinvar_cache=None, use_clinvar=True, use_gnomad=True, download=True,
        genome_build=None, write=True, mint_vrs=True,
        verify_ref=True, verify_clinsig=True, verify_rsids=True, verify_datasets=True,
        keep_par_twin=False, rederive=False, keep_staging=False, progress=None,
        resolver=None, gnomad_client=None, grch37_client=None,
-       release_probes=None) -> EnrichmentResult
+       release_probes=None, clients=None, sequences=None) -> EnrichmentResult
 ```
+
+**A host's clients and sequence proxy (0.9, RM404).** `clients` is a `LookupClients`, the bundle a host
+holds so every call through it shares one pace; the run reads four fields, `ensembl` (the live link),
+`gnomad` (the last link), `grch37` (the wrong-build diagnosis) and `eutils` (the dbSNP placement witness
+and the rsID merge check). An explicit `resolver=`, `gnomad_client=` or `grch37_client=` wins over the
+field. The NCBI client is wrapped in the run's own `_RecordedEutils`, so each `esummary` record is still
+fetched once per run (RM398); the wrapper is the run's and is closed by it. **The run closes no client
+it was given**, in the bundle or as an argument. A field left unset is built and closed by the run, as
+with no bundle, and never stored on the bundle (the run does not call `clients.ensure`). `sequences` is a
+`SequenceProxy`, and when given it is the **only** GRCh38 sequence source the run reads (S157; the
+wrong-build diagnosis reads GRCh37 through `grch37`): the
+reference-allele check, left-alignment, the hosting and placement reads, the VRS minter and the anchor
+base read by the `EnsemblResolver` the run builds all take it. A resolver the caller gives is not altered
+and reads its anchor base through what it holds, so a caller who passes both a resolver and a proxy, and
+wants the resolver's reads to go through that proxy, gives the proxy to the resolver itself; a stock
+`EnsemblResolver` builds a default proxy for that read, and 0.9 has no public parameter to point it
+elsewhere. The run reads the proxy through a view of its own, so a failure it sees is held for the run and
+never stored on the caller's proxy. A local seqrepo (`uri="seqrepo+file://…"`,
+with `biocommons.seqrepo` installed by the host) is how a host reads locally with the network up. Under `offline=True` the passed proxy is not used, as an
+injected client is not (`@gated-source-caches`): the run warns once, in the words of
+`orchestration.OFFLINE_OUTRANKS_SEQUENCES`, and reads no sequence. The missing timeout beneath
+ga4gh's seqrepo REST proxy stays vrs-python's (RM407's residual); no proxy of ours wraps it.
 
 **`genome_build=None` means "read the module's declaration"** (`spec_genome_build`), not "assume
 GRCh38". It defaulted to the literal `"GRCh38"` and no caller ever passed anything else, which made every
@@ -916,14 +950,31 @@ An ordinary run gap-fills and never re-asks about a recorded subject, so a sourc
 canary was an instrument that could not fire. `rederive=True` / `--rederive` re-asks **every** subject
 and reports which recorded ones came back different, as `EnrichmentResult.rederived`.
 
-It composes with the transaction rather than adding machinery: the recorded table is already in memory
-and the fresh one has not been committed, so both sides exist at the commit boundary and the comparison
-is free. The comparison is over `RESOLUTION_FACT_FIELDS` only — read off the registry rather than
-restated — because the provenance columns move on every run by design.
+In 0.9, pass `rederive_subjects=["rs334", "rs7412"]` to `enrich`, or repeat
+`--rederive-subject KEY` on the CLI. Each key is the frozen `variant_key` from the spec.
+The list sets the scope even alongside `--rederive`. A selected subject can fill a gap or replace
+all of its recorded loci. Other subjects still in the spec keep their original resolution records,
+including their CSV quoting, line endings and provenance. An unselected gap stays unresolved.
+An empty Python list selects no subjects. If a historical header omits a column with a non-null
+default, such as `locus_index`, and a fresh answer needs a different value in that column,
+the run refuses before committing.
+A full re-derivation can write the column across the table.
 
-* **`None` is not `[]`.** `None` says nobody re-derived; `[]` says every recorded subject was re-asked
-  and every one still answers the same. Only the second is a clean bill, and only a real difference is
-  printed — an empty comparison must not announce a zero as though it were evidence.
+`verify_written_only=True` (`--verify-written-only`) independently limits row checks to the fresh
+resolution rows. This includes ordinary gap fills and rows answered again with identical facts.
+The reference, rsID, authored-pair and clinical checks use this scope. A strict run can therefore
+complete with a previously recorded mismatch on a carried row. Concordance records for other
+subjects keep their prior calls and timestamps. `answered_call_shift(..., checked_keys=...)` counts
+only the overlay answers in scope, even when an authority is unreachable. Dataset currency still
+reads the module's releases. A dry run applies the same scope to the rows it would write.
+
+Drift compares the recorded and fresh tables before commit. It uses `RESOLUTION_FACT_FIELDS`
+because provenance columns can change on every run.
+
+* `EnrichmentResult.reasked` lists the sorted recorded keys that had fresh answers to compare.
+  `EnrichmentResult.rederived` holds a `SubjectDrift` for each of those whose facts changed.
+  An empty drift list reports agreement only among the keys in `reasked`. Both fields are `None`
+  on an ordinary gap-filling run.
 * **A recorded subject this run could not ask about keeps its recorded rows.** Otherwise re-deriving
   would be a way to *shorten* the table, which is the reported incident wearing a new flag; an offline
   `--rederive` would replace a full table with an empty one. Answered-and-absent is an answer and does
@@ -1683,14 +1734,34 @@ provisioned by variable derives the whole set as `{lane.env_var for lane in CACH
 {CACHE_BASE_VAR}` rather than keeping the names by hand.
 **The status half is `caches.lane_status()` (S91, RM204)**, one `LaneStatus` per lane in registry
 order, and `cache status` renders it — a consumer serving the same answer over HTTP reads the function
-rather than re-writing the loop, which is two projections of one registry. Its `state` is
-three-valued: `present`, `absent`, and **`occupied`** — the place the lane looks exists, is non-empty
-and holds no snapshot (a build that failed after its downloads, a payload deleted beside its
-`release.json`, a stray `.part`, a foreign parquet). That third state used to print as `absent`,
-which sends an operator to run a pull that `prepare` is going to refuse, since provisioning never
-deletes. `looked_in` says which directory the verdict is about (the lane's `env_var` if set, else the
-default), `release` is what the snapshot names, and `release_unreadable` is the present-and-unreadable
-`release.json` — a provenance failure, not a data failure.
+rather than re-writing the loop, which is two projections of one registry. Its `state` is one of
+`LANE_STATES`, four since 0.9: `present`, `absent`, **`occupied`** — the place the lane looks exists, is
+non-empty and holds no snapshot (a build that failed after its downloads, a payload deleted beside its
+`release.json`, a stray `.part`, a foreign parquet) — and **`stale`**. `occupied` used to print as
+`absent`, which sends an operator to run a pull that `prepare` is going to refuse, since provisioning
+never deletes. `stale` (0.9, review round 1) is a derived lane on disk whose parents moved under it:
+its `CacheLane.stale_reason` (each parent's path as this call resolved it, the call's `locations`
+included) says why, in `LaneStatus.stale`. Every lane with `parents` states one, which a walk holds:
+`mitomap_miss` by `mitomap_miss_build.stale_parents`, the verdict `draft --source mitomap-miss` warns by (a
+parent whose pin moved; a parent that is gone is no moved parent), and `ensembl_rsid_index` by the verdict its
+reader refuses the index by (an index of another core), so `cache status` prints `stale` with the reason and the
+rebuild where a reader looks, and `cache prepare` leaves it as it is, *unavailable* (`ready=None`, route
+`none`, `stale: …`), never `present`. A core on disk that cannot be pinned (no manifest, a file of unstated
+sha256) is stale too, since no index is read beside it; a core that is gone is no moved parent, and the
+index stays `present`. The reader logs the same reason when it refuses an index. Before, both called a
+refused index present. A named lane is judged before any unnamed lane of the call loads `.env`. `looked_in` says which directory the verdict is about (the path given in `locations`, else
+the lane's `env_var` if set, else the default), `release` is what the snapshot names, and
+`release_unreadable` is the present-and-unreadable `release.json` — a provenance failure, not a data
+failure.
+**A host that configures lane paths itself passes them (S154, RM443):** `lane_status(lanes=None,
+locations={name: path_or_None})`. A named lane is resolved with that path and `load_dotenv_file=False`
+and reports it as `looked_in`; `None` is the lane's own ladder (its variable if exported, else the
+default) read without loading `.env`, so a call naming every lane writes nothing into `os.environ`.
+Unnamed lanes read as before. Named lanes are read first, so none of them sees a variable an unnamed
+lane's `.env` load exported in the same call, in any order of `lanes`; what the process exported
+earlier, an earlier load included, is still read. A key naming no lane raises `ValueError` before
+anything is read. A URL in `locations` raises `ValueError`. Use the `RemoteSnapshots` holder to
+read a remote lane and inspect the route on its answer.
 **A lane declares its size and a present one measures it (S97, RM229).** `CacheLane.approx_mb` is an
 order of magnitude in whole megabytes, measured on a provisioned box on 2026-09-11 and rounded up (`1`
 means *at most a megabyte*; Ensembl is ~15 000, the AVI lane ~30 000), so a first-run offer can decide
@@ -1709,6 +1780,7 @@ service* below). Pre-provisioning is therefore a deployment step, not an optimiz
 | Cache | Subdir | Override | `ensure_*` | Published at | Serves |
 |---|---|---|---|---|---|
 | **Ensembl** | `ensembl_variations/` | `$JUST_DNA_ENSEMBL_CACHE` | `ensure_snapshot` | `just-dna-seq/ensembl_variations_split` (since 0.8; built by prepare-annotations) | rsID → coordinate (`enrich`) |
+| **Ensembl rsID index** ⛓ | `ensembl_rsid_index/` | `$JUST_DNA_ENSEMBL_RSID_INDEX_CACHE` | **none — derived** | **not published, deliberately** (local only, RM431) | rsID → (chrom, start) over the Ensembl core, so `lookup_loci` by rsID reads a row group or two (`cache rebuild --only ensembl_rsid_index`) |
 | **ClinVar** | `clinvar/` | `$JUST_DNA_CLINVAR_CACHE` | `ensure_clinvar_snapshot` | `just-dna-seq/clinvar` | records + `citations/` (`enrich`, `draft-panel`) |
 | **gnomAD constraint** | `gnomad_constraint/` | `$JUST_DNA_GNOMAD_CONSTRAINT_CACHE` | `ensure_constraint_snapshot` | `just-dna-seq/gnomad_constraint` | v4.1 gene constraint (`gene-metrics`) |
 | **ClinPGx** 🔒 | `clinpgx/` | `$JUST_DNA_CLINPGX_CACHE` | `ensure_clinpgx_snapshot` | `just-dna-seq/clinpgx` | clinical annotations (`clinpgx check`) |
@@ -1723,8 +1795,8 @@ service* below). Pre-provisioning is therefore a deployment step, not an optimiz
 | **MITOMAP** ✅ | `mitomap/` | `$JUST_DNA_MITOMAP_CACHE` | `ensure_mitomap_snapshot` | `just-dna-seq/mitomap` — CC BY 3.0, repo not created yet | curated mtDNA variants, both `mmutation` and `rtmutation` (RM171) |
 | **MITOMAP miss** ⛓ | `mitomap_miss/` | `$JUST_DNA_MITOMAP_MISS_CACHE` | **none — derived** | **not published, deliberately** | what MITOMAP publishes and the ClinVar cache does not (`draft-panel --source mitomap-miss`) |
 | **AlphaGenome AVI** 🔑 | `alphagenome_avi/` | `$JUST_DNA_ALPHAGENOME_AVI_CACHE` | `ensure_alphagenome_avi_snapshot` | `just-dna-seq/alphagenome_avi` — Permissive Use (RM195), repo not created yet | variant-impact scores for 8.8 B SNVs, `Int32`×10⁵ plus a 466 KB knot table (`alphagenome build --input`, RM191/RM198) |
-| **ClinVar-GKM** ✅ | `clinvar_gkm/` | `$JUST_DNA_CLINVAR_GKM_CACHE` | `ensure_clinvar_gkm_snapshot` | `just-dna-seq/clinvar_gkm` — CC0 (ClinGen's transformation), repo not created yet | the GRCh38 indels of ClinVar-GKM with VRS id, VCF spelling, ClinVar variation and rsID: a **placement witness** a check names (RM305; `clinvar-gkm build`, `currency`, `lookup`) |
-| **Open Targets** ✅ | `opentargets/` | `$JUST_DNA_OPENTARGETS_CACHE` | `_ensure_opentargets_snapshot` (private in the 0.8 line, RM408; reached by `cache pull`) | `just-dna-seq/opentargets` — CC0-marked, published by `cache rebuild --only opentargets --publish`, repo not created yet | Platform 26.09 trimmed: GWAS credible sets and members, L2G, GWAS × molecular-QTL coloc, per-transcript consequences (`opentargets enrich`, RM333) |
+| **ClinVar-GKM** ✅ | `clinvar_gkm/` | `$JUST_DNA_CLINVAR_GKM_CACHE` | `ensure_clinvar_gkm_snapshot` | `just-dna-seq/clinvar_gkm` — CC0 (ClinGen's transformation), repo not created yet | the GRCh38 indels of ClinVar-GKM with VRS id, VCF spelling, ClinVar variation and rsID: a **placement witness** a check names (RM305; `clinvar-gkm build`, `currency`, `lookup`, and since 0.9 `publish` for a snapshot already built, RM412) |
+| **Open Targets** ✅ | `opentargets/` | `$JUST_DNA_OPENTARGETS_CACHE` | `ensure_opentargets_snapshot` (public since 0.9, RM412; `_ensure_opentargets_snapshot` in the 0.8 line) | `just-dna-seq/opentargets` — CC0-marked, published by `cache rebuild --only opentargets --publish` or, for a snapshot already built, `opentargets publish` (0.9, RM412), repo not created yet | Platform 26.09 trimmed: GWAS credible sets and members, L2G, GWAS × molecular-QTL coloc, per-transcript consequences (`opentargets enrich`, RM333) |
 
 🔒 = licence-gated (`commercial_use=False`). ❓ = terms **unestablished** (`commercial_use=None`), which
 is a different state and not a weaker one: unknown is not permissive. ⛓ = **derived**: this lane has
@@ -1778,6 +1850,81 @@ public domain, MITOMAP is CC BY 3.0 — so nothing in the licensing bars it. Wha
 artifact *is*: a pulled copy would carry a currency check its holder cannot run, having neither
 parent. Rebuilding it locally is seconds against caches the machine already has, and it cannot be
 stale by construction.
+
+### The second derived lane: the Ensembl rsID index (RM431, 0.9)
+
+`ensembl_rsid_index` is rsID → `(chrom, start)` over the split Ensembl core, sorted by rsID. It exists
+because the core's files are one per chromosome, sorted by position: a lookup by position prunes to a row
+group, and a lookup by rsID pruned nothing (every row group's `id` spans rs1 to rs9…), so
+`resolver.lookup_loci` by rsID read the whole `id` column, about 6.1 GB, in 9 to 14 s (RM405).
+
+- **Shape.** `data/ensembl_rsid_index-<bucket>.parquet` (`ensembl_rsid_index_build.INDEX_GLOB`), one file
+  per 100 M rsID numbers (`INDEX_BUCKET_WIDTH`), so name order is rsID order; three columns, `rs` (the rsID's
+  number, `UBIGINT`, so it sorts and prunes as a range), `chrom`, `start`, one row per distinct triple,
+  sorted by all three, zstd, 262,144 rows a group. An `id` that is not `rs` + digits is not indexed (none
+  in the 2026-07-13 release) and is scanned for when asked.
+- **The names.** `ensembl_rsid_index_build.build_rsid_index(core, out_dir, *, memory_limit=BUILD_MEMORY_LIMIT,
+  threads=BUILD_THREADS) -> RsidIndexBuildResult` (`out_dir`, `files`, `rows`, `core_rows`, `parent`,
+  `seconds`, `size_bytes`), raising `RsidIndexError`; `core_pin(core)`; the layout constants
+  `INDEX_FILE_PATTERN`, `INDEX_GLOB`, `INDEX_BUCKET_WIDTH`, `INDEX_ROW_GROUP_SIZE` and `RSID_PATTERN` (the
+  `id` form indexed). In `locations`: `ENSEMBL_RSID_INDEX_SUBDIR`, `ENSEMBL_RSID_INDEX_CACHE_VAR`,
+  `resolve_ensembl_rsid_index_reference(ensembl_rsid_index_cache=None, *, load_dotenv_file=True)` and
+  `default_ensembl_rsid_index_cache_dir(*, load_dotenv_file=True)`.
+- **Its one parent is a field** (`parents=("ensembl",)`), and its `release.json` pins it:
+  `parents.ensembl` holds `ensembl_rsid_index_build.core_pin(core)`, the core manifest's `release_id` and
+  `files_sha256`, a digest of the manifest's `data/` attestations (path, size, sha256), beside the core's
+  path. A label alone is not a core: one label has been seen over two sets of bytes (RM445), and a test
+  slice states the real release's label. A core whose manifest names no release cannot be indexed, and
+  nor can one whose manifest states no size or sha256 for a `data/` file: its pin is withheld (`core_pin`
+  answers `None`), never hashed with an empty part, and the build refuses naming the files.
+  `dataset` is the core's release, so `cache status` prints which release the index is of.
+- **Built, never pulled, and only when named** (the pm's reading 2, 2026-11-18). `cache rebuild --only
+  ensembl_rsid_index` builds it; no `ensure` does, so `cache pull`, `ensure_snapshot` and
+  `enrich(download=True)` pay nothing for it, and neither does a provisioning run or a nightly rebuild:
+  the lane's `CacheLane.named_only` states why (about 42 minutes and 6 GB), and a bare `cache rebuild`
+  (`rebuild_caches(lanes=None)`, which passes `RebuildRequest(named=False)`) reports it *not run* with
+  that reason. `cache prepare` never builds it, named or not: an absent index is *unavailable*, and a
+  present one is left alone. Its line, and `cache status`'s for an absent index, name the build where the
+  lane's resolver reads it (`$JUST_DNA_ENSEMBL_RSID_INDEX_CACHE`, else the default): `cache rebuild --only
+  ensembl_rsid_index --out <base>` for a place named `ensembl_rsid_index`, else `--out <dir>` and the
+  variable to point at `<dir>/ensembl_rsid_index`. The build runs in duckdb with an
+  8 GB ceiling and 4 threads, in two passes so nothing holds the whole index in memory (one global
+  `DISTINCT … ORDER BY` ran out of that ceiling): each core file's distinct rows go into rsID buckets,
+  then each bucket is sorted into its file, all under a hidden staging directory inside the output. It
+  refuses a core whose chromosome spans two files, since de-duplication is per file. **Measured on
+  2026-11-18** over the 2026-07-13 release (1,391,478,689 core rows): 1,172,660,304 index rows in 24
+  files, 6,074 MB, built in 2,524 s under `nice -n 19` on a shared 16-core workstation, with about 11 GB of
+  staged parts on the output's disk at the peak. One rsID then answers in 0.15 s (0.08 s warm) against
+  6.2 s scanned, twenty in 1.2 s against 11.8 s, the same answers.
+- **Local only**, by the registry's answer: both proxy boxes hold the Ensembl lane and build their own,
+  so nothing is published, and the lane is not remote-eligible (Ensembl by rsID is never sent remotely).
+- **The reader.** `resolver.lookup_loci` (and `enrich`, through it) finds the index as the lane's
+  resolver does from the process environment (`$JUST_DNA_ENSEMBL_RSID_INDEX_CACHE`, else
+  `<base>/ensembl_rsid_index`; it loads no `.env`) and reads it only when its pin equals the core it was
+  handed. It then locates each asked rsID in the index and reads the core only at those positions, as
+  literals, with the `id` filter still deciding the rows, so the answer is the scan's (a test pins the
+  equality over a multi-ALT site, a miss, an rsID at two loci and an rsID with no nucleotide allele).
+  An index pinning another core is refused once per process with a warning naming both and
+  `cache rebuild --only ensembl_rsid_index`, and the core is scanned; a core with no manifest is scanned
+  silently. `cache prepare` leaves a present index alone, a stale one included: rebuilding it is
+  `cache rebuild`. **With no index where it looked**, the core is scanned and the first such lookup of the
+  process says so at `info` (once per process, the pm's reading 2): `No rsID index was found at <place>, so
+  rsIDs in the Ensembl core at <core> are looked up by scanning…`, naming the lane and ending in the command
+  that builds an index there (`just-dna-enricher cache rebuild --only ensembl_rsid_index --out <base>`).
+  `info`, because a scan is the normal state of a host that never named the index: the answers are the
+  same, only slower.
+- **A host that passes its lanes' paths hands the index over too** (the pm's reading 5; the registry's proxy,
+  S154): `resolver.lookup_loci(reference, rsids, positions, non_nucleotide=None, *, rsid_index=None)`.
+  `rsid_index` is the lane's directory, beside the core's `reference`; given, it is the only place looked in,
+  never the environment, and an index there is read only when it pins `reference`, as above. With no index
+  there, or a stale one, the note and the refusal name the place passed, and an instruction for a place not
+  named `ensembl_rsid_index` says to pass `<dir>/ensembl_rsid_index` as `rsid_index` rather than to export
+  `$JUST_DNA_ENSEMBL_RSID_INDEX_CACHE`. `None` keeps the ladder above. **Every Python entry point that reads
+  the index takes the same seam** (the pm, 2026-11-18: the registry's hints call `lookup_variant` and its enrich
+  step calls `enrich`, neither `lookup_loci`): `lookup_variant(..., ensembl_cache=…, rsid_index=…)` and
+  `enrich(spec_dir, *, ensembl_cache=…, rsid_index=…)` pass it down to `lookup_loci`'s, with the same
+  semantics. The CLI commands (`hint variant`, `enrich`) take no `--rsid-index` in 0.9: they read the index
+  from the environment.
 
 **MANE's ❓ is an unestablished permission, and the third column says so.** MANE's bytes carry a
 *policy* — NCBI places no restrictions on use or distribution and, in the same paragraph, declines to
@@ -2006,6 +2153,15 @@ published, build if not.
 - **In Python:** `caches.prepare_caches(...)`, which the command calls. `caches.rebuild_caches(...)` is
   its sibling. Both return one outcome per lane in registry order, so a caller can zip against
   `CACHE_LANES` without matching on names.
+- **A lane built only when named** (0.9, RM431: `CacheLane.named_only`, the reason as a field, `None` for
+  every other lane) is never built by `cache prepare`, and a bare `cache rebuild` reports it *not run*;
+  `cache rebuild --only <lane>` builds it. `RebuildRequest.named` (default `True`: a caller of
+  `rebuild_lane` has named its lane) is what the loops over every lane set to `False`.
+  `ensembl_rsid_index` is the one such lane.
+- **A lane whose `ensure` takes the run's declared use** says so in a field (0.9, review round 1:
+  `CacheLane.ensure_takes_declared_use`, `False` by default), which `cache prepare` and `cache pull` read
+  to pass `declared_use=` on; `ensembl` is the one such lane (its recorded groups, RM437). A test holds it
+  equal to whether `ensure` has that parameter.
 
 **Every bulk download goes through one body, and a failed one is a failed lane (RM187).** Each
 builder streams its source's file through `net.stream_to_file`, which is atomic (`.part`, renamed only
@@ -2052,6 +2208,7 @@ just-dna-enricher cache rebuild --use non-commercial              # → data/cac
 just-dna-enricher cache rebuild --only strchive --only mane --pin mane=1.5
 just-dna-enricher cache rebuild --only acmg --source acmg=./acmg_sf_v3.3.xlsx
 just-dna-enricher cache rebuild --publish --dry-run               # the plan: reads, takes nothing
+just-dna-enricher cache rebuild --only clinvar_gkm --publish --dry-run --rehearse-download  # downloads and builds, uploads nothing
 scripts/rebuild-caches.sh data/caches                             # the driver, all lanes
 just-dna-enricher cache rebuild --out /srv/just-dna/caches-$(date +%F)   # a deployment's own path
 ```
@@ -2069,9 +2226,22 @@ caches) and into which directory; *not run*, *refused* or *skipped* in the real 
 release this machine's cache holds; and with `--publish`, the release the lane's repo states, or *nothing
 published*, or *could not ask*. The upload's own checks need the built bytes, so a lane already built into
 `<out>/<lane>` by a run without `--publish` has its upload rehearsed against that snapshot. The source's own
-newest release is not asked: the liaison's `docs/UPSTREAM_DATA_SOURCES.md` keeps it by hand, and
-[RM412](ROADMAP_0_9.md#rm412--a-dry-run-cannot-rehearse-the-download-and-the-08-lines-private-names-wait-for-their-public-ones)
-is the opt-in download rehearsal.
+newest release is not asked: the liaison's `docs/UPSTREAM_DATA_SOURCES.md` keeps it by hand, and the per-lane
+probe that would ask it is parked in
+[RM412](ROADMAP_HISTORY.md#rm412--a-dry-run-cannot-rehearse-the-download-and-the-08-lines-private-names-wait-for-their-public-ones).
+
+**`--dry-run --publish --rehearse-download` takes the bytes and sends none** (0.9, RM412): the opt-in inverse,
+and the old dry run's behaviour asked for by name. Each lane first prints the line the dry run would
+(`rehearsing: <release>, <origin>, into <out>/<lane>` and the release this machine holds), then downloads and
+builds for real exactly as a run without `--dry-run` does, into the same `<out>/<lane>`, and then rehearses the
+upload (the plan and the orphan check, `upload.rehearse_reference_snapshot`) where that run would publish. The
+exit code is the real run's: 1 for a failed build, and a `WOULD BE REFUSED` upload does not move it, as a refused
+publish does not move the real run's.
+Without both `--dry-run` and `--publish` the flag is refused before anything runs, with
+`cache_commands.REHEARSE_DOWNLOAD_REFUSAL` and the flags missing: without `--dry-run` the upload would be real,
+and without `--publish` there is no upload to rehearse.
+The prediction is the dry run's and no wider, and the flag's help says so: an adapter that refuses on its own
+inputs (ACMG with no workbook, PharmVar with no key) prints `rehearsing:` and then `not run`.
 
 Three things about it are worth reading before a deployment runs it nightly.
 
@@ -2187,7 +2357,7 @@ command carried no flag. **A module drafted before RM320 keeps its all-null `pub
 prepare-annotations published dbSNP 157 / VEP 116 on 2026-11-04 as a **separate** repo,
 `just-dna-seq/ensembl_variations_split` (tag `ensembl-variation-2026_07_13-vep116.0`): the same
 `data/homo_sapiens-chr*.parquet` names as the old repo, one row per ALT, left-aligned indels, `groups/*`
-sidecars outside `data/` (not pulled), and a `manifest.json` with the release id and every file's size
+sidecars outside `data/` (pulled only when selected, since 0.9: the next section), and a `manifest.json` with the release id and every file's size
 and sha256 in place of a `release.json`. Since the names did not change, three rules keep the two
 releases apart:
 
@@ -2217,6 +2387,90 @@ releases apart:
   (`CacheLane.release_label = ensembl_release_label`), and the `rsid_coordinate_agreement` record carries
   it as `release`.
 
+### The split release's groups, pulled on request (RM437, 0.9)
+
+The split repo moved every annotation value (consequence, clinical flags, frequencies, CADD) out of the
+core and into optional column groups under `groups/<name>/`, each joining the core on `(chrom, row_idx)`,
+which holds within one `release_id` only. So a group is pulled by the lane's own provisioner, never by a
+consumer's downloader into the lane's directory: that is the mixed-release shape the lane exists to
+prevent, and a stale group joins to the wrong variants silently.
+
+- **Selecting.** `download.ensure_snapshot(ensembl_cache=None, *, groups=(), declared_use="unstated")`
+  and `cache pull --only ensembl --groups NAME[,NAME] [--use …]`, which prints one
+  `ensembl group <name>: <outcome>` line per group it looked at. The valid names are the manifest's own
+  `groups` (`locations.SnapshotManifest.groups`, name → `SnapshotManifestGroup`, licence included;
+  `SnapshotManifest.group_files(name)` lists what it attests for one). The groups are read group by group
+  and field by field (0.9, review round 1): a field of a kind this reader does not type reads as unstated
+  with a warning (`The snapshot manifest's <group> group: <fields> do not fit; read as unstated.`), a
+  record that is not an object keeps its name with nothing stated, and `groups` that are not a map are
+  unstated, so a field a later release adds never costs the core's release, coverage or pin, and an unread
+  licence is no licence (unknown terms, never admitted). `core` is not a group
+  (`locations.ENSEMBL_CORE_GROUP`, refused with `CORE_IS_NOT_A_GROUP`), and an unknown name is refused
+  with the names the release does publish, both `ValueError` and before any parquet download. A pull
+  that keeps the local core checks each named group against the local manifest. A pull that installs
+  a release checks the names and file lists against the staged manifest it will install with the core.
+  `cache pull` refuses `core` and a `--groups` beside any lane other than `ensembl` (`cache_commands.GROUPS_NEED_ENSEMBL_ONLY`;
+  with no `--only` the selection is every lane, so it needs `--only ensembl`) before any lane runs. `cache
+  pull` has no `--dry-run`.
+- **Licences, per group.** `licensing.snapshot_group_terms(group, licence)` reads the licensor off the
+  manifest's `licence` (the text before the colon) and answers with its constant from
+  `SNAPSHOT_GROUP_TERMS_BY_LICENSOR`: `Ensembl data` is `ENSEMBL_TERMS` (unrestricted), `CADD` is
+  `CADD_TERMS` (no sale). Any other licensor is unknown terms. Each group goes through
+  `check_declared_use`, as a gated lane does in `cache pull`: `--groups cadd` downloads under
+  `non_commercial`, raises `LicenseRefusal` under `commercial` before any byte moves (core included),
+  and is skipped under `unstated`; an unknown licensor is skipped under every use, the reason quoting the
+  licence. A group already current (recorded at the manifest's release, every file it attests there at its
+  size) is not gated again, named or not: nothing is taken (review round 2, D). So `cache pull --only
+  ensembl --groups cadd --use commercial` over a current CADD group fetches nothing and reports it
+  `current`. If a release change makes that group stale, the pull checks the new terms and raises any
+  refusal before refreshing the core.
+- **Attested and recorded.** Each group file is renamed into place only if the manifest attests it by
+  size and sha256, as a core file is. The pull record gains `groups` (`locations.PULL_RECORD_GROUPS_KEY`):
+  per group, the `release_id` its files were attested against (`null` while its pull is under way), its
+  files, the declaration it was admitted under, and since the pm's follow-up when that use was declared
+  (`declared_at`, `download.PULL_RECORD_DECLARED_AT_KEY`, UTC). `locations.pulled_groups(cache)` reads it:
+  `{}` for an absent record or one naming no groups, and `EnsemblGroupReleaseError` for one that is there
+  and cannot be read (not UTF-8 or JSON, not an object, `groups` or a group entry not an object), which
+  the readers refuse (review round 1): read as no groups, it ended the sticky selection unsaid. A pull
+  repairs it instead of refusing: `ensure_snapshot` moves the record aside under a dated name
+  (`pull-record.json.unreadable-<UTC stamp>`, never deleted), writes a fresh one naming the lane's repository
+  and the core files the cache's manifest attests (no list without one; never an empty list, which reads as a
+  finished pull), with no groups and no release digest, and pulls with this call's groups, keeping every file the manifest
+  attests by sha256. Its warning names the moved file, says any group selection it held is lost, and names
+  the repository it assumes. Without the fresh record the cache would read as a local build and never be
+  pulled again; a local build writes no pull record, so a corrupt one came from a pull.
+- **The one path, with the check.** `locations.ensembl_group_dir(cache, group)` returns
+  `<cache>/groups/<group>` (`ENSEMBL_GROUPS_DIRNAME`) only when the group's recorded release is the
+  core's (`manifest.json`'s `release_id`) and the directory holds exactly the files the manifest attests
+  for the group, at their sizes (a `stat`, as the core is read). Otherwise it raises
+  `EnsemblGroupReleaseError`, with its own sentence for each of eight causes: a pull record there and
+  unreadable (`The pull record at <path> is there and could not be read (…)`), not taken by a pull of this
+  cache (absent, or placed by hand), a pull that did not finish, a core stating no release, two releases,
+  a manifest stating no size for a file it attests for the group (`… states no size for N file(s) it
+  attests …: a re-pull cannot clear this`, the publisher's to fix, since no pull can fetch a file the
+  manifest attests no size for; review round 2, H), an attested file missing or of another size (re-pull
+  it), and a parquet the manifest does not name for
+  the group (move it aside: no pull removes a file it did not put there, and a pull over such a directory
+  reports the group as `current, but …` rather than plainly current). A reader takes a group's path from
+  it and nowhere else.
+- **Sticky.** The record's selection is carried over by both of the core provisioner's record writes, and
+  every later `ensure_snapshot`, with or without `groups` (`cache pull`, `cache prepare`,
+  `enrich(download=True)`), brings each recorded group to the core's release when it moves; a group the
+  new release does not name a file for is removed only where this lane's earlier pull put it. A recorded
+  group is gated by the call's `declared_use` when that states one, else by its recorded declaration
+  (`effective_declared_use`'s rule, applied to a cache); `cache pull` and `cache prepare` pass their
+  `--use`. A re-pull or a skip gated by the recorded declaration says so in its log line, naming the use and
+  when it was declared (`under the use recorded for it, non_commercial, declared 2026-11-18T01:21:30Z; this
+  call states none`), so an operator whose use changed sees which declaration admitted the new release; the
+  re-pull keeps that `declared_at`, a call stating its own use records a new one, and a pull under no stated use records none (`unstated` is no declaration). A record written before
+  the key states no time, and the line says `declared at a time the pull record does not state`
+  (`download.DECLARED_AT_UNRECORDED`), never an invented one. A recorded group the caller did not name never raises, whatever went wrong: it is logged,
+  `cache pull` prints it, and it stays at its old release, which `ensembl_group_dir` refuses. A named
+  group's failure raises once every group has been tried. No group is pulled beside a core that is not a
+  finished pull its manifest attests whole. A warm cache whose groups are current reads no hub.
+  Removing a group is not in 0.9: deleting the lane's directory does it.
+- **Local only in 0.9.** Remote reads of a group wait for a caller who asks.
+
 ### Snapshot-first, live second, `--offline` first-only
 
 Every pass follows one of two shapes, and which one it follows depends on whether a live route exists
@@ -2245,6 +2499,217 @@ able to tell a pinned file from a live API, because the two can differ by a rele
 A pass that could run *neither* way is a third state, never a silent pass: `PgxResult.skipped_offline`
 and `ClinGenResult.skipped_offline` carry the reason, distinct both from "ran and found nothing" and
 from a failure.
+
+### Remote reads: the registry's proxy, then Hugging Face (RM430, 0.9)
+
+A box with no local snapshot can ask a lane's published copy, **only when the caller holds a
+`remote.RemoteSnapshots`** and hands it over as `LookupClients(snapshots=…)`. With none, nothing below
+runs and nothing leaves the machine that did not before. The read order is the maintainer's (desk #261):
+local disk first and unchanged (every `resolve_*_reference` keeps its ladder), then the registry's proxy,
+then Hugging Face. `enrich()` does not read remotely in 0.9 (its first answering link decides `alts`, and
+Hugging Face's anonymous quota cannot carry a module's worth of lookups); the remote routes serve the
+`lookup_*` functions.
+
+```python
+from just_dna_enricher.clients import LookupClients
+from just_dna_enricher.lookup import lookup_variant
+from just_dna_enricher.remote import RemoteSnapshots
+
+with RemoteSnapshots(declared_use="non_commercial") as snapshots:      # proxy from the environment, HF on
+    answer = snapshots.lookup("clinvar", "clinvar", {"rsid": ["rs334"]})
+    answer.route                     # RemoteRoute(route="hf", release="clinvar_2026-11-01", served_from=None, revision="<commit>")
+    hint = lookup_variant(chrom="19", start=44908684, clients=LookupClients(snapshots=snapshots))
+    hint.routes                                                       # {"ensembl": RemoteRoute(...), ...}
+```
+
+- **`RemoteSnapshots(*, proxy_url=None, proxy_token=None, huggingface=True, declared_use="unstated",
+  hf_base_url=None)`**, a context manager. The proxy is `proxy_url`, else `$JUST_DNA_SNAPSHOT_PROXY_URL`
+  (its token `$JUST_DNA_SNAPSHOT_PROXY_TOKEN`), read with `env_value` when the holder is built; unset by
+  default, as the registry asked, so its own server never calls itself. Hugging Face is on unless
+  `huggingface=False`. A Hub token (`HF_TOKEN`, else `huggingface_hub.get_token()`) is sent to
+  `https://huggingface.co` only, never to another `hf_base_url`.
+- **`lookup(lane, table, keys) -> RemoteAnswer`**, the one query, and the proxy's own contract on both
+  routes: the rows of one table matching identifier keys (`remote.KEY_COLUMNS`), values ORed within a
+  column, columns ANDed, `chrom` with `start` paired when the two lists are as long as each other. The
+  rows are the table's own parquet columns, in an order both routes reproduce. A table is named as the
+  registry names it: a `data/` file's name without its chromosome or shard suffix (`homo_sapiens`,
+  `clinvar`, `gnomad_constraint`, `annotations`, `genes`, `drug_labels`).
+- **Lanes** (`remote.REMOTE_LANES`): `ensembl` (by `chrom` + `start` only: an rsID alone is refused
+  before any route, since about 10.7 GB would be read on the Hub), `clinvar`, `constraint`, `clinpgx`,
+  `cpic`, `drug_labels`, and since RM431 `opentargets`, `civic` and `clinvar_gkm` (each by its keyed function's keys, below). Not
+  `mitomap`, `strchive` or `alphagenome_avi`. PharmVar and PubMind have no published repo.
+- **The proxy** (`POST {proxy}/api/v1/lanes/{lane}/{table}`, the registry's §§ 46–47): one keep-alive
+  `httpx` client, a 3 s connect and 10 s read timeout, at most 100 key values a request and one
+  chromosome per request. The holder splits the column with the most values, preferring `start` on a tie.
+  If the other columns alone fill the limit, the holder asks Hugging Face. With Hugging Face off it
+  reports could-not-ask and gives the proxy's limit. A reply with `truncated: true` is halved and asked again, down to one key; one
+  key still truncated is could-not-ask for the whole lookup (no fall-through), never an absence. After a
+  429, a 503, a 504, a 404 `lane_not_available`, a timeout or a connection error the holder asks Hugging
+  Face instead, for the whole lookup. A 422, or a 404 `unknown_lane`/`unknown_table`, is a wrong request
+  and raises `ValueError`; any other status, and a 200 that is not a lane reply, is could-not-ask on the
+  proxy with no fall-through. A 200 is read through one strict model of the registry's reply (0.9, review
+  round 1): `lane` and `table` equal to the request's, `rows` a list of objects, `truncated` a JSON bool, and
+  `served_from`, `release` and `revision` text or absent (another kind is withheld, `None`, since they only
+  trace the rows), with no coercion (`"false"` is no bool) and fields it does not read ignored. A reply missing `truncated`, a row that is not an object, or a reply for another
+  lane or table is `a 200 that is not a lane reply (…)` or `a 200 that is not the reply asked for: …`,
+  never a whole answer and never an `AttributeError` out of `lookup_variant`. A proxy answer's `release`,
+  `revision` are what its replies state (registry S34), each only when every reply states the same one: a reply
+  stating none, or two stating different ones, withholds it (`None`), the second said in a warning (`the proxy's
+  replies to one lookup state 2 releases (…); withheld`). `served_from` is withheld when any reply leaves it
+  unstated, so `local` beside an unstated reply is `None` (review round 2, F); when every reply states its place
+  and they differ, the places are joined in sorted order (`local, remote:<repo>`), since each served its part.
+- **Hugging Face** is read through duckdb's `httpfs`, never through `hf://` (duckdb resolves that to
+  `huggingface.co` itself, past `hf_base_url` and the test fence, and a glob over plain HTTP is
+  refused). The first read of a lane in a holder asks `GET {hub}/api/datasets/{repo}/revision/main` for
+  the commit and its files, reads `release.json` at that commit through `parse_release` (Ensembl:
+  `manifest.json`'s `release_id`, by `SnapshotManifest`), and opens one duckdb connection for the lane;
+  every later read of the lane reads `{hub}/datasets/{repo}/resolve/{commit}/{path}` on its own cursor of
+  that connection, and one lane's first read holds up no other lane. A position key opens only the files
+  the manifest attests for that chromosome (scanned by position, the chromosome checked on the rows),
+  which only Ensembl's manifest states; a chromosome it attests no file for, and every other lane, reads
+  the table's files. Chromosomes are grouped as `normalize_chrom` spells them (`chrM` is `MT`). The connection loads
+  `httpfs` with auto-install off, so **the extension must be installed ahead of time**
+  (`python -c "import duckdb; duckdb.connect().install_extension('httpfs')"`); missing, it is
+  could-not-ask naming that command, before any Hub request is spent. A position is rendered as an integer literal:
+  bound integer parameters prune no row group in duckdb, so one Ensembl position read its whole chromosome
+  file that way (65 MB on chr19, against about 5 MB). No retry inside a call (`http_retries = 0`); a 429 is could-not-ask
+  naming the Hub's quota window (3,000 requests per 5 minutes per IP, anonymous).
+- **Where an answer came from.** `RemoteAnswer(rows, route)`, whose `route` is a `RemoteRoute(route,
+  release, served_from, revision, release_unreadable=None)`. `RemoteRoute.release_unreadable` carries the
+  proxy's JSON boolean for an unreadable `release.json`. A split lookup carries it when every contributing
+  reply states the same boolean. Missing, null, malformed or conflicting flags give `None`, as does the
+  Hugging Face route. One release per route per holder:
+  `main` moving mid-session does not move a holder's Hugging Face reads, and a new holder reads the new
+  commit. A 429 can send some of a session's lookups to the Hub and others to the proxy, so each answer
+  carries its own. This traces an answer; it does not detect two copies under one label with different
+  bytes.
+- **Licences.** A remote read is an acquisition: before a lane is asked on any route, the lane's terms
+  (`CACHE_LANES`) go through `check_declared_use(terms, declared_use)`. A refusal raises `LicenseRefusal`;
+  a skip is `SnapshotRouteUnavailable` with no route and the skip's reason. A lane whose registry entry
+  states no terms is not gated, as `cache rebuild` reads it.
+- **Closing.** `close()` takes the holder's lock, refuses every lookup from then on (`ValueError`, the text
+  `remote.HOLDER_CLOSED`), and waits for the lookups already running before it closes a client or a
+  connection, so a lookup never meets a closed client and an `httpx` `RuntimeError`.
+- **`SnapshotRouteUnavailable`** (`lane`, `route`: `proxy`, `hf`, or `None` when no route was asked,
+  `cause`) is every could-not-ask, with duckdb's or `httpx`'s error as its `__cause__`. A 410 is its
+  subclass `SnapshotRouteRetired`, which `net.could_not_ask_reason` reads as `retired`, so one handler
+  still catches every route. Neither is a `duckdb.Error` or an `httpx` error.
+- **`lookup.lookup_variant` with a holder.** A lane with no local snapshot is asked through the holder
+  where the local snapshot would have been, before live Ensembl REST, and never under `offline=True`:
+  Ensembl by the question's position only (an rsID-only question skips it with an `info` finding saying
+  so). ClinVar is asked twice at most (RM462): once by rsID, then once by position, and the clinical calls at
+  the resolved alleles read that position reply. With a position in the question, that read covers it and the
+  rsID's placements together, and its failure fails the link; for an rsID-only question it is the clinical
+  calls' own read, and its failure is a `clin_sig` finding. They stay two questions because the registry's proxy matches every column it is
+  given, and a single Hugging Face read of both would lose the keyed row-group pruning. A position first learned
+  from live Ensembl after a snapshot miss is asked for its calls then.
+  **The remote Ensembl link never places the rsID** (RM431, ask 4; review round 2, G, by decision): a read
+  bounded to one position cannot say every locus a multi-place rsID has, so even when Ensembl's rows there name
+  the rsID it gives no locus, only the rsID candidates at that position, and ClinVar, asked next by rsID, places
+  it. The local Ensembl snapshot is read by rsID and places it.
+  The rows go through the reader's own SQL (`resolver`/`clinvar` run one body over their glob and over a
+  remote answer's rows), so a remote answer reads exactly as a local one. `VariantHint.routes` maps
+  each lane answered remotely to its `RemoteRoute`, and stays `None` when none was; a lane answered over
+  two routes in one lookup keeps the first and says both in an `info` finding. A route that could not be
+  asked is a `warning` finding (`…could not be asked remotely, so its answer is unchecked rather than
+  empty`), never an empty answer. A request a route refuses as wrong (a 422, an unknown lane, table or
+  column, a closed holder) is not could-not-ask: `lookup` raises it as `ValueError` and `lookup_variant`
+  lets it out, since it is wrong on every route and a finding would report a defect as an outage. A remote miss names what was searched (`rsN: not in the ClinVar
+  snapshot read over hf (release …)`).
+- **The keyed functions (RM431).** A lane RM431 made eligible is asked by the keys of its keyed function, and
+  that function's SQL runs over the rows a route answers exactly as over the local files (one body per question,
+  `_…_over`; the remote half is `_…_from_rows`, private, as RM430's are). No public function takes a holder in
+  0.9: a host asks `RemoteSnapshots.lookup` with the table and keys below and gets the rows. The rows are typed
+  by a hand-kept `(column, duckdb type)` list per table (ClinVar's and Ensembl's read subsets included), and
+  `test_typed_read_columns_are_the_snapshots.py` finds every such list at its call site and holds each to the
+  schema its builder writes, so a list added without a source fails that walk.
+  - `opentargets.lookup_variants(reference, positions: Sequence[tuple[str, int]]) -> dict[tuple[str, int],
+    list[dict]]`: every allele the release's allele table states at each position, keyed as asked (`chr6` and
+    `6` are two keys with the same rows), compared as the release spells it (`normalize_chrom`). A row is the
+    table's own columns: `variant_id`, `chrom`, `position`, `ref`, `alt`, `rs_ids` (a list). Remotely: table
+    `variants`, keys `chrom` + `start` (the holder reads `position` for `start`). It joins on chrom + position,
+    never on `variant_id` (about 55 MB read for one lookup, the registry's measurement); locally one position
+    reads in about 0.1 s on 26.09.
+  - `opentargets.lookup_consequences(reference, variant_ids: Sequence[str]) -> dict[str, list[dict]]`: each
+    id's per-transcript consequences, then its GWAS credible-set memberships, in one list; every row carries
+    `table`, `"consequences"` or `"credible_set_members"`, so the two tables' rows stay apart. Remotely: tables
+    `consequences` and `credible_set_members`, key `variant_id`. Over the Hub this reads the footer of every
+    part (25 and 200 files), so it costs many requests of the anonymous quota.
+  - Both return plain dicts, as `lookup_clin_sig` does; a key the release holds nothing for is not in the
+    answer, and a snapshot that cannot be read raises `OpenTargetsError`, never an empty answer.
+  - Each table a remote route is asked for is a module constant beside its keyed function:
+    `opentargets.REMOTE_VARIANTS_TABLE`, `REMOTE_CONSEQUENCES_TABLE`, `REMOTE_MEMBERS_TABLE` (also the
+    `table` values `lookup_consequences` tags its rows with), `civic_draft.REMOTE_CIVIC_TABLE`,
+    `clinvar_gkm.REMOTE_WITNESS_TABLE`, `clinpgx.REMOTE_ANNOTATIONS_TABLE` and `drug_labels.REMOTE_LABELS_TABLE`.
+  - `civic_draft.lookup_genes(reference, genes) -> dict[str, list[dict]]` and `civic_draft.lookup_rsids(reference,
+    rsids) -> dict[str, list[dict]]`: every snapshot row under each gene (compared by `gene_key`: case and
+    surrounding space make no second gene) or rsID (lower case, `rs` prefixed: `334` is `rs334`), keyed as asked,
+    every column, in one total order. With the raising reader's semantics (`_snapshot_rows`): an absent or
+    unreadable snapshot raises `CivicDraftError` naming it. Remotely: table `civic`, keys `gene` and `rsid`,
+    each as asked: the holder reads them as the local reader does (an rsID as the snapshot spells one). A gene is compared by its `key_compare.KEY_COMPARES` entry on every
+    route, so `brca1` answers on Hugging Face as it does locally; the proxy is not asked for a gene (below).
+  - `clinvar_gkm.lookup_variants(reference, positions) -> dict[tuple[str, int], list[dict]]` and
+    `clinvar_gkm.lookup_rsids(reference, rsids) -> dict[str, list[dict]]`: every placement the witness holds at
+    each position (contig as `clinvar_gkm.normalize_chrom` spells it) or under each rsID (as `by_rsid` reads
+    one), keyed as asked, every column of the slice. `ClinVarGkmWitness.load` stays the polars loader. An
+    absent or unreadable slice raises `ClinVarGkmError`; an absent key is *not witnessed*, never *placed
+    wrong*. Remotely: table `clinvar_gkm-indels`, keys `chrom` + `start` (the holder reads `pos`) and `rsid` (as
+    asked; the holder reads it as `by_rsid` does).
+    The VRS id is not a key: it is not one of `remote.KEY_COLUMNS`, the registry's list, so it stays local
+    (`by_vrs_id`).
+  - `clinpgx.lookup_rsids(reference, rsids) -> dict[str, list[dict]]` and `clinpgx.lookup_genes(reference, genes)
+    -> dict[str, list[dict]]` (the pm's reading 4): every annotation row (one per annotation and genotype) under
+    each rsID (lower case, `rs` prefixed; only an annotation whose subject is an rsID carries one) or naming each
+    gene, keyed as asked, every column of `annotations.parquet`, in one total order. A gene is a member of the
+    `;`-joined `gene` cell (`KLC1;XRCC3` names both, as `draft-clinpgx --gene` reads it), compared by
+    `gene_key`. `load_snapshot` stays the whole-table loader; an absent or unreadable snapshot raises
+    `ClinPgxEnrichmentError`. Remotely (lane `clinpgx`, eligible since RM430, gated by ClinPGx's no-sale terms):
+    table `annotations`, keys `rsid` and `gene`, each as asked (the holder reads them as the local reader does). A gene is
+    compared by its `key_compare.KEY_COMPARES` entry on every route, member by member of the `;`-joined cell (399 of 16,117
+    rows on the 2026-08 snapshot name several); the proxy is not asked for a gene (below).
+  - `drug_labels.lookup_genes(reference, genes) -> dict[str, list[dict]]` (the pm's reading 4): every
+    regulator's label naming each gene, keyed as asked, every column of `drug_labels.parquet` (`LABEL_COLUMNS`,
+    unparsed), in one total order. A label names a gene when a member of its `genes` cell does (`CYP2C9; VKORC1`
+    names both, split on `CELL_SEPARATOR` as `load_drug_labels` splits it), compared by `gene_key`; a label naming
+    two asked genes is under both. `load_drug_labels` stays the loader the check reads. An absent snapshot raises
+    `DrugLabelUnavailable`, an unreadable one `DrugLabelError`. Remotely (lane `drug_labels`, eligible since
+    RM430, gated by ClinPGx's no-sale terms): table `drug_labels`, key `genes` (each gene as asked).
+    A gene is compared by its `key_compare.KEY_COMPARES` entry on every route, member by member of the cell (361 of 1,433
+    labels on the 2026-08 snapshot name several); the proxy is not asked for a gene (below).
+  - **The remote compare is the local compare** (the pm, 2026-11-18, fixed as a class).
+    `key_compare.KEY_COMPARES` declares snapshot lookup keys by lane, payload table and column.
+    `lane_compare(lane, table, column)` reads a declaration. `KeyCompare.fold` compares a gene using
+    `spelling.gene_key`, including Unicode case folding and surrounding whitespace. `separator` splits
+    a joined cell before folding each member. `rsid` reads `RS334` and `334` as `rs334`. The optional
+    `KeyCompare.normalize` callable reads an input key when the snapshot already stores the comparison
+    spelling. For example, Ensembl accepts an rsID in another case and preserves a COSV identifier verbatim.
+    `key_compare.EXACT` compares the whole cell byte for byte.
+  - **Direct lookups.** `gene_metrics.lookup_snapshot` accepts alternate gene spellings and returns
+    the records keyed by the snapshot's gene symbols. Ensembl and ClinVar
+    `lookup_loci` accept padded rsIDs and primary contigs such as `chr11` and `chrM`. The dictionaries
+    use the requested rsID or position tuple. Ensembl applies the same rule before scanning or consulting
+    the rsID index.
+  - **Using a declaration.** `KeyCompare.key(value)` reads one key and `members(cell)` reads the
+    members of a stored cell. `KeyCompare.spellings(values)` groups the requested spellings by key in input order.
+    `predicate(column, negated=False)` and `parameter(values)` supply a DuckDB predicate and its single
+    bound `VARCHAR[]`. A missing cell is withheld in both the positive and negated queries.
+    Genes in the constraint, ClinVar, MANE, PharmVar, CIViC and CPIC snapshots are compared whole.
+    ClinPGx and the drug labels compare the members of their semicolon-joined gene cells.
+  - **Remote routes.** `RemoteLane.compare(table, column)` reads the same declaration. `exact` means
+    the raw key matches the cell byte for byte. `cell_exact` means the input can be normalized before an
+    exact cell comparison, so an rsID can still go to the proxy. `RemoteLane.proxy_compares(table, columns)`
+    checks the requested columns. A gene lookup requiring a cell fold or split goes to Hugging Face.
+    With Hugging Face off, the holder reports that the lookup could not be asked and gives the comparison's
+    `described` text. Local-only keys in the registry do not extend the proxy protocol.
+    The tests walk every declared key and compare the local and remote answers over fixture snapshots.
+- **`remote_url(base, *parts)`** builds every URL a holder asks; the root `conftest.py` wraps it, so a
+  test that would hand duckdb a host other than this machine is refused and recorded like a socket reach.
+  The fence holds only while nothing else builds a URL duckdb opens, so an AST walk
+  (`test_the_network_is_fenced.py`) holds that: no duckdb call in the enricher carries a URL literal, no
+  module but `remote` loads `httpfs` explicitly (duckdb autoloads it on a URL by default, so outside `remote`
+  the walk sees URL literals only, not a URL held in a variable), and in `remote` duckdb reads a file only through SQL, every
+  `read_parquet` binds its files as a parameter built by `_file_url` (never rewritten in place), and
+  `_file_url` returns `remote_url(...)`.
 
 ### The one cache that is not in the table
 
@@ -2860,7 +3325,23 @@ evidence that something upstream is wrong and silence a problem the author needs
 Rows with no coordinate, and rows whose `ref` is not plain ACGT (a symbolic allele, RM5), are not
 checked — abstaining beats inventing a verdict. Reads are cached by `(accession, start, end)`, so a
 module asking about one locus repeatedly costs one round trip, and the same `SequenceProxy` is shared
-with indel minting so a run builds one proxy in total. Needs sequence access, so `--offline` skips it:
+with indel minting so a run builds one proxy in total (or none, when the caller passes one, RM404). Since
+0.9 its lazy build and its memo are under a lock, so parallel runs may share one proxy; the remote read
+is outside the lock, so a thread waits on another only for the dictionary. **The proxy memoizes answers
+only** (0.9, RM404): a failed build, a read that raised and a read that came back empty are held by the run
+that saw them. Call `sequences.held_by_one_run(proxy)` once per run and pass the returned view to its readers.
+Passing that view to `held_by_one_run` again returns the same view. The run asks a failed read once and a
+failed build once (a REST seqrepo's data proxy is built without the
+network, so a service that is down is met once per distinct interval); the next run sharing the proxy asks again. Read
+directly, outside a run's view, the proxy asks again on every call. A failed build's warning says so: `Could
+not reach the sequence service at <uri> (<error>); this read returns no bases, and the build is retried at the
+proxy's next read. Without bases an indel's VRS id is left unminted and the reference-allele check is not made;
+a run reading through its own view asks for the build once per run.` (review round 2, I; until then it said the
+work "is skipped this run", which the proxy, remembering no failure, does not do). Its memo is bounded at 262,144 reads
+(`sequences._MEMO_SIZE`), the least recently used evicted first, because a shared proxy may live as long as
+the service. An `EnsemblResolver` that builds its own anchor reader (no `_read_base` given) builds it once,
+lazily and under a lock of its own, so threads sharing one resolver wait for that build rather than each
+starting another. Needs sequence access, so `--offline` skips it:
 a check that cannot run is not a check that passed, and the run says so rather than implying success.
 
 ### The old assembly: rs-number recovery and a wrong-build diagnosis (`grch37.py`, RM48)
@@ -3038,6 +3519,34 @@ the repo pre-existed).
 Each needs a write token (`hf auth login` or `HF_TOKEN`) — a missing one raises `PermissionError`.
 `huggingface_hub` is a core dependency, imported at module level. Every refusal is a `PublishRefused`
 (RM368, below); the token is the one failure outside that family.
+
+**A partial build refuses** (0.9, RM412). `plan_reference_snapshot` refuses, as `SnapshotNotPublishable`, a
+snapshot whose `release.json` records a dataset with `parts_read` below `parts_total`: an `opentargets build
+--parts N` test build, whose absent rows may sit in parts nobody read. The message names each short dataset with
+both numbers (`l2g 1 of 12 parts`). The planner calls `just_dna_format.snapshot.is_whole_build`. If a read
+count exceeds its total, the refusal names the dataset and both counts. The publisher hashes and sends the
+same `release.json` bytes it checked. Every snapshot publish and its rehearsal use this gate, so the
+refusal reaches the per-lane `X publish` commands, `cache rebuild --publish` and the rebuild dry run's rehearsal
+of a snapshot already at `<out>/<lane>` alike, before the repo is read or created. A record that states neither
+count, only one, or a dataset in one and not the other cannot say, and is not refused by this check.
+**A record present and unreadable refuses too**, at the same point and first: a `release.json` that does not
+parse or is not a JSON object (the message quotes the parser's complaint), and a `parts_read` or `parts_total`
+that is present and is not a map of datasets to whole numbers (`parts_read is "1"`, `parts_read["l2g"] is 1.5`,
+`parts_read["study"] is null`, each value quoted). The gate reads the file as written, because the lenient
+`read_release` reads an unparsable record as no record and a mistyped map as unstated, and coerces a count of `"1"`,
+`12.0` or `true`. A dataset's `null` count is a wrong kind like those: no builder writes one, and the lenient read
+drops the whole map over it, so `{"parts_read": {"l2g": 1, "study": null}, "parts_total": {"l2g": 12, "study": 1}}`
+would otherwise pass the partial-build check as a record stating nothing. **A count that reads as whole but
+describes no dataset refuses too**: one below zero (`parts_read["l2g"] is -1, below zero`) and a total of zero
+(`parts_total["l2g"] is 0, and a dataset has at least one part`). A `parts_read` of 0 is a count, read by the
+partial-build check. Absent is the unknown arm and present-and-unreadable the refusal, so no `release.json`, no
+counts, or a `null` in place of a whole map (the model's stated unknown) is not refused by this check.
+`cache rebuild` itself never builds a partial snapshot: its adapter takes no `--parts`, and `--source` takes a
+file, never the Open Targets parts directory, so the dry run's rehearsal of a build left at `<out>/opentargets`
+is the one rebuild route that meets one. `opentargets publish` and `clinvar-gkm publish` also warn, refusing
+nothing, on a snapshot with no release label, as `mitomap publish` and `strchive publish` do.
+On all four commands a refused `--dry-run` prints `WOULD BE REFUSED` and exits 0, matching
+`cache rebuild --publish` rehearsal behaviour. A refused real per-lane publish exits 1.
 
 ### What publishes, and what refuses (RM89)
 
@@ -4003,7 +4512,9 @@ flattens it into `data/`: `variants.parquet` (the allele table, alleles from col
 `credible_set_members-*.parquet` (GWAS sets only, `locus` exploded), `l2g.parquet`, and
 `colocalisations-*.parquet` (GWAS left × molecular-QTL right, with the right study's `geneId` and
 `biosampleId` joined on). `--source <dir>` builds from parts already on disk; `--parts N` reads the first
-N parts of each dataset, and `release.json` then records `parts_read` beside `parts_total`. The tables are
+N parts of each dataset, and `release.json` then records `parts_read` beside `parts_total`.
+`OpenTargetsBuildResult.partial` holds the `(read, total)` pairs the build CLI reports. The builder
+checks the counts with `is_whole_build` before replacing the snapshot. The tables are
 written to `data.building/` and swapped in only when the build finishes, so a failed build leaves the
 previous snapshot whole; a mirror the command downloaded (`<out>/source/<release>/`, ~22 GB) is deleted
 once the snapshot is written, and `--source` parts are left alone. The full build took 15 minutes here
@@ -4031,7 +4542,9 @@ refuses a snapshot built from part of the release, and one that does not record 
 completeness is not completeness). **`best_effort` answers only from what it read whole (RM361)**:
 `READS` names the source datasets each table and the posterior come from, and
 `opentargets.read_is_complete` asks `release.json` whether each was read in full (`False` for a partial
-one, `None` when the record does not say). Anything but `True` answers no key for that table: rows the
+one, `None` when the record does not say). Both enrichment modes use the publish gate's
+`is_whole_build` predicate. They refuse malformed counts and overcounts as written in the JSON,
+before reading any tables. Anything but `True` answers no key for that table: rows the
 snapshot did yield are merged in, every existing row is kept, a key that did not join the allele table is
 `not_read` rather than `not_in_release`, and the posterior on `gwas_effects.csv` is left as it was
 (`posterior.not_read`). Two module keys on one release allele have that allele's L2G and coloc
@@ -5067,6 +5580,7 @@ absent from it has no recorded terms, which is a different state from having per
 | `clinpgx` | CC BY-SA 4.0 | ❌ | ✅ | ✅ | + a contractual bar on sale, on top of the CC grant |
 | `cpic` | CC BY-SA 4.0 | ❌ | ✅ | ✅ | `cpicpgx.org/license/` 302s to ClinPGx's policy |
 | `pharmvar` | CC BY-SA 4.0 | ❌ | ✅ | ✅ | research-use-only, and the key is **personal and non-transferable** |
+| `cadd` | CADD terms of use (University of Washington) | ❌ | ❓ | ❓ | reached only as the split Ensembl release's `cadd` group (RM437); "freely available for all non-commercial applications", a commercial one needs a UW licence |
 | `pubmind` | CC BY-NC-ND 4.0 | ❌ | — | ✅ | **NoDerivatives**: adapted material may not be shared, which is why the snapshot is never published (RM320) |
 | `alphagenome_atlas` | AlphaGenome Output Terms of Use | ❌ | — | ✅ | a **second name** for one service, because one `(source, layer)` key cannot carry two licence classes |
 | `mane` | — | ❓ | ❓ | ❓ | NCBI states a *policy* rather than a licence — nothing to refuse and nothing to permit |
@@ -5081,7 +5595,7 @@ either — so it is skipped in every `--use` column with a message saying which 
 is the house algebra landing on a licence: unknown never becomes permission, and it never becomes a
 refusal either.
 
-**Four of the nineteen are a floor rather than a total**, and that is a property of the source, not of
+**Four of these are a floor rather than a total**, and that is a property of the source, not of
 the constant: `mitomap` grants site-wide "unless otherwise noted", `pgs_catalog` is per score,
 `gwas_catalog` states one axis of three, and `alphagenome_avi`'s permissive *Output* terms sit behind
 an eligibility clause about the holder that no column models
@@ -6015,11 +6529,13 @@ caller and `except` order never matters. RM310 was the list shape failing: `cach
 | `clingen_allele` | `ClingenAlleleError` | — |
 | `cpic` | `CpicError` | `CpicRetired` |
 | `ensembl` | `EnsemblError` | — |
+| `ensembl_rsid_index_build` | `RsidIndexError` | — |
 | `eutils` | `EutilsError` | `EutilsRateLimitedError`, `EutilsRetired` |
 | `gene_spans` | `GeneSpanError` | — |
 | `gnomad` | `GnomadError` | `RateLimitedError`, `GnomadRetired` |
 | `pgs` | `PgsCatalogError` | `PgsCatalogUnavailable`, `PgsCatalogRetired` (under the one before it) |
 | `pharmvar` | `PharmVarError` | `PharmVarRetired` |
+| `remote` | `SnapshotRouteUnavailable` | `SnapshotRouteRetired` (a route answered 410; RM430's one type for every remote route, the 410 named under it) |
 
 **Builders and the publisher (`[dev]`) — what `cache rebuild` and a `build` command raise**
 
@@ -6049,6 +6565,7 @@ caller and `except` order never matters. RM310 was the list shape failing: `cach
 | `download` | `SnapshotNotPublished` | — |
 | `pubmind` | `PubMindReferenceError` | — |
 | `resolver` | `EnsemblReferenceError` | — |
+| `locations` | `EnsemblGroupReleaseError` (RM437: a split Ensembl group not attested to be the core's release, raised by `ensembl_group_dir`) | — |
 
 **Drafting providers, and the licence gate**
 
@@ -6146,14 +6663,16 @@ just-dna-enricher clinvar build --vcf clinvar.vcf.gz            # VCF → snapsh
 just-dna-enricher clinvar build --download                      # fetch the NCBI VCF first, then build
 just-dna-enricher clinvar publish data/repro/clinvar --dry-run  # rehearse the reference-snapshot upload
 just-dna-enricher clinvar publish data/repro/clinvar            # create-or-update datasets/just-dna-seq/clinvar
+just-dna-enricher clinvar-gkm publish data/repro/clinvar_gkm --dry-run  # a built snapshot of a rebuild-route lane (0.9)
+just-dna-enricher opentargets publish data/repro/opentargets --dry-run  # likewise; without --dry-run it uploads
 ```
 
 `enrich` takes the mode and cache flags (`--strict/--best-effort`, `--offline`, `--ensembl-cache`,
 `--clinvar-cache`), the per-link toggles (`--clinvar/--no-clinvar`, `--gnomad/--no-gnomad`,
 `--vrs/--no-vrs`), the four verify toggles above (`--verify-ref`, `--verify-clinsig`, `--verify-rsids`,
 `--verify-datasets`), `--pubmind-cache`, `--keep-par-twin`, and the two transaction flags
-`--rederive` / `--keep-staging`. **`enrich-and-compile` takes the mode and cache flags, the ClinVar and
-gnomAD link toggles, and the `--frequencies` / `--gene-metrics` pass toggles — not `--vrs`, not the
+`--rederive` / `--keep-staging`. In 0.9 it also takes `--rederive-subject` and `--verify-written-only`.
+**`enrich-and-compile` takes the mode and cache flags, the ClinVar and gnomAD link toggles, and the `--frequencies` / `--gene-metrics` pass toggles — not `--vrs`, not the
 verify toggles, not the transaction flags** — it is the offline convenience wrapper, so those are
 `enrich`'s alone. That distinction is the rule worth writing down; the enumeration is not, because
 a flag list restated in prose rots the moment a flag is added, and **`--help` is the authority**.

@@ -47,9 +47,10 @@ import duckdb
 import httpx
 from just_dna_format.alleles import non_nucleotide_reason, symbolic_allele_defect
 from just_dna_format.snapshot import SnapshotRelease, read_release
-from just_dna_format.spelling import drug_key, gene_key
+from just_dna_format.spelling import drug_key
 from tenacity import retry
 
+from just_dna_enricher.key_compare import lane_compare
 from just_dna_enricher.locations import SNAPSHOT_DATA_DIRNAME
 from just_dna_enricher.net import (
     EndpointRetired,
@@ -578,6 +579,9 @@ class CpicClient:
         return out, _unusable_warnings(gene, unusable)
 
 
+_DRUG = lane_compare("cpic", "recommendations", "drug")
+
+
 class CpicSnapshotClient:
     """The same four questions, answered from a built snapshot instead of the live service (RM38).
 
@@ -626,9 +630,6 @@ class CpicSnapshotClient:
                 f"{parquet} is not in the CPIC snapshot at {self.reference} — it was built by an "
                 f"older builder; rebuild it with `just-dna-enricher cpic build`."
             )
-        # A gene is compared as `lower(gene) = ?` with `spelling.gene_key` on the parameter (RM363): the
-        # snapshot stores CPIC's spelling and an authored `Cyp2c19` is that gene. The comparison lives in
-        # SQL, where the AST guard over attribute comparisons cannot see it, so the query text says it.
         pattern = str(path).replace("'", "''")
         con = duckdb.connect(":memory:")
         try:
@@ -642,14 +643,16 @@ class CpicSnapshotClient:
             con.close()
 
     def chrom_for_gene(self, gene: str) -> str | None:
-        rows = self._rows("genes.parquet", "lower(gene) = ?", [gene_key(gene)], "chrom")
+        compare = lane_compare("cpic", "genes", "gene")
+        rows = self._rows("genes.parquet", compare.predicate("gene"), [compare.parameter([gene])], "chrom")
         return rows[0]["chrom"] if rows else None
 
     def alleles_for_gene(self, gene: str) -> list[CpicAllele]:
+        compare = lane_compare("cpic", "alleles", "gene")
         rows = self._rows(
             "alleles.parquet",
-            "lower(gene) = ?",
-            [gene_key(gene)],
+            compare.predicate("gene"),
+            [compare.parameter([gene])],
             "gene, allele, activity_value, clinical_function_status",
             "allele",
         )
@@ -664,10 +667,11 @@ class CpicSnapshotClient:
         ]
 
     def diplotypes_for_gene(self, gene: str) -> list[CpicDiplotype]:
+        compare = lane_compare("cpic", "diplotypes", "gene")
         rows = self._rows(
             "diplotypes.parquet",
-            "lower(gene) = ?",
-            [gene_key(gene)],
+            compare.predicate("gene"),
+            [compare.parameter([gene])],
             "gene, diplotype, phenotype, activity_score",
             "diplotype",
         )
@@ -688,10 +692,11 @@ class CpicSnapshotClient:
         flattens a recommendation's `phenotypes` map to one row per gene and carries how many there
         were, because a row about CYP2C19 *and* CYP2D6 is not a statement about CYP2C19 alone.
         """
+        compare = lane_compare("cpic", "recommendations", "gene")
         rows = self._rows(
             "recommendations.parquet",
-            "lower(gene) = ? AND drug = ? AND gene_count = 1",
-            [gene_key(gene), drug_key(drug)],
+            f"{compare.predicate('gene')} AND drug = ? AND gene_count = 1",
+            [compare.parameter([gene]), _DRUG.key(drug)],
             "gene, phenotype, drug, population, classification, recommendation, implication, activity_score",
         )
         out = [
@@ -737,18 +742,19 @@ class CpicSnapshotClient:
         correctly; two *different* pairs for one drug would be listed together, which is the one
         reading this cannot make and the builder would need a column to give it.
         """
+        compare = lane_compare("cpic", "recommendations", "gene")
         named = self._rows(
             "recommendations.parquet",
-            "lower(gene) = ? AND drug = ? AND gene_count > 1",
-            [gene_key(gene), drug_key(drug)],
+            f"{compare.predicate('gene')} AND drug = ? AND gene_count > 1",
+            [compare.parameter([gene]), _DRUG.key(drug)],
             "gene",
         )
         if not named:
             return []
         others = self._rows(
             "recommendations.parquet",
-            "drug = ? AND gene_count > 1 AND lower(gene) <> ?",
-            [drug_key(drug), gene_key(gene)],
+            f"drug = ? AND gene_count > 1 AND {compare.predicate('gene', negated=True)}",
+            [_DRUG.key(drug), compare.parameter([gene])],
             "DISTINCT gene",
             "gene",
         )
@@ -761,10 +767,11 @@ class CpicSnapshotClient:
         follows: `unusable_allele_reason` is a *judgement this workspace makes* about CPIC's value, so
         freezing it into the parquet would pin one release's opinion into every snapshot built under it.
         """
+        compare = lane_compare("cpic", "allele_definitions", "gene")
         rows = self._rows(
             "allele_definitions.parquet",
-            "lower(gene) = ?",
-            [gene_key(gene)],
+            compare.predicate("gene"),
+            [compare.parameter([gene])],
             "gene, allele, rsid, chrom, start, variant_allele",
             "allele, start, variant_allele",
         )

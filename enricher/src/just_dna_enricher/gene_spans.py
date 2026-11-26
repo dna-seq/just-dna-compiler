@@ -34,6 +34,7 @@ from pathlib import Path
 
 import duckdb
 
+from just_dna_enricher.key_compare import lane_compare
 from just_dna_enricher.locations import SNAPSHOT_DATA_DIRNAME, resolve_mane_reference
 from just_dna_enricher.pharmvar import chrom_from_accession
 
@@ -150,10 +151,11 @@ def gene_span(symbol: str, *, mane_cache: Path | None = None) -> SpanLookup:
             f"one — rebuild it with `just-dna-enricher mane build`."
         ) from exc
     try:
+        compare = lane_compare("mane", "summary", "symbol")
         rows = con.execute(
             "SELECT grch38_chr, chr_start, chr_end, mane_status FROM mane "
-            "WHERE symbol = ? AND chr_start IS NOT NULL AND chr_end IS NOT NULL",
-            [symbol],
+            f"WHERE {compare.predicate('symbol')} AND chr_start IS NOT NULL AND chr_end IS NOT NULL",
+            [compare.parameter([symbol])],
         ).fetchall()
     except duckdb.Error as exc:
         raise GeneSpanError(

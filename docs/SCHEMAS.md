@@ -32,7 +32,7 @@ maintained one, and where the two disagree this one is what a consumer may rely 
 | `spelling` | One comparison per compared kind (RM363): `gene_key`, `drug_key`, `doi_key`/`doi_token`, `COMPARISON_KEYS` + `comparison_key`, and the `chrom` input fold `ChromCell` every model with a `chrom` declares; also `VALID_CHROMOSOMES` and `DOI_PATTERN` (0.8) | `vrs` |
 | `alleles` | Reference-free allele algebra: `parsimony_reduce`, `event_profile` — what two spellings of one indel have in common (0.5, RM31) — plus `split_genotype`, the genotype cell → allele list rule every tier and every consumer reads (0.6, S30) | — (stdlib leaf) |
 | `layout` | Where a module's machine-written sidecars live, what they may be called, and the atomic write that puts one there (S66) | — (stdlib leaf) |
-| `snapshot` | The reference-snapshot layout (`data/`, sidecars, `LICENSE.txt`, `release.json`), the `SnapshotRelease` record, `read_release`/`write_release`, the write order (`begin_snapshot_write`/`begin_block_write`, RM369) and the payload predicate (0.8, RM303) | `layout` |
+| `snapshot` | The reference-snapshot layout (`data/`, sidecars, `LICENSE.txt`, `release.json`), the `SnapshotRelease` record, `read_release`/`write_release` and the content parser `parse_release` (0.9), the write order (`begin_snapshot_write`/`begin_block_write`, RM369) and the payload predicate (0.8, RM303) | `layout` |
 | `base` | `AuthoredModel` + `derive_variant_key` | `vocab`, `vrs` |
 | `manifest` | The `manifest.json` contract | `identity`, `vocab` |
 | `findings` | `CodedWarning` — a `str` subclass carrying the code its emission site named, and the carried/actionable split (0.7, RM131) | `vocab` |
@@ -3074,10 +3074,29 @@ through the same `clinvar_release_label` the model uses to read an older snapsho
 formula on both sides and the per-lane reader is gone. `builder` (ACMG's, a module path) is not a
 version and is not an alias of `builder_version`; it rides in extra.
 
+**`snapshot.is_whole_build(record) -> bool | None`** checks the dataset part counts. It returns
+`True` when every named dataset has matching counts, `False` when any dataset is short, and
+`None` when the record has insufficient counts to decide. Malformed counts or reads above the
+stated total raise `ValueError`. Pass the decoded JSON object for the same strict check the
+publisher makes. A `SnapshotRelease` answers for its already-parsed counts. Callers that need to
+name the short datasets can pass an empty dictionary as `short_reads=` to collect their
+`(read, total)` pairs.
+
+`read_release` and `parse_release` also accept `short_reads={}`. Passing this dictionary checks the
+decoded counts with `is_whole_build` before model coercion, collects each short dataset, and raises
+the predicate's `ValueError` for a malformed count or an overcount. Omitting it keeps the lenient read.
+
 **`read_release(dir) -> SnapshotRelease | None`** answers `None` for an absent file and for an
-unreadable one (does not parse, is not an object, or a typed key holds the wrong kind of value), with a
-warning for the second. **`write_release(dir, release)`** writes the record: atomic, sorted keys,
-newline-terminated.
+unreadable one (does not parse, or is not an object), with a warning for the second. A typed key holding
+the wrong kind of value costs that key and never the record: it is dropped, read as unstated, with a
+warning naming it, and every other key is read (`release_is_unreadable` is `True` for such a file). **`parse_release(data, *, source="release.json") -> SnapshotRelease | None`**
+(0.9, RM430) is that reading of the content, and `read_release` calls it with the file's bytes: it takes
+the record's bytes or text, never a path, so a reader that fetched `release.json` from a remote snapshot
+gets the same answer from the same bytes. It is as lenient as `read_release`: content that is not JSON
+or not an object is `None` with a warning, and a mistyped key is dropped with a warning naming it;
+`source` names where the bytes came from in those warnings. The strict reading `release_is_unreadable`
+needs stays private. **`write_release(dir, release)`** writes the record:
+atomic, sorted keys, newline-terminated.
 
 **A builder never calls it; it opens a write (RM369).** The order is **withdraw the record, move the
 bytes, describe them**. `begin_snapshot_write(dir)` removes `release.json` and returns a `SnapshotWrite`

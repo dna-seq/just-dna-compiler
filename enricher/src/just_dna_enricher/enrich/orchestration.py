@@ -25,7 +25,8 @@ from just_dna_format.alleles import (
     split_genotype,
     strand_flip_explains,
 )
-from just_dna_format.base import merge_key
+from just_dna_format.base import derive_variant_key, merge_key
+from just_dna_format.concordance import ClinSigAuthorityCallRow, ClinSigConcordanceRow
 from just_dna_format.normalize import now_utc_iso
 from just_dna_format.resolution import ResolutionRow, source_loci_cell
 from just_dna_format.snapshot import release_label as snapshot_release_label
@@ -36,6 +37,7 @@ from just_dna_format.vrs import normalize_chrom, par_partner, refget_accession
 from just_dna_enricher import clinvar
 from just_dna_enricher.civic_citations import check_evidence_status_currency, read_studies
 from just_dna_enricher.civic_refutation import RefutationFinding, compare_refutations
+from just_dna_enricher.clients import LookupClients
 from just_dna_enricher.clinical import (
     ClinSigComparison,
     ClinSigConflict,
@@ -49,7 +51,10 @@ from just_dna_enricher.clinical import (
 )
 from just_dna_enricher.clinvar_gkm import CLINVAR_GKM_SOURCE
 from just_dna_enricher.concordance import (
+    AUTHORITY_CALLS_CSV,
+    CONCORDANCE_CSV,
     AnsweredCallReport,
+    _replace_checked_subjects,
     answered_call_notes,
     answered_call_sentences,
     write_concordance_tables,
@@ -95,9 +100,10 @@ from just_dna_enricher.enrich.subjects import (
 )
 from just_dna_enricher.enrich.verification_records import _verification_records
 from just_dna_enricher.ensembl import (
+    BatchResolver,
     EnsemblResolver,
     RsidResolver,
-    _BatchResolver,
+    _grch38_base_reader,
 )
 from just_dna_enricher.eutils import EutilsClient, EutilsError
 from just_dna_enricher.events import authored_event
@@ -143,6 +149,7 @@ from just_dna_enricher.sequences import (
     SpellingVerdict,
     _indel_payloads,
     _spelled,
+    held_by_one_run,
     normalize_locus,
     spelling_verdict,
     summarize_ref_mismatches,
@@ -160,6 +167,11 @@ REST_RETIRED_REASON = (
     "Ensembl REST answered HTTP 410 at least once in this run: it retired a route this enricher asks, "
     "so upgrade just-dna-enricher (the source's own words are in the run's log)"
 )
+#: The one warning a run gives when `offline=True` sets aside a proxy passed as `sequences` (RM404).
+OFFLINE_OUTRANKS_SEQUENCES = (
+    "enrich(offline=True) does not use the sequence proxy passed as `sequences`: offline outranks it, as it "
+    "outranks an injected client, so this run reads no reference sequence (RM404)."
+)
 #: The placement record's not-asked reason when the merge check, whose dbSNP record the witness reads, is off.
 _DBSNP_SWITCHED_OFF = (
     "the rsID merge check is switched off (verify_rsids=False), and the dbSNP witness reads that check's "
@@ -174,21 +186,30 @@ class _RecordedEutils(EutilsClient):
     The dbSNP witness reads the merge check's `esummary db=snp` records before the merge check runs, so
     both are served one fetch: the merge check is handed this client and asks only what the witness did
     not. Every uid asked is remembered, a missing one as `{}`, which `check_rsids` already reads as absent.
+
+    **`inner` is a caller's client (RM404)**, asked through its public `esummary`, so its pacing and its
+    transport are the ones used. The wrapper is the run's and the run closes it; `close` reaches only the
+    wrapper's own transport, never `inner`, which stays the caller's to close.
     """
 
+    inner: EutilsClient | None = None
     _recorded: dict[tuple[str, str], dict[str, Any]] = field(default_factory=dict, repr=False)
 
     def esummary(self, db: str, ids: list[str]) -> dict[str, dict[str, Any]]:
         wanted = [uid for uid in dict.fromkeys(ids) if (db, uid) not in self._recorded]
         if wanted:
-            fetched = super().esummary(db, wanted)
+            fetched = (self.inner.esummary if self.inner is not None else super().esummary)(db, wanted)
             self._recorded.update({(db, uid): fetched.get(uid, {}) for uid in wanted})
         return {uid: self._recorded[(db, uid)] for uid in ids}
 
 
-def _dbsnp_client() -> _RecordedEutils:
-    """The run's NCBI client for the dbSNP witness and the merge check; a test patches this (RM398)."""
-    return _RecordedEutils()
+def _dbsnp_client(inner: EutilsClient | None = None) -> _RecordedEutils:
+    """The run's NCBI client for the dbSNP witness and the merge check; a test patches this (RM398).
+
+    `inner` is the caller's `clients.eutils` when one was given (RM404), wrapped so each record is still
+    fetched once; with none the wrapper asks over its own transport, as before 0.9.
+    """
+    return _RecordedEutils(inner=inner)
 
 
 def _split_by_layer(behind: list[DatasetCurrency]) -> tuple[list[DatasetCurrency], list[DatasetCurrency]]:
@@ -233,6 +254,7 @@ def enrich(
     mode: str = "best_effort",
     offline: bool = False,
     ensembl_cache: Path | None = None,
+    rsid_index: Path | None = None,
     clinvar_cache: Path | None = None,
     pubmind_cache: Path | None = None,
     civic_cache: Path | None = None,
@@ -249,12 +271,16 @@ def enrich(
     verify_datasets: bool = True,
     keep_par_twin: bool = False,
     rederive: bool = False,
+    rederive_subjects: Iterable[str] | None = None,
+    verify_written_only: bool = False,
     keep_staging: bool = False,
     progress: Callable[[int, int], None] | None = None,
     resolver: RsidResolver | None = None,
     gnomad_client: Optional["GnomadClient"] = None,
     grch37_client: Grch37Client | None = None,
     release_probes: Mapping[str, ReleaseProbe] | None = None,
+    clients: LookupClients | None = None,
+    sequences: SequenceProxy | None = None,
 ) -> EnrichmentResult:
     """Resolve a spec's variants into `resolution.csv`. See the module docstring for the chain/modes.
 
@@ -264,6 +290,12 @@ def enrich(
     decides its `alts` — and since `alts` is a fact column, that decides the compiled bytes. The
     ordering is therefore chosen so no already-compiled module's `artifact.digest` can move when a new
     link is added. `--offline` clamps the chain to the two local caches (zero egress).
+
+    `rsid_index` is the `ensembl_rsid_index` lane's directory, beside `ensembl_cache` (0.9, RM431), for a
+    host that passes its lanes' paths explicitly (the registry's enrich step): the Ensembl link's rsID
+    lookup reads it, so given it is the only place an index is looked for, never the environment; `None`
+    keeps the lane's ladder. An index is read only when it pins the core, and the answer is the scan's
+    either way. Nothing here builds one (`cache rebuild --only ensembl_rsid_index`).
 
     `mint_vrs` stamps a `ga4gh:VA.…` allele id onto every resolved row (see `vrs.mint_resolution_rows`).
     Substitutions mint offline with no dependency; indels need the sequence, so they mint only when the
@@ -337,14 +369,60 @@ def enrich(
     rows — re-deriving must never be a way to shorten the table, which is the very incident this
     transaction exists for.
 
+    `rederive_subjects` limits re-derivation to the named `variant_key` values. A supplied list
+    selects its subjects even without `rederive=True`; all loci of a subject are replaced together.
+    Other recorded rows are carried verbatim. A missing, unselected subject stays unresolved.
+
+    `verify_written_only` limits row checks to fresh resolution rows, including gap fills. A strict
+    run can therefore skip a mismatch on a carried row. Dataset currency still checks module releases.
+
     `progress` is called `(done, total)` over **subjects**, `total` known before the first call. It
     exists for a caller with an idle timeout: what such a caller needs is a keepalive with monotonic
     progress, which a phase counter cannot give (a twenty-nine-minute phase emits nothing) and a link
     counter cannot promise (its total is not known until resolution finds the links). Exceptions from
     the callback are not swallowed; under the transaction that costs nothing, since the staged answers
     survive an abort exactly as they survive a kill.
+
+    **A host's clients and sequence proxy (0.9, RM404).** `clients` is the network-client bundle a host
+    holds (`LookupClients`), so a run is paced together with every other call through it. The run reads
+    four of its fields: `ensembl` (the live link), `gnomad` (the last link), `grch37` (the wrong-build
+    diagnosis) and `eutils` (the dbSNP placement witness and the rsID merge check, through one wrapper of
+    the run's own so each record is still fetched once). An explicit `resolver=`, `gnomad_client=` or
+    `grch37_client=` wins over the bundle's field. A field left unset is built by the run and closed by
+    it, as with no bundle, and is never stored on the bundle. **The run closes no client it was given**,
+    in `clients` or as an argument: the caller holds them, and closes them.
+
+    `sequences` is the reference-sequence proxy, and when given it is the **only** GRCh38 sequence source
+    the run reads (S157; the wrong-build diagnosis reads GRCh37 through `grch37_client`): the
+    reference-allele check, left-alignment, the hosting and placement reads, the VRS minter and the
+    anchor base read by the `EnsemblResolver` the run builds all take it, and none builds its own. A
+    resolver the caller gives (`resolver=` or `clients.ensembl`) is not altered: `enrich` never reaches
+    into a caller's resolver, which reads an indel's anchor base through whatever it holds. So a caller
+    passing both its own resolver and a proxy, who wants the resolver's reads to go through that proxy,
+    gives the resolver the proxy itself; a stock `EnsemblResolver` builds a default proxy for that read,
+    and 0.9 has no public parameter to point it elsewhere. A `SequenceProxy` reading a
+    local seqrepo (`uri="seqrepo+file://…"`, which needs `biocommons.seqrepo` installed beside the
+    enricher) is how a host reads locally with the network up.
+    One proxy may be shared by parallel runs; its memo is locked, and holds answers only: the run reads
+    the proxy through a view of its own, which holds the failures the run sees (a failed build, a read
+    that raised or came back empty), so the next run sharing the proxy asks again. Under `offline=True`
+    it is **not used**:
+    offline outranks it as it outranks an injected client (`@gated-source-caches`), and the run warns
+    once (`OFFLINE_OUTRANKS_SEQUENCES`) and reads no sequence, exactly as an offline run with none.
     """
     spec_dir = Path(spec_dir)
+    # The bundle's fields fill only what no explicit argument gave; a caller's client is never closed,
+    # and the run still closes whatever it builds itself (`owned` below is "the run built it").
+    if clients is not None:
+        resolver = resolver if resolver is not None else clients.ensembl
+        gnomad_client = gnomad_client if gnomad_client is not None else clients.gnomad
+        grch37_client = grch37_client if grch37_client is not None else clients.grch37
+    eutils = clients.eutils if clients is not None else None
+    if offline and sequences is not None:
+        logger.warning(OFFLINE_OUTRANKS_SEQUENCES)
+        sequences = None
+    if isinstance(rederive_subjects, str):
+        rederive_subjects = (rederive_subjects,)
     # The lock spans the whole window — from the read of the recorded table to the commit — so it is
     # taken here and not inside the run. A `write=False` caller touches no file and takes none.
     with spec_lock(spec_dir, enabled=write, error=EnrichmentError):
@@ -353,6 +431,7 @@ def enrich(
             mode=mode,
             offline=offline,
             ensembl_cache=ensembl_cache,
+            rsid_index=rsid_index,
             clinvar_cache=clinvar_cache,
             pubmind_cache=pubmind_cache,
             civic_cache=civic_cache,
@@ -368,24 +447,30 @@ def enrich(
             verify_rsids=verify_rsids,
             verify_datasets=verify_datasets,
             keep_par_twin=keep_par_twin,
-            rederive=rederive,
+            rederive=rederive or rederive_subjects is not None,
+            rederive_subjects=frozenset(rederive_subjects) if rederive_subjects is not None else None,
+            verify_written_only=verify_written_only,
             keep_staging=keep_staging,
             progress=progress,
             resolver=resolver,
             gnomad_client=gnomad_client,
             grch37_client=grch37_client,
             release_probes=release_probes,
+            eutils=eutils,
+            sequences=sequences,
         )
 
 
-def _grch38_window(sequences: SequenceProxy) -> Callable[[str, int, int], str | None]:
+def _grch38_window(
+    subsequence: Callable[[str, int, int], str | None],
+) -> Callable[[str, int, int], str | None]:
     """GRCh38 reference bases over 1-based `[start, end]`, or `None` (offline, unreachable, off-table)."""
 
     def read_window(chrom: str, start: int, end: int) -> str | None:
         accession = refget_accession(chrom)
         if accession is None or start < 1 or end < start:
             return None
-        return sequences.subsequence(accession, start - 1, end)
+        return subsequence(accession, start - 1, end)
 
     return read_window
 
@@ -505,12 +590,6 @@ def _spelling_of(locus: Mapping[str, object], read_window: ReadWindow | None) ->
     )
 
 
-def _authored_verdict(judged: Mapping[str, SpellingVerdict], v: Subject) -> bool | None:
-    """`left_aligned` for a row recorded with the subject's own coordinate, judged once per subject."""
-    verdict = judged.get(v.variant_key)
-    return None if verdict is None else verdict.verdict
-
-
 def _wider_answer(
     offered: Iterable[Mapping[str, object]], placed: Iterable[Mapping[str, object]], genome_build: str
 ) -> str | None:
@@ -590,6 +669,7 @@ def _run_enrichment(
     mode: str,
     offline: bool,
     ensembl_cache: Path | None,
+    rsid_index: Path | None,
     clinvar_cache: Path | None,
     pubmind_cache: Path | None,
     civic_cache: Path | None,
@@ -606,14 +686,21 @@ def _run_enrichment(
     verify_datasets: bool,
     keep_par_twin: bool,
     rederive: bool,
+    rederive_subjects: frozenset[str] | None,
+    verify_written_only: bool,
     keep_staging: bool,
     progress: Callable[[int, int], None] | None,
     resolver: RsidResolver | None,
     gnomad_client: Optional["GnomadClient"],
     grch37_client: Grch37Client | None,
     release_probes: Mapping[str, ReleaseProbe] | None,
+    eutils: EutilsClient | None,
+    sequences: SequenceProxy | None,
 ) -> EnrichmentResult:
     """The run itself, with the advisory lock already held. Every argument is `enrich`'s; see it.
+
+    `eutils` is the bundle's `eutils` field and `sequences` the caller's proxy, already set aside by
+    `enrich` under `offline`.
 
     Split out rather than indented under a `with` so the chain below reads as one straight sequence of
     links and passes, which is how every comment in it is written.
@@ -652,11 +739,12 @@ def _run_enrichment(
     if write:
         # Fail on a placeholder or half-edited licence table now, before the fetch (S98, RM231).
         require_sources_file(spec_dir, error=EnrichmentError)
+    recorded_rows: list[ResolutionRow] = []
     if resolution_path.exists():
-        rows, errors, _ = load_csv_rows(resolution_path, ResolutionRow, resolution_path.name)
+        recorded_rows, errors, _ = load_csv_rows(resolution_path, ResolutionRow, resolution_path.name)
         if errors:
             raise EnrichmentError(f"existing {resolution_path.name} is invalid: {errors[0]}")
-        for row in rows:
+        for row in recorded_rows:
             # Keyed by the row's declared *subject* — `ResolutionRow._KEY_FIELDS`, whose rule is
             # `subject` rather than `equality` because one rsID legitimately resolves to several loci
             # and this pass replaces the group whole (S51).
@@ -692,6 +780,17 @@ def _run_enrichment(
 
     # Every table that can ask for a coordinate, not just variants.csv (a PGx module has none).
     subjects = collect_subjects(spec_dir, variants, genome_build)
+    if rederive_subjects is not None:
+        # An unselected gap has no row to carry. Keeping it in the covered partition prevents
+        # a fetch, and the assembly loop reports it unresolved just like an empty placement.
+        covered = {
+            _subject_key(v): existing.get(_subject_key(v), [])
+            for v in subjects
+            if v.variant_key not in rederive_subjects
+        }
+    check_subjects = (
+        [v for v in subjects if _subject_key(v) not in covered] if verify_written_only else subjects
+    )
     # The progress unit. Constructed here because this is the first moment `total` is knowable, and it
     # reports `(0, total)` immediately so a caller rendering a bar has the denominator before any work
     # starts. Subjects that share an rsID settle together, which is why the map is built once.
@@ -717,7 +816,7 @@ def _run_enrichment(
     # so skipping the pairs it covers would compare the module against itself.
     verify_pairs = [
         (v.rsid, v.chrom, v.start, v.ref)
-        for v in subjects
+        for v in check_subjects
         if v.rsid is not None and v.chrom is not None and v.start is not None
     ]
 
@@ -786,9 +885,15 @@ def _run_enrichment(
 
     # One proxy, one read cache for the run: the hosting filter settles an undecided indel with it
     # (RM274), at each link's answer (RM382) and again in the assembly loop, and minting and the
-    # reference check reuse it after the table is assembled. Lazy, so nothing is read until asked.
-    sequences = SequenceProxy(offline=offline)
-    read_window = _grch38_window(sequences) if genome_build == "GRCh38" else None
+    # reference check reuse it after the table is assembled. Lazy, so nothing is read until asked. A
+    # caller's proxy is that one (RM404, S157), and nothing below builds a second.
+    caller_sequences = sequences is not None
+    if sequences is None:
+        sequences = SequenceProxy(offline=offline)
+    # Read through this run's view: the proxy's answers, and this run's failures, which a caller's proxy
+    # shared by the next run never carries (RM404).
+    sequences = held_by_one_run(sequences)
+    read_window = _grch38_window(sequences.subsequence) if genome_build == "GRCh38" else None
     # One minter for the run too: the placement comparison below and the stamping after the table
     # both mint, and sharing it shares the proxy's read cache.
     minter = VrsMinter(offline=offline, sequences=sequences)
@@ -870,6 +975,7 @@ def _run_enrichment(
                 positions,
                 non_nucleotide=non_nucleotide_rsids,
                 candidate_loci=rev_loci["cache"],
+                rsid_index=rsid_index,
             )
             reverse_maps_read.add("cache")
         except Exception as exc:
@@ -985,6 +1091,8 @@ def _run_enrichment(
     # A seeded answer's release was never written down by the run that asked, so it is recorded as
     # unknown rather than as this run's (RM373): `staged_rsids`, defined with the fall-through above.
     for rsid, (staged_source, staged_loci) in staged.items():
+        if rederive_subjects is not None and rsid not in asks_on:
+            continue
         if not (gnomad_runs if staged_source == "gnomad" else live_ensembl_runs):
             dropped_link.append(staged_source)
             continue
@@ -1023,17 +1131,24 @@ def _run_enrichment(
         )
         if missing:
             owned = resolver is None
-            client = resolver or EnsemblResolver()
+            # With a caller's proxy, the resolver the run builds reads an indel's anchor base through it
+            # (RM404); with none, it builds its own as before 0.9. A caller's resolver is never altered.
+            if resolver is not None:
+                client = resolver
+            elif caller_sequences:
+                client = EnsemblResolver(_read_base=_grch38_base_reader(sequences.subsequence))
+            else:
+                client = EnsemblResolver()
             ensembl_link = client
             ensembl_mark = retired_mark(client)
             rest_answered = False
             try:
-                # RM401: many rsIDs per request where the resolver can (ours, `_BatchResolver`), each
-                # answer taken and journalled below before the next batch is asked; one at a time where
-                # it cannot (a host's resolver written before it).
+                # RM401: many rsIDs per request where the resolver can (`BatchResolver`, public since
+                # RM404), each answer taken and journalled below before the next batch is asked; one at a
+                # time where it cannot (a host's resolver written before it).
                 answers = (
-                    client._resolve_rsids(missing)
-                    if isinstance(client, _BatchResolver)
+                    client.resolve_rsids_batched(missing)
+                    if isinstance(client, BatchResolver)
                     else ((rsid, client.resolve_rsid(rsid)) for rsid in missing)
                 )
                 for rsid, (loci, src) in answers:
@@ -1135,7 +1250,8 @@ def _run_enrichment(
     )
     clinvar_gkm_ref = resolve_clinvar_gkm_reference(clinvar_gkm_cache) if genome_build == "GRCh38" else None
     # The dbSNP witness and the merge check share one client, so each rsID's record is fetched once (RM398).
-    dbsnp = _dbsnp_client() if verify_rsids and not offline else None
+    # It wraps a caller's `clients.eutils` when there is one (RM404); the wrapper is closed below, never it.
+    dbsnp = _dbsnp_client(eutils) if verify_rsids and not offline else None
     if genome_build != "GRCh38":
         placement = PlacementCheck(not_checked="unsupported")
     else:
@@ -1215,17 +1331,20 @@ def _run_enrichment(
     # the same verdict is stamped on the row the assembly below writes for it.
     spelling = SpellingCheck()
     authored_spelling: dict[str, SpellingVerdict] = {}
-    for v in subjects:
-        if (
-            v.chrom is None
-            or v.start is None
-            or not v.ref
-            or not v.alts
-            or v.variant_key in authored_spelling
-        ):
-            continue
-        authored_spelling[v.variant_key] = spelling_verdict(v.chrom, v.start, v.ref, v.alts, read_window)
-        spelling.judge(v.variant_key, v.chrom, v.start, v.ref, v.alts, authored_spelling[v.variant_key])
+
+    def authored_alignment(v: Subject) -> bool | None:
+        """Judge an authored coordinate once, when its row is in scope."""
+        if v.chrom is None or v.start is None or not v.ref or not v.alts:
+            return None
+        if v.variant_key not in authored_spelling:
+            verdict = spelling_verdict(v.chrom, v.start, v.ref, v.alts, read_window)
+            authored_spelling[v.variant_key] = verdict
+            spelling.judge(v.variant_key, v.chrom, v.start, v.ref, v.alts, verdict)
+        return authored_spelling[v.variant_key].verdict
+
+    if not verify_written_only:
+        for v in subjects:
+            authored_alignment(v)
 
     # ── assemble the table (a row for every subject; expansion → N rows) ───────────────────────
     # **Was any rsID link consulted at all?** (RM98.) Every one of them is gated: the two caches on
@@ -1468,6 +1587,9 @@ def _run_enrichment(
                     (v.rsid, str(t.get("chrom")), int(t.get("start") or 0)) for t in twins
                 )
             if loci:
+                if v.chrom is not None and verify_written_only:
+                    # This pair gets its reference placement, but its authored spelling is checked too.
+                    authored_alignment(v)
                 src = source_of_rsid.get(v.rsid, "cache")
                 # **A coordinate this run fills is written left-aligned (RM270)** — the spelling a
                 # caller's `bcftools norm -m -any` writes, so an exact join meets it. Only for an
@@ -1537,7 +1659,7 @@ def _run_enrichment(
                         genome_build=genome_build,
                         source="authored",
                         status="resolved",
-                        left_aligned=_authored_verdict(authored_spelling, v),
+                        left_aligned=authored_alignment(v),
                         source_loci=_wider_answer(
                             offered, [{"chrom": v.chrom, "start": v.start}], genome_build
                         ),
@@ -1661,7 +1783,7 @@ def _run_enrichment(
                     source_release=releases.of(src),
                     status=status,
                     rsid_alternates=alternates,
-                    left_aligned=_authored_verdict(authored_spelling, v),
+                    left_aligned=authored_alignment(v),
                 )
             )
         else:
@@ -1680,13 +1802,10 @@ def _run_enrichment(
                     genome_build=genome_build,
                     source="authored",
                     status="resolved",
-                    left_aligned=_authored_verdict(authored_spelling, v),
+                    left_aligned=authored_alignment(v),
                 )
             )
 
-    # The subject keys the carry-forward below puts back, so the report can leave them out of its own
-    # denominator: they are in `out` by then, and a subject nothing asked must not be counted as one
-    # that was re-asked.
     if dropped_rsids:
         # Aggregated by reason, once per run, the phrase pinned by its test (`@warning-text-is-api`).
         logger.warning(
@@ -1696,7 +1815,6 @@ def _run_enrichment(
             ", ".join(str(k) for k in dropped_rsids[:5]),
         )
 
-    carried_keys: set[tuple] = set()
     if rederive:
         # **Re-deriving must never be a way to shorten the table.** A recorded subject the sources
         # could not be asked about this run produces no fresh row at all — the three branches above
@@ -1727,7 +1845,6 @@ def _run_enrichment(
                 continue
             out.extend(recorded)
             carried_rows.update(id(row) for row in recorded)
-            carried_keys.add(subject_key)
             # A subject no branch declared a reason for is said without claiming one (RM394).
             carried[recorded[0].variant_key] = no_row_reason.get(subject_key, "not_re_answered")
             if any(r.chrom is not None for r in recorded):
@@ -1800,9 +1917,18 @@ def _run_enrichment(
     # Content-addressed allele identity, stamped after the chain has settled the coordinates (there is
     # nothing to mint from before that). Existing ids are never overwritten. `sequences` is the run's
     # one proxy, built above the table so the hosting filter shares its cache.
+    fresh_rows = (
+        [row for row in out if id(row) not in carried_rows] if (rederive or verify_written_only) else out
+    )
+    writable_rows = fresh_rows if rederive_subjects is not None else out
+    check_rows = fresh_rows if verify_written_only else out
+    checked_keys = {r.variant_key for r in check_rows} if verify_written_only else None
+    check_variants = (
+        [v for v in variants if v.variant_key in checked_keys] if checked_keys is not None else variants
+    )
     mint_result: MintResult | None = None
     if mint_vrs:
-        mint_result = mint_resolution_rows(out, minter=minter)
+        mint_result = mint_resolution_rows(writable_rows, minter=minter)
         logger.info(
             "VRS: minted %d id(s) (%d stdlib, %d normalized), %d unmintable, %d already present",
             mint_result.minted,
@@ -1821,11 +1947,12 @@ def _run_enrichment(
             logger.warning("VRS version — %s", line)
 
     # Validation pass: does the authored data agree with the genome? (Reported, never repaired.)
-    ref_check = (
-        verify_reference_alleles(out, sequences=sequences, offline=offline)
-        if verify_ref
-        else RefCheck([], 0, "not_requested")
-    )
+    if not verify_ref:
+        ref_check = RefCheck([], 0, "not_requested")
+    elif verify_written_only and not check_rows:
+        ref_check = RefCheck([], 0, "nothing_to_check")
+    else:
+        ref_check = verify_reference_alleles(check_rows, sequences=sequences, offline=offline)
     ref_mismatches = ref_check.mismatches
     for line in summarize_ref_mismatches(ref_mismatches):
         logger.warning("Reference-allele mismatch — %s", line)
@@ -1884,9 +2011,12 @@ def _run_enrichment(
     # Which closed `VALID_VERIFICATION_SKIPS` key the prose reason above maps onto. Recorded beside the
     # sentence rather than parsed back out of it, which is the whole point of RM45's vocabularies.
     clin_sig_skip: str | None = None
+    no_variant_checks = verify_written_only and not check_variants
     if not verify_clinsig:
         clin_sig_not_checked = "not_requested"
         clin_sig_skip = "not_requested"
+    elif no_variant_checks:
+        clin_sig_not_checked = clin_sig_skip = "nothing_to_check"
     elif clinvar_ref is None:
         clin_sig_not_checked = "no_snapshot"
         clin_sig_skip = "no_reference"
@@ -1902,7 +2032,7 @@ def _run_enrichment(
             clin_sig_skip = "tautology"
             logger.info("ClinVar clin_sig cross-check not run: %s.", drafted_from_it)
         else:
-            comparison = compare_clin_sig(variants, out, reference=clinvar_ref)
+            comparison = compare_clin_sig(check_variants, check_rows, reference=clinvar_ref)
             if comparison is None:
                 clin_sig_not_checked = "unusable_snapshot"
                 clin_sig_skip = "no_reference"
@@ -1924,8 +2054,12 @@ def _run_enrichment(
     refutation_subjects: int | None = None
     refutation_basis: str | None = None
     civic_ref = resolve_civic_reference(civic_cache)
-    refutation = compare_refutations(variants, out, reference=civic_ref)
-    if refutation is None:
+    refutation = (
+        None if no_variant_checks else compare_refutations(check_variants, check_rows, reference=civic_ref)
+    )
+    if no_variant_checks:
+        refutation_not_checked = refutation_skip = "nothing_to_check"
+    elif refutation is None:
         refutation_not_checked = "no_snapshot" if civic_ref is None else "unusable_snapshot"
         refutation_skip = "no_reference"
     else:
@@ -1937,8 +2071,13 @@ def _run_enrichment(
     # since*: a module can be drafted once and enriched for a year, and only the pass everybody runs
     # will notice. It is a live read, so `--offline` is a real skip; a module that never ran
     # `civic citations` has no recorded status and is `nothing_to_check`, which is not a pass.
+    studies = read_studies(spec_dir)
+    if studies is not None and checked_keys is not None:
+        # A study joins at rsID or position, even when its variant's allele has a VRS key.
+        study_keys = {derive_variant_key(v.rsid, v.chrom, v.start, v.ref) for v in check_variants}
+        studies = [study for study in studies if study.variant_key in study_keys]
     evidence_status = check_evidence_status_currency(
-        variants, out, read_studies(spec_dir), reference=civic_ref, offline=offline
+        check_variants, check_rows, studies, reference=civic_ref, offline=offline
     )
     for moved in evidence_status.findings:
         # Warned in both modes, escalated in neither, and the row is left exactly as authored: CIViC
@@ -1963,10 +2102,10 @@ def _run_enrichment(
     # refused `strict` run must leave the module exactly as it was, and a record written before the
     # gates would survive a refusal.
     clin_sig_record: ConcordanceRecord | None = None
-    if verify_clinsig:
+    if verify_clinsig and not no_variant_checks:
         clin_sig_record = clin_sig_concordance(
-            variants,
-            out,
+            check_variants,
+            check_rows,
             reference=clinvar_ref,
             pubmind_reference=pubmind_ref,
             sources=recorded_sources,
@@ -2003,9 +2142,11 @@ def _run_enrichment(
     #
     # Silent on every module with no overlay answers, which is every module today.
     answered_calls: AnsweredCallReport | None = None
-    if verify_clinsig:
+    if verify_clinsig and not no_variant_checks:
         answered_calls = answered_call_shift(
-            spec_dir, clin_sig_record.calls if clin_sig_record is not None else None
+            spec_dir,
+            clin_sig_record.calls if clin_sig_record is not None else None,
+            checked_keys=checked_keys,
         )
         for line in answered_call_sentences(answered_calls):
             # Warned in both modes and escalated in neither, with more force than the concordance
@@ -2032,7 +2173,10 @@ def _run_enrichment(
         # two keys is a meta-table disagreement hidden as a difference, and NCBI is the merge oracle.
         # The members' ids are asked and reported, never resolved — a verdict is stamped only on a row
         # `resolution.csv` already carries.
-        asked = sorted({r.rsid for r in out if r.rsid} | set(member_rsids))
+        ids = {r.rsid for r in check_rows if r.rsid}
+        if not verify_written_only:
+            ids.update(member_rsids)
+        asked = sorted(ids)
         rsid_subjects = len(asked)
         try:
             statuses = check_rsids(asked, client=dbsnp)
@@ -2059,7 +2203,7 @@ def _run_enrichment(
                 f"dbSNP could not be asked about {rsid_subjects} rsID(s): {exc}",
             )
         by_rsid = {s.rsid: s for s in statuses}
-        for row in out:
+        for row in fresh_rows if verify_written_only else writable_rows:
             status = by_rsid.get(row.rsid or "")
             if status is not None:
                 row.rsid_status = status.state
@@ -2151,7 +2295,7 @@ def _run_enrichment(
     # row's own `source` — and filled only where empty, so a hand-written authority survives exactly as
     # a hand-written `vrs_id` does. A link with no mapping (`authored`, `reversed`, `manual`) keeps
     # `None`, which is the answer rather than a gap: there is no external source to declare.
-    for row in out:
+    for row in writable_rows:
         if row.authority is None:
             row.authority = resolution_authority(row.source)
 
@@ -2160,13 +2304,13 @@ def _run_enrichment(
     # The drift canary, and it fires only where a baseline exists. `rm` plus a re-run destroys the old
     # values before the fresh ones arrive, so nothing holds both sides and that path re-derives
     # silently and correctly; here the recorded table is still in memory and the fresh one has not
-    # been committed, so the comparison costs nothing. `None` when nobody re-derived — an empty list
-    # means every recorded subject was re-asked and every one still answers the same, which is a very
-    # different statement and the only one of the two that is a clean bill.
+    # been committed. Only fresh answers enter the comparison and its denominator.
+    reasked: list[str] | None = None
     rederived: list[SubjectDrift] | None = None
     if rederive:
+        reasked = []
         rederived, compared, off_primary = _rederived_drift(
-            existing, out, skip=carried_keys, mint=mint, read_window=read_window
+            existing, fresh_rows, compared_subjects=reasked, mint=mint, read_window=read_window
         )
         if off_primary:
             # RM400: before it the REST rung wrote GRCh38 patch and alt contig mappings as loci. The fresh
@@ -2315,6 +2459,7 @@ def _run_enrichment(
         placement=placement,
         spelling=spelling,
         rederived=rederived,
+        reasked=reasked,
         dataset_currency=dataset_currency,
         clin_sig_record=clin_sig_record,
         answered_calls=answered_calls,
@@ -2514,6 +2659,20 @@ def _run_enrichment(
     # *a refused strict run changes nothing* a promise rather than an accident of statement order —
     # and it is asserted on the bytes on disk by test, not on a return value.
     if write:
+        if clin_sig_record is not None:
+            parents, calls = clin_sig_record.parents, clin_sig_record.calls
+            if checked_keys is not None:
+                parents = _replace_checked_subjects(
+                    spec_dir, CONCORDANCE_CSV, ClinSigConcordanceRow, parents, checked_keys, EnrichmentError
+                )
+                calls = _replace_checked_subjects(
+                    spec_dir,
+                    AUTHORITY_CALLS_CSV,
+                    ClinSigAuthorityCallRow,
+                    calls,
+                    checked_keys,
+                    EnrichmentError,
+                )
         # The licence rows land inside the table's commit (S98, RM231): `enrich()` was the only pass
         # that consulted sources and recorded none — the reason `VALID_SOURCE_LAYERS` reserves a
         # `"resolution"` member nothing ever wrote. Keyed on the authority rather than the link, so
@@ -2521,6 +2680,8 @@ def _run_enrichment(
         _write_resolution_csv(
             out,
             resolution_path,
+            recorded=recorded_rows,
+            preserve=carried_rows if rederive_subjects is not None else set(),
             before_commit=lambda: record_table_sources(
                 # The link's authority, and every placement witness a written row names (RM267):
                 # a pass that consults a source writes its row (`@write-the-sourcerow`), and one that
@@ -2537,7 +2698,7 @@ def _run_enrichment(
                 error=EnrichmentError,
                 # `--rederive` re-answers every row, so the committed table is this pass's whole answer
                 # and a licence row no row names is retired with it (RM383). A merging run keeps them.
-                answered_every_row=rederive,
+                answered_every_row=rederive and rederive_subjects is None,
             ),
         )
         if clin_sig_record is not None:
@@ -2546,9 +2707,7 @@ def _run_enrichment(
             # the archive caught up with them. A run where nobody could be consulted returns `None`
             # above and writes nothing, so a previous run's record survives a run that could not
             # replace it.
-            write_concordance_tables(
-                spec_dir, clin_sig_record.parents, clin_sig_record.calls, error=EnrichmentError
-            )
+            write_concordance_tables(spec_dir, parents, calls, error=EnrichmentError)
         # The attestation (RM45), written once for the whole run — the proof-of-work binds the
         # document, so recording per check would pay it once per check for one guarantee. It goes after
         # `resolution.csv` and before the licence rows for no reason but reading order; the binding is
@@ -2576,8 +2735,9 @@ def _run_enrichment(
                 rsid_subjects=rsid_subjects,
                 stale_rsids=stale_rsids,
                 rsid_unanswered=rsid_unanswered,
+                written_only=verify_written_only,
                 pairs=pair_check,
-                pair_release=run_label(cache_release, out, "cache"),
+                pair_release=run_label(cache_release, check_rows, "cache"),
                 placement=placement,
                 currency=dataset_currency,
             ),

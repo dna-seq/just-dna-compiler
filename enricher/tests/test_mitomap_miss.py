@@ -408,3 +408,38 @@ def test_an_empty_supplied_parent_is_not_swapped_for_the_machines_cache(
     )
     assert set(found) == {"mitomap"}
     assert len(missing) == 1 and missing[0].startswith("clinvar ") and "holds no snapshot" in missing[0]
+
+
+# ── a moved parent makes the lane stale in status (0.9, RM431 placed by the pm 757f5e32) ──────────────
+
+
+def test_lane_status_calls_the_increment_stale_over_a_moved_parent_and_present_over_a_gone_one(
+    parents, tmp_path: Path, build_clinvar_mt, clinvar_mt_vcf: str
+) -> None:
+    """`stale_parents` knew, and `draft` said so, but `cache status` called the increment present: one verdict,
+    two readers. A parent that is gone is no moved parent (`@a-derived-lane-has-parents-…`): still present."""
+    mitomap_dir, clinvar_dir = parents
+    miss = build_miss_snapshot(mitomap_dir, clinvar_dir, tmp_path / "miss").out_dir
+    lane = caches.LANES_BY_NAME["mitomap_miss"]
+    where = {"mitomap": mitomap_dir, "clinvar": clinvar_dir, "mitomap_miss": miss}
+    (status,) = caches.lane_status([lane], locations=where)
+    assert (status.state, status.stale) == ("present", None)
+
+    build_clinvar_mt(clinvar_mt_vcf.replace("##fileDate=2026-06-27", "##fileDate=2026-09-01"))
+    (status,) = caches.lane_status([lane], locations=where)
+    assert status.state == "stale"
+    assert status.stale == (
+        "the clinvar parent has moved since this increment was built (pinned clinvar_2026-06-27, now clinvar_2026-09-01); "
+        "rebuild it with `just-dna-enricher mitomap miss`"
+    )
+
+    shutil.rmtree(clinvar_dir)
+    (status,) = caches.lane_status([lane], locations=where)
+    assert (status.state, status.stale) == ("present", None)
+
+
+def test_every_derived_lane_says_when_its_parents_moved() -> None:
+    """A lane with parents and no `stale_reason` is called present over moved parents (`@registry-completeness`)."""
+    derived = {lane.name for lane in caches.CACHE_LANES if lane.parents}
+    assert derived, "the registry has derived lanes"
+    assert {name for name in derived if caches.LANES_BY_NAME[name].stale_reason is None} == set()

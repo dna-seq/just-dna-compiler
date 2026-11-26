@@ -111,6 +111,7 @@ def _verification_records(
     placement: PlacementCheck,
     currency: CurrencyCheck | None,
     rsid_unanswered: tuple[str, str] | None = None,
+    written_only: bool = False,
 ) -> list[VerificationRecord]:
     """The checks this pass puts, as records `verification.json` can carry (RM45).
 
@@ -148,7 +149,9 @@ def _verification_records(
                 "reference_allele",
                 ref_check.not_checked,
                 detail=(
-                    "this tier has a refget table for GRCh38 only, so an authored ref on another "
+                    "no fresh resolution row to compare"
+                    if ref_check.not_checked == "nothing_to_check"
+                    else "this tier has a refget table for GRCh38 only, so an authored ref on another "
                     "assembly has nothing to be compared against (RM15)"
                     if ref_check.not_checked == "unsupported"
                     else f"every one of {ref_check.unread} reference read(s) failed, so no authored ref was compared"
@@ -291,7 +294,9 @@ def _verification_records(
                 "published_refutation",
                 refutation_skip,
                 detail=(
-                    "no CIViC snapshot was provisioned this run, so no authored direction was "
+                    "no fresh variant row to compare"
+                    if refutation_skip == "nothing_to_check"
+                    else "no CIViC snapshot was provisioned this run, so no authored direction was "
                     "compared against a published refutation. Build one with `civic build "
                     "--release <date> --submitted`"
                     if refutation_detail == "no_snapshot"
@@ -353,6 +358,8 @@ def _verification_records(
                 source="dbsnp",
             )
         )
+    elif written_only and not rsid_subjects:
+        records.append(skipped("rsid_currency", "nothing_to_check", source="dbsnp"))
     elif rsid_unanswered is not None:
         # dbSNP never answered (RM361): the subjects were never asked, so a `ran` with no findings
         # would publish an outage as a clean currency check.
@@ -396,7 +403,9 @@ def _verification_records(
             )
         elif pairs.not_checked == "nothing_to_check":
             detail = (
-                "no row authors both an rsID and a coordinate, so the module makes no pair claim to "
+                "no fresh row authors both an rsID and a coordinate"
+                if written_only
+                else "no row authors both an rsID and a coordinate, so the module makes no pair claim to "
                 "compare — this is not a comparison that found nothing"
             )
         elif not_compared:
@@ -541,6 +550,12 @@ def _verification_records(
     # Deliberately takes neither `variants` nor `rows`: nothing here may count anything itself, and a
     # function that cannot see the tables cannot be tempted to. The denominators come in already
     # computed, from the checks that computed them.
+    if written_only:
+        for record in records:
+            if record.check != "dataset_currency":
+                record.detail = " ".join(
+                    filter(None, ("Verification scoped to fresh resolution rows.", record.detail))
+                )
     return records
 
 

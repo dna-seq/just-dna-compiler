@@ -18,8 +18,11 @@ from just_dna_enricher.caches import (
     CacheLane,
     RebuildOutcome,
     RebuildRequest,
+    _ensure_declaration,
     _gate,
+    _named_only_detail,
     _rebuild_blocked,
+    _rebuild_detail,
     _unpinnable,
     lane_name,
     lane_status,
@@ -28,9 +31,25 @@ from just_dna_enricher.caches import (
     rebuild_lane,
 )
 from just_dna_enricher.cli._shared import _use
-from just_dna_enricher.download import SnapshotNotPublished, _FollowHub
+from just_dna_enricher.download import SnapshotNotPublished, _FollowHub, _named_groups
 from just_dna_enricher.licensing import LicenseRefusal, check_declared_use
 from just_dna_enricher.locations import CACHES_DIRNAME, RELEASE_FILENAME
+
+#: Why `cache rebuild --rehearse-download` is refused without `--dry-run` and `--publish` (RM412). Pinned
+#: by a test, because a refusal's reason is what the operator acts on (`@warning-text-is-api`). The
+#: flags still missing follow it as `Missing: …`.
+REHEARSE_DOWNLOAD_REFUSAL = (
+    "--rehearse-download rehearses a publish: it downloads and builds each lane for real, then rehearses "
+    "the upload without sending it. It needs --dry-run (without it the upload would be real) and --publish "
+    "(without it there is no upload to rehearse)."
+)
+
+#: Why `cache pull --groups` is refused beside any lane but `ensembl` (RM437), pinned by a test. Groups
+#: are the split Ensembl release's alone, and with no `--only` the selection is every lane.
+GROUPS_NEED_ENSEMBL_ONLY = (
+    "--groups selects groups of the ensembl lane, so it is refused beside any other lane; with no --only "
+    "every lane is selected. Pass --only ensembl."
+)
 
 # ── the caches (pre-provision, rebuild, and say what is where) ──────────────────────────────────
 #
@@ -39,6 +58,9 @@ from just_dna_enricher.locations import CACHES_DIRNAME, RELEASE_FILENAME
 # it, so `cache status` reported nine caches on a machine that has twelve and `cache pull` could not
 # be asked about the other three at all. The registry is walked by a test against the `*_build`
 # modules on disk, which a table in a CLI module never was (`@registry-completeness`).
+
+#: The lanes a bare `cache rebuild` passes over, derived from the registry for `--only`'s help (RM431).
+_NAMED_ONLY = ", ".join(lane.name for lane in CACHE_LANES if lane.named_only is not None)
 
 cache_app = typer.Typer(
     add_completion=False,
@@ -124,10 +146,14 @@ def cache_status_() -> None:
                 [f"`{lane.build_command}`"] if lane.build_command is not None else []
             )
             how = " or ".join(routes)
-            typer.secho(
-                f"  {lane.name:13} absent   — {lane.serves}; provision with {how}",
-                fg=typer.colors.YELLOW,
+            # A lane built only when named says so, with the build where it is read (RM431): `cache
+            # prepare` will not build it, and a bare `cache rebuild` writes under its own `--out`.
+            provision = (
+                _named_only_detail(lane, status.looked_in)
+                if lane.named_only is not None
+                else f"provision with {how}"
             )
+            typer.secho(f"  {lane.name:13} absent   — {lane.serves}; {provision}", fg=typer.colors.YELLOW)
             continue
         if status.state == "occupied":
             # Neither present nor absent: something is at the place the lane looks and it is not a
@@ -143,7 +169,26 @@ def cache_status_() -> None:
         # failure — the snapshot is still usable, so this says so instead of hiding it.
         label = status.release or ("(unreadable release.json)" if status.release_unreadable else "")
         size = f"{(status.size_bytes or 0) / 1e6:.1f} MB"
+        if status.state == "stale":
+            # On disk, and refused by its readers: its parents moved under it (review round 1, item 11).
+            typer.secho(
+                f"  {lane.name:13} stale    {status.path}  {label}  {size} — {status.stale}; "
+                f"{_rebuild_detail(lane, status.looked_in)}",
+                fg=typer.colors.YELLOW,
+            )
+            continue
         typer.secho(f"  {lane.name:13} present  {status.path}  {label}  {size}", fg=typer.colors.GREEN)
+
+
+def _echo_groups(lane: str, follow: _FollowHub) -> None:
+    """One line per group the lane's `ensure` looked at (RM437), on the success path and the failure paths alike."""
+    for group, outcome in follow.groups.items():
+        plain = outcome in ("pulled", "current")
+        typer.secho(
+            f"  {lane} group {group}: {outcome}",
+            fg=typer.colors.GREEN if plain else typer.colors.YELLOW,
+            err=not plain,
+        )
 
 
 @cache_app.command("pull")
@@ -161,6 +206,15 @@ def cache_pull_(
             "when unstated and REFUSED when commercial — downloading is taking the data."
         ),
     ),
+    groups: list[str] = typer.Option(
+        [],
+        "--groups",
+        help=(
+            "With --only ensembl: optional column groups of the split release to pull beside the core "
+            "(NAME[,NAME], repeatable), names from its manifest. Each is gated by its own licence, as the "
+            "gated lanes are by --use; a group once pulled is re-pulled whenever the core's release moves."
+        ),
+    ),
 ) -> None:
     """Download the published parquet snapshots from HuggingFace into the local caches.
 
@@ -175,9 +229,20 @@ def cache_pull_(
     A lane with nothing published says so and names its reason, which is a field on the registry
     rather than a comment: PharmVar's and PubMind's are refusals, ACMG's and MANE's are permissions
     nobody has established. Build those with `cache rebuild`.
+
+    `--groups` (RM437) pulls optional column groups of the split Ensembl release into the lane's
+    `groups/`, attested by its manifest and recorded in its pull record; readers take a group's path
+    from `locations.ensembl_group_dir`. `core` is not a group, and `--groups` is refused beside any lane
+    but `ensembl`, both before anything is read.
     """
     declared = _use(use)
     wanted, lanes = _selected(only)
+    try:
+        named_groups = list(_named_groups([name for item in groups for name in item.split(",")]))
+    except ValueError as exc:  # `core`, refused by the provisioner's own rule before anything runs
+        raise typer.BadParameter(str(exc), param_hint="--groups") from exc
+    if named_groups and wanted != {"ensembl"}:
+        raise typer.BadParameter(GROUPS_NEED_ENSEMBL_ONLY, param_hint="--groups")
     failures = 0
     # What this run left on disk and what it found unpublished, for the closing line (RM395): it
     # listed every lane with a pull route, so an unpublished lane was called available.
@@ -200,8 +265,20 @@ def cache_pull_(
                 typer.secho(f"  {lane.name}: skipped — {reason}", fg=typer.colors.YELLOW, err=True)
                 continue
         follow = _FollowHub(lane.release_label)
+        # The Ensembl lane's groups (RM437): the named ones, and the declaration a recorded one is
+        # re-pulled under when this run states one.
+        extra = {
+            **_ensure_declaration(lane, declared),
+            # Only the Ensembl lane runs when groups are named (`GROUPS_NEED_ENSEMBL_ONLY`, refused above).
+            **({"groups": named_groups} if named_groups else {}),
+        }
         try:
-            path = lane.ensure(_follow_hub=follow)
+            path = lane.ensure(_follow_hub=follow, **extra)
+        except LicenseRefusal as exc:
+            typer.secho(f"  {lane.name}: REFUSED — {exc}", fg=typer.colors.RED, err=True)
+            _echo_groups(lane.name, follow)
+            failures += 1
+            continue
         except SnapshotNotPublished as exc:
             # Asked, and absent. Not a failure and not counted as one: three lanes gained an
             # `ensure_*` before anyone created their repos, and a provisioning command that exits 1
@@ -212,6 +289,8 @@ def cache_pull_(
             continue
         except Exception as exc:
             typer.secho(f"  {lane.name}: FAILED — {exc}", fg=typer.colors.RED, err=True)
+            # A named group's failure is raised after every group was tried: the others' outcomes too.
+            _echo_groups(lane.name, follow)
             failures += 1
             continue
         # Both labels, when the hub's release and the cache's were compared and the answer is news
@@ -222,6 +301,7 @@ def cache_pull_(
             f"  {lane.name}: {path}" + (f" — {note}" if note else ""),
             fg=typer.colors.GREEN if quiet else typer.colors.YELLOW,
         )
+        _echo_groups(lane.name, follow)
         on_disk.append(lane.name)
     if failures:
         raise typer.Exit(code=1)
@@ -406,7 +486,10 @@ def cache_rebuild_(
     only: list[str] = typer.Option(
         [],
         "--only",
-        help="Rebuild just these caches (repeatable). Default: every one that can be.",
+        help=(
+            "Rebuild just these caches (repeatable). Default: every one that can be, except those built "
+            f"only when named here ({_NAMED_ONLY})."
+        ),
     ),
     use: str = typer.Option(
         "unstated",
@@ -438,7 +521,18 @@ def cache_rebuild_(
         help=(
             "Download, build and upload nothing: say per lane what a run would do, the release this "
             "machine holds and, with --publish, the one published. A snapshot already built into "
-            "<out>/<lane> (a run without --publish) has its upload rehearsed."
+            "<out>/<lane> (a run without --publish) has its upload rehearsed. The one exception is "
+            "--rehearse-download, which downloads and builds for real."
+        ),
+    ),
+    rehearse_download: bool = typer.Option(
+        False,
+        "--rehearse-download",
+        help=(
+            "With --dry-run --publish only: download and build each lane for real into <out>/<lane>, "
+            "then rehearse its upload; nothing is uploaded. Refused without both. The prediction is the "
+            "dry run's and no wider: an adapter that refuses on its own inputs (ACMG with no workbook, "
+            "PharmVar with no key) prints `rehearsing:` and then `not run`."
         ),
     ),
 ) -> None:
@@ -459,8 +553,16 @@ def cache_rebuild_(
     rebuild reporting errors for them would be reporting the licences working as designed. They are
     printed as *not run*, with the reason, and the exit code counts only real failures.
     """
+    missing = [flag for flag, given in (("--dry-run", dry_run), ("--publish", publish)) if not given]
+    if rehearse_download and missing:
+        # Before every other check and before any lane: a refused rehearsal reads, writes and fetches
+        # nothing, and `--publish` without `--dry-run` must never reach an upload.
+        typer.secho(
+            f"{REHEARSE_DOWNLOAD_REFUSAL} Missing: {', '.join(missing)}.", fg=typer.colors.RED, err=True
+        )
+        raise typer.Exit(code=2)
     declared = _use(use)
-    _, lanes = _selected(only)
+    wanted, lanes = _selected(only)
     pins = _pairs(pin, "--pin")
     sources = _pairs(source, "--source", must_exist=True)
 
@@ -471,8 +573,13 @@ def cache_rebuild_(
             pin=pins.get(lane.name),
             source=Path(sources[lane.name]).expanduser() if lane.name in sources else None,
             parents=parents_from_rebuild_dir(lane, out),
+            # A lane built only when named is not run unless `--only` names it (RM431).
+            named=lane.name in wanted,
         )
 
+    if rehearse_download:
+        _rehearse_download(lanes, request_for, out)
+        return
     if dry_run:
         _dry_run(lanes, request_for, out, publish=publish)
         return
@@ -519,17 +626,14 @@ def _dry_run(
     `CacheLane.terms` names. Otherwise it says what would be built, from where, into which directory.
 
     Nothing published is compared here, only shown: the source's own newest release is not asked
-    (that needs a probe per lane; 0.9's `--rehearse-download` and the liaison's table cover it). The
-    upload's own checks need the built bytes, so they are rehearsed only when `<out>/<lane>` already
-    holds a snapshot, from an earlier run without `--publish`.
+    (that needs a probe per lane, parked in RM412; the liaison's table keeps it by hand). The upload's
+    own checks need the built bytes, so they are rehearsed only when `<out>/<lane>` already holds a
+    snapshot, from an earlier run without `--publish`. `--rehearse-download` is the opt-in that takes
+    the bytes (`_rehearse_download`).
     """
-    from just_dna_enricher.upload import PublishRefused, rehearse_reference_snapshot
-
     planned = 0
     for lane in lanes:
-        blocked, request = _rebuild_blocked(lane, request_for(lane))
-        if blocked is None:
-            blocked = _gate(lane.terms, request.declared_use, lane.name)
+        blocked, request = _predicted(lane, request_for(lane))
         if blocked is not None:
             typer.secho(
                 f"  {lane.name:13} {blocked.label:8} {blocked.detail}",
@@ -538,43 +642,127 @@ def _dry_run(
             )
             continue
         planned += 1
-        release = request.pin or "the lane's own release"
-        if request.parents:
-            origin = "from " + " and ".join(f"{name} at {path}" for name, path in request.parents.items())
-        elif request.source is not None:
-            origin = f"from {request.source}"
-        else:
-            origin = "downloading it"
-        typer.echo(f"  {lane.name:13} would build {release}, {origin}, into {request.out_dir}")
-        held = lane.resolve()
-        here = (lane.release_label(held) or "a snapshot stating no release") if held is not None else "absent"
-        typer.echo(f"      this machine: {here}")
+        typer.echo(f"  {lane.name:13} would build {_build_plan(request)}")
+        typer.echo(f"      this machine: {_held_release(lane)}")
         if not publish:
             continue
         if lane.publish_repo is None:
             typer.secho(f"      not published — {lane.unpublished}", fg=typer.colors.YELLOW, err=True)
             continue
         typer.echo(f"      published at {lane.publish_repo}: {_published_release(lane.publish_repo)}")
-        payload = lane.payload_filename
         built = request.out_dir
-        if not holds_snapshot_payload(built, payload_filename=payload):
+        if not holds_snapshot_payload(built, payload_filename=lane.payload_filename):
             typer.echo(
                 f"      the upload's checks need the built bytes: run without --publish to build into "
                 f"{built}, then again with --publish --dry-run to rehearse it"
             )
             continue
-        try:
-            plan = rehearse_reference_snapshot(built, lane.publish_repo, payload=payload)
-        except (PublishRefused, PermissionError, ImportError) as exc:
-            typer.secho(f"      WOULD BE REFUSED: {exc}", fg=typer.colors.RED, err=True)
-            continue
-        typer.echo(
-            f"      would upload {len(plan.files)} file(s) from the snapshot already at {built} "
-            f"({snapshot_release_label(built) or 'no release stated'}) to {plan.repo_id}"
-        )
+        _rehearse_upload(lane, built, built_by="already at")
     typer.echo(
         f"dry run: {planned} of {len(lanes)} lane(s) would be built into {out}; nothing was downloaded, "
         "built or uploaded"
+    )
+
+
+def _rehearse_download(
+    lanes: list[CacheLane], request_for: Callable[[CacheLane], RebuildRequest], out: Path
+) -> None:
+    """`cache rebuild --dry-run --publish --rehearse-download`: the real download and build, a rehearsed upload (RM412).
+
+    The opt-in inverse of RM411, and the old dry run's behaviour asked for by name: each lane runs
+    `rebuild_lane` exactly as a real run does, taking the source bytes and building into
+    `<out>/<lane>` (over whatever an earlier run left there, as the real run does), and the upload is
+    then rehearsed with `rehearse_reference_snapshot` (the plan and the orphan check, which read the
+    repo and send nothing) where the real run would publish. Before a lane runs it prints the dry run's
+    prediction (`rehearsing: …` and the release this machine holds), so the operator sees what is about
+    to be taken; a lane the dry run predicts *not run*, *refused* or *skipped* prints only the real
+    run's line. The prediction is the dry run's and no wider: an adapter that refuses on its own inputs
+    (ACMG with no workbook) is predicted to run and then prints *not run*.
+
+    The exit code is the real run's: 1 when a lane failed to build. An upload the rehearsal would refuse
+    prints `WOULD BE REFUSED` and does not move it, as a refused publish does not move the real run's.
+    """
+    outcomes: list[RebuildOutcome] = []
+    for lane in lanes:
+        request = request_for(lane)
+        predicted, resolved = _predicted(lane, request)
+        if predicted is None:
+            typer.echo(f"  {lane.name:13} rehearsing: {_build_plan(resolved)}")
+            typer.echo(f"      this machine: {_held_release(lane)}")
+        outcome = rebuild_lane(lane, request)
+        outcomes.append(outcome)
+        typer.secho(
+            f"  {lane.name:13} {outcome.label:8} {outcome.detail}",
+            fg={True: typer.colors.GREEN, False: typer.colors.RED, None: typer.colors.YELLOW}[outcome.built],
+            err=outcome.built is not True,
+        )
+        if not outcome.built:
+            continue
+        if lane.publish_repo is None:
+            typer.secho(f"      not published — {lane.unpublished}", fg=typer.colors.YELLOW, err=True)
+            continue
+        if outcome.out_dir is None:
+            typer.secho(
+                f"      not published — {lane.name} named no output directory", fg=typer.colors.RED, err=True
+            )
+            continue
+        typer.echo(f"      published at {lane.publish_repo}: {_published_release(lane.publish_repo)}")
+        _rehearse_upload(lane, outcome.out_dir, built_by="just built at")
+    built = sum(o.built is True for o in outcomes)
+    failed = sum(o.built is False for o in outcomes)
+    not_run = sum(o.built is None for o in outcomes)
+    typer.echo(
+        f"rehearsal: rebuilt {built}, failed {failed}, not run {not_run} of {len(outcomes)} lane(s) into {out}; "
+        "each lane rebuilt was fetched or read and built for real, and nothing was uploaded"
+    )
+    if failed:
+        raise typer.Exit(code=1)
+
+
+def _predicted(lane: CacheLane, request: RebuildRequest) -> tuple[RebuildOutcome | None, RebuildRequest]:
+    """The outcome a real run reaches before taking any bytes, or `None`, and the request it would build from.
+
+    `_rebuild_blocked` (no adapter, a derived lane's parents missing, an unpinnable pin) and then the
+    declared-use gate on `CacheLane.terms`, which is the object each gated adapter passes (RM411).
+    """
+    blocked, resolved = _rebuild_blocked(lane, request)
+    if blocked is None:
+        blocked = _gate(lane.terms, resolved.declared_use, lane.name)
+    return blocked, resolved
+
+
+def _held_release(lane: CacheLane) -> str:
+    """The release this machine's cache of `lane` states, `absent`, or that it states none."""
+    held = lane.resolve()
+    if held is None:
+        return "absent"
+    return lane.release_label(held) or "a snapshot stating no release"
+
+
+def _build_plan(request: RebuildRequest) -> str:
+    """What a lane would build, from where, into which directory: the dry run's and the rehearsal's words."""
+    release = request.pin or "the lane's own release"
+    if request.parents:
+        origin = "from " + " and ".join(f"{name} at {path}" for name, path in request.parents.items())
+    elif request.source is not None:
+        origin = f"from {request.source}"
+    else:
+        origin = "downloading it"
+    return f"{release}, {origin}, into {request.out_dir}"
+
+
+def _rehearse_upload(lane: CacheLane, built: Path, *, built_by: str) -> None:
+    """Rehearse the upload of the snapshot at `built` to the lane's repo: the plan and the orphan check, nothing sent."""
+    from just_dna_enricher.upload import PublishRefused, rehearse_reference_snapshot
+
+    try:
+        plan = rehearse_reference_snapshot(built, lane.publish_repo, payload=lane.payload_filename)
+    except (PublishRefused, PermissionError, ImportError) as exc:
+        typer.secho(f"      WOULD BE REFUSED: {exc}", fg=typer.colors.RED, err=True)
+        return
+    typer.echo(
+        f"      would upload {len(plan.files)} file(s) from the snapshot {built_by} {built} "
+        f"({snapshot_release_label(built) or 'no release stated'}) to {plan.repo_id}"
     )
 
 
@@ -616,9 +804,8 @@ def _publish_rebuilt(lane: CacheLane, outcome: RebuildOutcome) -> None:
             err=True,
         )
         return
-    payload = lane.payload_filename
     try:
-        plan = publish_reference_snapshot(snapshot_dir, lane.publish_repo, payload=payload)
+        plan = publish_reference_snapshot(snapshot_dir, lane.publish_repo, payload=lane.payload_filename)
     except (PublishRefused, PermissionError, ImportError) as exc:
         typer.secho(f"    PUBLISH FAILED: {exc}", fg=typer.colors.RED, err=True)
         return

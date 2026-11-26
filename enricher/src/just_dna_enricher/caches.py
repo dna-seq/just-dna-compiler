@@ -37,11 +37,13 @@ rebuild report errors for lanes behaving exactly as designed; folding it into "b
 lie. It is printed, never silently skipped.
 """
 
+import dataclasses
 import logging
 import os
 import pathlib
+import re
 import shutil
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -57,6 +59,7 @@ from just_dna_enricher import (
     constraint_build,
     cpic_build,
     drug_labels_build,
+    ensembl_rsid_index_build,
     mane_build,
     mitomap,
     mitomap_build,
@@ -71,7 +74,6 @@ from just_dna_enricher.clinvar_gkm import ClinVarGkmClient, ClinVarGkmError
 from just_dna_enricher.download import (
     SNAPSHOT_REPO_PREFIXES,
     SnapshotNotPublished,
-    _ensure_opentargets_snapshot,
     _FollowHub,
     ensure_alphagenome_avi_snapshot,
     ensure_civic_snapshot,
@@ -82,6 +84,7 @@ from just_dna_enricher.download import (
     ensure_cpic_snapshot,
     ensure_drug_labels_snapshot,
     ensure_mitomap_snapshot,
+    ensure_opentargets_snapshot,
     ensure_snapshot,
     ensure_strchive_snapshot,
     pulled_from_elsewhere,
@@ -117,6 +120,8 @@ from just_dna_enricher.locations import (
     DRUG_LABELS_CACHE_VAR,
     DRUG_LABELS_SUBDIR,
     ENSEMBL_CACHE_VAR,
+    ENSEMBL_RSID_INDEX_CACHE_VAR,
+    ENSEMBL_RSID_INDEX_SUBDIR,
     ENSEMBL_SUBDIR,
     MANE_CACHE_VAR,
     MANE_SUBDIR,
@@ -145,6 +150,7 @@ from just_dna_enricher.locations import (
     default_cpic_cache_dir,
     default_drug_labels_cache_dir,
     default_ensembl_cache_dir,
+    default_ensembl_rsid_index_cache_dir,
     default_mane_cache_dir,
     default_mitomap_cache_dir,
     default_mitomap_miss_cache_dir,
@@ -165,6 +171,7 @@ from just_dna_enricher.locations import (
     resolve_cpic_reference,
     resolve_drug_labels_reference,
     resolve_ensembl_reference,
+    resolve_ensembl_rsid_index_reference,
     resolve_mane_reference,
     resolve_mitomap_miss_reference,
     resolve_mitomap_reference,
@@ -206,12 +213,17 @@ class RebuildRequest:
     `source`**: two of three is not a build for either of them, and a flag that can only ever supply
     one would be a flag that cannot do its job.
 
-    `parents` is where each parent lane's snapshot is, for the one lane that has any (RM171). Filled
+    `parents` is where each parent lane's snapshot is, for the derived lanes (RM171, RM431). Filled
     by the caller rather than resolved inside the adapter, because a rebuild run has an answer the
     registry cannot give: `cache rebuild` writes every lane into `out/<lane>/`, so the ClinVar the
     miss lane should join against is the one *this run* just cut, not whatever is in the live cache.
     A parent the caller does not name falls back to that lane's own resolver, which is what
     `cache prepare` and a bare `--only mitomap_miss` want.
+
+    `named` says whether the caller named this lane rather than selecting every lane (0.9, RM431): a
+    lane built only when named (`CacheLane.named_only`) is *not run* on a request with `named=False`,
+    saying why. `True` by default, since a caller of `rebuild_lane` has named its lane; the loops over
+    every lane (`rebuild_caches(lanes=None)`, a bare `cache rebuild`) pass `False`.
     """
 
     out_dir: Path
@@ -219,6 +231,7 @@ class RebuildRequest:
     pin: str | None = None
     source: Path | None = None
     parents: dict[str, Path] = field(default_factory=dict)
+    named: bool = True
 
 
 @dataclass(frozen=True)
@@ -294,6 +307,25 @@ class CacheLane:
     #: not allowed to fetch, so the adapter has no bytes to start from. The first is a division of
     #: labour, the second is an acquisition gate (`@acquisition-gate-is-not-a-read-gate`).
     unbuilt: str | None = None
+    #: Why this lane is built **only when named** (`cache rebuild --only <lane>`), or `None` for every
+    #: lane a bare `cache rebuild` and `cache prepare` build (0.9, RM431). Stated as a field for the
+    #: reason `unbuilt` is one: the operator reads it where the lane was passed over. `cache prepare`
+    #: never builds such a lane (it leaves a present one alone and reports an absent one *unavailable*,
+    #: with this reason), and a bare `cache rebuild` reports it *not run*. `ensembl_rsid_index` alone:
+    #: its build takes about 42 minutes and 6 GB from the Ensembl core, which no host should pay unasked.
+    named_only: str | None = None
+    #: Whether this lane's `ensure` takes the run's declared use (`declared_use=`), which the provisioners
+    #: then pass it (0.9, review round 1, item 4): `ensembl` alone, whose recorded groups are re-pulled under
+    #: the run's `--use` when it states one (RM437). A field rather than a name compare in the provisioner,
+    #: and a test holds it equal, lane by lane, to whether `ensure` has that parameter.
+    ensure_takes_declared_use: bool = False
+    #: For a derived lane, why the snapshot at a path no longer matches its parents (each parent's path as
+    #: this machine resolves it, `None` when absent), or `None` when it does or cannot be compared (0.9,
+    #: review round 1, item 11). `lane_status` then says `stale` and `prepare_lane` leaves it unready,
+    #: never `present`: a moved parent is reported (`@a-derived-lane-has-parents-…`). Every lane with
+    #: `parents` states it (a walk holds that): `ensembl_rsid_index` with the verdict its reader refuses the
+    #: index by, `mitomap_miss` with `stale_parents`.
+    stale_reason: Callable[[Path, Mapping[str, Path | None]], str | None] | None = None
     #: How this lane's snapshot names the release it holds (RM180). The default is the format
     #: tier's `snapshot.release_label`, `release.json`'s `dataset`, and since RM303 every lane uses it:
     #: ClinVar's builder used to write `clinvar_file_date` and no `dataset`, so `cache status` printed
@@ -318,7 +350,7 @@ class CacheLane:
     #: biconditional — a lane that can publish is reachable by exactly one of the two routes.
     publish_command: str | None = None
     #: The lanes this one is **derived from** (RM171). Empty for every lane that acquires its own
-    #: bytes, which is all of them but `mitomap_miss`.
+    #: bytes, which is all of them but `mitomap_miss` and `ensembl_rsid_index` (RM431).
     #:
     #: A field rather than knowledge inside the adapter, because three things follow from it and only
     #: one is the adapter's: the rebuild guard below (a child whose parents are not on disk reports
@@ -356,6 +388,15 @@ class CacheLane:
 # conversion algorithm with two callers rather than two implementations that have to agree. What is
 # duplicated is flag plumbing, which is the half that legitimately differs: `clinvar build` offers
 # `--vcf` for a file you already have, and a rebuild pass by definition does not have one.
+
+
+def _ensure_declaration(lane: CacheLane, declared_use: str) -> dict[str, str]:
+    """The declaration a lane's `ensure` takes beyond the hub intent, for a lane whose field says it takes one.
+
+    Only the Ensembl lane does (`CacheLane.ensure_takes_declared_use`, RM437): its recorded groups are
+    re-pulled under the run's `--use` when that states one, else under the one each was admitted with.
+    """
+    return {"declared_use": declared_use} if lane.ensure_takes_declared_use else {}
 
 
 def _gate(terms: SourceTerms | None, declared_use: str, lane: str) -> RebuildOutcome | None:
@@ -901,6 +942,54 @@ def _rebuild_mitomap_miss(request: RebuildRequest) -> RebuildOutcome:
     )
 
 
+def _mitomap_miss_stale(miss: Path, parents: Mapping[str, Path | None]) -> str | None:
+    """`CacheLane.stale_reason` for the MITOMAP increment: `stale_parents`, the verdict `draft` warns by.
+
+    A parent that is absent here is left out, as `stale_parents` leaves out one that is gone: a parent that
+    cannot be compared did not move (`@a-derived-lane-has-parents-…`).
+    """
+    located = {name: path for name, path in parents.items() if path is not None}
+    moved = mitomap_miss_build.stale_parents(miss, parents=located)
+    if not moved:
+        return None
+
+    def label(pin: dict) -> str:
+        return pin.get("dataset") or pin.get("clinvar_file_date") or "unlabelled"
+
+    said = "; ".join(
+        f"the {name} parent has moved since this increment was built (pinned {label(pinned)}, now {label(current)})"
+        for name, (pinned, current) in sorted(moved.items())
+    )
+    return f"{said}; rebuild it with `just-dna-enricher mitomap miss`"
+
+
+def _rsid_index_stale(index: Path, parents: Mapping[str, Path | None]) -> str | None:
+    """`CacheLane.stale_reason` for the rsID index: the reader's own verdict against the core beside it."""
+    core = parents.get("ensembl")
+    return ensembl_rsid_index_build._moved_parent(index, core) if core is not None else None
+
+
+def _rebuild_ensembl_rsid_index(request: RebuildRequest) -> RebuildOutcome:
+    """The rsID index of the Ensembl core on disk (RM431). `rebuild_lane`'s parent guard has run.
+
+    Only this route builds it, and only when the lane is named (`CacheLane.named_only`): no `ensure`
+    does, and neither `cache prepare` nor a bare `cache rebuild` reaches it, so a pull,
+    `enrich(download=True)` and a provisioning run pay nothing for it.
+    """
+    request.out_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        result = ensembl_rsid_index_build.build_rsid_index(request.parents["ensembl"], request.out_dir)
+    except (ensembl_rsid_index_build.RsidIndexError, OSError) as exc:
+        return RebuildOutcome("ensembl_rsid_index", False, str(exc))
+    return RebuildOutcome(
+        "ensembl_rsid_index",
+        True,
+        f"{result.rows:,} rsID loci of {result.parent['release_id']}, {result.size_bytes / 1e6:,.0f} MB in "
+        f"{result.seconds:,.0f} s",
+        result.out_dir,
+    )
+
+
 def _rebuild_clinvar_gkm(request: RebuildRequest) -> RebuildOutcome:
     """Download ClinVar-GKM's two Parquet inputs whole, verify them, cut the indel witness (RM305).
 
@@ -976,6 +1065,37 @@ CACHE_LANES: list[CacheLane] = [
         ),
         # The split release states its release only in `manifest.json` (RM372).
         release_label=ensembl_release_label,
+        # Its recorded groups are re-pulled under the run's use (RM437).
+        ensure_takes_declared_use=True,
+    ),
+    CacheLane(
+        name="ensembl_rsid_index",
+        approx_mb=6100,
+        build_command="cache rebuild --only ensembl_rsid_index",
+        subdir=ENSEMBL_RSID_INDEX_SUBDIR,
+        env_var=ENSEMBL_RSID_INDEX_CACHE_VAR,
+        serves="rsID → (chrom, start) over the Ensembl core, so lookup_loci by rsID prunes (RM431)",
+        resolve=resolve_ensembl_rsid_index_reference,
+        default_dir=default_ensembl_rsid_index_cache_dir,
+        rebuild=_rebuild_ensembl_rsid_index,
+        ensure=None,
+        publish_repo=None,
+        terms=None,
+        # Local only by the registry's answer (the pm, 2026-11-16): both proxy boxes hold the Ensembl lane
+        # and build their own, and a pulled index would pin a core its holder may not have.
+        unpublished=(
+            "derived, and local only: the index of the Ensembl core on this machine, pinned to that core's "
+            "release and files, so a pulled copy would index somebody else's. Build it from the core with "
+            "`cache rebuild --only ensembl_rsid_index`"
+        ),
+        # About 42 minutes and 6 GB from the 2026-07-13 core (RM431's measurement): built only when named
+        # (the pm, 2026-11-18), so a provisioning run and a nightly rebuild never pay it unasked.
+        named_only=(
+            "built only when named, `cache rebuild --only ensembl_rsid_index` (about 42 minutes and 6 GB "
+            "from the Ensembl core), so neither `cache prepare` nor a bare `cache rebuild` builds it"
+        ),
+        parents=("ensembl",),
+        stale_reason=_rsid_index_stale,
     ),
     CacheLane(
         name="clinvar",
@@ -1159,6 +1279,7 @@ CACHE_LANES: list[CacheLane] = [
             "publishing it, the pin is what makes it pointless"
         ),
         parents=("mitomap", "clinvar"),
+        stale_reason=_mitomap_miss_stale,
     ),
     CacheLane(
         name="mane",
@@ -1209,8 +1330,10 @@ CACHE_LANES: list[CacheLane] = [
         default_dir=default_opentargets_cache_dir,
         rebuild=_rebuild_opentargets,
         # RM408: published since 0.8.1's patch line, through `cache rebuild --publish` (the one route
-        # `test_every_publishable_lane_can_actually_be_published` allows a lane with an adapter).
-        ensure=_ensure_opentargets_snapshot,
+        # `test_every_publishable_lane_can_actually_be_published` allows a lane with an adapter). Since
+        # 0.9 `opentargets publish` sends a snapshot already built (RM412); `publish_command` stays
+        # unset, because that field names the route for a lane the rebuild loop cannot reach.
+        ensure=ensure_opentargets_snapshot,
         publish_repo=SNAPSHOT_REPO_IDS["opentargets"],
         # None, as for CIViC's CC0 lane: a CC0 mark gates no declared use, so there is nothing for
         # `cache rebuild` to check. The terms a module records are written by the pass, per table.
@@ -1264,6 +1387,8 @@ CACHE_LANES: list[CacheLane] = [
         rebuild=_rebuild_clinvar_gkm,
         ensure=ensure_clinvar_gkm_snapshot,
         publish_repo=DEFAULT_CLINVAR_GKM_REPO_ID,
+        # `clinvar-gkm publish` (0.9, RM412) sends a snapshot already built; `publish_command` stays
+        # unset for Open Targets' reason above.
         # `terms=None` although `CLINVAR_GKM_TERMS` exists, for MITOMAP's reason: this field is the
         # declared-use gate, and CC0 over public-domain ClinVar refuses no declaration.
         terms=None,
@@ -1402,8 +1527,11 @@ def _rebuild_blocked(
 
     The half of `rebuild_lane` that reads and never fetches, so `cache rebuild --dry-run` (RM411) says
     *not run* for exactly the lanes a real run would, in the same words: no adapter, or a derived lane
-    whose parents are not on disk. The returned request carries the parents it resolved.
+    whose parents are not on disk. The returned request carries the parents it resolved. A lane built
+    only when named (`CacheLane.named_only`) on a request that did not name it is *not run* too, first.
     """
+    if lane.named_only is not None and not request.named:
+        return RebuildOutcome(lane.name, None, lane.named_only), request
     if lane.rebuild is None:
         return RebuildOutcome(lane.name, None, lane.unbuilt or "no builder in this tier"), request
     if request.pin is not None and lane.name not in _PINNABLE:
@@ -1436,15 +1564,18 @@ def _rebuild_blocked(
     return None, request
 
 
-#: The three states a lane can be in on this machine. `occupied` is the one `absent` used to hide.
-LANE_STATES: frozenset[str] = frozenset({"present", "absent", "occupied"})
+#: The four states a lane can be in on this machine. `occupied` is the one `absent` used to hide; `stale`
+#: (0.9) is a derived lane present over parents that moved, which `present` used to hide.
+LANE_STATES: frozenset[str] = frozenset({"present", "absent", "occupied", "stale"})
 
 
 @dataclass(frozen=True)
 class LaneStatus:
     """One lane as it stands on this machine — the projection `cache status` renders (S91, RM204).
 
-    `state` is three-valued. `present`: `resolve()` found a snapshot at `path`. `absent`: nothing at
+    `state` is four-valued. `present`: `resolve()` found a snapshot at `path`. `stale` (0.9): it found one,
+    and the lane's `stale_reason` says its parents moved under it, in `stale`; its readers refuse it, so it
+    is not called present (an `ensembl_rsid_index` of another core). `absent`: nothing at
     the place the lane looks. `occupied`: the place the lane looks **exists and is non-empty and holds
     no snapshot** — a build that failed after its downloads, a payload deleted beside its
     `release.json`, a stray `.part`, a foreign parquet. It used to render as `absent`, which tells an
@@ -1453,10 +1584,11 @@ class LaneStatus:
     — `absent` wants `cache pull` or the lane's build command, `occupied` wants the directory moved
     aside or `cache prune`.
 
-    `looked_in` is the directory the verdict is about: the lane's `env_var` if set, else its default
-    directory. `prepare`'s own refusal is about the **default** directory specifically, so an override
-    pointing at a junk directory reads `occupied` here while `prepare` would build into an empty
-    default that the override then hides — say which directory, and the operator can see it.
+    `looked_in` is the directory the verdict is about: the path a caller handed `lane_status` in
+    `locations`, else the lane's `env_var` if set, else its default directory. `prepare`'s own refusal
+    is about the **default** directory specifically, so an override pointing at a junk directory reads
+    `occupied` here while `prepare` would build into an empty default that the override then hides —
+    say which directory, and the operator can see it.
 
     `release` is what the snapshot names, `None` when it does not say; `release_unreadable` is the
     present-and-unreadable case, a `release.json` that exists and does not parse, which is a
@@ -1474,6 +1606,8 @@ class LaneStatus:
     #: under `path`, or the file itself for a single-file lane. `None` unless present. The lane's
     #: declared order of magnitude for an absent one is `lane.approx_mb`.
     size_bytes: int | None = None
+    #: Why a `stale` snapshot no longer matches its parents (`CacheLane.stale_reason`); `None` otherwise.
+    stale: str | None = None
 
 
 def snapshot_bytes(path: Path) -> int:
@@ -1501,30 +1635,150 @@ def provisioning_closure(lane: CacheLane) -> list[CacheLane]:
     return [member for member in CACHE_LANES if member.name in wanted]
 
 
-def lane_status(lanes: list[CacheLane] | None = None) -> list[LaneStatus]:
+#: A URL's scheme, whole (`hf://`) or as a `Path` collapses it (`hf:/`): `lane_status` refuses both (RM461).
+_URL_SCHEME = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]+:/")
+
+
+def lane_status(
+    lanes: list[CacheLane] | None = None, locations: Mapping[str, str | Path | None] | None = None
+) -> list[LaneStatus]:
     """Where every lane stands, read-only — nothing is downloaded and nothing is written.
 
     The registry's status half, beside its provisioning half (`prepare_caches`). It existed only as
     the loop inside `cache status` until a consumer serving the same answer over HTTP wrote the loop a
     second time (S91), which is two projections of one registry — the shape RM176 exists to end. In
-    registry order, one entry per lane, so a renderer that iterates it renders the whole registry.
+    the order of `lanes` (registry order by default), one entry per lane, so a renderer that iterates
+    it renders the whole registry.
+
+    `locations` is for a host that configures lane paths in its own settings and hands each to the
+    lane's resolver rather than exporting it (S154, RM443). A lane named there is resolved with that
+    path and `load_dotenv_file=False`, and `looked_in` is the path as given; `None` for a named lane
+    is its default ladder (its variable if the process exports one, else the default directory) read
+    without loading `.env`. So a call that names every lane writes nothing into `os.environ`. A lane
+    not named keeps the reading of a call without `locations`: its resolver loads the nearest `.env`.
+    Named lanes are read before any lane that is not, so no named lane reads a variable this call's
+    own `.env` loads exported, whatever the order of `lanes`. What the process exported before the
+    call, by any earlier `.env` load included, is the environment a `None` lane reads. A key that
+    names no lane in `lanes` or the registry raises `ValueError` before anything is read.
+    A URL in `locations` also raises `ValueError`. Ask the `RemoteSnapshots` holder about a remote lane.
     """
-    out: list[LaneStatus] = []
-    for lane in CACHE_LANES if lanes is None else lanes:
-        path = lane.resolve()
-        # `resolve()` has loaded `.env` by now, so the override is read the way the resolver read it.
-        override = os.getenv(lane.env_var)
-        looked_in = Path(override).expanduser() if override else lane.default_dir()
-        if path is not None:
-            release = lane.release_label(path)
-            unreadable = release is None and release_is_unreadable(path)
-            out.append(
-                LaneStatus(lane, "present", looked_in, path, release, unreadable, snapshot_bytes(path))
+    walked = CACHE_LANES if lanes is None else lanes
+    given = {} if locations is None else dict(locations)
+    known = {lane.name for lane in walked} | set(LANES_BY_NAME)
+    unknown = sorted(set(given) - known)
+    if unknown:
+        listed = ", ".join(dict.fromkeys([*(lane.name for lane in walked), *LANES_BY_NAME]))
+        raise ValueError(f"lane_status: `locations` names no known lane: {unknown}. Known: {listed}")
+    for name, value in given.items():
+        # A URL, or one a `Path` already collapsed (`hf://a` reads `hf:/a`); a two-letter-plus scheme, so a
+        # Windows drive (`C:/`) is not one.
+        if value is not None and _URL_SCHEME.match(str(value)):
+            raise ValueError(
+                f"lane_status requires a local path for {name}. Use the RemoteSnapshots holder for remote status."
             )
-            continue
-        occupied = looked_in.is_file() or (looked_in.is_dir() and any(looked_in.iterdir()))
-        out.append(LaneStatus(lane, "occupied" if occupied else "absent", looked_in))
-    return out
+    # Named lanes first: none of them may read a variable an unnamed lane's `.env` load just exported.
+    order = [i for i, lane in enumerate(walked) if lane.name in given]
+    order += [i for i, lane in enumerate(walked) if lane.name not in given]
+    out: dict[int, LaneStatus] = {}
+    for index in order:
+        lane = walked[index]
+        if lane.name in given:
+            value = given[lane.name]
+            path = lane.resolve(value, load_dotenv_file=False)
+            # Falsy as the resolver reads it (`explicit or $env_var`): `None` or `""` is the ladder.
+            looked_in = Path(value) if value else _ladder_dir(lane, named=True)
+        else:
+            path = lane.resolve()
+            # `resolve()` has loaded `.env` by now, so the override is read the way the resolver read it.
+            looked_in = _ladder_dir(lane, named=False)
+        out[index] = _lane_verdict(lane, path, looked_in)
+        if lane.name in given:
+            # Judged now, before any unnamed lane loads `.env`, so a named lane's parents are read as it was.
+            out[index] = _staleness(out[index], out, given)
+    for index in order:
+        if walked[index].name not in given:
+            out[index] = _staleness(out[index], out, given)
+    return [out[index] for index in range(len(walked))]
+
+
+def _staleness(
+    status: LaneStatus, so_far: Mapping[int, LaneStatus], given: Mapping[str, str | Path | None]
+) -> LaneStatus:
+    """`status` called `stale` when its lane's `stale_reason` says its parents moved under it; else as it is."""
+    if status.state != "present" or status.lane.stale_reason is None:
+        return status
+    resolved = {done.lane.name: done.path for done in so_far.values()}
+    named = status.lane.name in given
+    parents = {name: _parent_path(name, resolved, given, named=named) for name in status.lane.parents}
+    reason = status.lane.stale_reason(status.path, parents)
+    return status if reason is None else dataclasses.replace(status, state="stale", stale=reason)
+
+
+def _parent_path(
+    name: str, resolved: Mapping[str, Path | None], given: Mapping[str, str | Path | None], *, named: bool
+) -> Path | None:
+    """A parent's snapshot path for a stale check: the one this call resolved for it, else read as it would be.
+
+    A parent the caller named is resolved with its path and without `.env`; one unnamed is read without
+    `.env` too when the child was named (and before any unnamed lane of the call loaded it), so a call naming
+    only its own lanes writes nothing into `os.environ` and a named child never reads what this call's own
+    `.env` load exported (RM443); with the `.env` load otherwise, as the child itself was read."""
+    if name in resolved:
+        return resolved[name]
+    lane = LANES_BY_NAME[name]
+    if name in given:
+        return lane.resolve(given[name], load_dotenv_file=False)
+    return lane.resolve(load_dotenv_file=False) if named else lane.resolve()
+
+
+def _named_only_detail(lane: CacheLane, looked_in: Path) -> str:
+    """Why a lane built only when named was not built, and the command that builds it where it is read.
+
+    `looked_in` is the directory the lane's resolver reads (its variable, else its default). `cache
+    rebuild` writes `<out>/<lane>`, so a place named for the lane gets `--out` its parent; any other place
+    gets `--out <dir>` and the variable to point at `<dir>/<lane>`. `cache prepare` and `cache status` say
+    this of an absent lane (RM431). Raises `ValueError` for a lane not built only when named.
+    """
+    if lane.named_only is None:
+        raise ValueError(f"{lane.name} is not built only when named")
+    command = f"just-dna-enricher {lane.build_command}"
+    where = (
+        f"`{command} --out {looked_in.parent}`"
+        if looked_in.name == lane.name
+        else f"`{command} --out <dir>` and point ${lane.env_var} at <dir>/{lane.name}"
+    )
+    return f"{lane.named_only}; build it where it is read with {where}"
+
+
+def _rebuild_detail(lane: CacheLane, looked_in: Path | None = None) -> str:
+    """How a stale derived lane is rebuilt where it is read: its named-only build, else its build command."""
+    if lane.named_only is not None:
+        return _named_only_detail(
+            lane, looked_in if looked_in is not None else _ladder_dir(lane, named=False)
+        )
+    return f"rebuild it with `just-dna-enricher {lane.build_command}`"
+
+
+def _ladder_dir(lane: CacheLane, *, named: bool) -> Path:
+    """The directory a lane's ladder names: its variable if the process exports one, else its default.
+
+    An unnamed lane's `default_dir` is called bare, as before RM443, so a caller's own lane whose
+    callables take no flag still reads; a named one is passed `load_dotenv_file=False`.
+    """
+    override = os.getenv(lane.env_var)
+    if override:
+        return Path(override).expanduser()
+    return lane.default_dir(load_dotenv_file=False) if named else lane.default_dir()
+
+
+def _lane_verdict(lane: CacheLane, path: Path | None, looked_in: Path) -> LaneStatus:
+    """One lane's `LaneStatus` from what its resolver returned and the directory it looked in."""
+    if path is not None:
+        release = lane.release_label(path)
+        unreadable = release is None and release_is_unreadable(path)
+        return LaneStatus(lane, "present", looked_in, path, release, unreadable, snapshot_bytes(path))
+    occupied = looked_in.is_file() or (looked_in.is_dir() and any(looked_in.iterdir()))
+    return LaneStatus(lane, "occupied" if occupied else "absent", looked_in)
 
 
 @dataclass(frozen=True)
@@ -1591,7 +1845,7 @@ def _present_or_completed(lane: CacheLane, existing: Path, request: RebuildReque
     before = _payload_names(existing)
     follow = _FollowHub(lane.release_label)
     try:
-        path = lane.ensure(_follow_hub=follow)
+        path = lane.ensure(_follow_hub=follow, **_ensure_declaration(lane, request.declared_use))
     except Exception as exc:
         if follow.outcome == "refreshed":
             # The re-pull had begun: its `release.json` is withdrawn and some files may be the new
@@ -1656,8 +1910,22 @@ def prepare_lane(lane: CacheLane, request: RebuildRequest) -> PrepareOutcome:
     on purpose.
     """
     existing = lane.resolve()
+    if existing is not None and lane.stale_reason is not None:
+        reason = lane.stale_reason(existing, {name: LANES_BY_NAME[name].resolve() for name in lane.parents})
+        if reason is not None:
+            # Left as it is (prepare never rebuilds a derived lane over moved parents in place), and not
+            # called present: its readers refuse it (review round 1, item 11).
+            return PrepareOutcome(
+                lane.name, None, "none", f"stale: {reason}; {_rebuild_detail(lane)}", existing
+            )
     if existing is not None:
         return _present_or_completed(lane, existing, request)
+    if lane.named_only is not None:
+        # Never built here, named or not (RM431): the reason, and the command that builds it where this
+        # machine's readers look, since `cache rebuild` writes into the `--out` it is given.
+        return PrepareOutcome(
+            lane.name, None, "none", _named_only_detail(lane, _ladder_dir(lane, named=False))
+        )
 
     if lane.ensure is not None:
         if lane.terms is not None:
@@ -1670,7 +1938,9 @@ def prepare_lane(lane: CacheLane, request: RebuildRequest) -> PrepareOutcome:
                 return PrepareOutcome(lane.name, None, "none", f"skipped: {reason}")
         try:
             # The provisioning command's intent (RM420); an absent cache is pulled whole either way.
-            path = lane.ensure(_follow_hub=_FollowHub(lane.release_label))
+            path = lane.ensure(
+                _follow_hub=_FollowHub(lane.release_label), **_ensure_declaration(lane, request.declared_use)
+            )
         except Exception as exc:
             # Not an error here either, and for a sharper reason than in `cache pull`: this command's
             # job is to leave the machine with a usable cache, and a repo nobody has created yet is a
@@ -1754,6 +2024,9 @@ def prepare_caches(
     deployment's own provisioning step is Python far more often than it is a shell script, and the
     alternative is every caller re-deriving *which lane pulls and which builds* from the licensing
     story. That derivation is the command.
+
+    A lane built only when named (`CacheLane.named_only`, RM431) is never built here, even when `lanes`
+    names it: an absent one is *unavailable*, its outcome naming the `cache rebuild` that builds it.
     """
     pins = pins or {}
     sources = sources or {}
@@ -1798,6 +2071,9 @@ def rebuild_caches(
     cut a new set and adopt it deliberately. **Prepare provisions**, into the live cache locations,
     and leaves a lane that already has a snapshot alone. A caller wanting "make sure every cache
     exists" wants prepare; one wanting "cut a fresh set from today's sources" wants rebuild.
+
+    A lane built only when named (`CacheLane.named_only`, RM431) is built only when `lanes` names it;
+    with `lanes=None` it is *not run*, with its reason.
     """
     pins = pins or {}
     sources = sources or {}
@@ -1805,6 +2081,8 @@ def rebuild_caches(
     # is written into `out/<lane>/`, so by the time the child's turn comes its parents are siblings on
     # disk — and joining the live cache instead would produce a child whose `release.json` pins two
     # parents that are not the ones beside it.
+    # `lanes=None` names no lane, so a lane built only when named is *not run* there (RM431); a lane
+    # in an explicit `lanes` is named.
     return [
         rebuild_lane(
             lane,
@@ -1814,6 +2092,7 @@ def rebuild_caches(
                 pin=pins.get(lane.name),
                 source=sources.get(lane.name),
                 parents=parents_from_rebuild_dir(lane, out),
+                named=lanes is not None,
             ),
         )
         for lane in (lanes if lanes is not None else CACHE_LANES)

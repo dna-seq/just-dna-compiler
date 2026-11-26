@@ -23,6 +23,9 @@ answers your question.
 uv add just-dna-format        # or just-dna-compiler, or just-dna-enricher
 ```
 
+Only on a server whose CPU lacks AVX2, add the `compat` extra (`just-dna-compiler[compat]`,
+`just-dna-enricher[compat]`), which installs polars' slower compatibility runtime.
+
 `just-dna-compiler` pulls `just-dna-format`; `just-dna-enricher` pulls both. Nothing below the
 enricher ever reaches the network, so a verify-only client stays light and a compile is reproducible
 offline.
@@ -49,8 +52,8 @@ offline.
 
 </div>
 
-Coming from 0.7? [Integrating 0.8](INTEGRATION_0_8.md) lists what changed, surface by surface, and
-the order to upgrade in.
+Coming from 0.8? [Integrating 0.9](INTEGRATION_0_9.md) lists what changed, surface by surface, and
+the order to upgrade in. Still on 0.7? Read [Integrating 0.8](history/INTEGRATION_0_8.md) first.
 
 ## Authoring a module
 

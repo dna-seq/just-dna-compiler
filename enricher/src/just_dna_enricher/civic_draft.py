@@ -35,10 +35,11 @@ removed. The snapshot already counted the somatic majority; this counts what it 
 """
 
 import logging
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import duckdb
 from just_dna_compiler.draft import DraftReport, PartialRow, append_partial_rows
 from just_dna_format.snapshot import SnapshotRelease, read_release
 from just_dna_format.spec import StudyRow, VariantRow
@@ -50,9 +51,11 @@ from just_dna_enricher.civic_refutation import CIVIC_REFUTES
 from just_dna_enricher.clingen_allele import ClingenAlleleClient, anchor_indel
 from just_dna_enricher.drafting import DRAFT_PROVIDERS, licence_commit, record_draft_provenance
 from just_dna_enricher.drafting import identity_refused_by_model as scaffold_identity_refused
+from just_dna_enricher.key_compare import lane_compare
 from just_dna_enricher.licensing import CIVIC_TERMS, CLINGEN_ALLELE_REGISTRY_TERMS
 from just_dna_enricher.locations import resolve_civic_reference
-from just_dna_enricher.sequences import SequenceProxy, _left_align
+from just_dna_enricher.resolver import _typed_rows_connection
+from just_dna_enricher.sequences import SequenceProxy, _left_align, held_by_one_run
 from just_dna_enricher.verification import examples
 
 #: This provider's registry entry — `match_on`, table and kind, held once (RM228).
@@ -172,6 +175,164 @@ def _snapshot_rows(reference: Path) -> list[dict]:
         import pyarrow.parquet as pq
 
         return pq.read_table(parquet).to_pylist()
+
+
+# ── the keyed functions (0.9, RM431 ask 5) ──────────────────────────────────────────────────────
+#
+# Beside the raising reader, with its semantics: a lookup that cannot read the snapshot raises
+# `CivicDraftError` saying what it could not read, never an empty answer. The refutation check keeps its
+# own skipping reader (`civic_refutation.civic_snapshot_rows`). Read in duckdb (a runtime pass,
+# `@duckdb-vs-polars`), one SQL body per key over a connection exposing `civic`: the local reader runs it
+# over the snapshot's parquet, and a remote answer's rows (`remote.RemoteSnapshots.lookup`, table
+# `REMOTE_CIVIC_TABLE`) run it through `_genes_from_rows` / `_rsids_from_rows`.
+
+#: The snapshot's columns, in the builder's order and typed for a remote answer's rows. Held equal to
+#: `civic_build._polars_schema()` by a test rather than derived from it: that schema is polars', which a
+#: reader of a built snapshot does not import.
+_CIVIC_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("chrom", "VARCHAR"),
+    ("start", "BIGINT"),
+    ("ref", "VARCHAR"),
+    ("alt", "VARCHAR"),
+    ("rsid", "VARCHAR"),
+    ("allele_registry_id", "VARCHAR"),
+    ("identity_derivation", "VARCHAR"),
+    ("direction", "VARCHAR"),
+    ("significance_raw", "VARCHAR"),
+    ("evidence_direction_raw", "VARCHAR"),
+    ("variant_id", "BIGINT"),
+    ("variant_name", "VARCHAR"),
+    ("gene", "VARCHAR"),
+    ("evidence_id", "BIGINT"),
+    ("molecular_profile_id", "BIGINT"),
+    ("evidence_molecular_profile_id", "BIGINT"),
+    ("evidence_molecular_profile_name", "VARCHAR"),
+    ("evidence_level", "VARCHAR"),
+    ("rating", "BIGINT"),
+    ("variant_origin", "VARCHAR"),
+    ("pmid", "VARCHAR"),
+    ("disease", "VARCHAR"),
+    ("doid", "VARCHAR"),
+    ("civic_grch37_chrom", "VARCHAR"),
+    ("civic_grch37_start", "BIGINT"),
+    ("evidence_status", "VARCHAR"),
+)
+#: The table a remote route names for the snapshot (`remote.table_name` of `data/civic.parquet`).
+REMOTE_CIVIC_TABLE = "civic"
+#: How `lookup_genes` compares a gene with the `gene` cell, on every route: the whole cell, by `gene_key`
+#: (`key_compare.KEY_COMPARES`, which the holder reads too, so the two routes cannot compare apart).
+_GENE = lane_compare("civic", REMOTE_CIVIC_TABLE, "gene")
+#: How `lookup_rsids` compares an rsID with the `rsid` cell, on every route: the key read as an rsID
+#: (`RS334` and `334` are `rs334`), the cell whole (`key_compare.KEY_COMPARES`, which the holder reads too).
+_RSID = lane_compare("civic", REMOTE_CIVIC_TABLE, "rsid")
+
+
+def _civic_connection(reference: Path) -> duckdb.DuckDBPyConnection:
+    """A connection exposing the snapshot as `civic`, or `CivicDraftError` naming what could not be read."""
+    reference = Path(reference)
+    parquet = reference / "data" / CIVIC_PARQUET if reference.is_dir() else reference
+    if not parquet.is_file():
+        raise CivicDraftError(
+            f"no CIViC snapshot at {parquet}. Build one with `just-dna-enricher civic build "
+            f"--release <date>`, or point at an existing one with $JUST_DNA_CIVIC_CACHE."
+        )
+    con = duckdb.connect(":memory:")
+    try:
+        # A local path from the caller's own cache, quoted defensively: a view cannot bind a parameter.
+        quoted = str(parquet).replace("'", "''")
+        con.execute(f"CREATE VIEW civic AS SELECT * FROM read_parquet('{quoted}')")
+        con.execute("SELECT * FROM civic LIMIT 0")
+    except duckdb.Error as exc:
+        con.close()
+        raise CivicDraftError(f"the CIViC snapshot at {parquet} could not be read: {exc}") from exc
+    return con
+
+
+def _select_civic(con: duckdb.DuckDBPyConnection, where: str, params: list) -> list[dict]:
+    """The snapshot's rows matching `where`, every column, in one total order both routes reproduce."""
+    names = ", ".join(f'"{name}"' for name, _ in _CIVIC_COLUMNS)
+    cursor = con.execute(f"SELECT {names} FROM civic WHERE {where} ORDER BY ALL", params)
+    columns = [d[0] for d in cursor.description]
+    return [dict(zip(columns, values, strict=True)) for values in cursor.fetchall()]
+
+
+def _genes_over(con: duckdb.DuckDBPyConnection, genes: Sequence[str]) -> dict[str, list[dict]]:
+    """`lookup_genes`' query over a connection exposing `civic`: the one copy."""
+    asked = _GENE.spellings(genes)
+    if not asked:
+        return {}
+    rows = _select_civic(con, _GENE.predicate("gene"), [_GENE.parameter(sorted(asked))])
+    answer: dict[str, list[dict]] = {}
+    for row in rows:
+        for spelling in (s for key in _GENE.members(row["gene"]) for s in asked.get(key, ())):
+            answer.setdefault(spelling, []).append(dict(row))
+    return {gene: answer[gene] for spellings in asked.values() for gene in spellings if gene in answer}
+
+
+def lookup_genes(reference: Path, genes: Sequence[str]) -> dict[str, list[dict]]:
+    """A gene → every row the CIViC snapshot holds for it, as plain dicts (RM431).
+
+    Compared as every gene selector here compares (`gene_key`: case and surrounding space do not make two
+    genes) and keyed as asked. Each row is the snapshot's own columns, every one of them, in one total
+    order. A gene the snapshot holds nothing for is not a key. A snapshot that is absent or cannot be read
+    raises `CivicDraftError` naming it, never an empty answer. Read-only, and it never fetches.
+    """
+    if not any(gene.strip() for gene in genes):
+        return {}
+    con = _civic_connection(reference)
+    try:
+        return _genes_over(con, genes)
+    finally:
+        con.close()
+
+
+def _genes_from_rows(rows: Sequence[Mapping[str, object]], genes: Sequence[str]) -> dict[str, list[dict]]:
+    """`lookup_genes`' answer over a remote answer's rows of `REMOTE_CIVIC_TABLE`."""
+    con = _typed_rows_connection(("civic", _CIVIC_COLUMNS, rows))
+    try:
+        return _genes_over(con, genes)
+    finally:
+        con.close()
+
+
+def _rsids_over(con: duckdb.DuckDBPyConnection, rsids: Sequence[str]) -> dict[str, list[dict]]:
+    """`lookup_rsids`' query over a connection exposing `civic`: the one copy."""
+    asked = _RSID.spellings(rsids)
+    if not asked:
+        return {}
+    # Each key read as `_RSID` reads it, then the cell compared whole with `IN`, which prunes row groups.
+    tokens = _RSID.parameter(list(asked))
+    rows = _select_civic(con, f"rsid IN ({', '.join('?' for _ in tokens)})", tokens)
+    answer: dict[str, list[dict]] = {}
+    for row in rows:
+        for spelling in asked[str(row["rsid"])]:
+            answer.setdefault(spelling, []).append(dict(row))
+    return {rsid: answer[rsid] for spellings in asked.values() for rsid in spellings if rsid in answer}
+
+
+def lookup_rsids(reference: Path, rsids: Sequence[str]) -> dict[str, list[dict]]:
+    """An rsID → every row the CIViC snapshot holds under it, as plain dicts (RM431).
+
+    The rsID is compared as the snapshot spells it (lower case, `rs` prefixed) and keyed as asked; about
+    a third of CIViC's germline rows carry none, so an absent key is not an absent variant. A snapshot that
+    is absent or cannot be read raises `CivicDraftError`. Read-only, and it never fetches.
+    """
+    if not any(rsid.strip() for rsid in rsids):
+        return {}
+    con = _civic_connection(reference)
+    try:
+        return _rsids_over(con, rsids)
+    finally:
+        con.close()
+
+
+def _rsids_from_rows(rows: Sequence[Mapping[str, object]], rsids: Sequence[str]) -> dict[str, list[dict]]:
+    """`lookup_rsids`' answer over a remote answer's rows of `REMOTE_CIVIC_TABLE`."""
+    con = _typed_rows_connection(("civic", _CIVIC_COLUMNS, rows))
+    try:
+        return _rsids_over(con, rsids)
+    finally:
+        con.close()
 
 
 def _release_payload(reference: Path | None) -> SnapshotRelease:
@@ -505,7 +666,7 @@ def draft_panel_from_civic(
     # The anchor reader, built once per run so its cache is shared. `SequenceProxy` degrades to
     # `None` offline and on an unreachable service, which is what makes `anchor_base_unreadable` a
     # real outcome rather than a crash.
-    sequences = SequenceProxy(offline=offline)
+    sequences = held_by_one_run(SequenceProxy(offline=offline))
 
     def read_base(chrom: str, pos: int) -> str | None:
         """One GRCh38 reference base at a 1-based position, or `None`."""

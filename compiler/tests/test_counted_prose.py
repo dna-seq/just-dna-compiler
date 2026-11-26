@@ -191,12 +191,12 @@ _A_TOTAL = re.compile(
         # RM392: "the eight `RESOLUTION_LOCUS_EXCLUDED` names" over seven, and "0.8 adds eight
         # parquets" over a list of seven, said twice.
         (
-            "INTEGRATION_0_8.md",
+            "history/INTEGRATION_0_8.md",
             "but the ones `just_dna_compiler.compiler.parquets.RESOLUTION_LOCUS_EXCLUDED`",
         ),
-        ("INTEGRATION_0_8.md", "whose struct is every `ResolutionRow` column but the ones"),
-        ("INTEGRATION_0_8.md", "0.8 adds these parquets"),
-        ("INTEGRATION_0_8.md", "are already imported rather than hand-listed"),
+        ("history/INTEGRATION_0_8.md", "whose struct is every `ResolutionRow` column but the ones"),
+        ("history/INTEGRATION_0_8.md", "0.8 adds these parquets"),
+        ("history/INTEGRATION_0_8.md", "are already imported rather than hand-listed"),
     ],
 )
 def test_a_generated_roster_is_described_by_its_rule_never_its_total(doc: str, anchor: str) -> None:

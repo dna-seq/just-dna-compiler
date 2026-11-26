@@ -763,7 +763,7 @@ def concordance_notes(record: ConcordanceRecord | None) -> list[str]:
 
 
 def answered_call_shift(
-    spec_dir: Path, calls: Sequence[ClinSigAuthorityCallRow] | None
+    spec_dir: Path, calls: Sequence[ClinSigAuthorityCallRow] | None, *, checked_keys: set[str] | None = None
 ) -> AnsweredCallReport:
     """Read this module's answers and its previous record, and compare them to `calls` (RM151).
 
@@ -782,10 +782,12 @@ def answered_call_shift(
     as a question nobody could put would put a second, gloomier finding on the same overlay row.
 
     With no record to compare against (`calls is None` — nobody could be consulted, or the check is
-    off) the overlay's own pairs are the count, so the notes can still say how many answers went
+    off) the overlay's own pairs in `checked_keys` (all by default) are the count of answers that went
     unexamined. `enrich()` has already said why in that case.
     """
     pairs = overlay_answered_subjects(spec_dir, CONCORDANCE_CSV)
+    if checked_keys is not None:
+        pairs = [pair for pair in pairs if pair[0] in checked_keys]
     if calls is None or not pairs:
         return shifted_authority_calls(None, None, pairs)
     on_record: list[tuple[str, str]] = []

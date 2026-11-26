@@ -91,7 +91,7 @@ def test_every_provisioning_body_is_fenced() -> None:
     import just_dna_enricher.download as dl
 
     bodies = {name for name in vars(dl) if name.startswith("_provision")}
-    assert bodies == {"_provision_snapshot", "_provision_root_file_snapshot"}
+    assert bodies == {"_provision_snapshot", "_provision_root_file_snapshot", "_provision_groups"}
 
 
 def test_a_real_cache_directory_is_never_provisioned(real_cache_base: Path) -> None:

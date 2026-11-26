@@ -19,18 +19,26 @@ import logging
 import os
 import shutil
 import tempfile
-from collections.abc import Callable
-from dataclasses import dataclass
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass, field
 from fnmatch import fnmatch
+from functools import partial
 from pathlib import Path
 
 import httpx
 from just_dna_format.layout import atomic_write_text
+from just_dna_format.normalize import now_utc_iso
+from just_dna_format.vocab import VALID_DECLARED_USE, check_vocab
 
 from just_dna_enricher.clinvar import ClinVarReferenceError
+from just_dna_enricher.licensing import check_declared_use, snapshot_group_terms
 from just_dna_enricher.locations import (
     ALPHAGENOME_KNOTS_FILENAME,
+    CORE_IS_NOT_A_GROUP,
+    ENSEMBL_CORE_GROUP,
+    ENSEMBL_GROUPS_DIRNAME,
     PULL_RECORD_FILENAME,
+    PULL_RECORD_GROUPS_KEY,
     PULL_RECORD_REPLACING_KEY,
     RELEASE_FILENAME,
     SNAPSHOT_DATA_DIRNAME,
@@ -39,8 +47,12 @@ from just_dna_enricher.locations import (
     SNAPSHOT_ROOT_FILENAMES,
     SNAPSHOT_SIDECAR_DIRNAMES,
     STRCHIVE_CATALOGUE_FILENAME,
+    EnsemblGroupReleaseError,
     ManifestCoverage,
     SnapshotManifest,
+    SnapshotManifestFile,
+    SnapshotManifestGroup,
+    _unnamed_group_files,
     default_alphagenome_avi_cache_dir,
     default_civic_cache_dir,
     default_clinpgx_cache_dir,
@@ -59,6 +71,7 @@ from just_dna_enricher.locations import (
     parquet_footer_ok,
     pull_record_repo,
     pulled_from,
+    pulled_groups,
     read_snapshot_manifest,
     snapshot_record_missing,
 )
@@ -261,6 +274,9 @@ class _FollowHub:
     outcome: str | None = None
     detail: str | None = None
     unattested: bool = False
+    #: What became of each of the Ensembl lane's groups this call looked at (RM437), by group name:
+    #: `pulled`, `current`, `skipped — <reason>` or `not re-pulled — <reason>`, for `cache pull` to print.
+    groups: dict[str, str] = field(default_factory=dict)
 
     def note(self) -> str | None:
         """The line `cache pull` and `cache prepare` print beside the lane, naming both labels; `None` when quiet."""
@@ -315,7 +331,62 @@ def _write_pull_record(cache_dir: Path, repo: str, files: list[str], *, placed_r
     """
     digest = _file_sha256(cache_dir / RELEASE_FILENAME) if placed_release else None
     record: dict[str, object] = {"repo": repo, "files": files, _RELEASE_DIGEST_KEY: digest}
+    record.update(_carried_groups(cache_dir))
     atomic_write_text(cache_dir / PULL_RECORD_FILENAME, json.dumps(record, indent=2) + "\n")
+
+
+def _carried_groups(cache_dir: Path) -> dict[str, object]:
+    """The record's group selection, for a writer that rebuilds the record to carry over (RM437).
+
+    The selection is sticky (`locations.PULL_RECORD_GROUPS_KEY`), and both of the provisioner's record
+    writes build the record afresh, so each takes this over unchanged: a group's `release_id` moves only
+    when that group's own pull finishes, never because the core's did.
+    """
+    payload = _pull_record(cache_dir)
+    groups = payload.get(PULL_RECORD_GROUPS_KEY) if payload is not None else None
+    return {PULL_RECORD_GROUPS_KEY: groups} if isinstance(groups, dict) and groups else {}
+
+
+def _set_aside_unreadable_record(cache_dir: Path, repo: str, unreadable: Exception) -> Path:
+    """Move an unreadable pull record aside and write a fresh one naming `repo` (review round 1, item 3).
+
+    The fresh record names `repo`, the core files the cache's manifest attests (none without one), no release
+    digest and no groups, so `_pulled_by_this_repo`
+    takes the cache for a pull of it and a refresh may run; without one, a cache with a `release.json`
+    reads as a local build and is never pulled again. The old record is kept under a dated name (no `:`,
+    which an NTFS mount refuses), and the warning names it, the selection it loses, and the repository
+    assumed. Returns where the old record went.
+    """
+    record = cache_dir / PULL_RECORD_FILENAME
+    stamp = now_utc_iso().replace(":", "").replace("-", "")
+    aside = cache_dir / f"{PULL_RECORD_FILENAME}.unreadable-{stamp}"
+    n = 1
+    while aside.exists():
+        n += 1
+        aside = cache_dir / f"{PULL_RECORD_FILENAME}.unreadable-{stamp}-{n}"
+    record.rename(aside)
+    # The file list is the core the cache's manifest attests, never `[]` (review round 2, class A): an empty
+    # list reads as a pull that finished with nothing missing, so a short cache was returned whole. Listing
+    # what the manifest attests makes an attested file that is absent or short an unfinished pull, which the
+    # provisioner fetches. With no manifest nothing says which files a pull took: no list, the unknown arm.
+    manifest = read_snapshot_manifest(cache_dir / SNAPSHOT_MANIFEST_FILENAME)
+    attested = (
+        [entry.path for entry in manifest.files if entry.path.startswith(f"{SNAPSHOT_DATA_DIRNAME}/")]
+        if manifest is not None and manifest.files
+        else None
+    )
+    atomic_write_text(record, json.dumps({"repo": repo, "files": attested}, indent=2) + "\n")
+    reason = str(unreadable).split(" could not be read (", 1)[-1].split("), so nothing says", 1)[0]
+    logger.warning(
+        "The pull record at %s could not be read (%s); moved it to %s, and any group selection it held is "
+        "lost. A fresh record takes its place, pulling as %s, which the old record may not have named: "
+        "re-pull the groups you want (`just-dna-enricher cache pull --only ensembl --groups NAME[,NAME]`).",
+        record,
+        reason,
+        aside,
+        repo,
+    )
+    return aside
 
 
 def _pull_record(cache_dir: Path) -> dict | None:
@@ -566,6 +637,7 @@ def _provision_snapshot(
     error_cls: type[Exception],
     filename_glob: str,
     _follow_hub: _FollowHub | None = None,
+    preflight: Callable[[SnapshotManifest | None], None] | None = None,
 ) -> Path:
     """Provision a parquet cache from HuggingFace Hub, returning the cache directory.
 
@@ -714,10 +786,6 @@ def _provision_snapshot(
     is_build = (cache_dir / RELEASE_FILENAME).is_file() and not _pulled_by_this_repo(
         cache_dir, hf_repo_prefix
     )
-    if not is_build:
-        for p in corrupt:
-            logger.warning("Corrupt/truncated %s parquet %s — removing for re-download", label, p.name)
-            p.unlink()
     if switched:
         logger.warning(
             "%s cache at %s was pulled from %s; this snapshot is published at %s now. Re-pulling: a "
@@ -786,117 +854,118 @@ def _provision_snapshot(
             f"({', '.join(ignored) or 'none at all'})"
         )
     logger.info("Found %d remote parquet files", len(remote_files))
-    # Made only once there is something to put in it (RM395): a pull that found nothing published left
-    # an empty `data/`, which `cache status` then called occupied and `cache prepare` refused to build
-    # over.
-    data_dir.mkdir(parents=True, exist_ok=True)
-
-    # The release's manifest (RM372), fetched **first** and staged beside the cache rather than in it:
-    # it is what a kept or a downloaded file is checked against, so it has to be in hand before the
-    # first one; and it is renamed into place with the other root files at the end, so it never
-    # describes bytes that have not arrived. A repo that publishes none (every lane but Ensembl) or
-    # one that does not parse leaves the footer rule as it was.
-    manifest_part = cache_dir / f"{SNAPSHOT_MANIFEST_FILENAME}.part"
-    try:
-        manifest = _stage_manifest(fs, f"{repo_root}/{SNAPSHOT_MANIFEST_FILENAME}", manifest_part, label)
-    except OSError as exc:
-        # Could not ask, which is not "publishes none": pulling on without it would accept every byte
-        # unverified, so this pull stops here, and a cache nothing contradicts is served as it is.
-        manifest_part.unlink(missing_ok=True)
-        if servable:
-            return _unverified(
-                cache_dir,
-                label,
-                f"its {SNAPSHOT_MANIFEST_FILENAME} could not be fetched ({exc})",
-                _follow_hub,
-            )
-        raise error_cls(
-            f"the {label} repo's {SNAPSHOT_MANIFEST_FILENAME} could not be fetched ({exc}); nothing was "
-            f"downloaded, because without it no file can be checked. Re-run the pull."
-        ) from exc
-    # The repo's `release.json`, fetched **now** and staged beside the cache like the manifest, and
-    # placed with the other root files at the end only if it may describe every file the cache then
-    # holds (RM445). Asked first because what may be kept depends on it: a file kept from an earlier
-    # pull is this release's only when that pull was pulling this same `release.json`. Asked before the
-    # manifest is placed, so a could-not-ask here leaves the cache exactly as it was.
-    release_part = cache_dir / f"{RELEASE_FILENAME}.part"
-    try:
-        published_release = _stage_release(fs, f"{repo_root}/{RELEASE_FILENAME}", release_part, label)
-    except OSError as exc:
-        # Could not ask, which is not "publishes none", as for the manifest: what may be kept and what
-        # may be labelled turn on the answer, so this pull stops before anything in the cache moves.
-        manifest_part.unlink(missing_ok=True)
-        if servable:
-            return _unverified(
-                cache_dir, label, f"its {RELEASE_FILENAME} could not be fetched ({exc})", _follow_hub
-            )
-        raise error_cls(
-            f"the {label} repo's {RELEASE_FILENAME} could not be fetched ({exc}); nothing was downloaded, "
-            f"because what a pull keeps and labels depends on it. Re-run the pull."
-        ) from exc
-    # The optional parquet **sidecars** beside `data/` — ClinVar's `citations/` today. Fetched here so a
-    # provisioned snapshot is the same artifact a built one is: without the citations table a consumer has
-    # no PMIDs, and `draft-panel` cannot produce a compilable module because `studies.csv` is mandatory.
-    # They go in their own directory, never into `data/`, which is the whole reason the layout has a
-    # sibling: the readers glob `data/*.parquet` and a two-column table there breaks every query.
-    # Listed here, before any download, so the pull record names them with the data (RM339).
-    remote_sidecars: list[tuple[str, str]] = []
-    for sidecar in SNAPSHOT_SIDECAR_DIRNAMES:
+    # Check the descriptions before changing the cache, including on a first pull. Staging on the
+    # destination filesystem lets us install the exact bytes we checked with an atomic rename.
+    staging_parent = next(p for p in (cache_dir, *cache_dir.parents) if p.is_dir())
+    with tempfile.TemporaryDirectory(dir=staging_parent) as scratch:
+        staged_manifest = Path(scratch) / SNAPSHOT_MANIFEST_FILENAME
         try:
-            listed = fs.ls(f"{repo_root}/{sidecar}", detail=False)
-        except Exception as exc:
-            logger.debug("No %s/ in the %s repo (%s).", sidecar, label, type(exc).__name__)
-            continue
-        remote_sidecars.extend((sidecar, f) for f in listed if f.endswith(".parquet"))
-
-    planned = [f"{SNAPSHOT_DATA_DIRNAME}/{f.rsplit('/', 1)[-1]}" for f in remote_files] + [
-        f"{sidecar}/{f.rsplit('/', 1)[-1]}" for sidecar, f in remote_sidecars
-    ]
-    lacking = [name for name in planned if not parquet_footer_ok(cache_dir / name)]
-    if is_build and lacking:
-        # Could not run, never absent (`@unreachable-not-absent`): the parts the repo publishes that this
-        # build lacks stay unreachable until someone provides them, and each run says so again.
-        manifest_part.unlink(missing_ok=True)
-        release_part.unlink(missing_ok=True)
-        logger.warning(
-            "%s cache at %s is a local build (its %s was not placed by a pull of %s) and lacks %d part(s) "
-            "the repo publishes (%s). A pull never fetches beside a build, so they were not fetched and "
-            "what reads them could not run: rebuild the lane with them, or move the build aside and run "
-            "`cache pull`.",
-            label,
-            cache_dir,
-            RELEASE_FILENAME,
-            hf_repo_prefix,
-            len(lacking),
-            ", ".join(lacking[:5]) + (", …" if len(lacking) > 5 else ""),
-        )
-        if _follow_hub is not None:
-            if _follow_hub.outcome is None:
-                _compare_with_hub(cache_dir, repo_root, label, _follow_hub)
-            return _left_alone(cache_dir, label, _follow_hub)
-        return cache_dir
-    if manifest is not None:
-        unnamed = sorted(
-            name
-            for name in (f.rsplit("/", 1)[-1] for f in remote_files)
-            if manifest.entry(f"{SNAPSHOT_DATA_DIRNAME}/{name}") is None
-        )
-        if unnamed:
-            manifest_part.unlink(missing_ok=True)
-            release_part.unlink(missing_ok=True)
-            raise error_cls(
-                f"{hf_repo_prefix} publishes {len(unnamed)} file(s) its own {SNAPSHOT_MANIFEST_FILENAME} "
-                f"does not attest ({', '.join(unnamed[:5])}); a cache holding them would be withheld, "
-                f"so nothing was downloaded."
+            manifest = _stage_manifest(
+                fs, f"{repo_root}/{SNAPSHOT_MANIFEST_FILENAME}", staged_manifest, label
             )
-        # Placed **now**, before the record and the first byte, unlike `release.json`. A manifest only
-        # ever refuses: a reader withholds whatever it does not attest. So an interrupted pull leaves a
-        # cache whose old files the new manifest disowns (withheld, re-pulled on the next call) rather
-        # than one whose mixture nothing on disk can see.
-        manifest_part.replace(cache_dir / SNAPSHOT_MANIFEST_FILENAME)
-    else:
-        # The repo answered that it publishes none: a manifest already here describes other bytes.
-        (cache_dir / SNAPSHOT_MANIFEST_FILENAME).unlink(missing_ok=True)
+        except OSError as exc:
+            # Could not ask, which is not "publishes none": pulling on without it would accept every byte
+            # unverified, so this pull stops here, and a cache nothing contradicts is served as it is.
+            if servable:
+                return _unverified(
+                    cache_dir,
+                    label,
+                    f"its {SNAPSHOT_MANIFEST_FILENAME} could not be fetched ({exc})",
+                    _follow_hub,
+                )
+            raise error_cls(
+                f"the {label} repo's {SNAPSHOT_MANIFEST_FILENAME} could not be fetched ({exc}); nothing was "
+                f"downloaded, because without it no file can be checked. Re-run the pull."
+            ) from exc
+        # The repo's `release.json`, fetched **now** and staged beside the cache like the manifest, and
+        # placed with the other root files at the end only if it may describe every file the cache then
+        # holds (RM445). Asked first because what may be kept depends on it: a file kept from an earlier
+        # pull is this release's only when that pull was pulling this same `release.json`. Asked before the
+        # manifest is placed, so a could-not-ask here leaves the cache exactly as it was.
+        staged_release = Path(scratch) / RELEASE_FILENAME
+        try:
+            published_release = _stage_release(fs, f"{repo_root}/{RELEASE_FILENAME}", staged_release, label)
+        except OSError as exc:
+            # Could not ask, which is not "publishes none", as for the manifest: what may be kept and what
+            # may be labelled turn on the answer, so this pull stops before anything in the cache moves.
+            if servable:
+                return _unverified(
+                    cache_dir, label, f"its {RELEASE_FILENAME} could not be fetched ({exc})", _follow_hub
+                )
+            raise error_cls(
+                f"the {label} repo's {RELEASE_FILENAME} could not be fetched ({exc}); nothing was downloaded, "
+                f"because what a pull keeps and labels depends on it. Re-run the pull."
+            ) from exc
+        # The optional parquet **sidecars** beside `data/` — ClinVar's `citations/` today. Fetched here so a
+        # provisioned snapshot is the same artifact a built one is: without the citations table a consumer has
+        # no PMIDs, and `draft-panel` cannot produce a compilable module because `studies.csv` is mandatory.
+        # They go in their own directory, never into `data/`, which is the whole reason the layout has a
+        # sibling: the readers glob `data/*.parquet` and a two-column table there breaks every query.
+        # Listed here, before any download, so the pull record names them with the data (RM339).
+        remote_sidecars: list[tuple[str, str]] = []
+        for sidecar in SNAPSHOT_SIDECAR_DIRNAMES:
+            try:
+                listed = fs.ls(f"{repo_root}/{sidecar}", detail=False)
+            except Exception as exc:
+                logger.debug("No %s/ in the %s repo (%s).", sidecar, label, type(exc).__name__)
+                continue
+            remote_sidecars.extend((sidecar, f) for f in listed if f.endswith(".parquet"))
+
+        planned = [f"{SNAPSHOT_DATA_DIRNAME}/{f.rsplit('/', 1)[-1]}" for f in remote_files] + [
+            f"{sidecar}/{f.rsplit('/', 1)[-1]}" for sidecar, f in remote_sidecars
+        ]
+        lacking = [name for name in planned if not parquet_footer_ok(cache_dir / name)]
+        if is_build and lacking:
+            # Could not run, never absent (`@unreachable-not-absent`): the parts the repo publishes that this
+            # build lacks stay unreachable until someone provides them, and each run says so again.
+            logger.warning(
+                "%s cache at %s is a local build (its %s was not placed by a pull of %s) and lacks %d part(s) "
+                "the repo publishes (%s). A pull never fetches beside a build, so they were not fetched and "
+                "what reads them could not run: rebuild the lane with them, or move the build aside and run "
+                "`cache pull`.",
+                label,
+                cache_dir,
+                RELEASE_FILENAME,
+                hf_repo_prefix,
+                len(lacking),
+                ", ".join(lacking[:5]) + (", …" if len(lacking) > 5 else ""),
+            )
+            if _follow_hub is not None:
+                if _follow_hub.outcome is None:
+                    _compare_with_hub(cache_dir, repo_root, label, _follow_hub)
+                return _left_alone(cache_dir, label, _follow_hub)
+            return cache_dir
+        if manifest is not None:
+            unnamed = sorted(
+                name
+                for name in (f.rsplit("/", 1)[-1] for f in remote_files)
+                if manifest.entry(f"{SNAPSHOT_DATA_DIRNAME}/{name}") is None
+            )
+            if unnamed:
+                raise error_cls(
+                    f"{hf_repo_prefix} publishes {len(unnamed)} file(s) its own {SNAPSHOT_MANIFEST_FILENAME} "
+                    f"does not attest ({', '.join(unnamed[:5])}); a cache holding them would be withheld, "
+                    f"so nothing was downloaded."
+                )
+        if preflight is not None:
+            preflight(manifest)
+        data_dir.mkdir(parents=True, exist_ok=True)
+        if not is_build:
+            for p in corrupt:
+                logger.warning("Corrupt/truncated %s parquet %s — removing for re-download", label, p.name)
+                p.unlink()
+        release_part = cache_dir / f"{RELEASE_FILENAME}.part"
+        if published_release is not None:
+            staged_release.replace(release_part)
+        if manifest is not None:
+            # Placed **now**, before the record and the first byte, unlike `release.json`. A manifest only
+            # ever refuses: a reader withholds whatever it does not attest. So an interrupted pull leaves a
+            # cache whose old files the new manifest disowns (withheld, re-pulled on the next call) rather
+            # than one whose mixture nothing on disk can see.
+            staged_manifest.replace(cache_dir / SNAPSHOT_MANIFEST_FILENAME)
+        else:
+            # The repo answered that it publishes none: a manifest already here describes other bytes.
+            (cache_dir / SNAPSHOT_MANIFEST_FILENAME).unlink(missing_ok=True)
 
     try:
         if unrecorded:
@@ -953,7 +1022,7 @@ def _provision_snapshot(
 
         # A switch is recorded as under way until every file is the new repo's: `pull_record_repo` reads
         # `replacing` first, so an interrupted switch is still a cache of the old repo on the next call.
-        record: dict[str, object] = {"repo": hf_repo_prefix, "files": planned}
+        record: dict[str, object] = {"repo": hf_repo_prefix, "files": planned, **_carried_groups(cache_dir)}
         if switched_from is not None:
             record[PULL_RECORD_REPLACING_KEY] = switched_from
         if published_release is not None and not any(
@@ -1329,17 +1398,358 @@ def _unverified(cache_dir: Path, label: str, why: str, follow: _FollowHub | None
     return cache_dir
 
 
-def ensure_snapshot(ensembl_cache: Path | None = None, *, _follow_hub: _FollowHub | None = None) -> Path:
-    """Provision the Ensembl parquet cache from HuggingFace Hub, returning the cache directory."""
+def ensure_snapshot(
+    ensembl_cache: Path | None = None,
+    *,
+    groups: Sequence[str] = (),
+    declared_use: str = "unstated",
+    _follow_hub: _FollowHub | None = None,
+) -> Path:
+    """Provision the Ensembl parquet cache from HuggingFace Hub, returning the cache directory.
+
+    **`groups` selects optional column groups of the split release** (RM437), pulled into
+    `groups/<name>/` beside the core and read through `locations.ensembl_group_dir`, never by path. The
+    valid names are the manifest's own `groups`; `core` is refused (`CORE_IS_NOT_A_GROUP`) and so is a
+    name the manifest does not publish, both with `ValueError` and before any download. Each named
+    group that must be fetched is judged by `check_declared_use` against its licensor's terms
+    (`snapshot_group_terms`) before any download too: a named group whose terms refuse the stated use
+    raises `LicenseRefusal` when it must be fetched, and under `unstated`, or with terms unknown, the
+    group is skipped with the reason logged. A group already current (recorded at the manifest's
+    release, every file it attests there at its size) fetches nothing, so it is not gated again
+    (`@acquisition-gate-is-not-a-read-gate`; review round 2, D). The check uses the retained core's
+    manifest when the pull keeps it, and the staged manifest when the pull installs a release (RM458).
+
+    **The selection is sticky.** The pull record names every group a pull took, with the release its
+    files were attested against and the declaration it was admitted under, and every later call
+    re-pulls those groups whenever the core's release moves, with or without `groups`. A sticky group
+    is gated by `declared_use` when that states a use, else by its recorded declaration; one that is
+    skipped, refused or cannot be fetched is logged and left as it was, so `ensembl_group_dir` refuses
+    it as another release, and never raises out of a call that did not name it. A group's files are
+    checked against the manifest's sha256 on the way in, as the core's are. **A pull record that is there
+    and cannot be read** (`locations.pulled_groups` refuses it) is moved aside under a dated name, never
+    deleted, and a fresh one naming this lane's repository takes its place, with no groups and no release
+    digest, before anything else runs (`_set_aside_unreadable_record`). The pull then goes on with this call's
+    groups; a file the manifest attests by sha256 is kept. The warning names the moved file, says any group
+    selection it held is lost, and names the repository the fresh record assumes, since the corrupt one may
+    have named another. Without the fresh record the cache would read as a local build and never be pulled
+    again. A local build writes no pull record, so a corrupt one came from a pull.
+    """
     cache_dir = Path(ensembl_cache) if ensembl_cache is not None else default_ensembl_cache_dir()
-    return _provision_snapshot(
+    named = _named_groups(groups)
+    try:
+        pulled_groups(cache_dir)
+    except EnsemblGroupReleaseError as unreadable:  # the reader's one refusal: a record there and unreadable
+        _set_aside_unreadable_record(cache_dir, SNAPSHOT_REPO_PREFIXES["ensembl"], unreadable)
+    path = _provision_snapshot(
         cache_dir,
         SNAPSHOT_REPO_PREFIXES["ensembl"],
         label="Ensembl",
         error_cls=EnsemblReferenceError,
         filename_glob=SNAPSHOT_FILE_GLOBS["ensembl"],
         _follow_hub=_follow_hub,
+        preflight=partial(_admit_named_groups, cache_dir, named, declared_use) if named else None,
     )
+    _provision_groups(cache_dir, named, declared_use, _follow_hub=_follow_hub)
+    return path
+
+
+# ── the split release's optional groups (RM437) ─────────────────────────────────────────────────
+
+
+def _named_groups(groups: Sequence[str]) -> tuple[str, ...]:
+    """The group names a caller asked for, stripped and deduplicated in order; `core` refused (RM437)."""
+    raw = (groups,) if isinstance(groups, str) else tuple(groups)
+    named = tuple(dict.fromkeys(name.strip() for name in raw if name.strip()))
+    if ENSEMBL_CORE_GROUP in named:
+        raise ValueError(CORE_IS_NOT_A_GROUP)
+    return named
+
+
+def _effective_group_use(declared_use: str, entry: dict | None) -> str:
+    """The declaration a group is gated by: the caller's when it states one, else the one the group was admitted under."""
+    return _group_use(declared_use, entry)[0]
+
+
+#: The pull-record key beside a group's `declared_use`: when that use was declared (0.9, the pm's RM437
+#: reading 1), so a re-pull under it can say which declaration admitted the new release.
+PULL_RECORD_DECLARED_AT_KEY = "declared_at"
+#: What a re-pull under a recorded use says when the record states no time (one written before the key).
+DECLARED_AT_UNRECORDED = "at a time the pull record does not state"
+
+
+def _group_use(declared_use: str, entry: dict | None) -> tuple[str, bool]:
+    """`(the use a group is gated by, whether it is the recorded one rather than the call's)`."""
+    stated = check_vocab(declared_use, VALID_DECLARED_USE, "declared_use") or declared_use
+    if stated != "unstated":
+        return stated, False
+    recorded = entry.get("declared_use") if entry is not None else None
+    if isinstance(recorded, str) and recorded in VALID_DECLARED_USE:
+        return recorded, True
+    return "unstated", False
+
+
+def _declaration(entry: dict | None, use: str, from_record: bool) -> dict[str, str]:
+    """The `declared_at` a group's entry keeps: the recorded one under the recorded use, now under the call's.
+
+    `unstated` is no declaration, so it gets no time; nor does a record that states none, under its own
+    use: a time is never written for a declaration this call did not see.
+    """
+    if from_record:
+        recorded = entry.get(PULL_RECORD_DECLARED_AT_KEY) if entry is not None else None
+        return {PULL_RECORD_DECLARED_AT_KEY: recorded} if isinstance(recorded, str) and recorded else {}
+    return {PULL_RECORD_DECLARED_AT_KEY: now_utc_iso()} if use != "unstated" else {}
+
+
+def _recorded_use_note(use: str, declaration: dict[str, str]) -> str:
+    """The words a re-pull gated by the recorded use logs: the use, and when it was declared."""
+    at = declaration.get(PULL_RECORD_DECLARED_AT_KEY) or DECLARED_AT_UNRECORDED
+    return f"under the use recorded for it, {use}, declared {at}; this call states none"
+
+
+def _known_group(manifest: SnapshotManifest, group: str) -> SnapshotManifestGroup:
+    """The manifest's record of `group`, or `ValueError` naming every group it does publish."""
+    known = manifest.groups or {}
+    if group not in known:
+        raise ValueError(
+            f"the Ensembl release {manifest.release_id or '(unlabelled)'} publishes no group {group!r}; its "
+            f"groups are {', '.join(sorted(known)) or 'none'}"
+        )
+    return known[group]
+
+
+def _group_release(manifest: SnapshotManifest, group: str) -> str:
+    """The release to which a selected group's files belong."""
+    release = (manifest.release_id or "").strip()
+    if not release:
+        raise EnsemblReferenceError(
+            f"the Ensembl release's {SNAPSHOT_MANIFEST_FILENAME} states no release_id, so the {group} group "
+            f"cannot be recorded as the core's release"
+        )
+    return release
+
+
+def _group_is_current(
+    cache_dir: Path, entry: dict | None, release: str, entries: Sequence[SnapshotManifestFile]
+) -> bool:
+    """Whether a group needs no fetch: recorded at `release`, and every file `entries` attests there at its size."""
+    return (
+        bool(release)
+        and entry is not None
+        and entry.get("release_id") == release
+        and bool(entries)
+        and all(
+            (cache_dir / e.path).is_file()
+            and e.size is not None
+            and (cache_dir / e.path).stat().st_size == e.size
+            for e in entries
+        )
+    )
+
+
+def _admit_named_groups(
+    cache_dir: Path, named: tuple[str, ...], declared_use: str, manifest: SnapshotManifest | None
+) -> None:
+    """Check every selection against the core's target before fetching any payload."""
+    if manifest is None:
+        raise EnsemblReferenceError(
+            f"The selected Ensembl release has no readable {SNAPSHOT_MANIFEST_FILENAME}, "
+            "so the requested groups cannot be checked"
+        )
+    records = [_known_group(manifest, group) for group in named]
+    recorded = pulled_groups(cache_dir)
+    release = _group_release(manifest, named[0])
+    for group, record in zip(named, records, strict=True):
+        if _group_is_current(cache_dir, recorded.get(group), release, _group_entries(manifest, group)):
+            continue
+        check_declared_use(
+            snapshot_group_terms(group, record.licence),
+            _effective_group_use(declared_use, recorded.get(group)),
+        )
+
+
+def _group_entries(manifest: SnapshotManifest, group: str) -> list[SnapshotManifestFile]:
+    """The files the manifest attests for `group`, each refused unless it lies directly under `groups/<group>/`."""
+    entries = manifest.group_files(group)
+    if not entries:
+        raise EnsemblReferenceError(
+            f"the Ensembl release's {SNAPSHOT_MANIFEST_FILENAME} attests no file for the {group} group"
+        )
+    for entry in entries:
+        directory, _, name = entry.path.rpartition("/")
+        if (
+            group in ("", ".", "..")
+            or "/" in group
+            or directory != f"{ENSEMBL_GROUPS_DIRNAME}/{group}"
+            or not name.endswith(".parquet")
+            or name.startswith(".")
+        ):
+            raise EnsemblReferenceError(
+                f"the Ensembl release's {SNAPSHOT_MANIFEST_FILENAME} places a {group} file at {entry.path!r}, "
+                f"outside {ENSEMBL_GROUPS_DIRNAME}/{group}/; nothing of that group was downloaded"
+            )
+    return entries
+
+
+def _record_group(cache_dir: Path, group: str, entry: dict[str, object]) -> None:
+    """Write one group's entry into the pull record, keeping every other key as it is."""
+    payload = _pull_record(cache_dir) or {}
+    groups = payload.get(PULL_RECORD_GROUPS_KEY)
+    groups = dict(groups) if isinstance(groups, dict) else {}
+    groups[group] = entry
+    payload[PULL_RECORD_GROUPS_KEY] = groups
+    atomic_write_text(cache_dir / PULL_RECORD_FILENAME, json.dumps(payload, indent=2) + "\n")
+
+
+def _pull_one_group(
+    cache_dir: Path, group: str, manifest: SnapshotManifest | None, declared_use: str, entry: dict | None
+) -> str:
+    """Bring one group to the core's release, returning its outcome (`_FollowHub.groups`)."""
+    if manifest is None:
+        raise EnsemblReferenceError(
+            f"the Ensembl cache at {cache_dir} carries no readable {SNAPSHOT_MANIFEST_FILENAME}, so no group "
+            f"can be attested"
+        )
+    record = _known_group(manifest, group)
+    release = _group_release(manifest, group)
+    entries = _group_entries(manifest, group)
+    paths = [e.path for e in entries]
+    if _group_is_current(cache_dir, entry, release, entries):
+        # Nothing is taken, so nothing is gated (`@acquisition-gate-is-not-a-read-gate`).
+        return _with_strays(cache_dir, group, manifest, "current")
+    use, from_record = _group_use(declared_use, entry)
+    declaration = _declaration(entry, use, from_record)
+    note = _recorded_use_note(use, declaration) if from_record else None
+    reason = check_declared_use(snapshot_group_terms(group, record.licence), use)
+    if reason is not None:
+        logger.warning("Ensembl group %s: skipped — %s%s", group, reason, f" ({note})" if note else "")
+        return f"skipped — {reason}"
+    coverage = manifest_coverage(cache_dir)
+    if snapshot_record_missing(cache_dir) != [] or coverage is None or not coverage.whole:
+        raise EnsemblReferenceError(
+            f"the Ensembl cache at {cache_dir} is not a finished pull its {SNAPSHOT_MANIFEST_FILENAME} "
+            f"attests whole, so the {group} group is not pulled beside it; run `cache pull --only ensembl` "
+            f"where the hub can be read"
+        )
+    fs = _hub_filesystem()
+    if fs is None:
+        raise EnsemblReferenceError(f"huggingface_hub is required to download the Ensembl {group} group")
+    repo_root = SNAPSHOT_REPO_PREFIXES["ensembl"].rsplit("/", 1)[0]
+    earlier = entry.get("files") if entry is not None else None
+    stale = [
+        p
+        for p in (earlier if isinstance(earlier, list) else [])
+        if isinstance(p, str) and p not in paths and p.startswith(f"{ENSEMBL_GROUPS_DIRNAME}/{group}/")
+    ]
+    # Recorded as under way before the first byte moves, so an interrupted pull is never read as current.
+    # The earlier release's files stay named beside the new ones until they are removed, or a resumed
+    # pull would no longer know they were this lane's to remove.
+    _record_group(
+        cache_dir,
+        group,
+        {"release_id": None, "files": [*paths, *stale], "declared_use": use, **declaration},
+    )
+    logger.info(
+        "Pulling the Ensembl %s group (%d file(s)) for %s%s ...",
+        group,
+        len(entries),
+        release,
+        f" {note}" if note else "",
+    )
+    for e in entries:
+        local = cache_dir / e.path
+        if manifest_attests(manifest, e.path, local):
+            continue
+        local.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            _fetch_parquet(
+                fs,
+                f"{repo_root}/{e.path}",
+                local,
+                display=e.path,
+                label="Ensembl",
+                error_cls=EnsemblReferenceError,
+                manifest=manifest,
+                relative=e.path,
+            )
+        except EnsemblReferenceError:
+            raise
+        except Exception as exc:
+            local.with_suffix(".part").unlink(missing_ok=True)
+            raise EnsemblReferenceError(
+                f"{e.path} of the Ensembl {group} group could not be fetched ({type(exc).__name__}: {exc}); "
+                f"the files already fetched are kept, and re-running the pull fetches the rest"
+            ) from exc
+    for relative in stale:
+        # This lane's own earlier pull put it there, and the release now in place does not name it.
+        (cache_dir / relative).unlink(missing_ok=True)
+        logger.info(
+            "Removed %s: an earlier release's %s file the release %s does not name.", relative, group, release
+        )
+    _record_group(
+        cache_dir, group, {"release_id": release, "files": paths, "declared_use": use, **declaration}
+    )
+    return _with_strays(cache_dir, group, manifest, "pulled")
+
+
+def _with_strays(cache_dir: Path, group: str, manifest: SnapshotManifest, outcome: str) -> str:
+    """`outcome`, or, when the group's directory holds parquet the manifest does not name, the outcome with them.
+
+    No pull removes a file it did not put there, and `ensembl_group_dir` refuses the group while one is
+    there, so the pull may not report the group as plainly current or pulled.
+    """
+    unnamed = _unnamed_group_files(cache_dir, group, manifest)
+    if not unnamed:
+        return outcome
+    note = (
+        f"{outcome}, but {cache_dir / ENSEMBL_GROUPS_DIRNAME / group} holds {len(unnamed)} parquet file(s) the "
+        f"manifest does not name for the group ({', '.join(unnamed[:5])}{', …' if len(unnamed) > 5 else ''}); "
+        f"readers refuse the group until they are moved aside"
+    )
+    logger.warning("Ensembl group %s: %s", group, note)
+    return note
+
+
+def _provision_groups(
+    cache_dir: Path, named: tuple[str, ...], declared_use: str, *, _follow_hub: _FollowHub | None = None
+) -> None:
+    """Bring every named and every recorded group to the core's release, after the core's pull (RM437).
+
+    Reads the manifest the core's pull left in place, so a group is always attested against the release
+    the core now is. A named group's failure raises, once every group has been tried; a recorded group the
+    caller did not name is logged and left as it was, whatever went wrong, so `ensembl_group_dir` refuses
+    it until a pull succeeds.
+    """
+    recorded = pulled_groups(cache_dir)
+    wanted = [*named, *(group for group in recorded if group not in named)]
+    if not wanted:
+        return
+    manifest = read_snapshot_manifest(cache_dir / SNAPSHOT_MANIFEST_FILENAME)
+    if named:
+        # A whole core, a local build or a cache served during an outage may have been kept.
+        # Check all selections before the first group can write beside that core.
+        _admit_named_groups(cache_dir, named, declared_use, manifest)
+    first_failure: Exception | None = None
+    for group in wanted:
+        try:
+            outcome = _pull_one_group(cache_dir, group, manifest, declared_use, recorded.get(group))
+        except Exception as exc:  # a group's failure may not take the others', or the core's, away
+            if group in named:
+                if _follow_hub is not None:
+                    _follow_hub.groups[group] = f"FAILED — {exc}"
+                first_failure = first_failure or exc
+                continue
+            logger.warning(
+                "Ensembl cache at %s: the %s group, selected by an earlier pull, was not re-pulled (%s); it "
+                "is refused to readers until a pull succeeds.",
+                cache_dir,
+                group,
+                exc,
+            )
+            outcome = f"not re-pulled — {exc}"
+        if _follow_hub is not None:
+            _follow_hub.groups[group] = outcome
+    if first_failure is not None:
+        raise first_failure
 
 
 def ensure_clinvar_snapshot(
@@ -1504,18 +1914,16 @@ def ensure_clinvar_gkm_snapshot(
     )
 
 
-def _ensure_opentargets_snapshot(
+def ensure_opentargets_snapshot(
     opentargets_cache: Path | None = None, *, _follow_hub: _FollowHub | None = None
 ) -> Path:
     """Provision the trimmed Open Targets Platform snapshot from HuggingFace Hub (RM408).
 
     The release is CC0-marked, so a deployment pulls ~5.5 GB instead of downloading ~22 GB of
     Platform parquet to cut it. A pulled copy is the release its `release.json` names; the lane pins
-    one release, so currency is a new pin, never a re-pull.
-
-    **Private on `main`.** It is reached through `CACHE_LANES` (`cache pull`, `cache prepare`) and a
-    new public function is minor scope (RELEASE_CYCLE), so the next minor may give it its siblings'
-    public name.
+    one release, so currency is a new pin, never a re-pull. Public since 0.9 (RM412): the 0.8 line
+    carried it as `_ensure_opentargets_snapshot`, reached only through `CACHE_LANES`, because a new
+    public function was minor scope there.
     """
     cache_dir = Path(opentargets_cache) if opentargets_cache is not None else default_opentargets_cache_dir()
     return _provision_snapshot(

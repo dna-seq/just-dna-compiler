@@ -56,6 +56,9 @@ jobs:
           enable-cache: true
           python-version: ${{ matrix.python-version }}
       - run: uv sync --locked
+      # duckdb's `httpfs`, installed ahead of time as a deployment installs it (RM430): the remote snapshot
+      # holder loads it with auto-install off, and its loopback tests skip where it is missing.
+      - run: uv run python -c "import duckdb; duckdb.connect().install_extension('httpfs')"
 
       # No JUST_DNA_NETWORK_TESTS and no snapshot caches, so the live-API tests and the resolver
       # integration tests skip. That is intended: this job must be able to pass with no network and no

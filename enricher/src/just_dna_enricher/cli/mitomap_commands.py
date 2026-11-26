@@ -5,9 +5,9 @@
 from pathlib import Path
 
 import typer
-from just_dna_format.snapshot import release_label
 
 from just_dna_enricher.caches import LANES_BY_NAME
+from just_dna_enricher.cli._shared import _publish_lane
 from just_dna_enricher.locations import repro_out
 from just_dna_enricher.mitomap import MitomapError
 from just_dna_enricher.mitomap_build import DEFAULT_MITOMAP_URL
@@ -224,29 +224,13 @@ def mitomap_publish_(
     increment whose own currency check cannot be run by whoever pulled it; it is rebuilt locally from
     the parents instead, which is cheaper than the download and cannot be stale.
     """
-    from just_dna_enricher.upload import (
-        PublishRefused,
-        publish_reference_snapshot,
-        rehearse_reference_snapshot,
-    )
-
-    if release_label(snapshot_dir) is None:
-        typer.secho(
+    _publish_lane(
+        snapshot_dir,
+        repo,
+        dry_run,
+        commit_message,
+        unlabelled_warning=(
             "  this snapshot carries no release label (it was built from a local dump), so everyone "
-            "who pulls it inherits a comparison that cannot name its own MITOMAP release.",
-            fg=typer.colors.YELLOW,
-            err=True,
-        )
-    try:
-        if dry_run:
-            plan = rehearse_reference_snapshot(snapshot_dir, repo)
-            typer.echo(f"would upload {len(plan.files)} file(s) to {plan.repo_id}: {plan.files}")
-            return
-        plan = publish_reference_snapshot(snapshot_dir, repo, commit_message=commit_message)
-    except (PublishRefused, PermissionError, ImportError) as exc:
-        typer.secho(f"PUBLISH FAILED: {exc}", fg=typer.colors.RED, err=True)
-        raise typer.Exit(code=1) from exc
-    typer.secho(
-        f"published: {snapshot_dir} → {plan.repo_id} ({len(plan.files)} files)",
-        fg=typer.colors.GREEN,
+            "who pulls it inherits a comparison that cannot name its own MITOMAP release."
+        ),
     )
