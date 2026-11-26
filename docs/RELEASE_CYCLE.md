@@ -199,12 +199,27 @@ reported, never asked about, and they never freeze scope.
 has not been cut yet. It resets the cycle, and in earlier lines it produced the `PROPOSAL_*_PT2`/`PT3`
 rounds and branches of around 400 commits that were hard to follow and maintain.
 
-## Tic/tac after 1.0 (intended, not yet in force)
+## Tic/tac: even minors carry features, odd minors carry fixes (in force from 0.9)
 
-From 1.0 on, the intent is to alternate: **even minors are bugfix and stabilization only, odd minors
-carry new features**, each with its own deferrals. It does not apply before 1.0, because feature parity
-with competitors is needed now. 0.8 is as its roadmap file declares it. Since 2026-11-03 that is the
-work already built, the chosen fixes and longevitymap v2. Competitor parity moved to 0.9 with the rest.
+The maintainer, 2026-11-26: "from now on even versions are features + opinionated RMs needing my decisions, while odd
+are like 0.9 - with fixes and mostly decided stuff (minimum blockers, batched fixes, pin movements and such)".
+
+- **An even minor** (0.10, 0.12, …) carries features and the items that need the maintainer's decisions. Its
+  interview (§ Minors, step 1) is where those decisions are taken, before its branch.
+- **An odd minor** (0.9, 0.11, …) carries fixes and decided work: batched fixes, few blockers, dependency pin
+  movements, the residuals the previous minor left. Nothing in it waits on a decision of the maintainer's.
+- **The pm sorts each item by this when it is filed or placed**: one that needs the maintainer's decision goes to the
+  next even minor, one already decided may go to the next odd one. A patch on `main` stays a patch.
+- **Two fix minors in a row skip the even number between them** (the maintainer, the same day: "If we would need two
+  fixes minors, then you just skip the even ver. in between"): 0.11 is followed by 0.13 when no feature minor is due.
+- **When a fix minor starts is the pm's call, batched by judgement**, with 10 to 20 decided items as the trigger:
+  nearer 10 when the items are severe or a consumer or upstream is waiting on them, nearer 20 when they are not (the
+  maintainer: "Batch on your judgement, rough trescholds from old stays, 10-20 items in minor as trigger. Closer to
+  lower or upper - you decide by severity/upstream demand"). For a fix minor this count is the start signal; the
+  triage runbook's §4 counts stay a lamp for everything else.
+
+This replaces the earlier intent, written for after 1.0 and never in force, which had it the other way round (even
+minors bugfix only, odd minors features). Agreed: nothing checks it.
 
 ## Majors
 
