@@ -41,19 +41,21 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md). The `0.8` branch merged into `main` at the 0.8.0 cut (2026-11-05).
 
-## 2026-11-19 — `v0.9.0`: format, compiler and enricher 0.9.0 (a minor, the `0.9` branch)
+## 2026-11-26 — `v0.9.0`: format, compiler and enricher 0.9.0 (a minor, the `0.9` branch)
 
-**Cut on 2026-11-19 from the `0.9` branch**, built from 2026-11-16 to 2026-11-18: the enricher reads its reference data
+**Cut on 2026-11-26 from the `0.9` branch**, built from 2026-11-16 to 2026-11-26: the enricher reads its reference data
 wherever it lives (local disk, then the registry's proxy, then Hugging Face), and the format tier gains
-`snapshot.parse_release`. Six items: RM430, RM431, RM443, RM437, RM404 and RM412's second half with its
-`--rehearse-download` flag; RM412's half 1 (the per-lane release probe) stays open, parked. The upgrade note is
-[INTEGRATION_0_9.md](INTEGRATION_0_9.md). Publishing to PyPI is the maintainer's, and the tag `v0.9.0` follows it;
-0.8.10 is published and tagged first, and `0.9` merges into `main` after the consumers' trial of this cut.
+`snapshot.parse_release` and `snapshot.is_whole_build`. Six items: RM430, RM431, RM443, RM437, RM404 and RM412's
+second half with its `--rehearse-download` flag; RM412's half 1 (the per-lane release probe) stays open, parked. A
+first cut on 2026-11-19 was never published: **the rescope** (the pm on the maintainer's word, 2026-11-26) built nine
+of its known issues and residuals in 0.9 instead, RM454, RM458 and RM461 to RM467, and the cut was redone. The
+upgrade note is [INTEGRATION_0_9.md](INTEGRATION_0_9.md). Publishing to PyPI is the maintainer's, and the tag
+`v0.9.0` follows it; 0.8.10 was published and tagged first, and `0.9` merges into `main` after the consumers' trial.
 
-- **Versions and floors (one number per cut):** format changed (`parse_release`), so all three packages are `0.9.0`,
+- **Versions and floors (one number per cut):** format changed (`parse_release`, `is_whole_build`), so all three packages are `0.9.0`,
   the compiler for its floor alone (its source did not change). Every intra-workspace floor is `>=0.9.0`; **the
   enricher floors format at 0.9.0 because it imports `parse_release`**. No third-party floor moved, and `uv lock`
-  moved only the three workspace versions. PyPI's latest at the cut was 0.8.9 for all three.
+  moved only the three workspace versions. PyPI's latest at the cut is 0.8.10 for all three.
 - **No old-reader break.** No new warning code, manifest field, parquet, parquet column, verification reason or
   release-change kind, so a format reader on any 0.8 release reads every module 0.9.0 compiles.
   `rsid_genotype_reads_as_two_events`, which RM449 named for 0.9, was never in its scope and is RM460, in 0.10 (the
@@ -62,25 +64,29 @@ wherever it lives (local disk, then the registry's proxy, then Hugging Face), an
   and Python 3.14.8, so no toolchain sweep): 22 of 22 reference modules, every axis 0/22. Its evidence quotes the
   measurement of `enrich` (round 2's item B): on five reference examples, online with warm caches, 0.9's `enrich`
   without the new arguments wrote 0.8.10's bytes, clock fields aside; `content_signature` equal in all 10 pairs.
+  Since RM466 a test with goldens recorded from `v0.8.10` holds that claim. The compile half was measured again at the
+  redone cut, with the same result.
 - **Behaviour a consumer may see:** `caches.LANE_STATES` gains `stale` (the registry derives its own states; a reader
   comparing `state == "present"` reads a stale index as not present); a host that shares a `RemoteSnapshots` holder
   closes it after its last lookup (a proxy 422, or a lookup on a closed holder, raises out of `lookup_variant`: the
   host's programming error, never an `unchecked` finding); **cpic's local gene compare now trims**, which can only add
   a match; `EnsemblSettings` refuses a `batch_size` above 200 or below 1 and a `batch_timeout` not above 0, where 0.8
   clamped; `just_dna_enricher.key_compare.KEY_COMPARES` is read by the registry from its release that floors 0.9 (its
-  S36), so it stays stable through the 0.9 line.
-- **Known issues** ([INTEGRATION_0_9 § 4](INTEGRATION_0_9.md#4-known-issues)): RM458 (known issue C: during an Ensembl
-  release transition the group preflight and the provisioning read different manifests, so a group is refused after
-  the core refresh, never before any download; and a current group is gated only after the core refresh, still
-  refused, none of its bytes moved), RM459 (with the proxy set and Hugging Face off, gene lookups on clinpgx, cpic,
-  drug_labels and civic answer could-not-ask until the registry reads `KEY_COMPARES`), RM460, RM462 and RM454.
-- **Residuals filed at the cut:** RM458–RM461, RM465 and RM466 for 0.10 (in [ROADMAP_0_10.md](ROADMAP_0_10.md), opened
-  at this cut with 0.10's scope); RM462, RM463 and RM464 as patches on `main` after 0.9 merges. `ROADMAP_0_9.md`
-  closed into [history/](history/ROADMAP_0_9.md), and the six items' records are in
-  [ROADMAP_HISTORY § The 0.9 minor](ROADMAP_HISTORY.md#the-09-minor). INTEGRATION_0_8 moved to
-  [history/](history/INTEGRATION_0_8.md).
+  S36), so it stays stable through the 0.9 line. From the rescope: `lane_status` refuses a URL in `locations`
+  (`ValueError`); a `publish --dry-run` the gate would refuse exits 0 with `WOULD BE REFUSED:`; Open Targets' reader
+  refuses a `parts_read` above `parts_total`; a constraint or gene-metrics lookup finds a gene asked in another case.
+- **Known issue** ([INTEGRATION_0_9 § 4](INTEGRATION_0_9.md#4-known-issues)): RM459 (with the proxy set and Hugging
+  Face off, gene lookups on clinpgx, cpic, drug_labels and civic answer could-not-ask until the registry reads
+  `KEY_COMPARES`). The first cut's RM458, RM462 and RM454 were built by the rescope; RM460 is in 0.10's scope.
+- **Residuals:** RM459, RM460 and RM469 (RM461's: the pinned-text walk over every module) for 0.10, in
+  [ROADMAP_0_10.md](ROADMAP_0_10.md), opened at this cut with 0.10's scope and RM468; RM441 takes RM467's
+  reason-driven selection. `ROADMAP_0_9.md` closed into [history/](history/ROADMAP_0_9.md), the rescope included, and
+  the fifteen items' records are in [ROADMAP_HISTORY § The 0.9 minor](ROADMAP_HISTORY.md#the-09-minor).
+  INTEGRATION_0_8 moved to [history/](history/INTEGRATION_0_8.md).
 - **The trial rules** (an emerging item goes to the next minor unless a blocker; at most two review rounds) ran for
-  0.9 as set on desk #327 and #328; two review rounds ran, neither found a blocker, and the pm reports how they went.
+  0.9 as set on desk #327 and #328. Two review rounds ran, neither found a blocker, and the maintainer made the
+  two-round cap the rule for every minor; the first rule is not carried on, and the rescope took its nine back. The
+  gate for the redone cut was real enrich and compile runs over the reference modules, not a third review round.
 
 What 0.9 built, item by item, as it landed on the branch:
 

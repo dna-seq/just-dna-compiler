@@ -3,7 +3,7 @@
 **What this file is.** The open minors' scope: what 0.10 builds, and the methylation minor that follows, undated.
 Each item states why it is here. The file is named for the release that will decide its contents, as
 [ROADMAP_0_9.md](history/ROADMAP_0_9.md) was; the 0.10 cut moves it to `docs/history/` and opens `ROADMAP_0_11.md`
-with what is left. Opened at the 0.9.0 cut (2026-11-19) from ROADMAP_0_9.md's 0.10 heading and everything after it,
+with what is left. Opened at the 0.9.0 cut (first cut 2026-11-19, redone 2026-11-26) from ROADMAP_0_9.md's 0.10 heading and everything after it,
 plus the items 0.9 filed for the next minor.
 
 | Minor | Theme | Items |
@@ -29,7 +29,7 @@ Indexed in [RM_TOC.md](RM_TOC.md), which is the complete list and the place to l
 
 Five items, each optional for an author: RM399 with RM441 (one design, which also carries S156's per-table "newest enricher release that could change it"), RM435, RM265 and RM385. RM265's open shape question goes to the maintainer when 0.10 opens, as a fork of its own.
 
-**Filed at the 0.9.0 cut (2026-11-19), from 0.9's known issues and residuals:** RM459 (the second known issue, waiting on the registry's S36) and RM460 (the warning code RM449 named for 0.9, placed in 0.10 by the pm); their entries follow RM385. RM458, RM461, RM465 and RM466 were filed here too and went back into 0.9 at the rescope (2026-11-26).
+**Filed at the 0.9.0 cut (2026-11-19), from 0.9's known issues and residuals:** RM459 (the second known issue, waiting on the registry's S36) and RM460 (the warning code RM449 named for 0.9, placed in 0.10 by the pm); their entries follow RM385. RM458, RM461, RM465 and RM466 were filed here too and went back into 0.9 at the rescope (2026-11-26). **Placed at the redone cut (2026-11-26):** RM468 (S162, a persistent store of live answers, the pm's placement beside RM399 and RM441) moved in from ROADMAP.md, and RM469 (RM461's residual) was filed; both follow RM460.
 
 ## RM399 — a release cannot declare that a reference snapshot it reads moved, so `needs_recompile` says nothing about re-deriving
 

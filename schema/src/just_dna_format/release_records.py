@@ -1880,13 +1880,13 @@ RELEASE_RECORDS: dict[str, ReleaseRecord] = {
             "picks the insertion. The record's manifest_fields and its axes come from the second sweep."
         ),
     ),
-    # Measured at the 0.9.0 cut (2026-11-19). `previous` is 0.8.10, the newest cut compiler (cut the same
-    # day; PyPI's latest at the cut was 0.8.9), and BEFORE was compiled by it (with format 0.8.10, at
+    # Measured at the 0.9.0 cut (2026-11-19) and again at the redone cut (2026-11-26, after the rescope;
+    # PyPI's latest then 0.8.10, the same result). `previous` is 0.8.10, the newest cut compiler, and BEFORE was compiled by it (with format 0.8.10, at
     # `65cfa25b`) from this tree's `reference_examples/`, pinned to the locked polars and Python: every
     # module on both sides records polars 2.1.0 and Python 3.14.8, so no toolchain sweep. The lock did not
     # move since 0.8.10 beyond the three workspace versions. A measured zero, with its denominator in
     # `evidence`: the compiler's source did not change in 0.9 (it moves for its format floor only), and
-    # format's one change is `snapshot.parse_release`, which no compile calls. The record measures compiled
+    # format's changes are `snapshot.parse_release` and `is_whole_build`, which no compile calls. The record measures compiled
     # output only, so what the enricher writes is stated in `evidence` from a separate measurement (round
     # 2's item B), which no axis here covers.
     "0.9.0": ReleaseRecord(
@@ -1909,7 +1909,10 @@ RELEASE_RECORDS: dict[str, ReleaseRecord] = {
             "record's checked_at, clin_sig_authority_calls.csv and clin_sig_concordance.csv checked_at, "
             "licensing.csv fetched_at. Its limits: the live sources reached were dbSNP and the reference "
             "sequence; no run reached live Ensembl, gnomAD or the GRCh37 diagnosis; no rsID index was "
-            "present."
+            "present. Since RM466 a test holds the claim: a fixed offline input reaching the Ensembl "
+            "snapshot, the ClinVar witness, dbSNP and the sequence is enriched under a fixed clock and "
+            "compared byte for byte with goldens recorded from v0.8.10. The compile half was measured "
+            "again at the redone cut (2026-11-26, after the rescope), with the same result."
         ),
     ),
 }

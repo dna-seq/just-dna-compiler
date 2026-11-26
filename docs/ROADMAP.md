@@ -30,7 +30,7 @@ deferral is filed against the release that will decide it:
   probe overturned what the roadmap entry says.
 - **[ROADMAP_0_10.md](ROADMAP_0_10.md)** — items legal in a minor, each waiting on a design question, a
   corpus or a caller: 0.10's scope and the methylation minor after it. Its predecessor `ROADMAP_0_9.md`, 0.9's
-  scope, closed at the 0.9.0 cut on 2026-11-19 into [history/](history/ROADMAP_0_9.md), as `ROADMAP_0_8.md` had
+  scope, closed at the 0.9.0 cut on 2026-11-26 into [history/](history/ROADMAP_0_9.md), as `ROADMAP_0_8.md` had
   at the 0.8.0 cut on 2026-11-05 ([history/](history/ROADMAP_0_8.md)), whose one waiting item, RM28's predicate
   half, moved on then. What follows describes the 0.8 file as it was. **0.8 is a stabilization and competitor-parity release, decided 2026-09-11 with
   the maintainer**; the theme is stated in that file's header and does not itself admit an item. RM10 closed there, folded into RM28. **It succeeded `ROADMAP_0_7.md` at the 0.7
