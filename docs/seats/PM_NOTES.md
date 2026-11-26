@@ -255,3 +255,5 @@ patches right after real use started, so the pm reads an audit sceptically: the 
   restriction lives in `notice` prose), and RM333 (Open Targets' licence is unprobed).
 - **Republishing encumbered corpora** (SNPedia, CC BY-NC-SA) is a use case the maintainer envisions; the
   NC and SA terms are recorded as data, never treated as a refusal.
+- **To file on the kit at the next idle turn** (2026-11-26): `ask.py --epic` knows only `retro` and `dream`; a minor's
+  interview (a scope plus its forks) has no kind, so 0.10's went as `dream` (desk #466). Wish: an `interview` kind.

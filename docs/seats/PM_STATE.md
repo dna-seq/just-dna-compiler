@@ -29,5 +29,6 @@ rescoped: it builds its own leftovers before its cut is redone, and 0.10 is six 
 2. ✅ 0.8.10 released: the registry's four online rsIDs are accepted; its production upgrade can go ahead.
 3. ✅ Rules from you: at most two review rounds per minor; builds go to Codex GPT-6.2 Astra, the lead merges and
    checks; even minors carry features and your decisions, odd minors fixes, a fix minor starting at 10-20 items.
-4. ❓ Three items you placed in 0.9 by name were parked by the small cut: parked, a 0.11, or 0.10 (desk #347).
+4. ❓ 0.10, the next (even) minor, opened at the 0.9.0 publish: proposed scope and four forks on desk epic #466
+   (#467-#470), each with a default; about 52-98 h of builds, 76-144 h with #467's three items.
 5. ❓ One question on the maintainer's desk: linking the project's memory to its new folder name.
