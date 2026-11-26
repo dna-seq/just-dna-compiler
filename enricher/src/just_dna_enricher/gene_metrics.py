@@ -347,6 +347,7 @@ def enrich_gene_metrics(
     missing: list[str] = []
 
     # ── snapshot link (offline-capable, first) ─────────────────────────────────────────────────
+    snapshot_key = lane_compare("constraint", CONSTRAINT_LANE, "gene").key
     from_snapshot: dict[str, dict] = {}
     # Bound before the branch, not inside it (RM104): `constraint_routes_consulted` below reads this
     # unconditionally, so the two runs where `wanted` comes back empty — the **idempotent re-run**,
@@ -376,7 +377,10 @@ def enrich_gene_metrics(
                 )
         if reference is not None:
             try:
-                from_snapshot = lookup_snapshot(reference, wanted)
+                from_snapshot = {
+                    snapshot_key(symbol): record
+                    for symbol, record in lookup_snapshot(reference, wanted).items()
+                }
             except FileNotFoundError as exc:
                 # Could not read, never "read and found nothing" (RM432): the snapshot was not consulted,
                 # so no row may name its release, and offline the genes are reported as never asked.
@@ -396,7 +400,7 @@ def enrich_gene_metrics(
     # ── live API link (for what the snapshot missed, unless offline) ───────────────────────────
     from_api: dict[str, dict] = {}
     api_unanswered: set[str] = set()
-    still_missing = [g for g in wanted if g not in from_snapshot]
+    still_missing = [g for g in wanted if snapshot_key(g) not in from_snapshot]
     if still_missing and not offline:
         owned = client is None
         gnomad = client or GnomadClient()
@@ -423,7 +427,7 @@ def enrich_gene_metrics(
     constraint_routes_consulted = reference is not None or not offline
     unconsulted: list[str] = []
     for gene in wanted:
-        payload = from_snapshot.get(gene)
+        payload = from_snapshot.get(snapshot_key(gene))
         # The label follows the ROUTE, never the caller's `dataset` argument alone — the snapshot and
         # the API are different releases (see the module docstring), so one label for both would put
         # two different facts under one name.

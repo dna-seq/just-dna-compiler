@@ -416,8 +416,9 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   lanes. Gene keys compare by `gene_key` on both sides: the SQL fold is derived from it, Unicode whitespace and
   case folding included, so a cell spelled `\tſLCO1B1\xa0` no longer misses where Python's reading matches
   (it cost about 0.6 s once per process). Contigs fold by the format tier's reading. One walk holds every entry
-  against a real fixture key. A constraint lookup now finds a gene asked in another case; the gene-metrics
-  pass still indexes its answer by the authored spelling (reported to the pm).
+  against a real fixture key. A constraint lookup now finds a gene asked in another case, and the gene-metrics
+  pass indexes the answer by the same key, so an authored `BrCa1` resolves offline against the snapshot's
+  `BRCA1` while `gene_metrics.csv` keeps the authored spelling.
 
 ## 2026-11-19 — `v0.8.10`: format, compiler and enricher 0.8.10 (a patch, cut from `main`)
 
