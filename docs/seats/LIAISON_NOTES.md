@@ -4,9 +4,15 @@ The liaison's working state, rewritten to the present before each reset.
 
 ## State on 2026-11-05 (machine october)
 
+**Kit pin: no longer this seat's step (2026-11-22).** The kit's seat-builder (D193, agent-chat 642569997 and
+642570028) gives the lead the duties `pin-mover automode-rules`; the lead's priming already names it ("No tooling
+seat here"). Once the lead commits that line in `.blueprints.toml`, kit releases no longer reach this seat at all.
+Until then the liaison reacts to a release announcement and leaves the pin alone: v0.1.259 left for the lead
+(the lead moved it to v0.1.259 the same day, 7595689e). reflect after 2026-11-29: classes/base/BASE.md as of v0.1.259 (an unlocked worktree is said as a paste-ready `unlocked: to delete <cmd>` line). reflect after 2026-12-01: classes/base/BASE.md as of v0.1.266 (a diary beside the notes, "Your own reset", `watchdog.sh forward`, the watchdog's typed wake prompt). Duckdb's ledger read mark is `2.0.1` since 2026-11-20 (01b9405d).
+
 **Ledgers:** `docs/UPSTREAM_GA4GH_VRS.md`, `docs/UPSTREAM_POLARS.md`, `docs/UPSTREAM_DUCKDB.md`, `docs/UPSTREAM_ENSEMBL.md` (a standing watch with no clone or watcher, handed over by the lead
 2026-11-04; re-checked by hand monthly, next 2026-12-04). Read marks:
-ga4gh.vrs 2.3.3 (pre-releases read through 2.4.0-a6), polars `py-2.1.0`, duckdb `2.0.0`. Installed (`uv.lock`):
+ga4gh.vrs 2.3.3 (pre-releases read through 2.4.0-a6), polars `py-2.2.0`, duckdb `2.0.1`. Installed (`uv.lock`):
 2.3.3, 2.1.0, 1.5.6 (since the 2026-11-17 bump). `mkdocs.yml` `not_in_nav` carries `UPSTREAM_*.md`.
 `docs/UPSTREAM_DATA_SOURCES.md` (since 2026-11-07, the maintainer's ask): one row per cache lane, available /
 built / published; measured by hand that day, re-measured weekly. Behind then: clinvar, constraint (pinned
@@ -45,7 +51,7 @@ ga4gh/vrs-python#665 (`RleSubunitMode`, which `vrs/2.1` will default to SMALLEST
 **Lock schedule:** polars 2.1.0 is in `uv.lock` (5bdcca28) and shipped in **0.8.0** (cut 2026-11-05, with RM342 and
 RM352). duckdb 2.x once RM344 (open, a patch on `main`) lands: then tell the lead. RM343 (EXPLAIN test) is done. polars-bio **0.37.0** (on PyPI by 2026-11-07) requires `polars>=1.40.0,<2.2`: the `<2` block on just-dna-lite
 is gone; the lead was told (zulip …638402138). Its new cap is `<2.2`: a polars 2.2 release holds just-dna-lite again until polars-bio follows. Re-measured 2026-11-16: just-dna-lite on polars 2.1.0 + polars-bio 0.37.0 since
-2026-11-12; just-vcf moving now (its RM288). polars-bio is on the upstream-index watcher since 2026-11-16.
+2026-11-12; just-vcf moving now (its RM288). polars-bio is on the upstream-index watcher since 2026-11-16. **polars 2.2.0 out 2026-11-24** (ledger verdict): suite green on it, digest moves with tables equal; the lock takes it at the 2026-12-01 bump. polars-bio 0.38.0 still caps `<2.2` (read 18:20Z), so just-dna-lite and just-vcf hold on 2.1.x; re-read polars-bio at each of its releases and at the bump.
 
 **The dependency bump** (the person, 2026-11-04, relayed by agents-kit/builder, zulip …637618265) is this seat's
 unattended routine, in the grant since fc6e7ca1 (2026-11-09; desk #195 withdrawn as moot once the auto-mode rules
@@ -60,7 +66,7 @@ registry from the global endpoint and the test passes only within a day of a rea
 Lesson: before blaming a moved package, run the failing test on the old lock. **Second bump 2026-11-17** (830962e9): eleven moves, duckdb
 1.5.5 -> 1.5.6 (held on 1.x for RM344), suite 7446 green, no new warning. Re-measured the same run: data sources (clinvar
 and mitomap behind their sources, sent to the lead), the GWAS probe (unchanged), the VCF PRs (unchanged). The
-duckdb-python tag watcher went (finals only, as the index); polars' stays (its rc tags). Next bump: Tuesday 2026-11-24. Its worktree goes on disk, `sh $K/bin/wt.sh liaison/deps-<date>` (`.worktrees/`), never the scratchpad:
+duckdb-python tag watcher went (finals only, as the index); polars' stays (its rc tags). **Third bump 2026-11-24** (999469ec, pushed): seventeen moves, duckdb held on 1.5.6 (2.0.1 waits for RM344), suite 7569 green, no warning, ruff clean. Main had moved (the ledgers, ca0b9a47), so the lock landed as a copy of the branch's 5c98cc46; the branch `liaison/deps-2026-11-24` is unmerged by ancestry and handed to the person with its worktree. Re-measured: mitomap's dump moved (2026-11-18), GWAS opened a bulk Parquet export and lowered its rate limits (both sent to the lead, 643088167), VCF unchanged. Next time commit the ledgers after the lock, or land the lock from the main checkout, so the branch fast-forwards. Next bump: Tuesday 2026-12-01. Its worktree goes on disk, `sh $K/bin/wt.sh liaison/deps-<date>` (`.worktrees/`), never the scratchpad:
 /tmp here is a 32 GB tmpfs (RAM), and the three bump worktrees of 11-10/11-17 took 1.5 GB of it (base v0.1.236, kit #536).
 
 **GWAS Catalog REST v2** (`docs/UPSTREAM_GWAS_CATALOG.md`, since 2026-11-11, after RM428): a live service, no
@@ -86,6 +92,8 @@ classes/liaison/LIAISON.md as of v0.1.195.
 **Kit #464 (fixed in v0.1.199, 2026-11-13):** the clone's only install record sat under the old symlinked path at
 0.1.192. `move-to-tag.py v0.1.199 --take` (v0.1.199's own copy) wrote one under the real path at 0.1.199; the stale
 record stays, left as #142 says. A seat loads 0.1.199 after its session restarts. Check the record at each kit move.
+**2026-11-20:** all four seat sessions now run from `/data/sources/just-dna-compiler` (read from /proc cwd), so no
+reload reads the stale 0.1.192 record any more (#480); the record itself remains, harmless.
 
 **Fellow liaison:** just-dna-registry/liaison (seated 2026-11-04) stands on fastapi, huggingface-hub, and polars and
 duckdb through our tiers. A defect in a library under both of us is raised with each other first, so it is filed once. **longevity-loci/liaison** (seated 2026-11-05) stands on us: just-dna-enricher 0.7.3, compiler 0.7.2, format 0.7.1 from PyPI, and the module-creator plugin v0.48.0. It watches our tags, asks us before mapping our 0.8 branches, and polls us before filing a shared defect; answer such a poll in `agent-chat`. **Since 2026-11-17 it is in another chat organisation** (agents-kit/lead, 640912858): its
@@ -106,6 +114,11 @@ from the index too: a polars-bio cap that holds both of us is raised with it fir
 (a label would not have caught the ClinPGx copy, RM445's case; our pull record writes no revision).
 **S34 shipped** in just-dna-registry 0.33.0 (PyPI 2026-11-18; newest 0.34.1 read 2026-11-19): both lane replies carry
 `release`, `release_unreadable`, `revision`; neither server runs it yet (both 0.32.1). Relayed to pm and lead.
+**0.9 pre-integration (RELEASE_CYCLE step 6), asked 2026-11-19 for the lead, open:** 0.9 at d9c578ae from git.
+Asked: registry and module-creator liaisons (agent-chat 641755221); just-dna-lite by an uncommitted note
+(`docs/UPSTREAM_REQUEST_0_9_preintegration_from_just-dna-compiler.md`); longevity-loci through our secretary to the
+embassy (this seat made keys 2026-11-19, holds no contact key). Route every answer to lead and pm; the merge into
+main waits for them. **0.8.10:** cut 65cfa25b, waits on the person's PyPI publish; tell the registry when it lands.
 **S159 (just-dna-lite, no seat there):** triage's answer relayed 2026-11-19 as an uncommitted note in their repo,
 `docs/UPSTREAM_ANSWER_S159_from_just-dna-compiler.md`.
 

@@ -13,9 +13,11 @@ nothing for days before a consumer noticed.
   <https://www.ebi.ac.uk/gwas/docs/news> on 2026-11-11. That page is the only release channel found: the API has
   no version endpoint (`/v2` answers 404), no changelog (`/gwas/docs/api-changelog/` is a "Page Not Found"), and
   no public repository under the name it once had (`EBISPOT/goci` resolves to nothing).
-- **Data release: `2026-10-29`** (Ensembl 116, dbSNP 156, EFO v3.95.0), from
+- **Data release: `2026-11-17`** (EFO v3.96.0, genebuild GRCh38.p14; the stats now give `ensemblbuild` and
+  `dbsnpbuild` as `-`, where 2026-10-29 said 116 and 156; `GwasClient.release` reads `date` only), from
   <https://www.ebi.ac.uk/gwas/api/search/stats>, which `GwasClient.release` reads (RM373).
-- **Probe: 2026-11-17 03:50 UTC** (before: 2026-11-11 00:26 UTC); news re-read the same hour, newest post still 2026-08-19. See "The weekly probe" below.
+- **Probe: 2026-11-24** (before: 2026-11-17 03:50 UTC, 2026-11-11 00:26 UTC); news re-read the same hour: **a new post,
+  2026-11-19**, "Plans for faster bulk data access" (below). See "The weekly probe" below.
 
 ## What we use of it
 
@@ -34,13 +36,13 @@ nothing for days before a consumer noticed.
 
 Run with the dependency bump (`docs/seats/LIAISON.md`); the script is three `curl` calls and changes nothing.
 
-| Question | 2026-11-11 | 2026-11-17 |
-| --- | --- | --- |
-| `associations?rs_id=rs1421085&size=500` | 200 | 200 |
-| `…&size=501` | 400 (the ceiling is 500, as RM428 measured on 2026-11-10) | 400 |
-| no `size` | 200, `page.size` 20, 223 associations | 200, 20, 223 |
-| legacy `/singleNucleotidePolymorphisms/rs1421085/associations` | 410 | 410 |
-| `/api/search/stats` `date` | `2026-10-29` | `2026-10-29` |
+| Question | 2026-11-11 | 2026-11-17 | 2026-11-24 |
+| --- | --- | --- | --- |
+| `associations?rs_id=rs1421085&size=500` | 200 | 200 | 200 |
+| `…&size=501` | 400 (the ceiling is 500, as RM428 measured on 2026-11-10) | 400 | 400 |
+| no `size` | 200, `page.size` 20, 223 associations | 200, 20, 223 | 200, 20, 223 |
+| legacy `/singleNucleotidePolymorphisms/rs1421085/associations` | 410 | 410 | 410 |
+| `/api/search/stats` `date` | `2026-10-29` | `2026-10-29` | `2026-11-17` |
 
 A ceiling below 500, a different default page, or a legacy path answering anything but 410 goes to the lead the
 same day.
@@ -62,6 +64,24 @@ RM428's 500 is still a measured number only.
 
 **Done:** the lead quoted the page in `gwas.py`'s docstring, the constant's comment and `docs/ENRICHER.md`
 (7a88e10f, pushed 2026-11-11); the line numbers above are as of fba9a23b.
+
+### Rate limits lowered "temporarily", and a bulk Parquet export (news, 2026-11-19; read 2026-11-24)
+
+The post: "We've temporarily reduced rate limits to keep the API reliable for everyone while we make these
+improvements ... The lower rate limits will stay in place until that work is complete." It names no number, and the
+v2 docs page still reads "limited to 15 queries per second" (re-read 2026-11-24); no response header states a
+limit. It points bulk users at an **experimental Parquet export**,
+<https://ftp.ebi.ac.uk/pub/databases/gwas/releases/2026/11/19/experimental/parquet/>: nine files
+(`associations.parquet` 52 MB, `single-nucleotide-polymorphisms.parquet` 20 MB, `studies.parquet` 6.8 MB, and
+body-of-works, efo-traits, genes, genomic-contexts, publications, unpublished-studies), written 2026-11-19, and
+"we're considering including Parquet exports in our regular data releases".
+
+**Sorted: nothing breaks; one question for the lead.** The pass waits one second per request
+(`DEFAULT_REQUEST_INTERVAL = 1.0`, `gwas.py:133`), and the page says an excess is slowed, not refused, so a lower
+unnamed limit costs time, not rows. Not measured: the new number. The export is the first bulk form of the Catalog:
+a snapshot lane built from it would take the per-rsID API calls off the pass the way the other lanes do. That is a
+design question, so it is the lead's; sent 2026-11-24. Whether the export becomes regular is the gate: an
+`experimental` path under one release date is not yet a source a lane can follow.
 
 ## Outbound
 

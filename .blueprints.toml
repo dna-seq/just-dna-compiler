@@ -13,6 +13,9 @@ send = true
 # releases. Triage hands it a fix past a patch; the liaison, a change an upstream release asks; the pm, a
 # proposal.
 wake_from = "just-dna-compiler/triage just-dna-compiler/liaison just-dna-compiler/pm just-dna-registry/liaison */secretary"
+# The kit pin and the auto-mode rules are this seat's (docs/seats/LEAD.md, "No tooling seat here"); so only this
+# seat wakes on a kit release, the others get the reloader (D148, D181; the kit's seat-builder, 2026-11-22).
+duties = "pin-mover automode-rules"
 
 # The desk's answers to this seat's questions, each said once (D133); the desk files this repo's
 # questions under repo:just-dna-compiler.

@@ -2367,7 +2367,7 @@ about 30 minutes, and RM437's groups on `0.9` inherit it.
 
 ## RM454 — the enricher's local key compares never went through the one normalizer: constraint by gene, `lookup_loci` by rsID and contig, and SQL's `lower(trim())` beside `gene_key`
 
-**Severity** low · **Status** open — **a patch, after 0.9 merges** (its home, `key_compare.KEY_COMPARES`, is 0.9's) ·
+**Severity** low · **Status** open — **a minor, 0.9** (rescoped 2026-11-26, [ROADMAP_0_9.md](ROADMAP_0_9.md); its home, `key_compare.KEY_COMPARES`, is 0.9's) ·
 **Owner** enricher (`gene_metrics.lookup_snapshot`, `clinvar.lookup_loci`, `resolver.lookup_loci`,
 `key_compare`) · **Motivating case** the RM430 follow-up's deferred findings (a) to (c), the lead's 0.9 run
 (2026-11-18, merged as 15668c1e) · *related* RM363, RM430, RM431
@@ -2398,7 +2398,7 @@ It may widen what a direct lookup returns, never what a module resolves, so no d
 
 ## RM457 — no public read answers a lead parquet's row grain, so a consumer maps parquet to CSV and adds the locus columns by hand
 
-**Severity** low · **Status** open — **a minor, release undecided** · **Owner** compiler (`hints`) ·
+**Severity** low · **Status** open — **a minor, parked** (the pm, 2026-11-26; unparks below) · **Owner** compiler (`hints`) ·
 **Motivating case** S159 in CONSUMER_SUGGESTIONS_HISTORY.md (just-dna-lite, 2026-11-19) · *related* RM43, RM449
 
 **What was seen.** just-dna-lite sorted a streaming join on a row key it wrote from memory, missed three of
@@ -2419,6 +2419,62 @@ The documentation half shipped with the reply (CONSUMING.md § "What one row is"
 `_KEY_FIELDS` so it cannot drift. A new public function is additive, so a minor. **Against it**, for the pm to
 weigh: with the doc, a consumer restates only the stem map and the locus columns, both stable, and the reporter
 named the alternative of sorting on every column, priced by them as too slow on list columns.
+
+**Parked, the pm (2026-11-26).** The documentation half answers the reporter's case, and the reporter's own
+alternative was priced by them. **Unparks when** a second consumer maps a parquet's row grain by hand, or a consumer
+asks for the read; either can happen while this is parked, so the gate is honest (the gate audit has its row).
+
+**Residuals** none yet.
+
+## RM467 — a re-derive cannot be scoped to the rows a reason reaches, and the verify passes re-read every carried row
+
+**Severity** medium · **Status** open — **a minor, 0.9** (rescoped 2026-11-26, [ROADMAP_0_9.md](ROADMAP_0_9.md): both halves as new options; the reason-driven selection waits for RM441 in 0.10) · **Owner** enricher
+(`enrich/orchestration.enrich`, `sequences.verify_reference_alleles`) · **Motivating case** S160 in
+CONSUMER_SUGGESTIONS_HISTORY.md (just-dna-registry, 2026-11-19) · *related* RM441, RM399, RM468
+
+**What was seen.** The registry re-derives a published module's `resolution.csv` online when a declared correction
+reaches it or its rows name no `source_release`. On its cardio module that re-asks ~75,000 rows to move about 30:
+12.5 h with `verify_ref` off, ~37 h on. Two things in the code make the cost whole-table:
+
+- `--rederive` re-asks every subject; an ordinary run gap-fills and never re-asks. Dropping the rows a reason reaches
+  and letting a gap-filling run fill them works today, but only the caller can choose the rows, and the record gives
+  no per-row reach (RM441 keeps `requires` at `None` for a derivation correction).
+- The verify passes read the whole merged table: carried rows join `out` before `verify_reference_alleles(out, …)`
+  (`enrich/orchestration.py`), so a gap-filling run pays the reference check over every row it kept. That is where
+  most of the 37 h goes.
+
+**What it would be.** Either half can land alone. (1) A run re-asks only the subjects a stated reason selects (a
+declared correction's reach, a stale `source_release`, an explicit list) and carries the rest byte for byte, with a
+report of which subjects were re-asked and which changed: `SubjectDrift` (`result.rederived`) already reports the changes. (2) The
+verify passes read only the rows this run wrote, unless asked for all. The reach of a correction per row is RM441's
+question, so (1)'s "reason" input waits for RM441's record or takes an explicit subject list first.
+
+**Against, for the pm.** Skipping verify on a carried row trades a re-check for trust in the run that wrote it. A
+row's `ref` cannot change under a fixed build, but a strict refusal raised by an earlier run's mismatch would no
+longer be re-raised by this one. So it is a new option, never a changed default: a minor, by the flag rule.
+
+**Residuals** none yet.
+
+## RM468 — the live clients keep no answers between runs, so a re-run under unchanged source releases spends the same egress again
+
+**Severity** medium · **Status** open — **a minor, 0.10** (the pm, 2026-11-26, beside RM399 and RM441: a design of its own, not a leftover of 0.9's build) · **Owner** enricher (the live clients:
+Ensembl REST, E-utilities, ClinVar, the sequence proxy) · **Motivating case** S162 in CONSUMER_SUGGESTIONS_HISTORY.md
+(just-dna-registry, 2026-11-19) · *related* RM467, RM441, RM38
+
+**What was seen.** ENRICHER.md states it as an open question: the live clients are paced only, and persistence is the
+sidecars and the published snapshots. A held module re-run after a fix, a second module sharing rsIDs, or a sweep
+resumed in a new run asks the same questions again. A run killed mid-way does resume from its staged answers
+(`--keep-staging` says so); that covers one table, not a second run or a second module.
+
+**What it would be.** A persistent store of online answers, keyed by the source and the release that answered (the
+Ensembl release, the ClinVar release, the dbSNP build), so a moved release invalidates exactly its own answers; an
+answer whose source states no release is not stored. A location setting like the snapshot lanes' (`JUST_DNA_*_CACHE`),
+and a report saying which answers came from the store.
+
+**Design points.** A stored negative must keep the house's distinctions: answered-absent is storable, could-not-ask
+never is (`@unreachable-not-absent`). A licence-gated source's answers inherit its terms, so the store is per host
+and never published (`@gated-source-caches`). Ensembl REST's release lags the snapshot's (RM447), so the key is the
+release REST states, never the snapshot's. A new setting and a new lane-like location: a minor.
 
 **Residuals** none yet.
 
@@ -2955,6 +3011,7 @@ possibly already satisfied, and the rest sound** — the sweep's value is mostly
 | **RM412** half 1's per-lane release probe (parked 2026-11-16) | an operator reports a rebuild that downloaded a source only to learn nothing had changed | **Sound.** Every rebuild today downloads first; an operator can meet this before the probe exists. |
 | **RM450** — a snapshot pull takes no lock (parked 2026-11-18) | a pull seen to leave a wrong file or record, or a host that runs two pulls into one cache | **Sound.** Either can happen while it is parked; nothing needs the lock to exist first. |
 | **RM15** / **RM69** / **RM52** and the 1.0 queue | a major-version bump | **Sound, and not this kind of gate.** A release boundary is a schedule, not a satisfier. |
+| **RM457** — a public read of a lead parquet's row grain | a second consumer maps the grain by hand, or asks for the read | **Sound.** A consumer can meet the gap with the read unbuilt; just-dna-lite did (S159). Parked 2026-11-26. |
 
 **What the sweep did not find, stated so it is not re-run for a while.** No gate anywhere is parked on
 a *consumer report that would have to describe the unbuilt thing* — the `Sn` inbox is a channel

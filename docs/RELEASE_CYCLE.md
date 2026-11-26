@@ -129,8 +129,14 @@ reported, never asked about, and they never freeze scope.
 4. **Second pass**: items that emerge during implementation join the same release automatically,
    unless they need a major.
 5. **Review wave and dogfooding wave.** What they find becomes new items, interviewed on their
-   decisions and implemented. Repeat until the pm finds no new blocker (below). The triage seat monitors the
-   branch meanwhile and processes whatever arrived during the build.
+   decisions and implemented. Repeat until the pm finds no new blocker (below), **at most twice**. The triage seat
+   monitors the branch meanwhile and processes whatever arrived during the build.
+   - **At most two review rounds per minor** (the maintainer, 2026-11-26, after 0.9's trial of the rule: "iterative
+     release audits aren't really productive. Stalling is real, and the result is 10 patches after that anyway. I
+     propose to limit the iterations to 2 max per minor even with triage in place"). After the second round the pm
+     places its classes once more: a blocker is fixed in the release, checked by its builder's tests and the lead's
+     review at the merge, with no third round; the rest is a known issue filed for the next minor, or a patch on
+     `main` where it is patch class. Triage working the branch adds no round. Agreed: nothing checks it.
    - **A review reports error classes, never single instances** (the maintainer, 2026-11-04: "so that the
      same error in a second module is not found as a separate item"). Each finding names the rule broken,
      lists every instance across packages, tables, lanes and clients, and names the mechanism that catches
@@ -143,7 +149,8 @@ reported, never asked about, and they never freeze scope.
      built, what's the sense to defer then? Defer unbuilt items."
    - **Deferred items ship as known issues**, listed in the release's INTEGRATION file and its CHANGELOG cut entry,
      each with its `RMn` in the next minor's roadmap. **The review loop ends when the pm finds no new blocker**
-     ("If PM finds no new blockers we ship"), not when a review comes back with nothing at all. The next review
+     ("If PM finds no new blockers we ship"), or after the second round, not when a review comes back with nothing at
+     all. The next review
      runs on the merged candidate after the blockers' fixes land, and gets the known issues so it does not
      report them again.
    - **A builder's finding outside its unit is filed as a class the same way**, and checked against the

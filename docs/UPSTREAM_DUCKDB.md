@@ -8,8 +8,8 @@ liaison rather than writing in this file. What pip installs is built from <https
 
 ## Marks
 
-- **Read mark: `2.0.0`** (2026-11-04): duckdb-python's notes for `v1.5.6` (a pointer to the engine's) and
-  `v2.0.0`, and the engine's changelogs for `v1.5.6` and `v2.0.0`, read entry by entry.
+- **Read mark: `2.0.1`** (2026-11-20): duckdb-python's notes for `v1.5.6` (a pointer to the engine's),
+  `v2.0.0` and `v2.0.1`, and the engine's changelogs for `v1.5.6`, `v2.0.0` and `v2.0.1`, read entry by entry.
 - **Installed:** `1.5.6` (`uv.lock`, the 2026-11-17 bump, 830962e9; held on 1.x until RM344 lands, though `--upgrade` picks 2.0.0). Pin: `duckdb>=1.1.0` in `enricher/pyproject.toml` (core). **No upper
   bound.**
 
@@ -58,6 +58,20 @@ and it belongs to the lead. Sent to the lead 2026-11-03.
 
 **Lock schedule (the liaison's, 2026-11-04):** move `uv.lock` to duckdb 2.x once RM344 has landed. Before that,
 a 2.0 lock would build caches that a 1.x enricher crashes on.
+
+### 2.0.1 — nothing for us; the suite passes whole (2026-11-20)
+
+A bug-fix release on `v2.0-cyanoptera`, published to PyPI 2026-11-20T13:35Z. duckdb-python's half fixes hangs at
+interpreter exit, wrong reads of strided pandas/numpy views, Arrow layouts, `map()` types and `TIMESTAMPTZ` through
+`zoneinfo`; we scan none of those (our sites read parquet by SQL and `fetchall()`). One fix touches the streaming
+results noted under 2.0.0: a fetch whose conversion fails now ends its result, so the next statement no longer raises
+`ResourceInUseException`; every site of ours opens its own connection and executes once, so it never met that. The
+engine's half is backports (append casts, `ANY`/`ALL` over `ARRAY(SELECT …)`, Parquet writer stats, join ordering)
+and extension bumps; a parse error now aborts the active transaction, and our SQL is fixed text.
+
+- `nice -n 19 uv run --isolated --with duckdb==2.0.1 pytest enricher/tests -n 4`: **3793 passed, 116 skipped**, in
+  6 minutes. The 2.0.0 string-match failure is gone (RM343's fix).
+- The lock schedule stands: still on 1.5.6 until RM344 lands (open, 2026-11-20).
 
 ### 1.5.6 — nothing for us; the refusal of a 2.0 file reads differently (2026-11-04)
 

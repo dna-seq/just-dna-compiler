@@ -39,14 +39,11 @@ The lead's working state, rewritten to the present before each reset. Last rewri
 
 ## In flight
 
-- 0.8.10 cut 2026-11-19, awaiting the publish: cut commit 65cfa25b (format, compiler, enricher 0.8.10: RM453, RM455,
-  RM456), merged into main as ce98a26f. Gates at the cut: suite 7569, sweep --release 0.8.10, network pre-release 26,
-  strict docs. Dists in the root `dist/`, twine check passed. After the publish: tag `v0.8.10` on 65cfa25b, GitHub
-  release from scratchpad/release_notes_0_8_10.md, README.md:94 and CLAUDE.md:84 to name 0.8.10, done-line (the
-  registry's production upgrade waits on it). Branches cut/v0.8.10 and land/v0.8.10 are the person's to delete.
-- 0.8.9 published 2026-11-18 (PyPI 22:45Z, all three): tag `v0.8.9` on 13b3be36, GitHub release, README.md:94 and
-  CLAUDE.md:84 name 0.8.9. Main carries RM453 and RM455 since, uncut: 0.8.10's. Branches cut/v0.8.9 (superseded) and
-  land/v0.8.9 are the person's to delete.
+- mitomap behind source (liaison 643088167, 2026-11-24): the dump moved 2026-11-18 (mmutation edited 2026-11-17, 603 rows, +6 citation links). Built as mitomap_2026-11-17+2026-11-03 into `data/caches/rebuild-2026-11-24/mitomap`, upload rehearsed (5 files). `blocked: the person` (the classifier refuses a seat's publish, kit #529): `uv run just-dna-enricher mitomap publish data/caches/rebuild-2026-11-24/mitomap`. After it: `cache pull --only mitomap`, then `mitomap miss` (mitomap_miss follows its parents).
+- 0.8.10 published 2026-11-26 (PyPI 11:11Z, all three; desk #415): tag `v0.8.10` on 65cfa25b, GitHub release,
+  README.md:94 and CLAUDE.md:84 name 0.8.10, done-line to releases, the registry told. The 0.9 merge is now unblocked
+  by the tag; it still waits on the two trials or the person's "skip" (desk #370). Branches cut/v0.8.9, land/v0.8.9,
+  cut/v0.8.10 and land/v0.8.10 are the person's to delete.
 - Lanes behind source (liaison, 2026-11-17): done 2026-11-18. clinvar_2026-11-15 and mitomap_2026-11-09+2026-11-03
   published by the person (the classifier refused the seat, kit #529), pulled here; mitomap_miss rebuilt, the old copy
   moved to `/data/just-dna-cache/mitomap_miss.before-2026-11-18` (the person's to delete).
@@ -62,14 +59,15 @@ The lead's working state, rewritten to the present before each reset. Last rewri
   (scratch; this line is the record): branch `0.9` off `main`; wave 0 `LookupClients` leaf module + `parse_release`;
   wave 1 RM443, RM412, RM404, RM437 in parallel; wave 2 RM430; wave 3 RM431 asks 6, 5, then 4. Then one four-leaf
   round (two at most), the pm sorts, the cut. `unattended`: starts when the person is away.
-- 0.9 progress (2026-11-18): branch `0.9` at 25ec5362, pushed (worktree `.worktrees/09` on disk, locked). Both
-  review rounds closed (no blocker; round 1 ea3dcf07 + 6a12f7e1, round 2 77c37ff1, 31b5bae4, 9afaa39a, 25ec5362; the
-  pm's sortings in ROADMAP_0_9.md). Suite 8197 passed. Left, quota permitting (7-day 91%, hold 90%; a wait-quota is
-  registered): B, 0.8.9 vs 0.9 enrich bytes online on five examples, into the release record; INTEGRATION_0_9 with
-  the known issues (C incl. D's release-move case; proxy-on/HF-off gene lanes, registry S36), `stale` in
-  LANE_STATES, a host closes a shared holder after its last lookup, cpic's trim; then the cut: enricher floor on
-  format 0.9, versions, release record, merge into main, dists. Keep `just_dna_enricher.key_compare.KEY_COMPARES`
-  stable (the registry reads it). Detail: scratchpad/BUILD_PLAN_0_9.md.
+- 0.9 cut built 2026-11-19, not merged: local branch cut/v0.9.0 at e057186b (worktree .worktrees/cut-090, unlocked;
+  dists in its dist/). Gates: suite 8196 + 1 red only until v0.8.10 is tagged (test_first_seen, by design), sweep
+  --release 0.9.0 green, network gates 28, strict docs, twine 6. Before the merge: (1) 0.8.10 published and tagged,
+  then the full suite re-run at the cut commit; (2) the consumers' trial (desk #370, default: registry and
+  module-creator try d9c578ae; module-creator blocked by its own auto-mode rules, kit #550); (3) merge cut/v0.9.0
+  into main taking the branch's side of docs/ROADMAP_0_9.md (moved to history); (4) `item-next.py --release` for
+  RM458-RM466, whose reservation rows sit uncommitted in the primary checkout's docs/RM_TOC.md: never stage them;
+  (5) LEAD.md/PM.md name ROADMAP_0_9.md as the open minor's file: point at ROADMAP_0_10.md (change-priming). Then
+  dists into dist/ for the person's publish. Scratch under .worktrees/ (cut-090-docs/ holds a throwaway signing key).
 
 ## Open decisions
 
@@ -80,6 +78,13 @@ looks; read 2026-11-17, no concern).
 reflect after 2026-11-23: classes/base/BASE.md as of v0.1.224 (only a real fork goes to the person; read as its
 adversary 2026-11-16, no concern: the lead's only standing wait is the PyPI publish, a step that is the person's, not
 a choice).
+reflect after 2026-12-01: classes/base/BASE.md and classes/lead/LEAD.md as of v0.1.272 (an asked action is the
+seat's until it works; a granted step is taken then reported; a procedure is run before it is handed over; no work
+parked on a quota figure; a seated lead starts its own team's idle seats, D219. Read as its adversary 2026-11-24, no
+concern: the two standing waits, the PyPI and mitomap publishes, are steps outside the grant (the classifier refuses
+a seat's publish), and the mitomap upload was rehearsed by dry run before it was handed over).
+reflect after 2026-12-01: classes/base/BASE.md as of v0.1.275 (a direct message mentioning someone not in it is named
+in the first reply, relay or slip; read 2026-11-24, no concern: the lead takes direct messages rarely).
 
 ## Plan
 
