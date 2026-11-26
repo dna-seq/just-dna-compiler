@@ -40,28 +40,18 @@ The lead's working state, rewritten to the present before each reset. Last rewri
 ## In flight
 
 - mitomap behind source (liaison 643088167, 2026-11-24): the dump moved 2026-11-18 (mmutation edited 2026-11-17, 603 rows, +6 citation links). Built as mitomap_2026-11-17+2026-11-03 into `data/caches/rebuild-2026-11-24/mitomap`, upload rehearsed (5 files). `blocked: the person` (the classifier refuses a seat's publish, kit #529): `uv run just-dna-enricher mitomap publish data/caches/rebuild-2026-11-24/mitomap`. After it: `cache pull --only mitomap`, then `mitomap miss` (mitomap_miss follows its parents).
-- **0.9 rescope (the pm on the maintainer's word, 2026-11-26; ROADMAP_0_9.md "The rescope", e60bfbd6).** Steps 1-2
-  done. **Step 5, the cut redone: built, gated, dists ready; `blocked: desk #461` (the publish, the person's).**
-  Branch `cut/v0.9.0-2` at 284192b4, pushed, in `.worktrees/cut-090-2` (locked): origin/0.9 + origin/main merged +
-  the first cut's four commits carried (roadmap close redone: the nine rescoped items in ROADMAP_HISTORY, RM468 into
-  ROADMAP_0_10, RM469 filed for RM461's residual) + INTEGRATION_0_9/CHANGELOG/record for the rescope. Gates: full
-  suite 8338 passed (the one red was the links fixed mid-run, re-run green); sweep --release 0.9.0 green, 22/22
-  unmoved; real runs 22 modules x {asis, fresh} x {0.8.10, 0.9.0} enrich+compile, 176 rc=0, outputs equal but clocks
-  and producer, content_signature 44/44, the 13 digest moves reproduce from the inputs (harness
-  `.worktrees/cut-090-2/data/interim/gate-090/`); network 45 passed, 1 red: ClinVar-GKM retired `v1/1.1` today (1.2
-  live, 0.8.10 red too), sent to the liaison (643876032), desk #461 asks publish now (default rec.) or fold the fix
-  in. Dists: `dist/` holds the six 0.9.0 files (0.8.10's wiped), twine PASSED. If the liaison's fix is small and
-  lands before the publish: fold it into the cut, rebuild dists, post an Update on #461. **RM469 was claimed into the
-  primary checkout's docs/RM_TOC.md** (uncommitted, beside the old RM458-466 rows): never stage them; run
-  `item-next.py --release` for RM458-RM469 once the cut is on main. After the publish: RELEASE_CYCLE step 10 (tag
-  `v0.9.0` on the cut commit, GitHub release, README/CLAUDE.md say 0.9.0 is current), merge the cut into 0.9 and,
-  after the consumers' trial (desk #370), 0.9 into main; LEAD.md/PM.md point at ROADMAP_0_10 (change-priming).
-  `.worktrees/cut-090` (cut/v0.9.0) is superseded and unlocked; its branch needs the person's `-D` (cherry-picked).
-- **RM470 (ClinVar-GKM v1/1.1 → v1/1.2), 0.9.1 by the pm (643877146): built, checked, not merged.** Branch
-  `build/09-rm470` at 6004d52c, pushed, worktree `.worktrees/09-rm470` (locked), off the cut. Merge into main after
-  0.9 merges there, then cut 0.9.1 at once after the 0.9.0 publish. Before that cut: one real `clinvar-gkm build`
-  against v1/1.2 (2.3 GB, not run yet). Its RM_TOC reservation row (RM470) sits uncommitted in the primary
-  checkout beside RM458-RM469: release them all with item-next.py --release once on main.
+- **0.9.0, the cut redone: ready, the publish is the person's (desk #461, a Your move posted 7203264617).**
+  `cut/v0.9.0-2` at 93160691, pushed (`.worktrees/cut-090-2`, locked). Beyond the rescope it carries RM470 (ClinVar-GKM
+  v1/1.2, folded in on the person's word: "merge gkm into 0.9.0 if built") and a `compat` extra (polars[rtcompat];
+  the person's Ivy Bridge server has no AVX2: "Also bundle into 0.9"). Gates: suite 8353 passed, docs strict green;
+  sweep 22/22 unmoved; real runs 176 clean; a real clinvar-gkm build 310,938 rows; network 45+1 (the 1 fixed by RM470,
+  live test green). `dist/` holds the six rebuilt files, twine PASSED. The liaison's emulated Ivy Bridge full suite
+  was still running. **After the publish (RELEASE_CYCLE step 10):** tag `v0.9.0` on 93160691 (annotated, the three
+  versions), GitHub release, README/CLAUDE.md say 0.9.0 current; merge the cut into 0.9; 0.9 into main after the
+  consumers' trial (desk #370: "should"; longevity-loci mid-trial); `item-next.py --release` RM458-RM470 (rows
+  uncommitted in the primary RM_TOC.md, never staged); LEAD.md/PM.md point at ROADMAP_0_10 (change-priming).
+  `build/09-rm470` is in the cut (ff), so `-d` takes it after the merge. `.worktrees/cut-090` (cut/v0.9.0)
+  superseded, unlocked, its branch the person's `-D`.
 - 0.8.10 published 2026-11-26 (PyPI 11:11Z, all three; desk #415): tag `v0.8.10` on 65cfa25b, GitHub release,
   README.md:94 and CLAUDE.md:84 name 0.8.10, done-line to releases, the registry told. The 0.9 merge is now unblocked
   by the tag; it still waits on the two trials or the person's "skip" (desk #370). Branches cut/v0.8.9, land/v0.8.9,
