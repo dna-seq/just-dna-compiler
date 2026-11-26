@@ -126,7 +126,7 @@ desk-winternewt/secretary (643877298). longevity-loci took the trial (its liaiso
 CPU without AVX2 only: polars prefers compat whenever installed). Told the same evening: registry and module-creator
 (agent-chat 643983509), longevity-loci through the secretary (643983529; it caps us `<0.9`), just-dna-lite's note
 updated. The no-AVX2 check: qemu-user 10.0 unpacked in the scratchpad, `-cpu IvyBridge` (control: AVX2/BMI2/FMA
-SIGILL); every native lib imports there with compat; the whole suite was run there in four shards (result below). **0.8.10:** on PyPI 2026-11-26; the lead told the registry. **ClinVar-GKM:** line
+SIGILL); every native lib imports there with compat; the whole suite there in four shards, 2026-11-27: 7593 passed, 2 failed, neither the CPU (polars ledger, a145b6ed). **Main's suite is red** on `test_the_release_list_is_the_tags_and_the_uncut_one` (the v0.9.0 tag, 0.9 not yet merged): the lead told; clears at the merge. If still red at the 2026-12-01 bump, it is that, not the bump. **0.8.10:** on PyPI 2026-11-26; the lead told the registry. **ClinVar-GKM:** line
 v1/1.1 frozen, v1/1.2 current, `allele.parquet`'s `data` JSON gone (ledger UPSTREAM_DATA_SOURCES, RM470, the lead's).
 **S159 (just-dna-lite, no seat there):** triage's answer relayed 2026-11-19 as an uncommitted note in their repo,
 `docs/UPSTREAM_ANSWER_S159_from_just-dna-compiler.md`.
