@@ -150,6 +150,30 @@ which the cut's release record declares (RELEASE_CYCLE §9, a toolchain move). T
 here (the person, 2026-11-04). Asking polars-bio to widen its cap is first agreed with just-vcf's upstream
 liaison, who watches it too (told the same day); a post upstream is the person's word.
 
+### The compat runtime, for a server without the default's CPU features (2026-11-26)
+
+Asked by the person through the pm: a new server has no AVX-512, so 0.9.0 gains a `compat` extra pulling
+`polars[rtcompat]`. Measured on 2.1.0:
+
+- **Which runtime loads.** `polars._plr` tries `compat`, then `64`, then `32` (`default_prefer` in
+  `py-polars/src/polars/_plr.py`), each behind `check_cpu_flags`. With `polars[rtcompat]` installed beside the
+  default, `sys.modules["polars._plr"].__name__` is `_polars_runtime_compat._polars_runtime`; `POLARS_FORCE_PKG=32`
+  loads the default instead (both run here). So the compat runtime is used **wherever the extra is installed**, also on
+  a CPU that has AVX2: the extra costs speed on every machine that takes it.
+- **What each runtime needs** (`BUILD_FEATURE_FLAGS` in the wheels, matching `NONCOMPAT_FEATURES` in polars'
+  `release-python.yml`): `polars-runtime-32` +sse3,+ssse3,+sse4.1,+sse4.2,+popcnt,+cmpxchg16b,+avx,+avx2,+fma,+bmi1,
+  +bmi2,+lzcnt,+pclmulqdq,+movbe (x86-64-v3); `polars-runtime-compat` only up to SSE4.2, popcnt and cmpxchg16b
+  (x86-64-v2). **Neither needs AVX-512.** This machine has AVX2 and no AVX-512 and runs the whole suite on the default
+  runtime, so a server lacking only AVX-512 does not need compat; one lacking AVX2, FMA or BMI does. polars' import
+  error names the missing features.
+- **The rest of our native code.** The suite passing here also shows nothing else we depend on requires AVX-512. By
+  `objdump`, duckdb, pyyaml, upb, charset-normalizer, cffi and markupsafe use no AVX registers at all; cryptography,
+  hf-xet and grpc carry AVX-512 code behind runtime CPU checks. Not proven: that pydantic-core, cryptography, hf-xet
+  and grpc run on a CPU without AVX2 (no emulator here); none of them checks CPU flags at import as polars does.
+
+**Sorted: the extra is harmless as an option, and its install line says "only on a CPU without AVX2".** Sent to the
+lead and the pm (643975731); the server's real flags decide whether it needs it.
+
 ## Our pieces that duplicate an upstream feature
 
 None found.
