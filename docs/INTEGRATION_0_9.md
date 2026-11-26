@@ -30,7 +30,8 @@ dependencies = [
 ]
 ```
 
-A consumer that holds only the format tier pins the first line alone, and need not move at all (§ 1).
+A consumer that holds only the format tier pins the first line alone, and need not move at all (§ 1). A host whose
+CPU lacks AVX-512 or AVX2 pins `just-dna-compiler[compat]` or `just-dna-enricher[compat]` instead (§ 1.15).
 
 **The release record says nothing moves on a recompile.** `release_records.RELEASE_RECORDS["0.9.0"]`, measured at the
 cut against compiler 0.8.10 on the 22 reference modules, records every axis unmoved (no `parquet_schema`,
@@ -363,6 +364,16 @@ stale `latest_release`. 0.8.10's builder reads that line, so `clinvar-gkm build`
   status and its successor; `latest_release_or_none()` withholds and logs that message, so the currency check says
   the lag is unknown instead of reporting the frozen line's release. A manifest 404 asks the line index once and
   raises the same refusal when the index explains it, else the 404 as before.
+
+### 1.15 A `compat` extra for a CPU polars' default runtime refuses (no break)
+
+Added at the redone cut on the maintainer's word (2026-11-26: a server of theirs has no AVX-512).
+`just-dna-compiler[compat]` adds `polars[rtcompat]` at the core polars floor (`>=1.42.0`), and
+`just-dna-enricher[compat]` is the compiler's extra. Polars loads its compatibility runtime first whenever it is
+installed (`polars._plr` tries `compat`, then `64`, then `32`; `POLARS_FORCE_PKG` overrides), so installing the extra
+is the whole change: no code moved, and without the extra nothing differs. `compiler/tests/test_compat_extra.py`
+holds the two floors equal. Checked by installing `just-dna-compiler[compat]` into a fresh environment from this
+tree: `import polars` loaded `_polars_runtime_compat`.
 
 ---
 

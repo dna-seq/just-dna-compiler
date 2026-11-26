@@ -20,6 +20,13 @@ dependencies = [
     "typer>=0.12.0",
 ]
 
+[project.optional-dependencies]
+# A host whose CPU lacks the features polars' default runtime is built for (a server without AVX-512 or
+# AVX2) installs `just-dna-compiler[compat]`: `polars[rtcompat]` adds `polars-runtime-compat`, and polars
+# loads that runtime first whenever it is installed (`polars._plr`'s preference order). The floor is the
+# core `polars` floor above, one number written twice; `test_compat_extra.py` holds them equal.
+compat = ["polars[rtcompat]>=1.42.0"]
+
 [project.scripts]
 just-dna-compiler = "just_dna_compiler.cli:app"
 

@@ -55,8 +55,8 @@ upgrade note is [INTEGRATION_0_9.md](INTEGRATION_0_9.md). Publishing to PyPI is 
 
 - **Versions and floors (one number per cut):** format changed (`parse_release`, `is_whole_build`), so all three packages are `0.9.0`,
   the compiler for its floor alone (its source did not change). Every intra-workspace floor is `>=0.9.0`; **the
-  enricher floors format at 0.9.0 because it imports `parse_release`**. No third-party floor moved, and `uv lock`
-  moved only the three workspace versions. PyPI's latest at the cut is 0.8.10 for all three.
+  enricher floors format at 0.9.0 because it imports `parse_release`**. No third-party floor moved. `uv lock` moved
+  the three workspace versions and gained the optional `polars-runtime-compat` the new `compat` extra names. PyPI's latest at the cut is 0.8.10 for all three.
 - **No old-reader break.** No new warning code, manifest field, parquet, parquet column, verification reason or
   release-change kind, so a format reader on any 0.8 release reads every module 0.9.0 compiles.
   `rsid_genotype_reads_as_two_events`, which RM449 named for 0.9, was never in its scope and is RM460, in 0.10 (the
@@ -97,6 +97,12 @@ upgrade note is [INTEGRATION_0_9.md](INTEGRATION_0_9.md). Publishing to PyPI is 
   green against `v1/1.2`.
 
 What 0.9 built, item by item, as it landed on the branch:
+
+- **A `compat` extra for a CPU polars' default runtime refuses** (added at the redone cut on the maintainer's word,
+  2026-11-26: a server without AVX-512). `just-dna-compiler[compat]` pulls `polars[rtcompat]` at the core polars
+  floor, and `just-dna-enricher[compat]` pulls the compiler's. Polars loads its compatibility runtime first whenever
+  it is installed, so no code moved; a fresh install of the extra was checked to load `_polars_runtime_compat`, and
+  `test_compat_extra.py` holds the two floors equal.
 
 - **ClinVar-GKM's release line moved to `v1/1.2`, and a superseded line is refused by name** (RM470, folded into the
   cut). ClinVar-GKM froze `v1/1.1` on 2026-11-26: its Parquet manifest answers 404 and its index still answers a

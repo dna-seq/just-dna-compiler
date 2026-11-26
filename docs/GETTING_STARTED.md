@@ -23,6 +23,14 @@ Add the tier you need. Each pulls the ones beneath it, so you never install more
 :   Adds `just-dna-enricher`. The only package that fetches anything, and the one that *produces* the
     `resolution.csv` the compiler consumes.
 
+**On a CPU without AVX-512 or AVX2** — `uv add 'just-dna-compiler[compat]'` or `uv add 'just-dna-enricher[compat]'`
+
+:   Since 0.9.0. The `compat` extra adds polars' compatibility runtime (`polars[rtcompat]`), which polars
+    loads in place of its default one whenever it is installed, so the compiler and the enricher's
+    builders run on an older or virtualised server where the default runtime refuses to start. Checked
+    by installing `just-dna-compiler[compat]` into a fresh environment from the 0.9.0 tree: `import polars`
+    loaded `_polars_runtime_compat`.
+
 ## 2. Compile a module
 
 A spec is a directory: one `module_spec.yaml` header plus a CSV per table kind you use.
