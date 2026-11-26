@@ -40,6 +40,15 @@ The lead's working state, rewritten to the present before each reset. Last rewri
 ## In flight
 
 - mitomap behind source (liaison 643088167, 2026-11-24): the dump moved 2026-11-18 (mmutation edited 2026-11-17, 603 rows, +6 citation links). Built as mitomap_2026-11-17+2026-11-03 into `data/caches/rebuild-2026-11-24/mitomap`, upload rehearsed (5 files). `blocked: the person` (the classifier refuses a seat's publish, kit #529): `uv run just-dna-enricher mitomap publish data/caches/rebuild-2026-11-24/mitomap`. After it: `cache pull --only mitomap`, then `mitomap miss` (mitomap_miss follows its parents).
+- **0.9 rescope (the pm on the maintainer's word, 2026-11-26; ROADMAP_0_9.md "The rescope", e60bfbd6).** 0.9.0 is
+  not published as cut; 0.9 builds RM454, RM458, RM461-RM467, then the cut is redone. Step 1 done (30daab91 on 0.9).
+  Step 2 running since 2026-11-26 ~13:00: eight Codex builds (codex-builder, b05f0229; briefs in the scratchpad
+  `briefs/`), worktrees `.worktrees/09-rm{458,461,462,463,464-465,466,454,467}` on `build/09-*`, locked. Each: read
+  the diff against its item and the charter, delete `.codex-build.{log,txt}`, run the tests at nice 19, commit with
+  its CHANGELOG line under 0.9's heading, merge into 0.9 in `.worktrees/09`, full suite. No third review round: the
+  merge check is the review; findings go to the pm. Then step 4 (the liaison tells the four consumers) and step 5,
+  the cut redone (release record, INTEGRATION_0_9 with RM459 only, CHANGELOG, docs pass), on a fresh cut branch;
+  `cut/v0.9.0` and `.worktrees/cut-090` are superseded once it exists.
 - 0.8.10 published 2026-11-26 (PyPI 11:11Z, all three; desk #415): tag `v0.8.10` on 65cfa25b, GitHub release,
   README.md:94 and CLAUDE.md:84 name 0.8.10, done-line to releases, the registry told. The 0.9 merge is now unblocked
   by the tag; it still waits on the two trials or the person's "skip" (desk #370). Branches cut/v0.8.9, land/v0.8.9,
