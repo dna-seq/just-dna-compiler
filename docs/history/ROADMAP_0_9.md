@@ -193,6 +193,10 @@ reads `not_found` offline: RM454's own class, so part of RM454 in 0.9.
 About a day and a half to the cut. 0.10 then holds RM399 + RM441 (S156), RM435, RM265, RM385, RM460 and RM468, and
 RM459 once the registry moves; the pm sorts it again when it opens.
 
+**Folded in at the redone cut (2026-11-26).** The redone cut's network gate found ClinVar-GKM's `v1/1.1` line
+retired upstream; the pm placed the fix, RM470, in 0.9.1, and the maintainer folded it into 0.9.0 once it was built
+("merge gkm into 0.9.0 if built, I'm ready to bublish"). Its record is in ROADMAP_HISTORY beside the rescope's nine.
+
 **Earlier sizings, for the record.** The file opened on 2026-11-03, when the maintainer scoped 0.8 and sent "the rest"
 to 0.9; the pm re-sized it on 2026-11-05 after the 0.8.0 cut ("'Auto-next minor' was a policy when we didn't have a
 dedicated decision maker for this"), parking 22 items into ROADMAP.md. Everything here is **additive under Principles

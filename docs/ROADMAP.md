@@ -366,23 +366,6 @@ you**, so check which `# ` heading you are under before writing the section, not
 The trackers further down are the other live part of this file: the reserved-namespace tracker and the
 1.0-cleanup candidate tracker, which the Constitution deliberately keeps out of itself.
 
-## RM470 — ClinVar-GKM moved its Parquet set to v1/1.2 and a frozen index still answers with a stale release
-
-**Severity** medium · **Status** open — **a patch, 0.9.1** (the pm, 2026-11-26) ·
-**Owner** enricher (`clinvar_gkm`, `clinvar_gkm_build`) · **Motivating case** the 0.9.0 cut's network
-gate and the liaison's adoption map of 2026-11-26 · *related* RM270, RM305
-
-The manifest on `v1/1.1` returned 404 at the cut. The root index names `v1/1.2` as current, while
-the old line's index still answers 200 and gives 2026-10-31 as its `latest_release`. A client reading
-just that field could keep reporting October's release every time it was asked.
-
-The builder reads `v1/1.2` and takes the SPDI, VCF spelling and state type from the typed allele
-columns. The lasting fix is to check the line's status before accepting `latest_release`. A frozen
-line names its successor in the refusal. On a manifest 404 the client consults the line index once
-for that diagnosis and preserves the manifest error if the index cannot explain it.
-
-**Residuals** none yet.
-
 ## RM285 — the MITOMAP lane's two open remainders: `VUS*` withheld, and the unrated-miss identity rows
 
 **Severity** low · **Status** open — **a patch** (either answer is drafter behaviour), two decisions first; the anchoring pass shipped as RM293 ·

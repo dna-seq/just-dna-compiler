@@ -41,12 +41,6 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md). The `0.8` branch merged into `main` at the 0.8.0 cut (2026-11-05).
 
-## 2026-11-26 — RM470: ClinVar-GKM's release line moved to v1/1.2; a superseded line is refused by name (patch, enricher only, for 0.9.1)
-
-`clinvar-gkm build` reads the indel witness from the new line's typed allele expressions and state.
-When a line freezes, the enricher withholds its stale weekly release and names its successor. A missing
-Parquet manifest gets the same diagnosis when the line index confirms the move.
-
 ## 2026-11-26 — `v0.9.0`: format, compiler and enricher 0.9.0 (a minor, the `0.9` branch)
 
 **Cut on 2026-11-26 from the `0.9` branch**, built from 2026-11-16 to 2026-11-26: the enricher reads its reference data
@@ -54,7 +48,8 @@ wherever it lives (local disk, then the registry's proxy, then Hugging Face), an
 `snapshot.parse_release` and `snapshot.is_whole_build`. Six items: RM430, RM431, RM443, RM437, RM404 and RM412's
 second half with its `--rehearse-download` flag; RM412's half 1 (the per-lane release probe) stays open, parked. A
 first cut on 2026-11-19 was never published: **the rescope** (the pm on the maintainer's word, 2026-11-26) built nine
-of its known issues and residuals in 0.9 instead, RM454, RM458 and RM461 to RM467, and the cut was redone. The
+of its known issues and residuals in 0.9 instead, RM454, RM458 and RM461 to RM467, and the cut was redone. RM470,
+found by the redone cut's network gate, was folded in on the maintainer's word ("merge gkm into 0.9.0 if built"). The
 upgrade note is [INTEGRATION_0_9.md](INTEGRATION_0_9.md). Publishing to PyPI is the maintainer's, and the tag
 `v0.9.0` follows it; 0.8.10 was published and tagged first, and `0.9` merges into `main` after the consumers' trial.
 
@@ -98,9 +93,19 @@ upgrade note is [INTEGRATION_0_9.md](INTEGRATION_0_9.md). Publishing to PyPI is 
   `verification.json`'s `producer`; `content_signature` is equal in all 44 pairs, and the 13 `artifact.digest` moves
   vanish when 0.9.0 compiles 0.8.10's enriched tree (enrich timestamps carried into parquet cells). The network
   tests ran 45 green and one red, the live ClinVar-GKM manifest check: upstream retired its `v1/1.1` path on
-  2026-11-26, which 0.8.10 fails alike (handed to the liaison).
+  2026-11-26, which 0.8.10 fails alike. The liaison mapped it, and RM470 fixed it inside 0.9.0; the live check is
+  green against `v1/1.2`.
 
 What 0.9 built, item by item, as it landed on the branch:
+
+- **ClinVar-GKM's release line moved to `v1/1.2`, and a superseded line is refused by name** (RM470, folded into the
+  cut). ClinVar-GKM froze `v1/1.1` on 2026-11-26: its Parquet manifest answers 404 and its index still answers a
+  stale `latest_release`. `clinvar-gkm build` reads `v1/1.2`, whose `allele.parquet` carries typed `expressions`
+  and `state` columns in place of the `data` JSON column, and refuses an allele file missing them, naming the
+  columns. A line index whose stated `status` is not `current` raises `ClinVarGkmRetired` naming the line and its
+  successor, so the currency check withholds rather than reporting October's release; a manifest 404 asks the
+  index once and says the same when it explains the 404. The published `clinvar_gkm` snapshot and every reader of
+  it were never affected.
 
 - **`LookupClients` and `CLIENT_FIELDS` live in `just_dna_enricher.clients`** (RM404, preparatory). The new module is
   a leaf that imports only the client types it bundles, so `enrich` can import the bundle at module level, which it

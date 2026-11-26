@@ -11,7 +11,7 @@ readers they need), RM437 (the Ensembl snapshot's optional column groups), RM443
 its own paths), RM404 (`enrich` takes a host's clients and sequence proxy) and RM412's second half (the 0.8 line's
 private names made public, and `--rehearse-download`). **The rescope of 2026-11-26** then built nine of the first
 cut's own leftovers in 0.9 rather than shipping them as known issues and patches: RM454, RM458 and RM461 to RM467
-(§ 1.13 lists them). The enricher moves, the format tier gains two functions (`parse_release` and `is_whole_build`),
+(§ 1.13 lists them), and RM470, ClinVar-GKM's new release line, was folded in at the redone cut (§ 1.14). The enricher moves, the format tier gains two functions (`parse_release` and `is_whole_build`),
 and **the compiler's source does not move at all**.
 
 **Status: cut as 0.9.0 on 2026-11-26, on the local branch `cut/v0.9.0-2` (off `0.9`).** A first cut, on 2026-11-19
@@ -349,6 +349,21 @@ correction's reach waits for RM441's record, in 0.10.
 The others, by section: RM461 and RM462 in § 1.2, RM454 in § 1.3, RM461's URL refusal in § 1.6, RM458 in § 1.7,
 RM463 in § 1.8, RM465 and RM464 in § 1.9, RM466 in § 1.11.
 
+### 1.14 ClinVar-GKM's release line moved to `v1/1.2` (RM470, no break)
+
+ClinVar-GKM froze its `v1/1.1` line on 2026-11-26: its Parquet manifest answers 404, and its index still answers a
+stale `latest_release`. 0.8.10's builder reads that line, so `clinvar-gkm build` fails there; the published
+`clinvar_gkm` snapshot and every reader of it are unaffected.
+
+- **`clinvar-gkm build` reads `v1/1.2`** (`clinvar_gkm.CLINVAR_GKM_BASE_URL`), whose `allele.parquet` carries typed
+  `expressions` and `state` columns in place of the `data` JSON column; an allele file missing them is refused with
+  `ClinVarGkmError`, naming the columns.
+- **A superseded line is refused by name.** A line index whose stated `status` is not `current` raises
+  `ClinVarGkmRetired` (a `ClinVarGkmUnavailable`, so every existing handler still catches it), naming the line, its
+  status and its successor; `latest_release_or_none()` withholds and logs that message, so the currency check says
+  the lag is unknown instead of reporting the frozen line's release. A manifest 404 asks the line index once and
+  raises the same refusal when the index explains it, else the 404 as before.
+
 ---
 
 ## 2. What to change
@@ -387,6 +402,8 @@ RM463 in § 1.8, RM465 and RM464 in § 1.9, RM466 in § 1.11.
    rehearsal the gate would refuse exits 0 with `WOULD BE REFUSED:`; grep for that, or run without `--dry-run`.
 9. **If you read a constraint or gene-metrics answer by gene** (§ 1.3): a gene asked in another case now finds its
    row where it answered `not_found` before.
+10. **If you rebuild the `clinvar_gkm` snapshot** (§ 1.14): only 0.9.0 can, since upstream retired the line 0.8.10
+    reads; a handler of `ClinVarGkmUnavailable` also receives `ClinVarGkmRetired` for a superseded line.
 
 ---
 

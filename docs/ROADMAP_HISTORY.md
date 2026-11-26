@@ -32,7 +32,7 @@ up.
 
 # The 0.9 minor
 
-Built on the `0.9` branch from 2026-11-16 and cut as `v0.9.0` on 2026-11-26: the enricher reads its reference data wherever it lives. A first cut on 2026-11-19 was never published; the rescope of 2026-11-26 built that cut's known issues and residuals in 0.9 instead (RM454, RM458, RM461 to RM467, the last nine entries of this section), and the cut was redone. The scope, the two trial rules and both review rounds' sortings are the closed
+Built on the `0.9` branch from 2026-11-16 and cut as `v0.9.0` on 2026-11-26: the enricher reads its reference data wherever it lives. A first cut on 2026-11-19 was never published; the rescope of 2026-11-26 built that cut's known issues and residuals in 0.9 instead (RM454, RM458, RM461 to RM467), and the cut was redone; RM470, found by the redone cut's network gate, was folded in last. The scope, the two trial rules and both review rounds' sortings are the closed
 [history/ROADMAP_0_9.md](history/ROADMAP_0_9.md); the known issues 0.9 ships with are in
 [INTEGRATION_0_9.md § 4](INTEGRATION_0_9.md#4-known-issues).
 
@@ -1005,6 +1005,29 @@ SQL form and the Python normalizer give the same key, or the compare normalizes 
 asserts both: over every declared compare, a fixture key in another case, with surrounding whitespace, with a
 `chr` prefix where it is a contig, answers as its normalized form does. A patch after 0.9 merges; triage builds it.
 It may widen what a direct lookup returns, never what a module resolves, so no derived table moves.
+
+**Residuals** none yet.
+
+## RM470 — ClinVar-GKM moved its Parquet set to v1/1.2 and a frozen index still answers with a stale release
+
+**SHIPPED 2026-11-26 on `0.9` (6004d52c, folded into the redone cut), cut 2026-11-26 as `v0.9.0` — a patch-class fix inside a minor.**
+
+**Residuals** none
+
+**Folded into 0.9.0 on the maintainer's word** (2026-11-26, forwarded by the pm: "merge gkm into 0.9.0 if built, I'm ready to bublish"), where the pm had placed it in 0.9.1. The status line below predates this.
+
+**Severity** medium · **Status** open — **a patch, 0.9.1** (the pm, 2026-11-26) ·
+**Owner** enricher (`clinvar_gkm`, `clinvar_gkm_build`) · **Motivating case** the 0.9.0 cut's network
+gate and the liaison's adoption map of 2026-11-26 · *related* RM270, RM305
+
+The manifest on `v1/1.1` returned 404 at the cut. The root index names `v1/1.2` as current, while
+the old line's index still answers 200 and gives 2026-10-31 as its `latest_release`. A client reading
+just that field could keep reporting October's release every time it was asked.
+
+The builder reads `v1/1.2` and takes the SPDI, VCF spelling and state type from the typed allele
+columns. The lasting fix is to check the line's status before accepting `latest_release`. A frozen
+line names its successor in the refusal. On a manifest 404 the client consults the line index once
+for that diagnosis and preserves the manifest error if the index cannot explain it.
 
 **Residuals** none yet.
 
