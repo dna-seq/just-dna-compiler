@@ -40,20 +40,20 @@ The lead's working state, rewritten to the present before each reset. Last rewri
 ## In flight
 
 - mitomap behind source (liaison 643088167, 2026-11-24): the dump moved 2026-11-18 (mmutation edited 2026-11-17, 603 rows, +6 citation links). Built as mitomap_2026-11-17+2026-11-03 into `data/caches/rebuild-2026-11-24/mitomap`, upload rehearsed (5 files). `blocked: the person` (the classifier refuses a seat's publish, kit #529): `uv run just-dna-enricher mitomap publish data/caches/rebuild-2026-11-24/mitomap`. After it: `cache pull --only mitomap`, then `mitomap miss` (mitomap_miss follows its parents).
-- **0.9 rescope (the pm on the maintainer's word, 2026-11-26; ROADMAP_0_9.md "The rescope", e60bfbd6).** 0.9.0 is
-  not published as cut; 0.9 builds RM454, RM458, RM461-RM467, then the cut is redone. Steps 1-2 done 2026-11-26:
-  all nine built by Codex (codex-builder, b05f0229), checked and merged, plus two second parts the pm placed in
-  their items' classes (RM465: Open Targets reader through is_whole_build; RM454: gene-metrics indexes by the
-  declared key). 0.9 at 9ebdba16, pushed, full suite 8338 passed. RM462 was rewritten by the lead (two keyed
-  reads, not Codex's combined query that lost row-group pruning); the pm accepted two requests. RM461's walk over
-  every module goes to 0.10 as a new RM (the pm's). Step 4 handed to the liaison (643867006). **Next: step 5, the
-  cut redone** on a fresh cut branch from 0.9: carry cut/v0.9.0's 626a46f3 (INTEGRATION_0_9), a438d73e (docs pass,
-  INTEGRATION_0_8 archived), a6dcf4b5 (versions 0.9.0), e057186b; INTEGRATION_0_9's known issues shrink to RM459 and
-  gain the added items; re-measure the release record; the gate is real enrich/compile runs over the reference
-  modules (the maintainer via the pm, 2026-11-26), plus the network pre-release tests and sweep --release; dists
-  into `dist/`. The rescope's worktrees `.worktrees/09-rm*` are done and can be unlocked at the cut;
-  `.worktrees/rm466-v0810` is unlocked, the person's to delete. `cut/v0.9.0` and `.worktrees/cut-090` are
-  superseded once the new cut exists.
+- **0.9 rescope (the pm on the maintainer's word, 2026-11-26; ROADMAP_0_9.md "The rescope", e60bfbd6).** Steps 1-2
+  done (all nine built by Codex, checked and merged; 0.9 at 9ebdba16). **Step 5, the cut redone, in progress:** branch
+  `cut/v0.9.0-2` in `.worktrees/cut-090-2` (locked), off origin/0.9 with origin/main merged in. Carried 626a46f3,
+  a438d73e, a6dcf4b5 (roadmap close redone: the nine rescoped items to ROADMAP_HISTORY, RM468 into ROADMAP_0_10, RM469
+  filed for RM461's residual), e057186b; INTEGRATION_0_9, CHANGELOG cut heading, release record re-measured (sweep
+  --release 0.9.0 green, 22/22 unmoved), link fixes, ENRICHING's scoped re-derive. **RM469 was claimed by item-next
+  into the primary checkout's docs/RM_TOC.md** (uncommitted, beside the old RM458-466 rows): never stage them; run
+  `item-next.py --release RM458 … RM469` once the cut is on main. Gates running: full suite, real enrich+compile over
+  all 22 reference modules for 0.8.10 and 0.9.0 (harness `.worktrees/cut-090-2/data/interim/gate-090/`, compare with
+  its `tools/compare.py`). Next: network gates (`JUST_DNA_NETWORK_TESTS=1 nice -n 19 uv run pytest -m network`), the
+  dists (`bash scripts/build-dists.sh`, into the primary `dist/` after wiping 0.8.10's, twine check), push the cut
+  branch, desk question for the publish. After it: RELEASE_CYCLE step 10, merge into 0.9 then main after the
+  consumers' trial (desk #370), LEAD.md/PM.md point at ROADMAP_0_10 (change-priming). `cut/v0.9.0` and
+  `.worktrees/cut-090` are superseded (unlock cut-090 once the new cut is pushed).
 - 0.8.10 published 2026-11-26 (PyPI 11:11Z, all three; desk #415): tag `v0.8.10` on 65cfa25b, GitHub release,
   README.md:94 and CLAUDE.md:84 name 0.8.10, done-line to releases, the registry told. The 0.9 merge is now unblocked
   by the tag; it still waits on the two trials or the person's "skip" (desk #370). Branches cut/v0.8.9, land/v0.8.9,
