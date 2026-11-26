@@ -442,6 +442,11 @@ exposed rather than made. 0.8.9 is cut now: it fixes a silent wrong annotation i
 is loud, names its rsID, needs an offline re-derivation of a mirrored indel site, and an online one clears it. The cut
 entry says so. Triage files the offline placement as its own item, a patch for 0.8.10.
 
+**The code did not ship in 0.9 (the pm, 2026-11-19, at the 0.9.0 cut).** `rsid_genotype_reads_as_two_events` was
+never in 0.9's scope, which was the enricher's, and a closed-vocabulary code added at the cut would have shipped
+unreviewed. 0.9.0 keeps the borrowed codes. The code is RM460, in 0.10, which first says which sentences it would
+carry now that RM453 leaves no row of a mirrored site unpositioned.
+
 **Residuals** RM453 · won't fix — a site witnessed both ways is not refused in 0.8 (the pm: refusing it is a minor's
 question, by escalating `rsid_genotype_reads_as_two_events`) · won't fix — an authored coordinate row winning over
 the expansion (S158's option 2) silences only the loud case

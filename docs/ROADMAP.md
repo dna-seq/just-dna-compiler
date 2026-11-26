@@ -2426,35 +2426,6 @@ asks for the read; either can happen while this is parked, so the gate is honest
 
 **Residuals** none yet.
 
-## RM467 — a re-derive cannot be scoped to the rows a reason reaches, and the verify passes re-read every carried row
-
-**Severity** medium · **Status** open — **a minor, 0.9** (rescoped 2026-11-26, [ROADMAP_0_9.md](ROADMAP_0_9.md): both halves as new options; the reason-driven selection waits for RM441 in 0.10) · **Owner** enricher
-(`enrich/orchestration.enrich`, `sequences.verify_reference_alleles`) · **Motivating case** S160 in
-CONSUMER_SUGGESTIONS_HISTORY.md (just-dna-registry, 2026-11-19) · *related* RM441, RM399, RM468
-
-**What was seen.** The registry re-derives a published module's `resolution.csv` online when a declared correction
-reaches it or its rows name no `source_release`. On its cardio module that re-asks ~75,000 rows to move about 30:
-12.5 h with `verify_ref` off, ~37 h on. Two things in the code make the cost whole-table:
-
-- `--rederive` re-asks every subject; an ordinary run gap-fills and never re-asks. Dropping the rows a reason reaches
-  and letting a gap-filling run fill them works today, but only the caller can choose the rows, and the record gives
-  no per-row reach (RM441 keeps `requires` at `None` for a derivation correction).
-- The verify passes read the whole merged table: carried rows join `out` before `verify_reference_alleles(out, …)`
-  (`enrich/orchestration.py`), so a gap-filling run pays the reference check over every row it kept. That is where
-  most of the 37 h goes.
-
-**What it would be.** Either half can land alone. (1) A run re-asks only the subjects a stated reason selects (a
-declared correction's reach, a stale `source_release`, an explicit list) and carries the rest byte for byte, with a
-report of which subjects were re-asked and which changed: `SubjectDrift` (`result.rederived`) already reports the changes. (2) The
-verify passes read only the rows this run wrote, unless asked for all. The reach of a correction per row is RM441's
-question, so (1)'s "reason" input waits for RM441's record or takes an explicit subject list first.
-
-**Against, for the pm.** Skipping verify on a carried row trades a re-check for trust in the run that wrote it. A
-row's `ref` cannot change under a fixed build, but a strict refusal raised by an earlier run's mismatch would no
-longer be re-raised by this one. So it is a new option, never a changed default: a minor, by the flag rule.
-
-**Residuals** none yet.
-
 ## RM468 — the live clients keep no answers between runs, so a re-run under unchanged source releases spends the same egress again
 
 **Severity** medium · **Status** open — **a minor, 0.10** (the pm, 2026-11-26, beside RM399 and RM441: a design of its own, not a leftover of 0.9's build) · **Owner** enricher (the live clients:

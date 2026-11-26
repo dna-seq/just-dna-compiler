@@ -907,9 +907,170 @@ names are RM404's.
 
 ---
 
+# 0.9's own leftovers, built in 0.9 (the rescope, 2026-11-26)
+
+Filed at the first 0.9.0 cut (fee94a69, 2026-11-19) as known issues, next-minor residuals and patches after the merge, and taken back into 0.9 by the rescope above, which decides each one. RM454 is the ninth; its entry stays in [ROADMAP.md](ROADMAP.md#rm454--the-enrichers-local-key-compares-never-went-through-the-one-normalizer-constraint-by-gene-lookup_loci-by-rsid-and-contig-and-sqls-lowertrim-beside-gene_key).
+
+## RM458 — during an Ensembl release transition, the group preflight and the provisioning read different manifests, so a group is refused after the core was refreshed
+
+**Severity** low · **Status** open — **a minor, 0.9** (rescoped 2026-11-26, the pm: built in 0.9, decided in "The rescope" at the top of this file) (0.9's known issue C) · **Owner** enricher
+(`download.ensure_snapshot`, `_provision_snapshot`, the group preflight) · **Motivating case** review round 2 of 0.9,
+sorted by the pm on 2026-11-18 as a known issue, filed at the 0.9.0 cut · *related* RM437, RM420, RM450
+
+**What 0.9 ships.** `ensure_snapshot(groups=…)` checks each named group before any download (its name against the
+manifest, then its licensor's terms), and the provisioning then pulls the core and the groups. During a hub release
+move the two can read different manifests. The preflight reads the cache's `manifest.json`, the provisioning the hub's
+newer one, so a group the new release's terms or file list refuse is refused after the core was refreshed, not before
+any download. Round 2's fix D adds a second case: a group current at the cache's release fetches nothing, so the
+preflight does not gate it (`@acquisition-gate-is-not-a-read-gate`), and the pull gates it only after the core is
+refreshed. Either way the refusal is loud and none of the group's own bytes move; what the operator loses is the
+promise that a refused group stops the pull before anything changed.
+
+**The fix.** The preflight reads the manifest the provisioning will provision, and a release-transition matrix
+asserts it: for each of {no cache, cache at the hub's release, cache one release behind} × {group absent, current,
+stale} × {terms admit, refuse, unknown}, a refusal raises before any byte moves.
+
+**Class.** No field, column or vocabulary moves, but it reorders what a public call fetches before it refuses, so the
+pm placed it in the next minor with 0.9's other review leftovers.
+
+**Residuals** none yet.
+
+## RM461 — RM430's remote reads leave four stated facts unread: the proxy's `release_unreadable`, the split column, a URL given to `lane_status`, and a new text in an older module
+
+**Severity** low · **Status** open — **a minor, 0.9** (rescoped 2026-11-26, the pm: built in 0.9, decided in "The rescope" at the top of this file) · **Owner** enricher (`remote`, `caches.lane_status`, the
+pinned-text walk) · **Motivating case** RM430's residuals as the pm placed them (2026-11-18, "additive, the next
+minor"), filed at the 0.9.0 cut · *related* RM430, RM443
+
+- **The proxy's `release_unreadable`** is read from the reply and not carried into `RemoteRoute`, so a caller cannot
+  tell "the proxy's copy has no readable `release.json`" from "the proxy did not say". An additive field.
+- **`_batch_column` always splits a request on `start`** when a position is asked, even where another column holds
+  more values, so such a request can exceed the proxy's per-request limit and go to Hugging Face where a split on
+  the other column would have fitted.
+- **`lane_status` given a URL** reports the lane absent and collapses `//` in `looked_in`, as ENRICHER.md says. Status
+  is a local-disk question in 0.9; a remote root answers through the holder. The design question is whether
+  `lane_status(locations=)` refuses a URL or reports it as remote.
+- **The pinned-text walk** (`test_every_new_text_is_pinned.py`) sees the texts 0.9's diff added, so a new text added
+  later to a module older than 0.9 is not held. The walk wants a registry of every emitted text.
+
+**Residuals** none yet.
+
+## RM462 — `lookup_variant` asks ClinVar remotely up to three times where one request would serve
+
+**Severity** low · **Status** open — **a minor, 0.9** (rescoped 2026-11-26, the pm: built in 0.9, decided in "The rescope" at the top of this file) · **Owner** enricher (`lookup.lookup_variant`,
+`_lookup_clin_sig`) · **Motivating case** RM430's "left for later", placed by the pm on 2026-11-18 ("one query, a
+patch on `main` after 0.9 merges, triage files it"), filed at the 0.9.0 cut · *related* RM430, RM461
+
+**What 0.9 does.** With `clients.snapshots` set and no local ClinVar snapshot, one `lookup_variant` asks the holder
+for ClinVar by rsID, then by position, then again by position for the clinical calls (`_lookup_clin_sig`). Each
+answer is right; the cost is up to three proxy requests, or three Hugging Face reads against an anonymous quota of
+about 30 ClinVar lookups per 5 minutes, where one request holding every key, and one reply read three times, would
+serve. No public name moves, so a patch.
+
+**Residuals** none yet.
+
+## RM463 — a reader that must hold a sequence failure to one run calls a private helper, and nothing checks that it does
+
+**Severity** low · **Status** open — **a minor, 0.9** (rescoped 2026-11-26, the pm: built in 0.9, decided in "The rescope" at the top of this file) · **Owner** enricher (`sequences._held_by_one_run`
+and its callers) · **Motivating case** RM404's follow-up round, placed by the pm on 2026-11-17 ("an AST guard and a
+non-private name, one patch on `main` after 0.9 merges, triage files it"), filed at the 0.9.0 cut · *related* RM404
+
+**What 0.9 does.** A shared `SequenceProxy` memoizes answers only; a failed read is held by the run that saw it,
+through `sequences._held_by_one_run(proxy)`. Every reader that takes a proxy must remember to wrap it, and five
+modules import the private name to do so: `enrich.orchestration`, `vrs` (the minter), `civic_draft`, `pgx_draft` and
+`cli.authoring_commands` (`draft`). A new reader that forgets reads through the shared proxy, and its failures are
+then asked again on every read of the run, which the warning's "once per run" denies.
+
+**The fix.** A non-private name for the wrap, and an AST walk asserting that every function taking a
+`SequenceProxy` and reading through it wraps it first, shown failing on a sample that does not.
+
+**Residuals** none yet.
+
+## RM464 — the per-lane `publish` commands are near copies, and the publish gate restates the part-count keys and reads `release.json` twice
+
+**Severity** low · **Status** open — **a minor, 0.9** (rescoped 2026-11-26, the pm: built in 0.9, decided in "The rescope" at the top of this file) · **Owner** enricher (`cli/*_commands.py`
+publish commands, `upload.plan_reference_snapshot`) · **Motivating case** RM412's class (c) and its follow-up
+readings, placed by the pm on 2026-11-17 (an internal refactor with no public surface; "triage files it"), filed at
+the 0.9.0 cut · *related* RM412, RM465
+
+**What 0.9 has.** `opentargets publish` and `clinvar-gkm publish` (new in 0.9) sit beside `mitomap publish` and
+`strchive publish` as near copies, and their exit codes on a refused rehearsal differ from `cache rebuild
+--publish`'s. The publish gate keeps `_PART_COUNT_KEYS` as a hand-kept pair beside the model
+(`@fieldnames-from-model`), works out which datasets are short apart from the bytes it then hashes, and parses
+`release.json` twice. No wrong answer today.
+
+**The fix.** One shared publish body the four commands call, the keys derived from `SnapshotRelease`, and one read of
+the record that both the check and the hash use. No public surface moves.
+
+**Residuals** none yet.
+
+## RM465 — the publish gate's partial-build check has no public predicate, and a `release.json` whose `parts_read` exceeds `parts_total` publishes as whole
+
+**Severity** low · **Status** open — **a minor, 0.9** (rescoped 2026-11-26, the pm: built in 0.9, decided in "The rescope" at the top of this file) · **Owner** format (`snapshot.SnapshotRelease`) + enricher
+(`upload.plan_reference_snapshot`) · **Motivating case** RM412's follow-ups as the pm placed them (2026-11-17), filed
+at the 0.9.0 cut · *related* RM412, RM464, RM430
+
+0.9's publish gate refuses a snapshot whose `release.json` records a dataset with `parts_read` below `parts_total`, and
+refuses a malformed count. Two things were placed in the next minor:
+
+- **A public predicate beside `SnapshotRelease`** ("is this record a whole build?"), so a reader that is not the
+  publisher (the registry's proxy, a provisioning check) asks the same question rather than restating it. A new
+  public name in the format tier, so a minor.
+- **`parts_read` above `parts_total`** reads as whole today. It is a record that contradicts itself rather than a short
+  read, so nothing is lost by publishing it in 0.9; the predicate refuses it.
+
+**Residuals** none yet.
+
+## RM466 — `enrich`'s claim to write 0.8's bytes when given neither new argument rests on a measurement, not on a test with golden outputs
+
+**Severity** low · **Status** open — **a minor, 0.9** (rescoped 2026-11-26, the pm: built in 0.9, decided in "The rescope" at the top of this file) · **Owner** enricher (tests) · **Motivating case** review round
+2 of 0.9, item B, placed by the pm on 2026-11-18 ("a test with golden outputs recorded from 0.8 is the next minor"),
+filed at the 0.9.0 cut · *related* RM404, RM430
+
+0.9's byte test compares 0.9's `enrich` with itself (a call naming `clients`, `sequences` and `rsid_index` as `None`
+against one leaving them out), so it cannot see a change both calls share. The cut measured the claim instead: on five
+reference examples, online with warm caches, 0.9's `enrich` wrote the same bytes as 0.8.10's, clock fields aside (the
+release record's evidence quotes it). A test would record 0.8's outputs for a fixed input once and compare every later
+run against them, offline, with the clock fields named. The measurement reached dbSNP and the reference sequence only,
+so the test's fixture should hold an input that reaches the Ensembl snapshot and the ClinVar witness too.
+
+**Residuals** none yet.
+
+---
+
+## RM467 — a re-derive cannot be scoped to the rows a reason reaches, and the verify passes re-read every carried row
+
+**Severity** medium · **Status** open — **a minor, 0.9** (rescoped 2026-11-26, "The rescope" at the top of this file: both halves as new options; the reason-driven selection waits for RM441 in 0.10) · **Owner** enricher
+(`enrich/orchestration.enrich`, `sequences.verify_reference_alleles`) · **Motivating case** S160 in
+CONSUMER_SUGGESTIONS_HISTORY.md (just-dna-registry, 2026-11-19) · *related* RM441, RM399, RM468
+
+**What was seen.** The registry re-derives a published module's `resolution.csv` online when a declared correction
+reaches it or its rows name no `source_release`. On its cardio module that re-asks ~75,000 rows to move about 30:
+12.5 h with `verify_ref` off, ~37 h on. Two things in the code make the cost whole-table:
+
+- `--rederive` re-asks every subject; an ordinary run gap-fills and never re-asks. Dropping the rows a reason reaches
+  and letting a gap-filling run fill them works today, but only the caller can choose the rows, and the record gives
+  no per-row reach (RM441 keeps `requires` at `None` for a derivation correction).
+- The verify passes read the whole merged table: carried rows join `out` before `verify_reference_alleles(out, …)`
+  (`enrich/orchestration.py`), so a gap-filling run pays the reference check over every row it kept. That is where
+  most of the 37 h goes.
+
+**What it would be.** Either half can land alone. (1) A run re-asks only the subjects a stated reason selects (a
+declared correction's reach, a stale `source_release`, an explicit list) and carries the rest byte for byte, with a
+report of which subjects were re-asked and which changed: `SubjectDrift` (`result.rederived`) already reports the changes. (2) The
+verify passes read only the rows this run wrote, unless asked for all. The reach of a correction per row is RM441's
+question, so (1)'s "reason" input waits for RM441's record or takes an explicit subject list first.
+
+**Against, for the pm.** Skipping verify on a carried row trades a re-check for trust in the run that wrote it. A
+row's `ref` cannot change under a fixed build, but a strict refusal raised by an earlier run's mismatch would no
+longer be re-raised by this one. So it is a new option, never a changed default: a minor, by the flag rule.
+
+**Residuals** none yet.
+
 # 0.10's scope — a small schema release right after 0.9
 
 Five items, each optional for an author: RM399 with RM441 (one design, which also carries S156's per-table "newest enricher release that could change it"), RM435, RM265 and RM385. RM265's open shape question goes to the maintainer when 0.10 opens, as a fork of its own.
+
+**Filed at the 0.9.0 cut (2026-11-19), from 0.9's known issues and residuals:** RM459 (the second known issue, waiting on the registry's S36) and RM460 (the warning code RM449 named for 0.9, placed in 0.10 by the pm); their entries follow RM385. RM458, RM461, RM465 and RM466 were filed here too and went back into 0.9 at the rescope (2026-11-26).
 
 ## RM399 — a release cannot declare that a reference snapshot it reads moved, so `needs_recompile` says nothing about re-deriving
 
@@ -1144,7 +1305,58 @@ none is. "No reference configured" stays a named could-not-ask, never an absence
 
 **Residuals** none yet.
 
----
+## RM459 — with the registry's proxy set and Hugging Face off, a gene lookup on clinpgx, cpic, drug_labels or civic answers could-not-ask
+
+**Severity** low · **Status** open — **a minor, 0.10; waits on the registry** (its S36) · **Owner** enricher
+(`remote.RemoteLane.proxy_compares`, `key_compare.KEY_COMPARES`) · **Motivating case** the RM430 follow-up's readings,
+placed by the pm on 2026-11-18 as a 0.9 known issue, filed at the 0.9.0 cut · *related* RM430, RM454
+
+**What 0.9 ships.** The registry's proxy compares a parquet cell exactly. The local readers of four lanes fold a gene
+to its `gene_key` and, on clinpgx and drug_labels, split a `;`-joined cell into members, so the proxy would answer a
+gene lookup short (399 of 16,117 ClinPGx rows and 361 of 1,433 drug labels sit in joined cells). The holder therefore
+passes the proxy over for a key column whose compare folds or splits (`RemoteLane.proxy_compares`) and asks Hugging
+Face (`route` says `hf`). With `RemoteSnapshots(huggingface=False)` and a proxy set, those four lanes answer a gene
+lookup as could-not-ask (`SnapshotRouteUnavailable`, the reason naming the compare), pinned by a test. Lookups by
+rsID or position are not affected: their keys are normalized before the query and stored in that form.
+
+**The fix is the registry's first.** The registry decided (its S36, 2026-11-18) to read
+`just_dna_enricher.key_compare.KEY_COMPARES` from its release that floors 0.9 and to fold and split as the local
+readers do. Once it does, the holder may send those keys to the proxy again. That needs a way to tell a folding proxy
+from an exact one (a field in the lane reply, or a registry version), which is this item's design question, and
+`KEY_COMPARES` stays stable meanwhile: it is now read outside this repository.
+
+**Residuals** none yet.
+
+## RM460 — RM449's warning code `rsid_genotype_reads_as_two_events` was promised for 0.9 and not built, so a mirrored site still borrows two older codes
+
+**Severity** low · **Status** open — **a minor, 0.10** · **Owner** format (`vocab.VALID_WARNING_CODES`) + compiler
+(`resolution`, the mirrored-site sentences) · **Motivating case** found by the 0.9.0 cut builder (2026-11-19):
+RM449's closure says "0.9 adds `rsid_genotype_reads_as_two_events` and moves these sentences to it", and
+`git diff main...0.9` touches no compiler file and no vocabulary · *related* RM449, RM453, RM378
+
+**Not in 0.9, placed by the pm (2026-11-19).** It was never in 0.9's scope: a new closed-vocabulary code in format
+and compiler is an old-reader break, and 0.9 was scoped to the enricher with both review rounds closed, so a code added
+at the cut would ship unreviewed. 0.9.0 keeps the borrowed codes, exactly as 0.8.10 ships them.
+
+**Which sentences the code would carry, after RM453** (read at the 0.9.0 cut, `compiler/resolution.py`). RM449 (0.8.9)
+had two borrowings: `rsid_no_hosting_locus` where its "witnessed neither" arm left a row unpositioned, and
+`rsid_expanded_to_multiple_loci` where it filled one or more loci. RM453 (0.8.10) fills both spellings where neither
+was witnessed, so the settlement of a mirrored site now leaves no row unpositioned and every one of its sentences
+borrows `rsid_expanded_to_multiple_loci`. What is left for the new code is the fill of a mirrored site: both spellings
+kept (witnessed both ways, or witnessed neither), or narrowed to the witnessed one. **One arm still borrows
+`rsid_no_hosting_locus`**, and the design must decide it: where authored coordinate rows claim every spelling of the
+site, the rsID row's expansion is dropped onto none of them, so the rsID row writes no position and its RM449 sentence
+is counted as no hosting locus. Until the code exists, `warnings_summary` counts a site narrowed to one locus as an
+expansion.
+
+**What it would be.** One new member of `VALID_WARNING_CODES`, the sentences moved to it, and a `features/`
+scenario. A new member of a closed vocabulary is minor-legal (P3) and an **old-reader break**: a format reader older
+than the release refuses a `warnings_summary` key it does not know (measured on `hboc_palb2` at 0.8.9), so the
+INTEGRATION file of the minor that ships it tells consumers to raise their format floor first, as INTEGRATION_0_8 § 1
+did. The release record declares the `warnings` move. Whether the site witnessed both ways is then refused under
+`--strict` is RM449's open question and stays separate.
+
+**Residuals** none yet.
 
 # After 0.10: the methylation minor, undated
 

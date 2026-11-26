@@ -8033,7 +8033,7 @@ answer too: we then keep the whole-table path and know why.
 **Meanwhile.** Our lead is trying the drop-and-gap-fill route on cardio and measuring whether verify skips
 carried rows; we file the result here.
 
-**Status — filed as [RM467](ROADMAP.md#rm467--a-re-derive-cannot-be-scoped-to-the-rows-a-reason-reaches-and-the-verify-passes-re-read-every-carried-row), a minor, release undecided, medium, for the pm to size.**
+**Status — filed as [RM467](ROADMAP_0_9.md#rm467--a-re-derive-cannot-be-scoped-to-the-rows-a-reason-reaches-and-the-verify-passes-re-read-every-carried-row), a minor, release undecided, medium, for the pm to size.**
 
 The answer to your open question, read from `main` (2026-11-19): **verify does not skip carried rows.** In
 `enrich/orchestration.py` the rows a run keeps join the same list the reference check reads
