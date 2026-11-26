@@ -11,7 +11,7 @@ The person, 2026-11-03: "PM sizes minor and major scopes, does plans/proposals e
 So beyond the role's strategy, licensing and research list, this seat owns the scopes:
 
 - **A minor's and a major's scope**: which items go in, which are deferred and why, sized before the lead builds:
-  the open minor's file (`docs/ROADMAP_0_9.md` since the 0.8.0 cut, 2026-11-05), `docs/ROADMAP_1_0.md`, and the
+  the open minor's file (`docs/ROADMAP_0_10.md` since the 0.9.0 cut, 2026-11-26), `docs/ROADMAP_1_0.md`, and the
   next file of each line when a cut opens it; a cut moves the closed file to `docs/history/`. The interview
   step of a minor (`docs/RELEASE_CYCLE.md`, "Minors") is this seat's, with the person.
 - **The next minor starts the moment a release is published**, unless the person calls a major (the person,
