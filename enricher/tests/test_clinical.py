@@ -874,3 +874,56 @@ def _read_sources(spec: Path) -> list:
 def _read_variants(spec: Path) -> list[VariantRow]:
     with (spec / "variants.csv").open(encoding="utf-8", newline="") as handle:
         return [VariantRow(**{k: v for k, v in row.items() if v}) for row in csv.DictReader(handle)]
+
+
+@pytest.mark.usefixtures("no_ambient_caches")
+def test_verifying_fresh_subjects_keeps_carried_concordance(snapshot: Path, tmp_path: Path) -> None:
+    spec = _spec(tmp_path / "partial", "benign", "A/T")
+    options = {"offline": True, "clinvar_cache": snapshot}
+    baseline = enrich(spec, **options)
+    assert baseline.clin_sig_conflicts
+    prior_key = baseline.rows[0].variant_key
+    tables = [spec / name for name in ("clin_sig_concordance.csv", "clin_sig_authority_calls.csv")]
+    before = [path.read_bytes() for path in tables]
+    with (spec / "variants.csv").open("a") as handle:
+        handle.write(f"{_CHROM},{_START},{_REF},G,G/T,risk,c,likely_benign\n")
+    result = enrich(spec, verify_written_only=True, **options)
+    assert result.clin_sig_conflicts == []
+    assert result.clin_sig_comparison.compared == len({r.variant_key for r in result.rows} - {prior_key})
+    assert [path.read_bytes() for path in tables] == before
+    again = enrich(spec, verify_written_only=True, **options)
+    assert again.clin_sig_not_checked == "nothing_to_check"
+    assert again.clin_sig_record is None
+    assert [path.read_bytes() for path in tables] == before
+
+    # When the previously carried subject is checked and agrees, retire its old finding and calls.
+    variants = spec / "variants.csv"
+    variants.write_text(variants.read_text().replace(",c,benign", ",c,pathogenic"))
+    cleared = enrich(spec, rederive_subjects=[prior_key], verify_written_only=True, **options)
+    assert cleared.reasked == [prior_key]
+    assert cleared.clin_sig_comparison.compared == len(cleared.reasked)
+    assert not cleared.clin_sig_conflicts
+    for table in tables:
+        with table.open(newline="") as handle:
+            assert list(csv.DictReader(handle)) == []
+
+
+@pytest.mark.usefixtures("no_ambient_caches")
+def test_enrich_cli_accepts_repeated_subject_keys(snapshot: Path, tmp_path: Path) -> None:
+    from just_dna_enricher.cli import app
+    from typer.testing import CliRunner
+
+    spec = _spec(tmp_path / "cli", "benign", "A/T")
+    with (spec / "variants.csv").open("a") as handle:
+        handle.write(f"{_CHROM},{_START},{_REF},G,G/T,risk,c,likely_benign\n")
+    first = enrich(spec, offline=True, clinvar_cache=snapshot)
+    command = ["enrich", str(spec), "--offline", "--clinvar-cache", str(snapshot), "--verify-written-only"]
+    for row in first.rows:
+        command.extend(["--rederive-subject", row.variant_key])
+    run = CliRunner().invoke(app, command)
+    assert run.exit_code == 0, run.exception
+    expected = ", ".join(row.variant_key for row in first.rows)
+    assert f"compared recorded subjects: {expected}" in run.output
+    records = {record.check: record for record in read_verification(spec / VERIFICATION_JSON).records}
+    assert records["clinical_significance"].subjects == first.clin_sig_comparison.compared
+    assert "Verification scoped to fresh resolution rows" in records["clinical_significance"].detail

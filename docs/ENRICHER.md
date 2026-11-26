@@ -950,14 +950,31 @@ An ordinary run gap-fills and never re-asks about a recorded subject, so a sourc
 canary was an instrument that could not fire. `rederive=True` / `--rederive` re-asks **every** subject
 and reports which recorded ones came back different, as `EnrichmentResult.rederived`.
 
-It composes with the transaction rather than adding machinery: the recorded table is already in memory
-and the fresh one has not been committed, so both sides exist at the commit boundary and the comparison
-is free. The comparison is over `RESOLUTION_FACT_FIELDS` only — read off the registry rather than
-restated — because the provenance columns move on every run by design.
+In 0.9, pass `rederive_subjects=["rs334", "rs7412"]` to `enrich`, or repeat
+`--rederive-subject KEY` on the CLI. Each key is the frozen `variant_key` from the spec.
+The list sets the scope even alongside `--rederive`. A selected subject can fill a gap or replace
+all of its recorded loci. Other subjects still in the spec keep their original resolution records,
+including their CSV quoting, line endings and provenance. An unselected gap stays unresolved.
+An empty Python list selects no subjects. If a historical header omits a column with a non-null
+default, such as `locus_index`, and a fresh answer needs a different value in that column,
+the run refuses before committing.
+A full re-derivation can write the column across the table.
 
-* **`None` is not `[]`.** `None` says nobody re-derived; `[]` says every recorded subject was re-asked
-  and every one still answers the same. Only the second is a clean bill, and only a real difference is
-  printed — an empty comparison must not announce a zero as though it were evidence.
+`verify_written_only=True` (`--verify-written-only`) independently limits row checks to the fresh
+resolution rows. This includes ordinary gap fills and rows answered again with identical facts.
+The reference, rsID, authored-pair and clinical checks use this scope. A strict run can therefore
+complete with a previously recorded mismatch on a carried row. Concordance records for other
+subjects keep their prior calls and timestamps. `answered_call_shift(..., checked_keys=...)` counts
+only the overlay answers in scope, even when an authority is unreachable. Dataset currency still
+reads the module's releases. A dry run applies the same scope to the rows it would write.
+
+Drift compares the recorded and fresh tables before commit. It uses `RESOLUTION_FACT_FIELDS`
+because provenance columns can change on every run.
+
+* `EnrichmentResult.reasked` lists the sorted recorded keys that had fresh answers to compare.
+  `EnrichmentResult.rederived` holds a `SubjectDrift` for each of those whose facts changed.
+  An empty drift list reports agreement only among the keys in `reasked`. Both fields are `None`
+  on an ordinary gap-filling run.
 * **A recorded subject this run could not ask about keeps its recorded rows.** Otherwise re-deriving
   would be a way to *shorten* the table, which is the reported incident wearing a new flag; an offline
   `--rederive` would replace a full table with an empty one. Answered-and-absent is an answer and does
@@ -6650,8 +6667,8 @@ just-dna-enricher opentargets publish data/repro/opentargets --dry-run  # likewi
 `--clinvar-cache`), the per-link toggles (`--clinvar/--no-clinvar`, `--gnomad/--no-gnomad`,
 `--vrs/--no-vrs`), the four verify toggles above (`--verify-ref`, `--verify-clinsig`, `--verify-rsids`,
 `--verify-datasets`), `--pubmind-cache`, `--keep-par-twin`, and the two transaction flags
-`--rederive` / `--keep-staging`. **`enrich-and-compile` takes the mode and cache flags, the ClinVar and
-gnomAD link toggles, and the `--frequencies` / `--gene-metrics` pass toggles — not `--vrs`, not the
+`--rederive` / `--keep-staging`. In 0.9 it also takes `--rederive-subject` and `--verify-written-only`.
+**`enrich-and-compile` takes the mode and cache flags, the ClinVar and gnomAD link toggles, and the `--frequencies` / `--gene-metrics` pass toggles — not `--vrs`, not the
 verify toggles, not the transaction flags** — it is the offline convenience wrapper, so those are
 `enrich`'s alone. That distinction is the rule worth writing down; the enumeration is not, because
 a flag list restated in prose rots the moment a flag is added, and **`--help` is the authority**.

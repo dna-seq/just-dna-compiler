@@ -248,6 +248,10 @@ def test_a_run_that_consulted_nobody_still_says_the_answers_went_unexamined(tmp_
     assert report.subjects == 0
     assert "could not be compared" in " ".join(answered_call_notes(report))
 
+    outside = answered_call_shift(spec, None, checked_keys=set())
+    assert outside.answered == 0
+    assert not outside.withheld
+
 
 def test_an_unreadable_baseline_reads_as_unknown_rather_than_as_a_move(tmp_path: Path) -> None:
     """Guessing at a half-read baseline manufactures a movement out of our own failure to read."""

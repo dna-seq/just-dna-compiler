@@ -343,6 +343,31 @@ def _write_table(
     return True
 
 
+def _replace_checked_subjects[Row: (ClinSigConcordanceRow, ClinSigAuthorityCallRow)](
+    spec_dir: Path,
+    name: str,
+    model: type[Row],
+    fresh: Sequence[Row],
+    checked: set[str],
+    error: type[Exception],
+) -> list[Row]:
+    """Replace each checked subject's group in place; keep every unchecked group and its timestamp."""
+    path = sidecar_write_path(spec_dir, name)
+    if not path.exists():
+        return list(fresh)
+    previous, errors, _ = load_csv_rows(path, model, name)
+    if errors:
+        raise error(errors[0])
+    groups: dict[str, list[Row]] = {}
+    for row in previous:
+        group = groups.setdefault(row.variant_key, [])
+        if row.variant_key not in checked:
+            group.append(row)
+    for row in fresh:
+        groups.setdefault(row.variant_key, []).append(row)
+    return [row for group in groups.values() for row in group]
+
+
 def write_concordance_tables(
     spec_dir: Path,
     parents: Sequence[ClinSigConcordanceRow],
