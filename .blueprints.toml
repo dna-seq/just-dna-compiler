@@ -37,6 +37,11 @@ wake_from = "just-dna-compiler/lead just-dna-compiler/triage just-dna-compiler/l
 [seat.pm.watch.desk]
 cmd = "sh kit:bin/py.sh kit:classes/desk/watch-answers.py just-dna-compiler pm"
 
+# Each version of the workspace's packages published, yanked or gone on the index (L136, D191): the pm's post-publish steps
+# (re-sorting the next minor, pointing the briefs at its scope file) start on that line (the person, 2026-11-26).
+[seat.pm.watch.pypi]
+cmd = "sh kit:bin/py.sh kit:drivers/pypi/watch-pypi.py"
+
 [seat.pm.zulip]
 pool = "~/.config/agent-seat-blueprints/zulip/pool"
 
