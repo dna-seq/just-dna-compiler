@@ -1,0 +1,2 @@
+variant_key,rsid,chrom,start,ref,alts,genome_build,locus_index,vrs_id,vrs_spec,caid,source,authority,status,rsid_alternates,rsid_current,rsid_status,placement_witness,placement_verdict,left_aligned,authored_event,judged_coordinate,fetched_at,source_release,source_loci
+rs77944059,rs77944059,2,166204477,ACAAA,A,GRCh38,0,ga4gh:VA.ks2GTWYOW0aKfGbJ2aeQUOZxOT_xC2ts,2.0,,cache,ensembl,resolved,,,live,clinvar,same_event,,,,,,

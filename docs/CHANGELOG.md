@@ -365,6 +365,11 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   read returns no bases, and the build is retried at the proxy's next read.`, then what the missing bases cost
   (an indel's VRS id unminted, the reference-allele check not made) and that a run's view asks for the build
   once per run; the same prefix, pinned with the 0.9 texts.
+- **`enrich` given none of 0.9's new arguments is tested to write 0.8.10's bytes** (RM466, the rescope). A
+  fixed offline input reaching the Ensembl snapshot, the ClinVar witness, dbSNP and the sequence is enriched
+  under a fixed clock, and the written tree is compared byte for byte with goldens recorded from `v0.8.10`
+  (`assets/enrich_v0_8_10/`); `verification.json`'s `producer` is the one field substituted, the running
+  release for 0.8.10. This replaces the cut's one-off measurement.
 
 ## 2026-11-19 — `v0.8.10`: format, compiler and enricher 0.8.10 (a patch, cut from `main`)
 

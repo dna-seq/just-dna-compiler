@@ -680,8 +680,8 @@ def test_enrich_with_neither_new_argument_writes_what_a_call_naming_each_as_none
     the rsID-index ladder runs and scans) and a ClinVar snapshot built from the slice, once with `clients`,
     `sequences` and `rsid_index` left out and once with each passed as `None`: every written file is the same
     bytes, `verification.json`'s clock fields aside. This cannot fail by construction while the defaults are
-    `None`; it holds that they stay so. A true 0.8 baseline is another release's code and cannot run inside a
-    test: it was measured at the build instead (the branch's report)."""
+    `None`; it holds that they stay so. The separate comparison with bytes recorded from 0.8.10 lives in
+    `test_placement_witness.py`."""
     core = ensembl_split_core(tmp_path / "ensembl_variations")
     clinvar = build_clinvar(_ASSETS / "clinvar_GRCh38_slice.vcf.gz", tmp_path / "clinvar").out_dir
     written: list[dict[str, bytes]] = []
