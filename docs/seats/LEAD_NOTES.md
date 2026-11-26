@@ -57,6 +57,11 @@ The lead's working state, rewritten to the present before each reset. Last rewri
   `v0.9.0` on the cut commit, GitHub release, README/CLAUDE.md say 0.9.0 is current), merge the cut into 0.9 and,
   after the consumers' trial (desk #370), 0.9 into main; LEAD.md/PM.md point at ROADMAP_0_10 (change-priming).
   `.worktrees/cut-090` (cut/v0.9.0) is superseded and unlocked; its branch needs the person's `-D` (cherry-picked).
+- **RM470 (ClinVar-GKM v1/1.1 → v1/1.2), 0.9.1 by the pm (643877146): built, checked, not merged.** Branch
+  `build/09-rm470` at 6004d52c, pushed, worktree `.worktrees/09-rm470` (locked), off the cut. Merge into main after
+  0.9 merges there, then cut 0.9.1 at once after the 0.9.0 publish. Before that cut: one real `clinvar-gkm build`
+  against v1/1.2 (2.3 GB, not run yet). Its RM_TOC reservation row (RM470) sits uncommitted in the primary
+  checkout beside RM458-RM469: release them all with item-next.py --release once on main.
 - 0.8.10 published 2026-11-26 (PyPI 11:11Z, all three; desk #415): tag `v0.8.10` on 65cfa25b, GitHub release,
   README.md:94 and CLAUDE.md:84 name 0.8.10, done-line to releases, the registry told. The 0.9 merge is now unblocked
   by the tag; it still waits on the two trials or the person's "skip" (desk #370). Branches cut/v0.8.9, land/v0.8.9,
