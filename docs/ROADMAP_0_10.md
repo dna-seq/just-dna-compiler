@@ -262,6 +262,30 @@ none is. "No reference configured" stays a named could-not-ask, never an absence
 2. **Where it is configured.** A setting beside the other cache lanes, with the three stages a lane owes
    (`CACHE_SURFACE.md`), or a URI the operator passes. The fewer-entities rule weighs toward the URI.
 
+**The trial (the pm, 2026-11-27; run on Codex against the local Ensembl GRCh38 primary-assembly FASTA and its `.fai`).**
+Replaying the committed answers of the reference modules offline, through the enricher's own `left_normalize`,
+`verify_reference_alleles` and `VrsMinter.mint` behind a small FASTA reader (`get_sequence`, `get_metadata`):
+
+- **198 of 198** distinct GRCh38 indels (199 observations, five modules) reproduced their committed left-aligned spelling
+  and VRS id; three historical spellings from module READMEs moved to their recorded leftmost coordinates; all 432
+  reference-allele subjects of the five whole tables agreed with their committed record.
+- **Cost:** 0.57 ms per input for all three operations, 27 µs mean per FASTA read; 16 ms to open; peak RSS 157 MiB.
+- **The FASTA's identity is not the refget sequence on 15 of 25 chromosomes.** Every length matches, but the
+  whole-sequence digest matches only on 4, 5, 8, 11, 14, 15, 18, 19, 20 and MT; 15 of the 198 indels sit on a
+  mismatched chromosome (and still read the right bases at their loci). A full digest pass costs 25 s.
+- No local seqrepo snapshot exists on this machine, so that half was not measured.
+
+**Decided from it (the pm; the entry's two questions were the pm's).** (1) **A FASTA, not seqrepo**: the familiar file a
+deployment already holds reproduced every committed answer, and seqrepo's size and extra dependency buy nothing the
+trial needed. (2) **A URI, not a cache lane** (the recorded preference): the lookups need no lane, and a lane's three
+stages are cost without a consumer asking for provisioning. (3) **Identity is checked per contig, never assumed**: at
+first use the reader digests each contig it is asked for and binds a `ga4gh:SQ` only where the digest matches the
+refget table (the result cached beside the FASTA, keyed by its size and mtime); a missing or mismatched contig is
+could-not-read, named with its reason (`@unreachable-not-absent`), never answered. (4) The reports name the source
+actually used: the REF attestation's hardcoded `source="seqrepo"`, the CLI's combined offline/GRCh37 skip notice and
+the minter's "rerun online" advice each say the local reference where it answered. Offline stays network-free: the
+explicit local reader is the one sequence source the offline gate admits.
+
 **Residuals** none yet.
 
 ## RM459 — with the registry's proxy set and Hugging Face off, a gene lookup on clinpgx, cpic, drug_labels or civic answers could-not-ask
