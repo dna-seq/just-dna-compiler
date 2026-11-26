@@ -14,6 +14,12 @@ So beyond the role's strategy, licensing and research list, this seat owns the s
   the open minor's file (`docs/ROADMAP_0_9.md` since the 0.8.0 cut, 2026-11-05), `docs/ROADMAP_1_0.md`, and the
   next file of each line when a cut opens it; a cut moves the closed file to `docs/history/`. The interview
   step of a minor (`docs/RELEASE_CYCLE.md`, "Minors") is this seat's, with the person.
+- **The next minor starts the moment a release is published**, unless the person calls a major (the person,
+  2026-11-26: "when release signed you start new minor right away, unless I call major"). The pm opens its scope and
+  its interview at once, never waiting for the branch merge or the doc refresh. Agreed: nothing checks it.
+- **Reading and drafting go to Codex where the Claude window is tight** (the person, 2026-11-26: "Clause side is a
+  bit tight, so delegate to codex heavily"): implementation notes, entry reads and code surveys run as `codex exec`
+  read-only in a worktree; the pm keeps the decisions and the sizing. Agreed: nothing checks it.
 - **The plans and proposals**: `docs/proposals/PROPOSAL_*.md`, each with its charter check and open questions, as
   `CLAUDE.md` says they are written. They are records, not plans the lead must follow unread: the lead may push
   back on one.
