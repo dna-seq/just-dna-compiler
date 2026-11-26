@@ -115,6 +115,39 @@ and the changelog entry for v4.1.2, 2026-09-28):
 Not measured: the whole file (only its header and first rows), and whether the live API already serves 4.1.1+
 values.
 
+## Adoption note: ClinVar-GKM line v1/1.1 → v1/1.2 (2026-11-26, for the lead)
+
+The lead met it first: `v1/1.1/parquet/manifest.json` answers 404 since 2026-11-26, and the lane's opt-in network
+test (`test_the_live_manifest_still_reads_and_names_a_release`) went red on 0.8.10 and the 0.9.0 cut alike. Read
+live the same day:
+
+- **The line moved.** The root <https://data.clinvar-gkm.org/index.json> says `current: v1/1.2`. `v1/1.1/index.json`
+  says `status: frozen`, `superseded_by: v1/1.2`, `parquet: null`, and its notes say a frozen line keeps no weekly
+  fulls and no Parquet. So 1.1's Parquet set will not come back. Lines turn over: 1.0 → 1.1 moved every URL once
+  already (`clinvar_gkm.py:82`).
+- **The 1.2 manifest** keeps `source_release` and `files[]` (`name`, `size`, `sha256`), adds `release` (equal to
+  `source_release`, newest `2026-11-22`) and names its builder `gkm-bundle-parquet 2.0.0`, "table spec sections
+  2.0".
+- **`allele.parquet` changed shape; this breaks the builder.** 1.1 kept the state, the expressions and the location
+  inside one JSON column `data` (`docs/probes/LANES_0_8.md`). 1.2 has typed top-level columns: `id`, `type`, `name`,
+  `digest`, `expressions` (list of `{syntax, value}`), `location`, `state` (`{type, length, sequence,
+  repeatSubunitLength}`). `clinvar_gkm_build.indel_slice` selects `id`, `data` and JSON-decodes it, so a rebuild
+  fails. The values are the same: three rows read carry `spdi`, `hgvs.g` and `gnomad` expressions and
+  `state.type`.
+- **`variation.parquet` is unchanged where we read it**: `id`, `mappings[].coding.{system, code}` and
+  `constraints[].{type, allele}`; `constraints` gained `allele_section` and `allele_json` beside `allele`, which is
+  still the VA id (two rows read; the dbSNP system is still `https://www.ncbi.nlm.nih.gov/snp/`).
+- **A silent wrong answer:** the frozen `v1/1.1/index.json` still answers 200 with `latest_release: 2026-10-31`, so
+  `latest_release_or_none` reads a stale "newest weekly" with no error. Nothing reads `status` or `superseded_by`.
+- **Not hit:** the published `clinvar_gkm_2026-10-24` snapshot stays readable, so consumers are not affected; only a
+  rebuild and the currency check are.
+
+**Sorted: a source move that breaks our builder, patch-class.** The fix is the base URL, `indel_slice` reading the
+typed columns, the test slice (`assets/clinvar_gkm_slice`) re-extracted from 1.2 by its README's recipe, and the
+docs naming `v1/1.1`. The lasting half, a client that reads the root's `current` or the line's `status` and refuses
+naming the new line instead of answering 404, is a design call. Sent to the lead 2026-11-26 (reply to 643876032);
+placement (0.9.0 or a patch) is the lead's and the pm's.
+
 ## Verdicts
 
 - **`constraint`**: filed by the lead as **RM410** (2026-11-07) from the adoption note above, shipped in 0.8.2;
