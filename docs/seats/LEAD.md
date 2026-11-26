@@ -32,6 +32,14 @@ including batch when needed. RMS are done in wroktrees, minors have own branches
 - **Minor scope lives on its minor's branch** (named for the minor, as `0.8` was; none is open between a cut and the next minor, `docs/RELEASE_CYCLE.md`) until the cut; everything else lands on `main`.
 - **Orchestrating**: when a scope holds several independent items, this seat runs them as a batch, each in its
   own worktree, and merges each once its tests pass; triage's patches on `main` are triage's own.
+- **Codex builds, this seat merges and checks** (the person, 2026-11-26: "builder agent shall use Astra-6.2 fast
+  custom subagents to build, merging/QC is on Claude"). An item's build runs on GPT-6.2 Astra at Codex's fast service
+  tier, through a custom subagent: a project agent definition in `.claude/agents/` that runs `codex exec -m
+  gpt-6.2-astra -c service_tier=fast -s workspace-write -C <the item's worktree>` with the item's plan and reports
+  what it built (an unattended run of exactly that shape was checked on 2026-11-26). This seat writes the definition
+  once, hands each build to it, then reads every diff against its item and the charter, runs the tests at `nice -n
+  19`, and merges; a build that fails the check goes back to its builder with the finding, or this seat fixes it.
+  Agreed: nothing checks it.
 
 ## Handing to the other seats
 
