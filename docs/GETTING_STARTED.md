@@ -23,11 +23,13 @@ Add the tier you need. Each pulls the ones beneath it, so you never install more
 :   Adds `just-dna-enricher`. The only package that fetches anything, and the one that *produces* the
     `resolution.csv` the compiler consumes.
 
-**On a CPU without AVX-512 or AVX2** — `uv add 'just-dna-compiler[compat]'` or `uv add 'just-dna-enricher[compat]'`
+**Only on a CPU without AVX2** — `uv add 'just-dna-compiler[compat]'` or `uv add 'just-dna-enricher[compat]'`
 
-:   Since 0.9.0. The `compat` extra adds polars' compatibility runtime (`polars[rtcompat]`), which polars
-    loads in place of its default one whenever it is installed, so the compiler and the enricher's
-    builders run on an older or virtualised server where the default runtime refuses to start. Checked
+:   Since 0.9.0. Polars' default runtime needs AVX2, FMA and BMI2, and on an older server (an Ivy Bridge
+    Xeon has plain AVX only) `import polars` dies with an illegal instruction. The `compat` extra adds
+    polars' compatibility runtime (`polars[rtcompat]`, SSE4.2 only), which polars loads in place of its
+    default one whenever it is installed. It is slower, so leave it off a machine that has AVX2:
+    `grep -o -w -E 'avx2|fma|bmi2' /proc/cpuinfo | sort -u` printing all three means you do not need it. Checked
     by installing `just-dna-compiler[compat]` into a fresh environment from the 0.9.0 tree: `import polars`
     loaded `_polars_runtime_compat`.
 

@@ -23,8 +23,8 @@ answers your question.
 uv add just-dna-format        # or just-dna-compiler, or just-dna-enricher
 ```
 
-On a server whose CPU lacks AVX-512 or AVX2, add the `compat` extra (`just-dna-compiler[compat]`,
-`just-dna-enricher[compat]`), which installs polars' compatibility runtime.
+Only on a server whose CPU lacks AVX2, add the `compat` extra (`just-dna-compiler[compat]`,
+`just-dna-enricher[compat]`), which installs polars' slower compatibility runtime.
 
 `just-dna-compiler` pulls `just-dna-format`; `just-dna-enricher` pulls both. Nothing below the
 enricher ever reaches the network, so a verify-only client stays light and a compile is reproducible

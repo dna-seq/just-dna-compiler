@@ -31,7 +31,7 @@ dependencies = [
 ```
 
 A consumer that holds only the format tier pins the first line alone, and need not move at all (§ 1). A host whose
-CPU lacks AVX-512 or AVX2 pins `just-dna-compiler[compat]` or `just-dna-enricher[compat]` instead (§ 1.15).
+CPU lacks AVX2 pins `just-dna-compiler[compat]` or `just-dna-enricher[compat]` instead (§ 1.15).
 
 **The release record says nothing moves on a recompile.** `release_records.RELEASE_RECORDS["0.9.0"]`, measured at the
 cut against compiler 0.8.10 on the 22 reference modules, records every axis unmoved (no `parquet_schema`,
@@ -367,13 +367,18 @@ stale `latest_release`. 0.8.10's builder reads that line, so `clinvar-gkm build`
 
 ### 1.15 A `compat` extra for a CPU polars' default runtime refuses (no break)
 
-Added at the redone cut on the maintainer's word (2026-11-26: a server of theirs has no AVX-512).
+Added at the redone cut on the maintainer's word (2026-11-26: a server of theirs, an Ivy Bridge Xeon E5-1620 v2,
+has plain AVX only). Polars' default runtime is built for x86-64-v3 (AVX2, FMA, BMI1/2), so `import polars` dies with
+an illegal instruction there; AVX-512 is needed by neither runtime. **Install the extra only on a CPU without
+AVX2**: the compat runtime is slower, and polars loads it first wherever it is installed.
 `just-dna-compiler[compat]` adds `polars[rtcompat]` at the core polars floor (`>=1.42.0`), and
 `just-dna-enricher[compat]` is the compiler's extra. Polars loads its compatibility runtime first whenever it is
 installed (`polars._plr` tries `compat`, then `64`, then `32`; `POLARS_FORCE_PKG` overrides), so installing the extra
 is the whole change: no code moved, and without the extra nothing differs. `compiler/tests/test_compat_extra.py`
 holds the two floors equal. Checked by installing `just-dna-compiler[compat]` into a fresh environment from this
-tree: `import polars` loaded `_polars_runtime_compat`.
+tree (`import polars` loaded `_polars_runtime_compat`), and by the liaison under an emulated Ivy Bridge CPU (qemu,
+`-cpu IvyBridge`): with the extra, polars, duckdb, pydantic-core, cryptography, hf-xet, grpc and pyyaml all import
+and run; without it, `import polars` dies with SIGILL. Ledger: UPSTREAM_POLARS.md.
 
 ---
 

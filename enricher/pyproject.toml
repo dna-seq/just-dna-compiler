@@ -85,8 +85,8 @@ atlas = [
     # (dagster) resolve 6.33 and die at import. The floor is the stamp; the test reads the stamp.
     "protobuf>=7.35.1",
 ]
-# The polars runtime for a host whose CPU lacks the default runtime's features (a server without AVX-512
-# or AVX2). The enricher reaches polars through the compiler and its builders, so its extra is the
+# The polars runtime for a host whose CPU lacks AVX2, which polars' default runtime needs (only there:
+# the compat runtime is slower and is loaded first wherever it is installed). The enricher reaches polars through the compiler and its builders, so its extra is the
 # compiler's, and `just-dna-enricher[compat]` is the one line such a host writes.
 compat = ["just-dna-compiler[compat]>=0.9.0"]
 # Publisher / developer surface. huggingface-hub and ga4gh.vrs are already core deps (snapshot

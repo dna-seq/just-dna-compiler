@@ -99,10 +99,12 @@ upgrade note is [INTEGRATION_0_9.md](INTEGRATION_0_9.md). Publishing to PyPI is 
 What 0.9 built, item by item, as it landed on the branch:
 
 - **A `compat` extra for a CPU polars' default runtime refuses** (added at the redone cut on the maintainer's word,
-  2026-11-26: a server without AVX-512). `just-dna-compiler[compat]` pulls `polars[rtcompat]` at the core polars
+  2026-11-26: an Ivy Bridge server with plain AVX only). Polars' default runtime needs AVX2, FMA and BMI2 (not
+  AVX-512, which neither runtime needs). `just-dna-compiler[compat]` pulls `polars[rtcompat]` at the core polars
   floor, and `just-dna-enricher[compat]` pulls the compiler's. Polars loads its compatibility runtime first whenever
-  it is installed, so no code moved; a fresh install of the extra was checked to load `_polars_runtime_compat`, and
-  `test_compat_extra.py` holds the two floors equal.
+  it is installed, so no code moved, and the extra belongs only on a CPU without AVX2 (it is slower). A fresh install
+  loads `_polars_runtime_compat`; under an emulated Ivy Bridge the whole native stack imports and runs with it, and
+  `import polars` dies with SIGILL without it; `test_compat_extra.py` holds the two floors equal.
 
 - **ClinVar-GKM's release line moved to `v1/1.2`, and a superseded line is refused by name** (RM470, folded into the
   cut). ClinVar-GKM froze `v1/1.1` on 2026-11-26: its Parquet manifest answers 404 and its index still answers a
