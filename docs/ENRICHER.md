@@ -3503,7 +3503,9 @@ Each needs a write token (`hf auth login` or `HF_TOKEN`) — a missing one raise
 **A partial build refuses** (0.9, RM412). `plan_reference_snapshot` refuses, as `SnapshotNotPublishable`, a
 snapshot whose `release.json` records a dataset with `parts_read` below `parts_total`: an `opentargets build
 --parts N` test build, whose absent rows may sit in parts nobody read. The message names each short dataset with
-both numbers (`l2g 1 of 12 parts`). Every snapshot publish and its rehearsal plan through that function, so the
+both numbers (`l2g 1 of 12 parts`). The planner calls `just_dna_format.snapshot.is_whole_build`. If a read
+count exceeds its total, the refusal names the dataset and both counts. The publisher hashes and sends the
+same `release.json` bytes it checked. Every snapshot publish and its rehearsal use this gate, so the
 refusal reaches the per-lane `X publish` commands, `cache rebuild --publish` and the rebuild dry run's rehearsal
 of a snapshot already at `<out>/<lane>` alike, before the repo is read or created. A record that states neither
 count, only one, or a dataset in one and not the other cannot say, and is not refused by this check.
@@ -3523,6 +3525,8 @@ counts, or a `null` in place of a whole map (the model's stated unknown) is not 
 file, never the Open Targets parts directory, so the dry run's rehearsal of a build left at `<out>/opentargets`
 is the one rebuild route that meets one. `opentargets publish` and `clinvar-gkm publish` also warn, refusing
 nothing, on a snapshot with no release label, as `mitomap publish` and `strchive publish` do.
+On all four commands a refused `--dry-run` prints `WOULD BE REFUSED` and exits 0, matching
+`cache rebuild --publish` rehearsal behaviour. A refused real per-lane publish exits 1.
 
 ### What publishes, and what refuses (RM89)
 

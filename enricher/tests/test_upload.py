@@ -1778,6 +1778,7 @@ def test_every_refusal_the_publisher_raises_is_in_its_family() -> None:
 
 #: Functions in `upload` a command reaches the publisher through.
 _PUBLISH_ENTRIES = {
+    "_run_snapshot_publish",
     "upload_module",
     "rehearse_upload",
     "plan_upload",

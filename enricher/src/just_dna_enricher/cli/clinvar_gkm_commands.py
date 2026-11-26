@@ -7,7 +7,7 @@ from pathlib import Path
 
 import typer
 
-from just_dna_enricher.cli._shared import _warn_if_unlabelled
+from just_dna_enricher.cli._shared import _publish_lane
 from just_dna_enricher.clinvar_gkm import (
     ClinVarGkmClient,
     ClinVarGkmError,
@@ -191,25 +191,13 @@ def clinvar_gkm_publish_(
     run too, before the repo is touched; one with no release label is published with a warning, as
     `mitomap publish` and `strchive publish` do.
     """
-    from just_dna_enricher.upload import (
-        PublishRefused,
-        publish_reference_snapshot,
-        rehearse_reference_snapshot,
-    )
-
-    _warn_if_unlabelled(snapshot_dir, "ClinVar-GKM", "clinvar-gkm build")
-    try:
-        if dry_run:
-            plan = rehearse_reference_snapshot(snapshot_dir, repo)
-            typer.echo(f"would upload {len(plan.files)} file(s) to {plan.repo_id}: {plan.files}")
-            return
-        plan = publish_reference_snapshot(snapshot_dir, repo, commit_message=commit_message)
-    except (PublishRefused, PermissionError, ImportError) as exc:
-        typer.secho(
-            f"{'WOULD BE REFUSED' if dry_run else 'PUBLISH FAILED'}: {exc}", fg=typer.colors.RED, err=True
-        )
-        raise typer.Exit(code=1) from exc
-    typer.secho(
-        f"published: {snapshot_dir} → {plan.repo_id} ({len(plan.files)} files)",
-        fg=typer.colors.GREEN,
+    _publish_lane(
+        snapshot_dir,
+        repo,
+        dry_run,
+        commit_message,
+        unlabelled_warning=(
+            "  this snapshot carries no release label, so everyone who pulls it inherits a snapshot that "
+            "cannot name its own ClinVar-GKM release. Rebuild it with `clinvar-gkm build`."
+        ),
     )

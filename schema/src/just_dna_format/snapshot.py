@@ -20,7 +20,7 @@ import json
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 
 from pydantic import BaseModel, ConfigDict, ValidationError, model_validator
 
@@ -140,6 +140,11 @@ def _canonical(data: dict) -> dict:
     return data
 
 
+# Mark only the model fields whose raw JSON values the publish gate must check before coercion.
+_PART_COUNTS = object()
+_PartCounts = Annotated[dict[str, int] | None, _PART_COUNTS]
+
+
 class SnapshotRelease(BaseModel):
     """A snapshot's `release.json`: the keys some reader reads are typed, every other key rides along.
 
@@ -182,8 +187,8 @@ class SnapshotRelease(BaseModel):
     sf_version: str | None = None
     #: Open Targets: how many parts of each dataset the build read, and how many the release has. A
     #: snapshot read short of the total is partial, and a pass over it must say so (RM369).
-    parts_read: dict[str, int] | None = None
-    parts_total: dict[str, int] | None = None
+    parts_read: _PartCounts = None
+    parts_total: _PartCounts = None
     #: ClinVar-GKM: the weekly release the Parquet set was cut from, and the VRS version its ids were
     #: minted under, as the source declares it (RM369).
     source_release: str | None = None
@@ -198,6 +203,71 @@ class SnapshotRelease(BaseModel):
     def to_json(self) -> str:
         """The bytes `write_release` puts on disk: the set keys only, sorted, newline-terminated."""
         return json.dumps(self.model_dump(mode="json", exclude_unset=True), indent=2, sort_keys=True) + "\n"
+
+
+_PART_COUNT_FIELDS = tuple(
+    name for name, field in SnapshotRelease.model_fields.items() if _PART_COUNTS in field.metadata
+)
+
+
+def _validate_part_counts(record: dict[str, Any]) -> None:
+    """Report each malformed count before comparing datasets or coercing any value."""
+    unreadable = []
+    for key in _PART_COUNT_FIELDS:
+        counts = record.get(key)
+        if counts is None:
+            continue
+        if not isinstance(counts, dict):
+            unreadable.append(
+                f"{key} is {json.dumps(counts, ensure_ascii=False)}, not a map of datasets to part counts"
+            )
+            continue
+        for name, count in sorted(counts.items()):
+            quoted = (
+                f"{key}[{json.dumps(name, ensure_ascii=False)}] is {json.dumps(count, ensure_ascii=False)}"
+            )
+            if isinstance(count, bool) or not isinstance(count, int):
+                unreadable.append(f"{quoted}, not a whole number")
+            elif count < 0:
+                unreadable.append(f"{quoted}, below zero")
+            elif count == 0 and key == "parts_total":
+                unreadable.append(f"{quoted}, and a dataset has at least one part")
+    if unreadable:
+        raise ValueError("; ".join(unreadable))
+
+
+def is_whole_build(
+    record: SnapshotRelease | dict[str, Any] | None,
+    *,
+    short_reads: dict[str, tuple[int, int]] | None = None,
+) -> bool | None:
+    """Whether every named dataset was read in full, or None when its part counts cannot say.
+
+    Pass the decoded JSON object to check counts as written, before a lenient reader coerces or
+    drops them. A SnapshotRelease answers for the counts on the model. Malformed or contradictory
+    counts raise ValueError. A known short read yields False even if another dataset is unknown.
+    When supplied, short_reads collects the (read, total) pair for each short dataset.
+    """
+    if record is None:
+        return None
+    if isinstance(record, SnapshotRelease):
+        record = record.model_dump(include=set(_PART_COUNT_FIELDS))
+    _validate_part_counts(record)
+
+    read = record.get("parts_read") or {}
+    total = record.get("parts_total") or {}
+    short = {}
+    for name in sorted(read.keys() & total.keys()):
+        if read[name] > total[name]:
+            quoted = json.dumps(name, ensure_ascii=False)
+            raise ValueError(f"parts_read[{quoted}] is {read[name]}, above parts_total {total[name]}")
+        if read[name] < total[name]:
+            short[name] = (read[name], total[name])
+    if short:
+        if short_reads is not None:
+            short_reads.update(short)
+        return False
+    return True if read and read.keys() == total.keys() else None
 
 
 def _decode(data: bytes | str) -> dict[str, Any]:
@@ -242,7 +312,18 @@ def parse_release(data: bytes | str, *, source: str = RELEASE_FILENAME) -> Snaps
     except ValidationError as exc:
         error = exc.errors()[0]
         problem = "not a JSON object" if error["type"] == "dict_type" else error["ctx"]["error"]
+        return _release_from_object(None, source=source, problem=problem)
+    return _release_from_object(payload, source=source)
+
+
+def _release_from_object(
+    payload: dict[str, Any] | None, *, source: str, problem: str | None = None
+) -> SnapshotRelease | None:
+    """Read a decoded record leniently, preserving the parser's warning for a failed read."""
+    if problem is not None:
         logger.warning("Could not read %s (%s); treating the release as unstated.", source, problem)
+        return None
+    if payload is None:
         return None
     canonical = _canonical(payload)
     try:

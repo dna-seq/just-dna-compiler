@@ -26,7 +26,7 @@ import json
 import logging
 import os
 import uuid
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from fnmatch import fnmatch, fnmatchcase
 from glob import escape as glob_escape
@@ -49,7 +49,7 @@ from just_dna_format.manifest import (
     recorded_toolchain,
     toolchains_differ,
 )
-from just_dna_format.snapshot import read_release
+from just_dna_format.snapshot import _release_from_object, is_whole_build
 from pydantic import BaseModel, Field
 
 from just_dna_enricher.locations import (
@@ -61,7 +61,6 @@ from just_dna_enricher.locations import (
     env_value,
     missing_credential_reason,
 )
-from just_dna_enricher.opentargets import dataset_complete
 
 # Named once because two things now have to agree about it: the allowlist that uploads the file, and
 # the reader below that takes the module's version out of it.
@@ -1422,7 +1421,7 @@ class SnapshotPlan(BaseModel):
     sha256: dict[str, str] = Field(
         default_factory=dict,
         description="Each sent file's `sha256:`, from the one local read the publish checks the hub "
-        "against (RM386); empty on a rehearsal, which reads no bytes",
+        "against (RM386); empty on a rehearsal, which hashes no files",
     )
     revision: str | None = Field(
         default=None,
@@ -1431,98 +1430,51 @@ class SnapshotPlan(BaseModel):
     )
 
 
-#: The `release.json` keys the publish gate reads as written rather than through the lenient read:
-#: the two that say whether a build is whole (RM412).
-_PART_COUNT_KEYS = ("parts_read", "parts_total")
-
-
-def _refuse_an_unreadable_record(snapshot_dir: Path) -> None:
-    """Refuse a snapshot whose `release.json` is present and cannot say whether the build is whole (RM412).
-
-    `read_release` reads a record that does not parse as no record, and a mistyped key as unstated, and
-    it coerces `"1"`, `12.0` and `true` into counts. Either way a record that cannot be read would pass
-    `_refuse_a_partial_build` as one that states nothing. Present-and-unreadable is the refusal, absent
-    is the unknown arm (`@an-absent-input-is-the-unknown-arm-and-a-malformed-one-is-the-refusal`), so
-    this reads the file as written, decoded as `read_release` decodes it (UTF-8, then `json.loads`), and
-    refuses a file that does not decode, one that is not a JSON object, and a `parts_read` or
-    `parts_total` that is present and is not a map of datasets to whole numbers, quoting each value.
-    A dataset's `null` count is one of those: no builder writes it, and the lenient read drops the
-    whole map over it, which would let a short dataset beside it publish. A count below zero and a
-    `parts_total` of zero are refused too, as describing no dataset; a `parts_read` of zero is a
-    count, which `_refuse_a_partial_build` reads.
-
-    Not refused here: no `release.json`, a record with neither key, and a `null` in place of a whole
-    map (the model's stated unknown).
-    """
+def _checked_description(snapshot_dir: Path, warn_unlabelled: Callable[[], None] | None) -> bytes | None:
+    """Read the description once. The gate checks the bytes that will be hashed and sent."""
     path = snapshot_dir / RELEASE_FILENAME
-    if not path.is_file():
-        return
-    try:
-        record = json.loads(path.read_bytes().decode("utf-8"))
-    except (OSError, ValueError) as exc:  # UnicodeDecodeError and JSONDecodeError are both ValueErrors
-        problem = str(exc)
-    else:
-        problem = None if isinstance(record, dict) else "not a JSON object"
+    description: bytes | None = None
+    record = None
+    problem = None
+    if path.is_file():
+        try:
+            description = path.read_bytes()
+            record = json.loads(description.decode("utf-8"))
+        except (OSError, ValueError) as exc:
+            problem = str(exc)
+        else:
+            if not isinstance(record, dict):
+                problem = "not a JSON object"
+                record = None
+
+    if warn_unlabelled is not None:
+        release = _release_from_object(record, source=str(path), problem=problem)
+        if release is None or not (release.dataset or "").strip():
+            warn_unlabelled()
     if problem is not None:
         raise SnapshotNotPublishable(
             f"{path} cannot be read ({problem}), so nothing can say whether this snapshot was built whole. "
             f"Rebuild the snapshot before publishing."
         )
-    unreadable = []
-    for key in _PART_COUNT_KEYS:
-        counts = record.get(key)
-        if counts is None:
-            continue
-        if not isinstance(counts, dict):
-            unreadable.append(
-                f"{key} is {json.dumps(counts, ensure_ascii=False)}, not a map of datasets to part counts"
-            )
-            continue
-        for name, count in sorted(counts.items()):
-            quoted = (
-                f"{key}[{json.dumps(name, ensure_ascii=False)}] is {json.dumps(count, ensure_ascii=False)}"
-            )
-            if isinstance(count, bool) or not isinstance(count, int):
-                unreadable.append(f"{quoted}, not a whole number")
-            elif count < 0:
-                unreadable.append(f"{quoted}, below zero")
-            elif count == 0 and key == "parts_total":
-                unreadable.append(f"{quoted}, and a dataset has at least one part")
-    if unreadable:
+    short_reads = {}
+    try:
+        whole = is_whole_build(record, short_reads=short_reads)
+    except ValueError as exc:
         raise SnapshotNotPublishable(
-            f"{path} records {'; '.join(unreadable)}, so nothing can say whether this snapshot was built "
+            f"{path} records {exc}, so nothing can say whether this snapshot was built "
             f"whole. Rebuild the snapshot before publishing."
-        )
-
-
-def _refuse_a_partial_build(snapshot_dir: Path) -> None:
-    """Refuse a snapshot whose `release.json` records a dataset read short of its total (RM412).
-
-    A `--parts`-limited build (`opentargets build --parts N`) is a test-sized snapshot: an absent row
-    in it may be in a part nobody read, and the pass over it says so, but only on the machine holding
-    the record. Published, every puller would serve that absence. Every snapshot publish and its
-    rehearsal go through `plan_reference_snapshot`, so this is the one check for all of them, and it
-    runs before the repo is read or created.
-
-    Refused only on a dataset whose record states **both** counts with the read below the total
-    (`opentargets.dataset_complete` is `False`). A record with neither key, one key, or a dataset named
-    in one and not the other cannot say, and is not refused here (RM361's unknown arm).
-    """
-    release = read_release(snapshot_dir)
-    if release is None:
-        return
-    named = sorted(set(release.parts_read or {}) | set(release.parts_total or {}))
-    short = [
-        f"{name} {release.parts_read[name]} of {release.parts_total[name]} parts"
-        for name in named
-        if dataset_complete(release, name) is False
-    ]
-    if short:
+        ) from exc
+    if warn_unlabelled is None and record is not None:
+        # Library callers also get the model's warnings about unrelated mistyped fields.
+        _release_from_object(record, source=str(path))
+    if whole is False:
+        short = [f"{name} {read} of {total} parts" for name, (read, total) in short_reads.items()]
         raise SnapshotNotPublishable(
             f"{snapshot_dir} is a partial build: its {RELEASE_FILENAME} records {', '.join(short)} read, so "
             f"whoever pulls it would take a row missing from a part nobody read for an answer. Publish a "
             f"whole build (for Open Targets, one `opentargets build` made without --parts)."
         )
+    return description
 
 
 def plan_reference_snapshot(
@@ -1539,51 +1491,55 @@ def plan_reference_snapshot(
     file it builds, and putting a roster of lane filenames in the publisher would make this function
     the fourth place that has to learn about a new snapshot kind.
 
-    A `payload` snapshot is refused when the file is missing, exactly as a parquet one is when
-    `data/` is empty — the refusal is the same claim either way, that there is nothing built here to
-    publish. So is a partial build (`_refuse_a_partial_build`, 0.9): its bytes are there, the whole
-    of them is not. And so, first, is a `release.json` present that cannot say whether the build is
-    whole (`_refuse_an_unreadable_record`, 0.9): one that does not parse, or a parts count that is not
-    a whole number (`null` included), is below zero, or is a total of zero.
+    Both payload layouts require built data. Any release record must be readable, with valid
+    part counts, and must pass the format tier's whole-build check.
     """
-    _refuse_an_unreadable_record(snapshot_dir)
-    _refuse_a_partial_build(snapshot_dir)
-    resolved_repo = repo_id or DEFAULT_CLINVAR_REPO_ID
+    plan, _ = _snapshot_plan(snapshot_dir, repo_id, payload)
+    return plan
+
+
+def _snapshot_plan(
+    snapshot_dir: Path,
+    repo_id: str | None,
+    payload: str | None,
+    warn_unlabelled: Callable[[], None] | None = None,
+) -> tuple[SnapshotPlan, bytes | None]:
+    description = _checked_description(snapshot_dir, warn_unlabelled)
     if payload is not None:
         if not (snapshot_dir / payload).is_file():
             raise SnapshotNotPublishable(
                 f"no {payload} in {snapshot_dir} — build the snapshot first "
                 f"(e.g. `just-dna-enricher strchive build`)"
             )
-        # Same registry as the parquet branch below, and for the same reason: this branch had its own
-        # copy of the pair, so a payload-only lane that gained a root file would have dropped it
-        # exactly the way the parquet branch dropped `LICENSE.txt`.
         files = [payload]
-        files.extend(name for name in SNAPSHOT_ROOT_FILENAMES if (snapshot_dir / name).is_file())
-        return SnapshotPlan(repo_id=resolved_repo, files=files)
-    data_dir = snapshot_dir / SNAPSHOT_DATA_DIRNAME
-    parquet = sorted(p.name for p in data_dir.glob("*.parquet")) if data_dir.is_dir() else []
-    if not parquet:
-        raise SnapshotNotPublishable(
-            f"no {SNAPSHOT_DATA_DIRNAME}/*.parquet in {snapshot_dir} — build the snapshot first "
-            f"(e.g. `just-dna-enricher clinvar build`)"
-        )
-    files = [f"{SNAPSHOT_DATA_DIRNAME}/{name}" for name in parquet]
-    # Sidecars, when the snapshot has them. Only ClinVar does, and only when `clinvar citations` was
-    # run, so absence is normal rather than a reason to refuse.
-    for sidecar in SNAPSHOT_SIDECAR_DIRNAMES:
-        directory = snapshot_dir / sidecar
-        if directory.is_dir():
-            files.extend(f"{sidecar}/{p.name}" for p in sorted(directory.glob("*.parquet")))
+    else:
+        data_dir = snapshot_dir / SNAPSHOT_DATA_DIRNAME
+        parquet = sorted(p.name for p in data_dir.glob("*.parquet")) if data_dir.is_dir() else []
+        if not parquet:
+            raise SnapshotNotPublishable(
+                f"no {SNAPSHOT_DATA_DIRNAME}/*.parquet in {snapshot_dir} — build the snapshot first "
+                f"(e.g. `just-dna-enricher clinvar build`)"
+            )
+        files = [f"{SNAPSHOT_DATA_DIRNAME}/{name}" for name in parquet]
+        # Sidecars, when the snapshot has them. Only ClinVar does, and only when `clinvar citations` was
+        # run, so absence is normal rather than a reason to refuse.
+        for sidecar in SNAPSHOT_SIDECAR_DIRNAMES:
+            directory = snapshot_dir / sidecar
+            if directory.is_dir():
+                files.extend(f"{sidecar}/{p.name}" for p in sorted(directory.glob("*.parquet")))
     # Walked from `locations.SNAPSHOT_ROOT_FILENAMES`, never listed here. A file this function does
     # not name is a file the publish silently drops, and the snapshot still looks complete on the
     # other side — which is how a share-alike snapshot went out without its terms
     # (`@publisher-allowlist-derived`). Absence stays normal: only ClinPGx carries a licence and only
     # the AVI lane carries a knot table.
-    for name in SNAPSHOT_ROOT_FILENAMES:
-        if (snapshot_dir / name).is_file():
-            files.append(name)
-    return SnapshotPlan(repo_id=resolved_repo, files=files)
+    files.extend(
+        name
+        for name in SNAPSHOT_ROOT_FILENAMES
+        if name != RELEASE_FILENAME and (snapshot_dir / name).is_file()
+    )
+    if description is not None:
+        files.append(RELEASE_FILENAME)
+    return SnapshotPlan(repo_id=repo_id or DEFAULT_CLINVAR_REPO_ID, files=files), description
 
 
 def check_publish_orphans_no_sidecar(
@@ -1652,9 +1608,7 @@ def rehearse_reference_snapshot(
     and the rest did not, so their `--dry-run` promised a publish the real run could refuse. Reads the
     published repo's file list; uploads nothing.
     """
-    plan = plan_reference_snapshot(snapshot_dir, repo_id, payload=payload)
-    check_publish_orphans_no_sidecar(plan, token=token)
-    return plan
+    return _run_snapshot_publish(snapshot_dir, repo_id, payload=payload, token=token, dry_run=True)
 
 
 class PruneCandidate(BaseModel):
@@ -1864,7 +1818,25 @@ def publish_reference_snapshot(
 
     Raises PermissionError if no token is available.
     """
-    plan = plan_reference_snapshot(snapshot_dir, repo_id, payload=payload)
+    return _run_snapshot_publish(
+        snapshot_dir, repo_id, payload=payload, token=token, commit_message=commit_message
+    )
+
+
+def _run_snapshot_publish(
+    snapshot_dir: Path,
+    repo_id: str | None,
+    *,
+    payload: str | None = None,
+    token: str | None = None,
+    commit_message: str | None = None,
+    dry_run: bool = False,
+    warn_unlabelled: Callable[[], None] | None = None,
+) -> SnapshotPlan:
+    plan, description = _snapshot_plan(snapshot_dir, repo_id, payload, warn_unlabelled)
+    if dry_run:
+        check_publish_orphans_no_sidecar(plan, token=token)
+        return plan
     api = ensure_repo(plan.repo_id, token)
     revision = _head(api, plan.repo_id)
     check_publish_orphans_no_sidecar(plan, api, revision=revision)
@@ -1911,16 +1883,13 @@ def publish_reference_snapshot(
     # kept and are what is sent, and the payload is held to these hashes on the hub before anything
     # describes it. A file that cannot be read now is a refusal, as at the module send.
     planned: dict[str, _ReadOnce] = {}
-    description: bytes | None = None
-    for name in plan.files:
+    for name in payload_files:
         try:
-            if name == RELEASE_FILENAME:
-                description = (snapshot_dir / name).read_bytes()
-                planned[name] = _ReadOnce.of_bytes(description)
-            else:
-                planned[name] = _read_once(snapshot_dir / name)
+            planned[name] = _read_once(snapshot_dir / name)
         except OSError as exc:
             raise PlanChangedError(f"{name} in {snapshot_dir} could not be read to send it ({exc})") from exc
+    if description is not None:
+        planned[RELEASE_FILENAME] = _ReadOnce.of_bytes(description)
     plan = plan.model_copy(
         update={"sha256": {name: read.sha256 for name, read in planned.items()}, "revision": revision}
     )

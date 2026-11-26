@@ -6,10 +6,9 @@ from pathlib import Path
 
 import typer
 from just_dna_compiler.draft import DraftError
-from just_dna_format.snapshot import release_label
 from just_dna_format.vocab import VALID_DECLARED_USE
 
-from just_dna_enricher.cli._shared import _mode, _use, app
+from just_dna_enricher.cli._shared import _mode, _publish_lane, _use, app
 from just_dna_enricher.locations import STRCHIVE_CATALOGUE_FILENAME, repro_out
 from just_dna_enricher.strchive import StrchiveError, check_repeat_bands
 from just_dna_enricher.strchive_draft import StrchiveDraftError, draft_repeat_loci
@@ -96,36 +95,16 @@ def strchive_publish_(
     run the comparison and cannot say which release they compared against — build with `--release`
     first, and this refuses nothing but says so.
     """
-    from just_dna_enricher.upload import (
-        PublishRefused,
-        publish_reference_snapshot,
-        rehearse_reference_snapshot,
-    )
-
-    if release_label(snapshot_dir) is None:
-        typer.secho(
+    _publish_lane(
+        snapshot_dir,
+        repo,
+        dry_run,
+        commit_message,
+        unlabelled_warning=(
             "  this snapshot carries no release label, so everyone who pulls it inherits a "
-            "comparison that cannot name its own reference. Rebuild with `strchive build --release`.",
-            fg=typer.colors.YELLOW,
-            err=True,
-        )
-    try:
-        if dry_run:
-            plan = rehearse_reference_snapshot(snapshot_dir, repo, payload=STRCHIVE_CATALOGUE_FILENAME)
-            typer.echo(f"would upload {len(plan.files)} file(s) to {plan.repo_id}: {plan.files}")
-            return
-        plan = publish_reference_snapshot(
-            snapshot_dir,
-            repo,
-            commit_message=commit_message,
-            payload=STRCHIVE_CATALOGUE_FILENAME,
-        )
-    except (PublishRefused, PermissionError, ImportError) as exc:
-        typer.secho(f"PUBLISH FAILED: {exc}", fg=typer.colors.RED, err=True)
-        raise typer.Exit(code=1) from exc
-    typer.secho(
-        f"published: {snapshot_dir} → {plan.repo_id} ({len(plan.files)} files)",
-        fg=typer.colors.GREEN,
+            "comparison that cannot name its own reference. Rebuild with `strchive build --release`."
+        ),
+        payload=STRCHIVE_CATALOGUE_FILENAME,
     )
 
 
