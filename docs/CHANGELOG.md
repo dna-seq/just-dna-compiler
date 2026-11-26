@@ -365,6 +365,12 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   read returns no bases, and the build is retried at the proxy's next read.`, then what the missing bases cost
   (an indel's VRS id unminted, the reference-allele check not made) and that a run's view asks for the build
   once per run; the same prefix, pinned with the 0.9 texts.
+- **A named Ensembl group is checked against the release the pull provisions** (RM458, the rescope; was 0.9's
+  known issue C). The core's pull stages the hub's `manifest.json` and `release.json` beside the cache, and the
+  group selection (an unknown name, a forbidding use, a group already current) is judged against that staged
+  manifest before any core or group byte moves; when the pull keeps the core (a local build, a cache served
+  through an outage), against the cache's own. A release transition that drops or relicenses a group now refuses
+  before the core is refreshed, never after. The private hub-manifest read beside the pull is gone.
 
 ## 2026-11-19 — `v0.8.10`: format, compiler and enricher 0.8.10 (a patch, cut from `main`)
 

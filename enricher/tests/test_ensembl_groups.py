@@ -394,6 +394,8 @@ def test_a_named_group_is_pulled_attested_and_recorded_beside_the_core(install_h
 
     cadd = sorted(p for p in published if p.startswith("groups/cadd/"))
     core = sorted(p for p in published if p.startswith("data/"))
+    assert hub.fetched.count(SNAPSHOT_MANIFEST_FILENAME) == 1, "the checked manifest is the one installed"
+    assert (cache / SNAPSHOT_MANIFEST_FILENAME).read_bytes() == hub.files[SNAPSHOT_MANIFEST_FILENAME]
     assert hub.parquet_fetched() == sorted(cadd + core)
     for path in cadd:
         assert (cache / path).read_bytes() == published[path]
@@ -448,30 +450,128 @@ def test_a_named_group_that_must_be_fetched_is_still_refused_before_any_download
     assert hub.parquet_fetched() == []
 
 
-def test_a_group_current_at_the_caches_release_is_still_refused_when_the_core_moves(
-    install_hub, tmp_path: Path
+def _cached_bytes(cache: Path) -> dict[str, bytes]:
+    return {p.relative_to(cache).as_posix(): p.read_bytes() for p in cache.rglob("*") if p.is_file()}
+
+
+@pytest.mark.parametrize("core", ["no-cache", "same", "behind"])
+@pytest.mark.parametrize("group", ["absent", "current", "stale"])
+@pytest.mark.parametrize("terms", ["admit", "refuse", "unknown"])
+def test_named_group_preflight_uses_the_provisioned_release(
+    install_hub, tmp_path: Path, core: str, group: str, terms: str
 ) -> None:
-    """D during a release transition (the known issue C): the preflight reads the cache's manifest, where CADD is
-    current, so the gate waits for the pull, which finds CADD behind the new core and refuses it there. The
-    refusal still comes, and no CADD byte is taken; it comes after the core is refreshed, not before."""
+    """RM458: a group's currency is relative to the core this pull will leave in place."""
+    cache = tmp_path / "ensembl"
+    licences = {"admit": _ENSEMBL_LICENCE, "refuse": _CADD_LICENCE, "unknown": _MYSTERY_LICENCE}
+    files = _release(1)
+    published = {
+        **files,
+        SNAPSHOT_MANIFEST_FILENAME: _manifest(files, _NEW, groups={"cadd": licences[terms]}),
+    }
+    local_release = _OLD if core == "behind" else _NEW
+    local_files = _release(0) if core == "behind" else files
+    if core != "no-cache":
+        # On a transition the old licence disagrees with the new one in both directions.
+        old_licence = _ENSEMBL_LICENCE if terms == "refuse" else _CADD_LICENCE
+        local = {
+            **local_files,
+            SNAPSHOT_MANIFEST_FILENAME: _manifest(local_files, _OLD, groups={"cadd": old_licence}),
+        }
+        install_hub(local if core == "behind" else published)
+        dl.ensure_snapshot(cache)
+    if group != "absent":
+        # A previously acquired group can outlive its core files or the reader's knowledge of its terms.
+        paths = sorted(p for p in local_files if p.startswith("groups/cadd/"))
+        for path in paths:
+            target = cache / path
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(local_files[path])
+        record = _record(cache) if (cache / PULL_RECORD_FILENAME).exists() else {}
+        record[PULL_RECORD_GROUPS_KEY] = {"cadd": {"release_id": local_release, "files": paths}}
+        (cache / PULL_RECORD_FILENAME).write_text(json.dumps(record))
+        if group == "stale":
+            (cache / paths[0]).unlink()
+
+    before = _cached_bytes(cache)
+    hub = install_hub(published)
+    follow = dl._FollowHub(ensembl_release_label)
+    current = group == "current" and core != "behind"
+    if terms == "refuse" and not current:
+        with pytest.raises(LicenseRefusal, match="nothing was fetched"):
+            dl.ensure_snapshot(cache, groups=["cadd"], declared_use="commercial", _follow_hub=follow)
+        assert hub.parquet_fetched() == []
+        assert _cached_bytes(cache) == before
+        return
+
+    dl.ensure_snapshot(cache, groups=["cadd"], declared_use="commercial", _follow_hub=follow)
+    expected = {p for p in files if p.startswith("data/") and files[p] != before.get(p)}
+    if current:
+        assert follow.groups["cadd"] == "current"
+    elif terms == "unknown":
+        assert follow.groups["cadd"].startswith("skipped — ")
+        assert "terms could not be established" in follow.groups["cadd"]
+        assert pulled_groups(cache).get("cadd", {}).get("release_id") == (
+            local_release if group != "absent" else None
+        )
+    else:
+        assert follow.groups["cadd"] == "pulled"
+        expected.update(p for p in files if p.startswith("groups/cadd/") and files[p] != before.get(p))
+    assert set(hub.parquet_fetched()) == expected
+    assert ensembl_release_label(cache) == _NEW
+    if terms != "unknown" or current:
+        assert ensembl_group_dir(cache, "cadd").is_dir()
+        assert all((cache / p).read_bytes() == files[p] for p in files if p.startswith("groups/cadd/"))
+
+
+@pytest.mark.parametrize(
+    ("fault", "reason"),
+    [
+        ("absent", "no readable manifest.json, so the requested groups cannot be checked"),
+        ("unreadable", "no readable manifest.json, so the requested groups cannot be checked"),
+        ("unlabelled", "manifest.json states no release_id, so the cadd group cannot be recorded"),
+    ],
+)
+def test_named_groups_need_a_readable_labelled_target_manifest(
+    install_hub, tmp_path: Path, fault: str, reason: str
+) -> None:
+    cache = tmp_path / "ensembl"
+    files = _release(1)
+    if fault != "absent":
+        files[SNAPSHOT_MANIFEST_FILENAME] = _manifest(files, "") if fault == "unlabelled" else "{"
+    hub = install_hub(files)
+    with pytest.raises(dl.EnsemblReferenceError, match=reason):
+        dl.ensure_snapshot(cache, groups=["cadd"], declared_use="non_commercial")
+    assert hub.parquet_fetched() == []
+    assert not cache.exists()
+
+
+@pytest.mark.parametrize("removed", ["group", "files"])
+def test_a_group_removed_from_the_target_manifest_refuses_before_the_core_refresh(
+    install_hub, tmp_path: Path, removed: str
+) -> None:
     cache = tmp_path / "ensembl"
     install_hub(_published(0, _OLD))
     dl.ensure_snapshot(cache, groups=["cadd"], declared_use="non_commercial")
-    hub = install_hub(_published(1, _NEW))
-
-    with pytest.raises(LicenseRefusal, match="nothing was fetched"):
+    before = _cached_bytes(cache)
+    files = {p: body for p, body in _release(1).items() if not p.startswith("groups/cadd/")}
+    groups = {"consequence": _ENSEMBL_LICENCE}
+    if removed == "files":
+        groups["cadd"] = _CADD_LICENCE
+    hub = install_hub({**files, SNAPSHOT_MANIFEST_FILENAME: _manifest(files, _NEW, groups=groups)})
+    error, message = (
+        (ValueError, "publishes no group 'cadd'")
+        if removed == "group"
+        else (dl.EnsemblReferenceError, "attests no file for the cadd group")
+    )
+    with pytest.raises(error, match=message):
         dl.ensure_snapshot(
             cache,
-            groups=["cadd"],
-            declared_use="commercial",
+            groups=["consequence", "cadd"],
+            declared_use="non_commercial",
             _follow_hub=dl._FollowHub(ensembl_release_label),
         )
-
-    assert not any(path.startswith("groups/") for path in hub.parquet_fetched())
-    assert any(path.startswith("data/") for path in hub.parquet_fetched()), "the core was refreshed first"
-    assert pulled_groups(cache)["cadd"]["release_id"] == _OLD
-    with pytest.raises(EnsemblGroupReleaseError, match=f"is release {_OLD} and the core beside it is {_NEW}"):
-        ensembl_group_dir(cache, "cadd")
+    assert hub.parquet_fetched() == []
+    assert _cached_bytes(cache) == before
 
 
 def test_an_unstated_use_pulls_the_core_and_skips_cadd_with_the_reason(install_hub, tmp_path: Path) -> None:
@@ -863,15 +963,20 @@ def test_a_group_file_the_manifest_states_no_size_for_names_the_publisher_never_
     assert "missing there or of another size" not in said and "Re-run" not in said
 
 
-def test_a_group_the_cache_release_lacks_is_checked_against_the_hubs(install_hub, tmp_path: Path) -> None:
-    """A newer published release may add a group; the refusal is only the cache's when the hub cannot say."""
+def test_a_group_added_on_the_hub_can_be_selected_when_the_core_follows_it(
+    install_hub, tmp_path: Path
+) -> None:
     cache = tmp_path / "ensembl"
     files = dict(_release(0))
     old: dict[str, bytes | str] = dict(files)
     old[SNAPSHOT_MANIFEST_FILENAME] = _manifest(files, _OLD, groups={"cadd": _CADD_LICENCE})
     install_hub(old)
     dl.ensure_snapshot(cache)
-    install_hub(_published(1, _NEW))  # publishes `consequence` too
+    hub = install_hub(_published(1, _NEW))  # publishes `consequence` too
+
+    with pytest.raises(ValueError, match=f"{_OLD} publishes no group 'consequence'"):
+        dl.ensure_snapshot(cache, groups=["consequence"])
+    assert hub.fetched == [] and hub.listed == []
 
     follow = dl._FollowHub(ensembl_release_label)
     dl.ensure_snapshot(cache, groups=["consequence"], _follow_hub=follow)
