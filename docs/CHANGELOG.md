@@ -377,6 +377,12 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   answers stay shared; wrapping a view again returns it. The six readers that imported the private name use it,
   the window and anchor helpers take the view's bound read, and the private name is gone. An AST walk over the
   installed package refuses a reader that selects a proxy's `subsequence` or `proxy` before taking the view.
+- **A named Ensembl group is checked against the release the pull provisions** (RM458, the rescope; was 0.9's
+  known issue C). The core's pull stages the hub's `manifest.json` and `release.json` beside the cache, and the
+  group selection (an unknown name, a forbidding use, a group already current) is judged against that staged
+  manifest before any core or group byte moves; when the pull keeps the core (a local build, a cache served
+  through an outage), against the cache's own. A release transition that drops or relicenses a group now refuses
+  before the core is refreshed, never after. The private hub-manifest read beside the pull is gone.
 
 ## 2026-11-19 — `v0.8.10`: format, compiler and enricher 0.8.10 (a patch, cut from `main`)
 

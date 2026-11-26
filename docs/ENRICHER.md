@@ -2389,10 +2389,10 @@ prevent, and a stale group joins to the wrong variants silently.
   unstated, so a field a later release adds never costs the core's release, coverage or pin, and an unread
   licence is no licence (unknown terms, never admitted). `core` is not a group
   (`locations.ENSEMBL_CORE_GROUP`, refused with `CORE_IS_NOT_A_GROUP`), and an unknown name is refused
-  with the names the release does publish, both `ValueError` and before any download (a name the cache's
-  manifest lacks is checked against the hub's, which may publish a newer release that adds it). `cache
-  pull` refuses
-  `core` and a `--groups` beside any lane other than `ensembl` (`cache_commands.GROUPS_NEED_ENSEMBL_ONLY`;
+  with the names the release does publish, both `ValueError` and before any parquet download. A pull
+  that keeps the local core checks each named group against the local manifest. A pull that installs
+  a release checks the names and file lists against the staged manifest it will install with the core.
+  `cache pull` refuses `core` and a `--groups` beside any lane other than `ensembl` (`cache_commands.GROUPS_NEED_ENSEMBL_ONLY`;
   with no `--only` the selection is every lane, so it needs `--only ensembl`) before any lane runs. `cache
   pull` has no `--dry-run`.
 - **Licences, per group.** `licensing.snapshot_group_terms(group, licence)` reads the licensor off the
@@ -2405,10 +2405,8 @@ prevent, and a stale group joins to the wrong variants silently.
   licence. A group already current (recorded at the manifest's release, every file it attests there at its
   size) is not gated again, named or not: nothing is taken (review round 2, D). So `cache pull --only
   ensembl --groups cadd --use commercial` over a current CADD group fetches nothing and reports it
-  `current`; the refusal comes when the group must be fetched, before any byte moves. **Except during a
-  release transition** (a known issue of 0.9, C): currency is judged against the cache's manifest, so a group
-  current there while the hub publishes a newer release is gated by the pull after the core is refreshed.
-  It is still refused, and none of its bytes are taken, but the core has moved by then.
+  `current`. If a release change makes that group stale, the pull checks the new terms and raises any
+  refusal before refreshing the core.
 - **Attested and recorded.** Each group file is renamed into place only if the manifest attests it by
   size and sha256, as a core file is. The pull record gains `groups` (`locations.PULL_RECORD_GROUPS_KEY`):
   per group, the `release_id` its files were attested against (`null` while its pull is under way), its
