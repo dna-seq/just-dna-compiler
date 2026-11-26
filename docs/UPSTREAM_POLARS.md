@@ -172,7 +172,10 @@ Asked by the person through the pm: a new server has no AVX-512, so 0.9.0 gains 
   and grpc run on a CPU without AVX2 (no emulator here); none of them checks CPU flags at import as polars does.
 
 **Sorted: the extra is harmless as an option, and its install line says "only on a CPU without AVX2".** Sent to the
-lead and the pm (643975731); the server's real flags decide whether it needs it.
+lead and the pm (643975731); the server's real flags decide whether it needs it. **They do (read the same day):** the
+server is an Intel Xeon E5-1620 v2 (Ivy Bridge, 2013): plain AVX, no AVX2, FMA, BMI1, BMI2 or LZCNT, no AVX-512. So the
+default runtime cannot load there and compat is required. The open risk moves to the line "Not proven" above: a CPU
+without AVX2 is now a real target, so the other native libraries are proven only by a run on that server.
 
 ## Our pieces that duplicate an upstream feature
 
