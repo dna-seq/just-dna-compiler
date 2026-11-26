@@ -41,6 +41,7 @@ import dataclasses
 import logging
 import os
 import pathlib
+import re
 import shutil
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
@@ -1634,8 +1635,12 @@ def provisioning_closure(lane: CacheLane) -> list[CacheLane]:
     return [member for member in CACHE_LANES if member.name in wanted]
 
 
+#: A URL's scheme, whole (`hf://`) or as a `Path` collapses it (`hf:/`): `lane_status` refuses both (RM461).
+_URL_SCHEME = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]+:/")
+
+
 def lane_status(
-    lanes: list[CacheLane] | None = None, locations: Mapping[str, Path | None] | None = None
+    lanes: list[CacheLane] | None = None, locations: Mapping[str, str | Path | None] | None = None
 ) -> list[LaneStatus]:
     """Where every lane stands, read-only — nothing is downloaded and nothing is written.
 
@@ -1655,6 +1660,7 @@ def lane_status(
     own `.env` loads exported, whatever the order of `lanes`. What the process exported before the
     call, by any earlier `.env` load included, is the environment a `None` lane reads. A key that
     names no lane in `lanes` or the registry raises `ValueError` before anything is read.
+    A URL in `locations` also raises `ValueError`. Ask the `RemoteSnapshots` holder about a remote lane.
     """
     walked = CACHE_LANES if lanes is None else lanes
     given = {} if locations is None else dict(locations)
@@ -1663,6 +1669,13 @@ def lane_status(
     if unknown:
         listed = ", ".join(dict.fromkeys([*(lane.name for lane in walked), *LANES_BY_NAME]))
         raise ValueError(f"lane_status: `locations` names no known lane: {unknown}. Known: {listed}")
+    for name, value in given.items():
+        # A URL, or one a `Path` already collapsed (`hf://a` reads `hf:/a`); a two-letter-plus scheme, so a
+        # Windows drive (`C:/`) is not one.
+        if value is not None and _URL_SCHEME.match(str(value)):
+            raise ValueError(
+                f"lane_status requires a local path for {name}. Use the RemoteSnapshots holder for remote status."
+            )
     # Named lanes first: none of them may read a variable an unnamed lane's `.env` load just exported.
     order = [i for i, lane in enumerate(walked) if lane.name in given]
     order += [i for i, lane in enumerate(walked) if lane.name not in given]
@@ -1689,7 +1702,7 @@ def lane_status(
 
 
 def _staleness(
-    status: LaneStatus, so_far: Mapping[int, LaneStatus], given: Mapping[str, Path | None]
+    status: LaneStatus, so_far: Mapping[int, LaneStatus], given: Mapping[str, str | Path | None]
 ) -> LaneStatus:
     """`status` called `stale` when its lane's `stale_reason` says its parents moved under it; else as it is."""
     if status.state != "present" or status.lane.stale_reason is None:
@@ -1702,7 +1715,7 @@ def _staleness(
 
 
 def _parent_path(
-    name: str, resolved: Mapping[str, Path | None], given: Mapping[str, Path | None], *, named: bool
+    name: str, resolved: Mapping[str, Path | None], given: Mapping[str, str | Path | None], *, named: bool
 ) -> Path | None:
     """A parent's snapshot path for a stale check: the one this call resolved for it, else read as it would be.
 

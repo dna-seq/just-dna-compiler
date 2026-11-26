@@ -1335,6 +1335,24 @@ def test_an_unknown_lane_in_locations_is_refused_before_any_lane_is_read(
     assert dict(os.environ) == before
 
 
+@pytest.mark.parametrize(
+    "url",
+    [
+        "hf://datasets/just-dna-seq/clinvar",
+        "https://127.0.0.1/clinvar",
+        Path("hf://datasets/just-dna-seq/clinvar"),
+    ],
+    ids=["hf", "https", "hf-collapsed-by-Path"],
+)
+def test_lane_status_refuses_a_url_and_names_the_holder(url: str | Path) -> None:
+    lane = LANES_BY_NAME["clinvar"]
+    with pytest.raises(ValueError) as refused:
+        lane_status([lane], locations={lane.name: url})
+    assert str(refused.value) == (
+        "lane_status requires a local path for clinvar. Use the RemoteSnapshots holder for remote status."
+    )
+
+
 # ── S97 / RM229: a lane declares its size, a present one measures it, a derived one prices its parents
 
 

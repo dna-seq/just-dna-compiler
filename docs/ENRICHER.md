@@ -1743,7 +1743,8 @@ default) read without loading `.env`, so a call naming every lane writes nothing
 Unnamed lanes read as before. Named lanes are read first, so none of them sees a variable an unnamed
 lane's `.env` load exported in the same call, in any order of `lanes`; what the process exported
 earlier, an earlier load included, is still read. A key naming no lane raises `ValueError` before
-anything is read.
+anything is read. A URL in `locations` raises `ValueError`. Use the `RemoteSnapshots` holder to
+read a remote lane and inspect the route on its answer.
 **A lane declares its size and a present one measures it (S97, RM229).** `CacheLane.approx_mb` is an
 order of magnitude in whole megabytes, measured on a provisioned box on 2026-09-11 and rounded up (`1`
 means *at most a megabyte*; Ensembl is ~15 000, the AVI lane ~30 000), so a first-run offer can decide
@@ -2524,10 +2525,9 @@ with RemoteSnapshots(declared_use="non_commercial") as snapshots:      # proxy f
   `mitomap`, `strchive` or `alphagenome_avi`. PharmVar and PubMind have no published repo.
 - **The proxy** (`POST {proxy}/api/v1/lanes/{lane}/{table}`, the registry's §§ 46–47): one keep-alive
   `httpx` client, a 3 s connect and 10 s read timeout, at most 100 key values a request and one
-  chromosome per request. A lookup is split along one column (`start` for a position, else its longest);
-  one whose other columns alone fill the 100 is not sent to the proxy at all (0.9, review round 1): the
-  limit is the proxy's, so Hugging Face answers, as for a folded key, and with Hugging Face off it is
-  could-not-ask saying so, never a wrong request. A reply with `truncated: true` is halved and asked again, down to one key; one
+  chromosome per request. The holder splits the column with the most values, preferring `start` on a tie.
+  If the other columns alone fill the limit, the holder asks Hugging Face. With Hugging Face off it
+  reports could-not-ask and gives the proxy's limit. A reply with `truncated: true` is halved and asked again, down to one key; one
   key still truncated is could-not-ask for the whole lookup (no fall-through), never an absence. After a
   429, a 503, a 504, a 404 `lane_not_available`, a timeout or a connection error the holder asks Hugging
   Face instead, for the whole lookup. A 422, or a 404 `unknown_lane`/`unknown_table`, is a wrong request
@@ -2560,7 +2560,10 @@ with RemoteSnapshots(declared_use="non_commercial") as snapshots:      # proxy f
   file that way (65 MB on chr19, against about 5 MB). No retry inside a call (`http_retries = 0`); a 429 is could-not-ask
   naming the Hub's quota window (3,000 requests per 5 minutes per IP, anonymous).
 - **Where an answer came from.** `RemoteAnswer(rows, route)`, whose `route` is a `RemoteRoute(route,
-  release, served_from, revision)`: one record, never a copy of its fields. One release per route per holder:
+  release, served_from, revision, release_unreadable=None)`. `RemoteRoute.release_unreadable` carries the
+  proxy's JSON boolean for an unreadable `release.json`. A split lookup carries it when every contributing
+  reply states the same boolean. Missing, null, malformed or conflicting flags give `None`, as does the
+  Hugging Face route. One release per route per holder:
   `main` moving mid-session does not move a holder's Hugging Face reads, and a new holder reads the new
   commit. A 429 can send some of a session's lookups to the Hub and others to the proxy, so each answer
   carries its own. This traces an answer; it does not detect two copies under one label with different
@@ -2687,10 +2690,6 @@ with RemoteSnapshots(declared_use="non_commercial") as snapshots:      # proxy f
   the walk sees URL literals only, not a URL held in a variable), and in `remote` duckdb reads a file only through SQL, every
   `read_parquet` binds its files as a parameter built by `_file_url` (never rewritten in place), and
   `_file_url` returns `remote_url(...)`.
-
-`caches.lane_status(locations=…)` takes local paths only. Handed a URL, a `Path` collapses it
-(`hf://datasets/a/b` becomes `hf:/datasets/a/b`), the lane's resolver finds no directory there, and the
-lane reports `absent` with that collapsed path as `looked_in`: nothing in 0.9 passes it one.
 
 ### The one cache that is not in the table
 
