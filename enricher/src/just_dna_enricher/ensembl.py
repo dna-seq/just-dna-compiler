@@ -223,7 +223,7 @@ class EnsemblResolver(Withholding):
             if self._read_base is None:
                 # The resolver's own proxy, read directly: a resolver is not a run and a host may share
                 # one across runs, so it holds answers only and a failed read is asked again (RM404).
-                self._read_base = _grch38_base_reader(SequenceProxy())
+                self._read_base = _grch38_base_reader(SequenceProxy().subsequence)
             return self._read_base
 
     def _http(self) -> httpx.Client:
@@ -536,14 +536,16 @@ def _batch_records(payload: dict, asked: Sequence[str]) -> dict[str, dict]:
     return settled
 
 
-def _grch38_base_reader(sequences: SequenceProxy) -> Callable[[str, int], str | None]:
+def _grch38_base_reader(
+    subsequence: Callable[[str, int, int], str | None],
+) -> Callable[[str, int], str | None]:
     """A `read_base` for `anchor_indel`: `None` off the refget table (a patch contig) or when unreadable."""
 
     def read_base(chrom: str, pos: int) -> str | None:
         accession = refget_accession(chrom)
         if accession is None or pos < 1:
             return None
-        return sequences.subsequence(accession, pos - 1, pos)
+        return subsequence(accession, pos - 1, pos)
 
     return read_base
 

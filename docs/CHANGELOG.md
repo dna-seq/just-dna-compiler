@@ -365,6 +365,11 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   read returns no bases, and the build is retried at the proxy's next read.`, then what the missing bases cost
   (an indel's VRS id unminted, the reference-allele check not made) and that a run's view asks for the build
   once per run; the same prefix, pinned with the 0.9 texts.
+- **`sequences.held_by_one_run(proxy)`, the per-run view of a `SequenceProxy`, is public** (RM463, the rescope). A
+  run calls it once and hands the view to every reader, so a failed build or read is asked once per run while
+  answers stay shared; wrapping a view again returns it. The six readers that imported the private name use it,
+  the window and anchor helpers take the view's bound read, and the private name is gone. An AST walk over the
+  installed package refuses a reader that selects a proxy's `subsequence` or `proxy` before taking the view.
 
 ## 2026-11-19 — `v0.8.10`: format, compiler and enricher 0.8.10 (a patch, cut from `main`)
 

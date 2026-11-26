@@ -64,7 +64,7 @@ from just_dna_format.vrs import (
     vrs_spec_release,
 )
 
-from just_dna_enricher.sequences import DEFAULT_SEQREPO_URI, SequenceProxy, _held_by_one_run
+from just_dna_enricher.sequences import DEFAULT_SEQREPO_URI, SequenceProxy, held_by_one_run
 
 logger = logging.getLogger(__name__)
 
@@ -297,7 +297,7 @@ class VrsMinter:
 
     def __post_init__(self) -> None:
         # A minter is one run: it holds the failures it sees, and the proxy it reads holds only answers.
-        self.sequences = _held_by_one_run(
+        self.sequences = held_by_one_run(
             self.sequences or SequenceProxy(uri=self.seqrepo_uri, offline=self.offline)
         )
 

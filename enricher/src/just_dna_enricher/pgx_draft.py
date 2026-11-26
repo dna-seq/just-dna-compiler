@@ -68,7 +68,7 @@ from just_dna_enricher.drafting import DRAFT_PROVIDERS, licence_commit, record_d
 from just_dna_enricher.enrich import EnrichmentError, source_build_mismatch
 from just_dna_enricher.licensing import CPIC_TERMS, LicenseRefusal, check_declared_use, effective_declared_use
 from just_dna_enricher.locations import resolve_cpic_reference
-from just_dna_enricher.sequences import SequenceProxy, _held_by_one_run
+from just_dna_enricher.sequences import SequenceProxy, held_by_one_run
 
 #: This provider's registry entry (RM228).
 _PROVIDER = DRAFT_PROVIDERS["cpic"]
@@ -146,6 +146,8 @@ def _reference_reader(sequences: SequenceProxy, *, offline: bool) -> ReadWindow:
     `offline` outranks an injected proxy, as it outranks an injected client: a run documented as
     making no requests makes none, whoever built the reader.
     """
+
+    sequences = held_by_one_run(sequences)
 
     def read_window(chrom: str, start: int, end: int) -> str | None:
         if offline:
@@ -622,9 +624,7 @@ def draft_gene(
         published = [a for a in published if (_draft_name(a.allele) or a.allele) in selected]
         defining = [v for v in defining if (_draft_name(v.allele) or v.allele) in selected]
 
-    read_window = _reference_reader(
-        _held_by_one_run(sequences or SequenceProxy(offline=offline)), offline=offline
-    )
+    read_window = _reference_reader(sequences or SequenceProxy(offline=offline), offline=offline)
     haplotypes, haplotype_warnings = _haplotype_rows(defining, read_window, whole_gene=whole_gene)
     warnings.extend(haplotype_warnings)
 
