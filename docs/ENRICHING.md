@@ -26,6 +26,24 @@ The chain is **first-hit-wins**, in this order:
    subject, replaces what was answered, keeps rows it could not re-ask, and reports what changed.
    Deleting `resolution.csv` and re-running also works, but loses that report. See
    [After the 0.8 snapshot switch](#after-the-08-snapshot-switch) below.
+
+   Since 0.9 a re-derive can be scoped. `--rederive-subject KEY` (repeatable) re-asks only the named
+   `variant_key`s and carries every other row of `resolution.csv` byte for byte, and `--verify-written-only`
+   runs the row checks over the fresh rows only, each record in `verification.json` opening
+   `Verification scoped to fresh resolution rows.`:
+
+   ```bash
+   just-dna-enricher enrich ./my_module --rederive-subject rs1800562 --verify-written-only
+   ```
+
+   ```text
+   enriched: ./my_module/resolution.csv
+   rows: 12  fully_resolved: True  sources: ['cache']
+     compared recorded subjects: rs1800562
+   ```
+
+   Run on a copy of `reference_examples/hfe_hemochromatosis`, whose answer had not moved: the table came
+   back byte-identical. A subject whose answer moved is listed as a drift, as `--rederive` lists one.
 2. **Local Ensembl cache** — DuckDB lookups, offline. Since 0.8 this is the split snapshot
    (dbSNP 157 / VEP 116, `just-dna-seq/ensembl_variations_split`).
 3. **HuggingFace snapshot** — fetched if no cache is present. A static slice of popular rsIDs, not a
