@@ -13,10 +13,10 @@ day, that only a real fork goes to the maintainer; it stands until they veto a p
 
 | Minor | Theme | Items |
 |---|---|---|
-| **0.9** | the enricher reads its reference data wherever it lives: local disk, then the registry's proxy, then Hugging Face (the order set on desk #261); the schema package gains one parsing function | RM430, RM431, RM437, RM443, RM404, RM412's second half |
-| **0.10** | a small schema release: four optional additions | RM399 + RM441 (with S156), RM435, RM265, RM385 |
+| **0.9** | the enricher reads its reference data wherever it lives: local disk, then the registry's proxy, then Hugging Face (the order set on desk #261); the schema package gains one parsing function | RM430, RM431, RM437, RM443, RM404, RM412's second half; **rescoped 2026-11-26** (below): RM454, RM458, RM461–RM467 |
+| **0.10** | a small schema release: four optional additions | RM399 + RM441 (with S156), RM435, RM265, RM385; RM460, RM468, and RM459 once the registry reads `KEY_COMPARES` |
 | **methylation** | after 0.10, undated until the PacBio samples are in hand | RM317–RM319, RM433, RM56, RM65, RM66 |
-| *parked* | out of 0.9 into [ROADMAP.md](ROADMAP.md#active-items), each with its gate | RM302, RM350, RM294, RM345 + RM286, RM358, RM360 |
+| *parked* | out of 0.9 into [ROADMAP.md](ROADMAP.md#active-items), each with its gate | RM302, RM350, RM294, RM345 + RM286, RM358, RM360; RM457 (2026-11-26) |
 
 **How 0.9 is built: two rules on trial** ([#327](https://github.com/winternewt/desk/issues/327),
 [#328](https://github.com/winternewt/desk/issues/328), applied on their defaults; RELEASE_CYCLE.md is unchanged until
@@ -122,6 +122,56 @@ The trial rules end here. The pm reports how they went after the cut.
    - RM437's lock residual is **RM450**, the parked pull lock.
    - RM431's prebuilt `.duckdb` against the index pin is **won't fix**: the path is deprecated and retired at 1.0.
 3. The two known issues (C, and the gene lanes with the proxy on and Hugging Face off) get RMs in ROADMAP_0_10.
+
+**The rescope (the pm, 2026-11-26), on the maintainer's word:** "0.9, rescope with new RMs of the table and prepare a
+plan". 0.9.0 was cut on `cut/v0.9.0` and never published, so the cut is redone, and 0.9 builds the leftovers of its own
+build instead of shipping them as known issues and a string of patches.
+
+*How the two trial rules went (the pm's report).* **Rule 2** held: both rounds were sorted with no blocker, and the
+maintainer made it the rule for every minor (RELEASE_CYCLE.md step 5, 879f71ea). **Rule 1** kept 0.9 small, but sent
+nine items from 0.9's own build to 0.10 or to patches after the merge, the "10 patches after that anyway" the
+maintainer named. The rescope takes them back into 0.9; RELEASE_CYCLE.md's step 4 (an item that emerges joins the same
+release) stands, and rule 1 is not carried into 0.10.
+
+*Into 0.9.* All enricher, 0.9's theme, except RM465's predicate, which sits in the schema package beside 0.9's
+`parse_release`. Every decision is made here, so the builds run without asking; the times are a Codex build plus the
+lead's check, per item.
+
+| Item | What 0.9 builds | Decided | About |
+|---|---|---|---|
+| RM458 | the group preflight reads the manifest the provisioning will provision | the release-transition matrix in the entry is the test | 2 h |
+| RM461 | the proxy's `release_unreadable` carried into `RemoteRoute`; `_batch_column` splits on the column holding the most values; the pinned-text walk over every module | `lane_status` given a URL **refuses** it, naming the holder as the route for a remote status: status stays a local-disk question. If the walk needs a new registry of emitted texts, that part goes to 0.10 and the builder says so | 3 h |
+| RM462 | one ClinVar request per `lookup_variant`, its reply read three times | | 1 h |
+| RM463 | a public name for the per-run wrap, and an AST walk over every reader taking a `SequenceProxy`, shown failing first | | 1 h |
+| RM464 | one publish body for the four lane commands, the part-count keys derived from `SnapshotRelease`, one read of `release.json` | the refused-rehearsal exit code is `cache rebuild --publish`'s | 2 h |
+| RM465 | a public "is this a whole build" predicate beside `SnapshotRelease`; `parts_read` above `parts_total` refused | the publish gate calls it, no restated check | 1 h |
+| RM466 | golden outputs recorded from 0.8.10 on a fixed offline input that reaches the Ensembl snapshot and the ClinVar witness as well as dbSNP and the sequence, clock fields named | | 2 h |
+| RM454 | every keyed SQL compare in the enricher declared in `KEY_COMPARES`, one walk over them all | its home is 0.9's registry, so it lands with it rather than as a patch after | 2 h |
+| RM467 | both halves as new options, defaults unchanged: the verify passes read only the rows this run wrote when asked; a run re-asks an explicit subject list and carries the rest byte for byte, `SubjectDrift` reporting what moved | a reason-driven selection (a declared correction's reach) waits for RM441's record in 0.10 | 4 h |
+
+*Not into 0.9.* **RM460** goes to 0.10: a new code in format and compiler is an old-reader break, and 0.9 moves no
+consumer's format floor. **RM459** goes to 0.10 and waits on the registry (its S36). **RM468** goes to 0.10 beside
+RM399 and RM441: a persistent store of live answers is a design of its own (keys per source release, stored negatives,
+per-host terms), not a leftover of 0.9's build. **RM457** is parked: its documentation half shipped, and it unparks when
+a second consumer maps a parquet's row grain by hand or asks for the read. RM450 stays parked as it was.
+
+*How it runs.*
+
+1. The lead carries the cut's filing commit (`fee94a69`) onto `0.9`, with RM458, RM461 and RM465–RM467's entries in
+   this file instead of ROADMAP_0_10, and RM462–RM464 likewise; the rest of `cut/v0.9.0` is redone at step 5. About
+   30 minutes.
+2. The lead runs the nine as one batch on Codex builders (LEAD.md, 27de1246), each in its worktree, and checks and
+   merges each. About half a day of builds in parallel, and half a day of checks and merges.
+3. **No third review round.** 0.9 has had its two, and the rule is two per minor; the lead's check at each merge is
+   the review of what was added. Anything a build turns up comes to the pm: a blocker is fixed in 0.9, the rest goes
+   to 0.10.
+4. The consumers' trial ([desk #370](https://github.com/winternewt/desk/issues/370)) goes on against the rescoped
+   branch. The liaison tells the four consumers what was added; the two that reported are not asked again.
+5. The cut is redone: the release record, INTEGRATION_0_9 (its known issues shrink to RM459), the CHANGELOG, the docs
+   pass. About 2 hours. Then the maintainer's publish.
+
+About a day and a half to the cut. 0.10 then holds RM399 + RM441 (S156), RM435, RM265, RM385, RM460 and RM468, and
+RM459 once the registry moves; the pm sorts it again when it opens.
 
 **Earlier sizings, for the record.** The file opened on 2026-11-03, when the maintainer scoped 0.8 and sent "the rest"
 to 0.9; the pm re-sized it on 2026-11-05 after the 0.8.0 cut ("'Auto-next minor' was a policy when we didn't have a

@@ -2367,7 +2367,7 @@ about 30 minutes, and RM437's groups on `0.9` inherit it.
 
 ## RM454 — the enricher's local key compares never went through the one normalizer: constraint by gene, `lookup_loci` by rsID and contig, and SQL's `lower(trim())` beside `gene_key`
 
-**Severity** low · **Status** open — **a patch, after 0.9 merges** (its home, `key_compare.KEY_COMPARES`, is 0.9's) ·
+**Severity** low · **Status** open — **a minor, 0.9** (rescoped 2026-11-26, [ROADMAP_0_9.md](ROADMAP_0_9.md); its home, `key_compare.KEY_COMPARES`, is 0.9's) ·
 **Owner** enricher (`gene_metrics.lookup_snapshot`, `clinvar.lookup_loci`, `resolver.lookup_loci`,
 `key_compare`) · **Motivating case** the RM430 follow-up's deferred findings (a) to (c), the lead's 0.9 run
 (2026-11-18, merged as 15668c1e) · *related* RM363, RM430, RM431
@@ -2398,7 +2398,7 @@ It may widen what a direct lookup returns, never what a module resolves, so no d
 
 ## RM457 — no public read answers a lead parquet's row grain, so a consumer maps parquet to CSV and adds the locus columns by hand
 
-**Severity** low · **Status** open — **a minor, release undecided** · **Owner** compiler (`hints`) ·
+**Severity** low · **Status** open — **a minor, parked** (the pm, 2026-11-26; unparks below) · **Owner** compiler (`hints`) ·
 **Motivating case** S159 in CONSUMER_SUGGESTIONS_HISTORY.md (just-dna-lite, 2026-11-19) · *related* RM43, RM449
 
 **What was seen.** just-dna-lite sorted a streaming join on a row key it wrote from memory, missed three of
@@ -2420,11 +2420,15 @@ The documentation half shipped with the reply (CONSUMING.md § "What one row is"
 weigh: with the doc, a consumer restates only the stem map and the locus columns, both stable, and the reporter
 named the alternative of sorting on every column, priced by them as too slow on list columns.
 
+**Parked, the pm (2026-11-26).** The documentation half answers the reporter's case, and the reporter's own
+alternative was priced by them. **Unparks when** a second consumer maps a parquet's row grain by hand, or a consumer
+asks for the read; either can happen while this is parked, so the gate is honest (the gate audit has its row).
+
 **Residuals** none yet.
 
 ## RM467 — a re-derive cannot be scoped to the rows a reason reaches, and the verify passes re-read every carried row
 
-**Severity** medium · **Status** open — **a minor, release undecided** · **Owner** enricher
+**Severity** medium · **Status** open — **a minor, 0.9** (rescoped 2026-11-26, [ROADMAP_0_9.md](ROADMAP_0_9.md): both halves as new options; the reason-driven selection waits for RM441 in 0.10) · **Owner** enricher
 (`enrich/orchestration.enrich`, `sequences.verify_reference_alleles`) · **Motivating case** S160 in
 CONSUMER_SUGGESTIONS_HISTORY.md (just-dna-registry, 2026-11-19) · *related* RM441, RM399, RM468
 
@@ -2453,7 +2457,7 @@ longer be re-raised by this one. So it is a new option, never a changed default:
 
 ## RM468 — the live clients keep no answers between runs, so a re-run under unchanged source releases spends the same egress again
 
-**Severity** medium · **Status** open — **a minor, release undecided** · **Owner** enricher (the live clients:
+**Severity** medium · **Status** open — **a minor, 0.10** (the pm, 2026-11-26, beside RM399 and RM441: a design of its own, not a leftover of 0.9's build) · **Owner** enricher (the live clients:
 Ensembl REST, E-utilities, ClinVar, the sequence proxy) · **Motivating case** S162 in CONSUMER_SUGGESTIONS_HISTORY.md
 (just-dna-registry, 2026-11-19) · *related* RM467, RM441, RM38
 
@@ -3007,6 +3011,7 @@ possibly already satisfied, and the rest sound** — the sweep's value is mostly
 | **RM412** half 1's per-lane release probe (parked 2026-11-16) | an operator reports a rebuild that downloaded a source only to learn nothing had changed | **Sound.** Every rebuild today downloads first; an operator can meet this before the probe exists. |
 | **RM450** — a snapshot pull takes no lock (parked 2026-11-18) | a pull seen to leave a wrong file or record, or a host that runs two pulls into one cache | **Sound.** Either can happen while it is parked; nothing needs the lock to exist first. |
 | **RM15** / **RM69** / **RM52** and the 1.0 queue | a major-version bump | **Sound, and not this kind of gate.** A release boundary is a schedule, not a satisfier. |
+| **RM457** — a public read of a lead parquet's row grain | a second consumer maps the grain by hand, or asks for the read | **Sound.** A consumer can meet the gap with the read unbuilt; just-dna-lite did (S159). Parked 2026-11-26. |
 
 **What the sweep did not find, stated so it is not re-run for a while.** No gate anywhere is parked on
 a *consumer report that would have to describe the unbuilt thing* — the `Sn` inbox is a channel
