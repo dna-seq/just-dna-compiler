@@ -57,9 +57,9 @@ unresolved) keeps whatever rows it had.
 datasets each table and the posterior are read from, and `read_is_complete` asks the snapshot's
 `release.json` whether every one of them was read whole: `True` only when `parts_read` equals
 `parts_total` for each, `False` when one was partial, and `None` when the record cannot say (no
-`parts_total`, a dataset missing from it, a count that is not a number). Anything but `True` means an
-absent row may be a part nobody opened, so no key is answered for that table: rows the snapshot did
-yield are merged in, and every existing row is kept. A key that did not join the allele table is then
+`parts_total` or a dataset missing from it). Both modes refuse malformed counts and overcounts.
+For a partial or unknown read, an absent row may be in a part nobody opened. The pass merges in
+the rows it found and keeps every existing row. A key that did not join the allele table is then
 `not_read` rather than `not_in_release`, and the posterior on `gwas_effects.csv` is left as it was.
 `strict` refuses such a snapshot before anything is read.
 """
@@ -80,7 +80,7 @@ from just_dna_format.layout import atomic_writer, nothing_to_write
 from just_dna_format.locus_genes import ColocalisationRow, LocusToGeneRow
 from just_dna_format.normalize import now_utc_iso
 from just_dna_format.resolution import ResolutionRow
-from just_dna_format.snapshot import SnapshotRelease, read_release
+from just_dna_format.snapshot import SnapshotRelease, is_whole_build, read_release
 from pydantic import BaseModel
 
 from just_dna_enricher.key_compare import lane_compare
@@ -232,27 +232,15 @@ def _connect(snapshot: Path, views: Sequence[str] = tuple(_VIEWS)) -> duckdb.Duc
     return con
 
 
-def _part_counts(release: SnapshotRelease, dataset: str) -> tuple[int, int] | None:
-    """`(parts read, parts total)` for one dataset, or `None` when the record does not state both.
-
-    Read off the typed fields (RM369), so this is as lenient as `read_release`: a `parts_read` or
-    `parts_total` that is not a map at all, or a map holding a value pydantic cannot read as an int
-    (`null`, `1.5`, `"x"`), is dropped whole and read as unstated, while pydantic's lax mode reads a
-    per-dataset `"1"`, `1.0` or `true` as 1. Nothing is coerced here, and an unstated count is the
-    unknown arm (RM361). The publish gate calls the format tier's `is_whole_build` on the raw record,
-    which refuses every count that is not a whole number, `null` included.
-    """
-    read = (release.parts_read or {}).get(dataset)
-    total = (release.parts_total or {}).get(dataset)
-    if read is None or total is None:
-        return None
-    return read, total
-
-
 def dataset_complete(release: SnapshotRelease, dataset: str) -> bool | None:
     """Whether the snapshot read every part of `dataset`: `None` when its record cannot say (RM361)."""
-    counts = _part_counts(release, dataset)
-    return None if counts is None else counts[0] >= counts[1]
+
+    def selected(counts: dict[str, int] | None) -> dict[str, int]:
+        return {dataset: counts[dataset]} if counts and dataset in counts else {}
+
+    return is_whole_build(
+        {"parts_read": selected(release.parts_read), "parts_total": selected(release.parts_total)}
+    )
 
 
 def read_is_complete(release: SnapshotRelease, datasets: frozenset[str]) -> bool | None:
@@ -262,15 +250,6 @@ def read_is_complete(release: SnapshotRelease, datasets: frozenset[str]) -> bool
     if False in answers:
         return False
     return None if None in answers else True
-
-
-def _partial_datasets(release: SnapshotRelease) -> dict[str, tuple[int, int]]:
-    """`{dataset: (read, total)}` for every dataset the snapshot read short of the release's total."""
-    return {
-        dataset: counts
-        for dataset in OPENTARGETS_DATASETS
-        if dataset_complete(release, dataset) is False and (counts := _part_counts(release, dataset))
-    }
 
 
 Allele = tuple[str, str | None, str, int, str, str]
@@ -436,13 +415,17 @@ def enrich_opentargets(
             "this is not a finding that Open Targets holds nothing for these variants."
         )
         return OpenTargetsResult(skipped="no_snapshot")
-    release = read_release(resolved) or SnapshotRelease()
+    short_reads: dict[str, tuple[int, int]] = {}
+    try:
+        release = read_release(resolved, short_reads=short_reads) or SnapshotRelease()
+    except ValueError as exc:
+        raise OpenTargetsError(str(exc)) from exc
     dataset = release.dataset or ""
     if not dataset:
         raise OpenTargetsError(
             f"the Open Targets snapshot at {resolved} has no release label in release.json"
         )
-    partial = _partial_datasets(release)
+    partial = {name: short_reads[name] for name in OPENTARGETS_DATASETS if name in short_reads}
     unstated = [name for name in OPENTARGETS_DATASETS if dataset_complete(release, name) is None]
     if unstated:
         if mode == "strict":

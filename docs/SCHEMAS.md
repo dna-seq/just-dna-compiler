@@ -3082,6 +3082,10 @@ publisher makes. A `SnapshotRelease` answers for its already-parsed counts. Call
 name the short datasets can pass an empty dictionary as `short_reads=` to collect their
 `(read, total)` pairs.
 
+`read_release` and `parse_release` also accept `short_reads={}`. Passing this dictionary checks the
+decoded counts with `is_whole_build` before model coercion, collects each short dataset, and raises
+the predicate's `ValueError` for a malformed count or an overcount. Omitting it keeps the lenient read.
+
 **`read_release(dir) -> SnapshotRelease | None`** answers `None` for an absent file and for an
 unreadable one (does not parse, or is not an object), with a warning for the second. A typed key holding
 the wrong kind of value costs that key and never the record: it is dropped, read as unstated, with a

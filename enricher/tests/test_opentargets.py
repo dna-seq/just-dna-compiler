@@ -11,6 +11,7 @@ run time from the slice's own parquet, never copied from it.
 import csv
 import json
 import shutil
+from collections.abc import Callable
 from pathlib import Path
 
 import duckdb
@@ -20,7 +21,12 @@ from just_dna_compiler.compiler import compile_module, load_csv_rows, reverse_mo
 from just_dna_enricher.caches import LANES_BY_NAME
 from just_dna_enricher.licensing import sidecar_path
 from just_dna_enricher.locations import resolve_opentargets_reference
-from just_dna_enricher.opentargets import OpenTargetsError, enrich_opentargets
+from just_dna_enricher.opentargets import (
+    OpenTargetsError,
+    dataset_complete,
+    enrich_opentargets,
+    read_is_complete,
+)
 from just_dna_enricher.opentargets_build import (
     OPENTARGETS_DATASETS,
     OpenTargetsUnavailable,
@@ -321,6 +327,38 @@ def test_strict_refuses_a_snapshot_built_from_part_of_the_release(module: Path, 
         enrich_opentargets(module, snapshot=partial, mode="strict")
     # best_effort writes, and says so.
     assert enrich_opentargets(module, snapshot=partial).partial
+
+
+def test_opentargets_refuses_an_overcount(module: Path, tmp_path: Path) -> None:
+    snapshot = tmp_path / "overcount"
+    shutil.copytree(SLICE, snapshot)
+    path = snapshot / "release.json"
+    record = json.loads(path.read_bytes())
+    total = record["parts_total"]["variant"]
+    record["parts_read"]["variant"] = total + 1
+    path.write_text(json.dumps(record))
+    with pytest.raises(OpenTargetsError) as refused:
+        enrich_opentargets(module, snapshot=snapshot)
+    assert str(refused.value) == f'parts_read["variant"] is {total + 1}, above parts_total {total}'
+
+
+@pytest.mark.parametrize("mode", ["strict", "best_effort"])
+@pytest.mark.parametrize(
+    "malform", [bool, str, float, lambda _: None], ids=["bool", "string", "float", "null"]
+)
+def test_opentargets_refuses_malformed_counts_before_coercion(
+    module: Path, tmp_path: Path, mode: str, malform: Callable[[int], object]
+) -> None:
+    snapshot = tmp_path / "malformed"
+    shutil.copytree(SLICE, snapshot)
+    path = snapshot / "release.json"
+    record = json.loads(path.read_bytes())
+    count = malform(record["parts_total"]["study"])
+    record["parts_read"]["study"] = count
+    path.write_text(json.dumps(record))
+    with pytest.raises(OpenTargetsError) as refused:
+        enrich_opentargets(module, snapshot=snapshot, mode=mode)
+    assert str(refused.value) == f'parts_read["study"] is {json.dumps(count)}, not a whole number'
 
 
 def test_a_rerun_is_a_fixed_point(module: Path) -> None:
@@ -1235,6 +1273,19 @@ def test_reads_names_every_owned_table_and_every_dataset() -> None:
 
     assert set(READS) == {name for name, _model, _layer in OWNED_TABLES} | {"gwas_effects.csv"}
     assert set().union(*READS.values()) == set(OPENTARGETS_DATASETS) == set(_FEEDS)
+
+
+def test_read_completeness_uses_only_the_requested_datasets() -> None:
+    record = read_release(SLICE)
+    read = dict(record.parts_read)
+    del read["study"]
+    read["variant"] -= 1
+    release = record.model_copy(update={"parts_read": read})
+    assert dataset_complete(release, "credible_set") is True
+    assert dataset_complete(release, "study") is None
+    assert dataset_complete(release, "unrecorded") is None
+    assert read_is_complete(release, frozenset({"study", "credible_set"})) is None
+    assert read_is_complete(release, frozenset({"study", "variant"})) is False
 
 
 @pytest.mark.parametrize("record", ["partial", "unstated"])

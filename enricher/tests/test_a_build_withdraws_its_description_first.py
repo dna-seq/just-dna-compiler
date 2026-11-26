@@ -50,11 +50,13 @@ from just_dna_enricher import (
     pubmind_build,
     strchive_build,
 )
+from just_dna_enricher.cli.opentargets_commands import opentargets_app
 from just_dna_enricher.clinvar_gkm import ALLELE_FILE, VARIATION_FILE, GkmManifest, parse_manifest
 from just_dna_enricher.cpic import CpicClient
 from just_dna_enricher.pharmvar import PharmVarClient
 from just_dna_format import snapshot
 from just_dna_format.snapshot import RELEASE_FILENAME, SnapshotRelease, write_release
+from typer.testing import CliRunner
 
 _ROOT = Path(__file__).resolve().parents[2]
 _ASSETS = _ROOT / "assets"
@@ -153,6 +155,30 @@ def _opentargets_mirror(source: Path) -> Path:
         (source / dataset).mkdir(parents=True)
         frame.write_parquet(source / dataset / "part-00000.parquet")
     return source
+
+
+def test_opentargets_build_reports_short_reads_and_refuses_bad_counts_before_install(tmp_path: Path) -> None:
+    mirror = _opentargets_mirror(tmp_path / "source")
+    out = tmp_path / "out"
+    count = len(list((mirror / "variant").glob("part-*.parquet")))
+    totals = mirror / "parts_total.json"
+    totals.write_text(json.dumps({"variant": count + 1}))
+    args = ["build", "--source", str(mirror), "--out", str(out)]
+    result = CliRunner().invoke(opentargets_app, args)
+    assert result.exit_code == 0, result.output
+    assert f"partial: variant {count} of {count + 1} parts" in result.output
+
+    previous = (out / RELEASE_FILENAME).read_bytes()
+    payload = _visible(out)
+    totals.write_text(json.dumps({"variant": str(count)}))
+    refused = CliRunner().invoke(opentargets_app, args)
+    assert refused.exit_code == 1
+    assert (
+        f'OPEN TARGETS BUILD FAILED: parts_total["variant"] is "{count}", not a whole number'
+        in refused.output
+    )
+    assert (out / RELEASE_FILENAME).read_bytes() == previous
+    assert _visible(out) == payload
 
 
 _GKM = _ASSETS / "clinvar_gkm_slice"

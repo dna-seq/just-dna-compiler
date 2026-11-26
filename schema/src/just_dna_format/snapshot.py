@@ -292,7 +292,12 @@ def _decode(data: bytes | str) -> dict[str, Any]:
     return payload
 
 
-def parse_release(data: bytes | str, *, source: str = RELEASE_FILENAME) -> SnapshotRelease | None:
+def parse_release(
+    data: bytes | str,
+    *,
+    source: str = RELEASE_FILENAME,
+    short_reads: dict[str, tuple[int, int]] | None = None,
+) -> SnapshotRelease | None:
     """`release.json`'s content, as bytes or text, read into a `SnapshotRelease` (0.9, RM430).
 
     The one reading of the record's content: `read_release` hands it the file's bytes, and a reader
@@ -305,7 +310,9 @@ def parse_release(data: bytes | str, *, source: str = RELEASE_FILENAME) -> Snaps
     `None` with a warning: an unreadable record is an unstated release, never a label. A typed key
     holding the wrong kind of value costs that key, never the record: it is read as unstated and the
     warning names it, and every other key, the label included, is still read. The strict reading that
-    keeps the reason, for `release_is_unreadable`, is private.
+    keeps the reason, for `release_is_unreadable`, is private. Pass an empty `short_reads` dictionary
+    to check part counts as written with `is_whole_build` and collect each short dataset. Malformed
+    or contradictory counts then raise `ValueError` before the typed read.
     """
     try:
         payload = _decode(data)
@@ -313,6 +320,8 @@ def parse_release(data: bytes | str, *, source: str = RELEASE_FILENAME) -> Snaps
         error = exc.errors()[0]
         problem = "not a JSON object" if error["type"] == "dict_type" else error["ctx"]["error"]
         return _release_from_object(None, source=source, problem=problem)
+    if short_reads is not None:
+        is_whole_build(payload, short_reads=short_reads)
     return _release_from_object(payload, source=source)
 
 
@@ -342,14 +351,17 @@ def _parse_release_strict(data: bytes | str) -> SnapshotRelease:
     return SnapshotRelease.model_validate(_decode(data))
 
 
-def read_release(reference: Path) -> SnapshotRelease | None:
+def read_release(
+    reference: Path, *, short_reads: dict[str, tuple[int, int]] | None = None
+) -> SnapshotRelease | None:
     """A snapshot directory's `release.json` as a `SnapshotRelease`, or `None` when absent or unreadable.
 
     `None` is the answer for both, as it was when this returned a dict: a caller must not be able to
     mistake "this snapshot does not say" for a release, so callers branch on `None`. Unreadable is a
     file that does not parse, or one that is not a JSON object. The bytes are read by `parse_release`
     with the path as their source, so a remote reader of the same bytes gets the same answer; this
-    function adds the file and its absence.
+    function adds the file and its absence. Passing `short_reads` checks and collects part counts
+    before coercion, with the same refusals as `parse_release`.
 
     **A typed key holding the wrong kind of value costs that key, never the record.** It is read as
     unstated and the warning names it; every other key, the label included, is still read. The
@@ -364,7 +376,7 @@ def read_release(reference: Path) -> SnapshotRelease | None:
     except OSError as exc:
         logger.warning("Could not read %s (%s); treating the release as unstated.", path, exc)
         return None
-    return parse_release(data, source=str(path))
+    return parse_release(data, source=str(path), short_reads=short_reads)
 
 
 def release_is_unreadable(reference: Path) -> bool:

@@ -48,7 +48,7 @@ from pathlib import Path
 
 from just_dna_format.layout import atomic_write_text
 from just_dna_format.normalize import now_utc_iso
-from just_dna_format.snapshot import SnapshotRelease, begin_snapshot_write, read_release
+from just_dna_format.snapshot import SnapshotRelease, begin_snapshot_write, is_whole_build, read_release
 
 from just_dna_enricher.net import EndpointRetired, stream_to_file
 
@@ -110,13 +110,14 @@ class OpenTargetsRetired(OpenTargetsUnavailable, EndpointRetired):
 
 @dataclass
 class OpenTargetsBuildResult:
-    """What a build wrote, counted per table."""
+    """What a build wrote, counted per table. `partial` holds (read, total) for short datasets in build order."""
 
     out_dir: Path
     release: str
     row_counts: dict[str, int] = field(default_factory=dict)
     parts_read: dict[str, int] = field(default_factory=dict)
     parts_total: dict[str, int] = field(default_factory=dict)
+    partial: dict[str, tuple[int, int]] = field(default_factory=dict)
 
 
 def _builder_version() -> str:
@@ -474,6 +475,11 @@ def build_snapshot(
     totals_path = source / "parts_total.json"
     totals = json.loads(totals_path.read_text(encoding="utf-8")) if totals_path.exists() else {}
     read = {dataset: len(_parts(source, dataset)) for dataset in OPENTARGETS_DATASETS}
+    short_reads: dict[str, tuple[int, int]] = {}
+    try:
+        is_whole_build({"parts_read": read, "parts_total": totals}, short_reads=short_reads)
+    except ValueError as exc:
+        raise OpenTargetsBuildError(str(exc)) from exc
     markers = _croissant_markers(source)
     digest = _source_digest(source)
     live = out_dir / "data"
@@ -500,7 +506,12 @@ def build_snapshot(
     )
     logger.info("Built Open Targets %s snapshot at %s: %s", release, out_dir, counts)
     return OpenTargetsBuildResult(
-        out_dir=out_dir, release=release, row_counts=counts, parts_read=read, parts_total=totals
+        out_dir=out_dir,
+        release=release,
+        row_counts=counts,
+        parts_read=read,
+        parts_total=totals,
+        partial={name: short_reads[name] for name in read if name in short_reads},
     )
 
 
