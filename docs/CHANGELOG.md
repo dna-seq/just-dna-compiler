@@ -383,6 +383,11 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   manifest before any core or group byte moves; when the pull keeps the core (a local build, a cache served
   through an outage), against the cache's own. A release transition that drops or relicenses a group now refuses
   before the core is refreshed, never after. The private hub-manifest read beside the pull is gone.
+- **`lookup_variant` asks remote ClinVar twice at most, not three times** (RM462, the rescope). The position
+  reply (the question's position and the rsID's placements, read together) also answers the clinical calls at
+  the resolved alleles, so a question with an rsID and a position makes one rsID read and one position read,
+  over the proxy or Hugging Face alike. One request is not possible: the registry's proxy matches every column
+  it is given, and a single Hugging Face read of both questions would lose the keyed row-group pruning.
 
 ## 2026-11-19 — `v0.8.10`: format, compiler and enricher 0.8.10 (a patch, cut from `main`)
 

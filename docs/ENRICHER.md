@@ -2580,7 +2580,12 @@ with RemoteSnapshots(declared_use="non_commercial") as snapshots:      # proxy f
 - **`lookup.lookup_variant` with a holder.** A lane with no local snapshot is asked through the holder
   where the local snapshot would have been, before live Ensembl REST, and never under `offline=True`:
   Ensembl by the question's position only (an rsID-only question skips it with an `info` finding saying
-  so), ClinVar by rsID and by position, and ClinVar again for the clinical calls at the resolved alleles.
+  so). ClinVar is asked twice at most (RM462): once by rsID, then once by position, and the clinical calls at
+  the resolved alleles read that position reply. With a position in the question, that read covers it and the
+  rsID's placements together, and its failure fails the link; for an rsID-only question it is the clinical
+  calls' own read, and its failure is a `clin_sig` finding. They stay two questions because the registry's proxy matches every column it is
+  given, and a single Hugging Face read of both would lose the keyed row-group pruning. A position first learned
+  from live Ensembl after a snapshot miss is asked for its calls then.
   **The remote Ensembl link never places the rsID** (RM431, ask 4; review round 2, G, by decision): a read
   bounded to one position cannot say every locus a multi-place rsID has, so even when Ensembl's rows there name
   the rsID it gives no locus, only the rsID candidates at that position, and ClinVar, asked next by rsID, places
