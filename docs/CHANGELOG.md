@@ -372,6 +372,11 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   refuses a URL in `locations`, also one a `Path` already collapsed (`hf:/…`), with `ValueError` naming the
   `RemoteSnapshots` holder: status stays a question about the local disk. The pinned-text walk over every module
   is not built: it needs a registry of the texts already emitted (387 in 64 modules), placed in 0.10.
+- **`sequences.held_by_one_run(proxy)`, the per-run view of a `SequenceProxy`, is public** (RM463, the rescope). A
+  run calls it once and hands the view to every reader, so a failed build or read is asked once per run while
+  answers stay shared; wrapping a view again returns it. The six readers that imported the private name use it,
+  the window and anchor helpers take the view's bound read, and the private name is gone. An AST walk over the
+  installed package refuses a reader that selects a proxy's `subsequence` or `proxy` before taking the view.
 
 ## 2026-11-19 — `v0.8.10`: format, compiler and enricher 0.8.10 (a patch, cut from `main`)
 

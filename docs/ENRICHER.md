@@ -3309,7 +3309,8 @@ with indel minting so a run builds one proxy in total (or none, when the caller 
 0.9 its lazy build and its memo are under a lock, so parallel runs may share one proxy; the remote read
 is outside the lock, so a thread waits on another only for the dictionary. **The proxy memoizes answers
 only** (0.9, RM404): a failed build, a read that raised and a read that came back empty are held by the run
-that saw them, through a private view of the proxy for that run, so the run asks a failed read once and a
+that saw them. Call `sequences.held_by_one_run(proxy)` once per run and pass the returned view to its readers.
+Passing that view to `held_by_one_run` again returns the same view. The run asks a failed read once and a
 failed build once (a REST seqrepo's data proxy is built without the
 network, so a service that is down is met once per distinct interval); the next run sharing the proxy asks again. Read
 directly, outside a run's view, the proxy asks again on every call. A failed build's warning says so: `Could

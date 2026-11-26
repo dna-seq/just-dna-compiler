@@ -143,9 +143,9 @@ from just_dna_enricher.sequences import (
     SequenceProxy,
     SpellingCheck,
     SpellingVerdict,
-    _held_by_one_run,
     _indel_payloads,
     _spelled,
+    held_by_one_run,
     normalize_locus,
     spelling_verdict,
     summarize_ref_mismatches,
@@ -444,14 +444,16 @@ def enrich(
         )
 
 
-def _grch38_window(sequences: SequenceProxy) -> Callable[[str, int, int], str | None]:
+def _grch38_window(
+    subsequence: Callable[[str, int, int], str | None],
+) -> Callable[[str, int, int], str | None]:
     """GRCh38 reference bases over 1-based `[start, end]`, or `None` (offline, unreachable, off-table)."""
 
     def read_window(chrom: str, start: int, end: int) -> str | None:
         accession = refget_accession(chrom)
         if accession is None or start < 1 or end < start:
             return None
-        return sequences.subsequence(accession, start - 1, end)
+        return subsequence(accession, start - 1, end)
 
     return read_window
 
@@ -865,8 +867,8 @@ def _run_enrichment(
         sequences = SequenceProxy(offline=offline)
     # Read through this run's view: the proxy's answers, and this run's failures, which a caller's proxy
     # shared by the next run never carries (RM404).
-    sequences = _held_by_one_run(sequences)
-    read_window = _grch38_window(sequences) if genome_build == "GRCh38" else None
+    sequences = held_by_one_run(sequences)
+    read_window = _grch38_window(sequences.subsequence) if genome_build == "GRCh38" else None
     # One minter for the run too: the placement comparison below and the stamping after the table
     # both mint, and sharing it shares the proxy's read cache.
     minter = VrsMinter(offline=offline, sequences=sequences)
@@ -1107,7 +1109,7 @@ def _run_enrichment(
             if resolver is not None:
                 client = resolver
             elif caller_sequences:
-                client = EnsemblResolver(_read_base=_grch38_base_reader(sequences))
+                client = EnsemblResolver(_read_base=_grch38_base_reader(sequences.subsequence))
             else:
                 client = EnsemblResolver()
             ensembl_link = client

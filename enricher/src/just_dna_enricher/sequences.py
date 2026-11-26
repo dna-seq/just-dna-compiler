@@ -82,7 +82,7 @@ class SequenceProxy:
     **It memoizes answers only.** A failed build, a read that raised and a read that came back empty
     are not stored: a proxy that outlives a run would otherwise carry one run's outage into every later
     one. The failure is held by the run that saw it, through a view of the proxy for that run
-    (`_held_by_one_run`): `enrich`, `verify_reference_alleles`, the minter and the drafters each read
+    (`held_by_one_run`): `enrich`, `verify_reference_alleles`, the minter and the drafters each read
     through one, so a run asks a failed read once and a failed build once, and the next run asks again.
     Read directly, outside any such view, this object asks again on every call. **The memo is bounded**
     at 262,144 reads (`_MEMO_SIZE`), the least recently used evicted first.
@@ -207,8 +207,11 @@ class _RunSequences(SequenceProxy):
         return None
 
 
-def _held_by_one_run(sequences: SequenceProxy) -> SequenceProxy:
-    """`sequences` seen by one run (`_RunSequences`), or itself when it already is such a view."""
+def held_by_one_run(sequences: SequenceProxy) -> SequenceProxy:
+    """Return a view that holds failed sequence reads for one run and shares successful reads.
+
+    Pass the same view to every reader in the run. Wrapping that view again returns it unchanged.
+    """
     return sequences if isinstance(sequences, _RunSequences) else _RunSequences(sequences)
 
 
@@ -639,7 +642,7 @@ def verify_reference_alleles(
     one row this tier has no sequence for and belongs outside `subjects` exactly as it is today, while
     an unbuilt *assembly* means the question cannot be put for any row in the module.
     """
-    sequences = _held_by_one_run(sequences or SequenceProxy(offline=offline))
+    sequences = held_by_one_run(sequences or SequenceProxy(offline=offline))
     builds = {row.genome_build for row in rows if row.genome_build}
     if builds and all(not refget_supports_build(build) for build in builds):
         logger.info(
@@ -669,7 +672,9 @@ def verify_reference_alleles(
             continue
         if accession is None:
             continue
-        actual, shift = _read_with_neighbours(sequences, accession, row.start, len(claimed), claimed)
+        actual, shift = _read_with_neighbours(
+            sequences.subsequence, accession, row.start, len(claimed), claimed
+        )
         if actual is None:
             unread += 1
             continue
@@ -695,7 +700,7 @@ def verify_reference_alleles(
 
 
 def _read_with_neighbours(
-    sequences: SequenceProxy, accession: str, start: int, width: int, claimed: str
+    subsequence: Callable[[str, int, int], str | None], accession: str, start: int, width: int, claimed: str
 ) -> tuple[str | None, int | None]:
     """The bases at `start`, plus which neighbouring offset (if any) carries `claimed` instead.
 
@@ -710,15 +715,15 @@ def _read_with_neighbours(
     left_edge = start - 2  # interbase index of the base one to the LEFT of the claimed span
     if left_edge < 0:
         # At the very start of a contig there is no left neighbour; ask the plain question.
-        actual = sequences.subsequence(accession, start - 1, start - 1 + width)
-        after = sequences.subsequence(accession, start, start + width)
+        actual = subsequence(accession, start - 1, start - 1 + width)
+        after = subsequence(accession, start, start + width)
         return actual, (1 if after == claimed and actual != claimed else None)
 
-    window = sequences.subsequence(accession, left_edge, start + width)
+    window = subsequence(accession, left_edge, start + width)
     if window is None or len(window) < width + 2:
         # A short window means a contig edge on the right; fall back to the unadorned comparison
         # rather than slicing a string that does not hold what the offsets assume.
-        return sequences.subsequence(accession, start - 1, start - 1 + width), None
+        return subsequence(accession, start - 1, start - 1 + width), None
 
     actual = window[1 : 1 + width]
     before, after = window[0:width], window[2 : 2 + width]

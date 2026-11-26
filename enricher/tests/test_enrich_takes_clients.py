@@ -20,7 +20,7 @@ import logging
 import re
 import shutil
 import threading
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from pathlib import Path
 
 import httpx
@@ -35,7 +35,7 @@ from just_dna_enricher.net import PacingGate
 from just_dna_enricher.sequences import (
     _MEMO_SIZE,
     SequenceProxy,
-    _held_by_one_run,
+    held_by_one_run,
     verify_reference_alleles,
 )
 from just_dna_format.resolution import ResolutionRow
@@ -494,10 +494,11 @@ def test_a_run_asks_a_subclass_proxy_again_after_it_answered_none() -> None:
             return None if self.calls == 1 else self
 
     flaky = _Flaky()
-    view = _held_by_one_run(flaky)
+    view = held_by_one_run(flaky)
+    assert held_by_one_run(view) is view
     assert view.proxy() is None
     assert view.proxy() is flaky
-    assert view != _held_by_one_run(flaky), "two views are two runs, never equal by inherited fields"
+    assert view != held_by_one_run(flaky), "two views are two runs, never equal by inherited fields"
 
 
 def test_the_memo_is_bounded_and_evicts_the_least_recently_used(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -530,10 +531,10 @@ def test_threads_sharing_one_resolver_build_its_base_reader_once(monkeypatch: py
     was still building found no reader and built its own, each with a proxy of its own.
     """
     entered, release = threading.Event(), threading.Event()
-    built: list[SequenceProxy] = []
+    built: list[Callable[[str, int, int], str | None]] = []
 
-    def slow_reader(sequences: SequenceProxy):
-        built.append(sequences)
+    def slow_reader(subsequence: Callable[[str, int, int], str | None]):
+        built.append(subsequence)
         entered.set()
         release.wait(5)
         return lambda _chrom, _pos: "A"
