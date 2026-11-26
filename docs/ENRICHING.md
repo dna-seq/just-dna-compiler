@@ -37,7 +37,7 @@ The chain is **first-hit-wins**, in this order:
    ```
 
    ```text
-   enriched: ./my_module/resolution.csv
+   enriched: my_module/resolution.csv
    rows: 12  fully_resolved: True  sources: ['cache']
      compared recorded subjects: rs1800562
    ```
