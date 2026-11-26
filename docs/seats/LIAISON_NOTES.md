@@ -121,7 +121,12 @@ embassy (this seat made keys 2026-11-19, holds no contact key). Route every answ
 main waits for them. Registry and module-creator reported; just-dna-lite and longevity-loci had not by 2026-11-26.
 **Rescope step 4 done 2026-11-26** (0.9 at 9ebdba16): the two reporters told what was added, not asked again (agent-chat
 643877310); just-dna-lite's note in their tree updated to 9ebdba16 with the additions; longevity-loci's relay asked of
-desk-winternewt/secretary (643877298). **0.8.10:** on PyPI 2026-11-26; the lead told the registry. **ClinVar-GKM:** line
+desk-winternewt/secretary (643877298). longevity-loci took the trial (its liaison, "when the weekly quota allows").
+**0.9.0 published 2026-11-26 21:11Z** (tag v0.9.0 on 93160691, with RM470 and a `compat` extra, polars[rtcompat], for a
+CPU without AVX2 only: polars prefers compat whenever installed). Told the same evening: registry and module-creator
+(agent-chat 643983509), longevity-loci through the secretary (643983529; it caps us `<0.9`), just-dna-lite's note
+updated. The no-AVX2 check: qemu-user 10.0 unpacked in the scratchpad, `-cpu IvyBridge` (control: AVX2/BMI2/FMA
+SIGILL); every native lib imports there with compat; the whole suite was run there in four shards (result below). **0.8.10:** on PyPI 2026-11-26; the lead told the registry. **ClinVar-GKM:** line
 v1/1.1 frozen, v1/1.2 current, `allele.parquet`'s `data` JSON gone (ledger UPSTREAM_DATA_SOURCES, RM470, the lead's).
 **S159 (just-dna-lite, no seat there):** triage's answer relayed 2026-11-19 as an uncommitted note in their repo,
 `docs/UPSTREAM_ANSWER_S159_from_just-dna-compiler.md`.
