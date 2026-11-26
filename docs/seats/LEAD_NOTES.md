@@ -41,19 +41,22 @@ The lead's working state, rewritten to the present before each reset. Last rewri
 
 - mitomap behind source (liaison 643088167, 2026-11-24): the dump moved 2026-11-18 (mmutation edited 2026-11-17, 603 rows, +6 citation links). Built as mitomap_2026-11-17+2026-11-03 into `data/caches/rebuild-2026-11-24/mitomap`, upload rehearsed (5 files). `blocked: the person` (the classifier refuses a seat's publish, kit #529): `uv run just-dna-enricher mitomap publish data/caches/rebuild-2026-11-24/mitomap`. After it: `cache pull --only mitomap`, then `mitomap miss` (mitomap_miss follows its parents).
 - **0.9 rescope (the pm on the maintainer's word, 2026-11-26; ROADMAP_0_9.md "The rescope", e60bfbd6).** Steps 1-2
-  done (all nine built by Codex, checked and merged; 0.9 at 9ebdba16). **Step 5, the cut redone, in progress:** branch
-  `cut/v0.9.0-2` in `.worktrees/cut-090-2` (locked), off origin/0.9 with origin/main merged in. Carried 626a46f3,
-  a438d73e, a6dcf4b5 (roadmap close redone: the nine rescoped items to ROADMAP_HISTORY, RM468 into ROADMAP_0_10, RM469
-  filed for RM461's residual), e057186b; INTEGRATION_0_9, CHANGELOG cut heading, release record re-measured (sweep
-  --release 0.9.0 green, 22/22 unmoved), link fixes, ENRICHING's scoped re-derive. **RM469 was claimed by item-next
-  into the primary checkout's docs/RM_TOC.md** (uncommitted, beside the old RM458-466 rows): never stage them; run
-  `item-next.py --release RM458 … RM469` once the cut is on main. Gates running: full suite, real enrich+compile over
-  all 22 reference modules for 0.8.10 and 0.9.0 (harness `.worktrees/cut-090-2/data/interim/gate-090/`, compare with
-  its `tools/compare.py`). Next: network gates (`JUST_DNA_NETWORK_TESTS=1 nice -n 19 uv run pytest -m network`), the
-  dists (`bash scripts/build-dists.sh`, into the primary `dist/` after wiping 0.8.10's, twine check), push the cut
-  branch, desk question for the publish. After it: RELEASE_CYCLE step 10, merge into 0.9 then main after the
-  consumers' trial (desk #370), LEAD.md/PM.md point at ROADMAP_0_10 (change-priming). `cut/v0.9.0` and
-  `.worktrees/cut-090` are superseded (unlock cut-090 once the new cut is pushed).
+  done. **Step 5, the cut redone: built, gated, dists ready; `blocked: desk #461` (the publish, the person's).**
+  Branch `cut/v0.9.0-2` at 284192b4, pushed, in `.worktrees/cut-090-2` (locked): origin/0.9 + origin/main merged +
+  the first cut's four commits carried (roadmap close redone: the nine rescoped items in ROADMAP_HISTORY, RM468 into
+  ROADMAP_0_10, RM469 filed for RM461's residual) + INTEGRATION_0_9/CHANGELOG/record for the rescope. Gates: full
+  suite 8338 passed (the one red was the links fixed mid-run, re-run green); sweep --release 0.9.0 green, 22/22
+  unmoved; real runs 22 modules x {asis, fresh} x {0.8.10, 0.9.0} enrich+compile, 176 rc=0, outputs equal but clocks
+  and producer, content_signature 44/44, the 13 digest moves reproduce from the inputs (harness
+  `.worktrees/cut-090-2/data/interim/gate-090/`); network 45 passed, 1 red: ClinVar-GKM retired `v1/1.1` today (1.2
+  live, 0.8.10 red too), sent to the liaison (643876032), desk #461 asks publish now (default rec.) or fold the fix
+  in. Dists: `dist/` holds the six 0.9.0 files (0.8.10's wiped), twine PASSED. If the liaison's fix is small and
+  lands before the publish: fold it into the cut, rebuild dists, post an Update on #461. **RM469 was claimed into the
+  primary checkout's docs/RM_TOC.md** (uncommitted, beside the old RM458-466 rows): never stage them; run
+  `item-next.py --release` for RM458-RM469 once the cut is on main. After the publish: RELEASE_CYCLE step 10 (tag
+  `v0.9.0` on the cut commit, GitHub release, README/CLAUDE.md say 0.9.0 is current), merge the cut into 0.9 and,
+  after the consumers' trial (desk #370), 0.9 into main; LEAD.md/PM.md point at ROADMAP_0_10 (change-priming).
+  `.worktrees/cut-090` (cut/v0.9.0) is superseded and unlocked; its branch needs the person's `-D` (cherry-picked).
 - 0.8.10 published 2026-11-26 (PyPI 11:11Z, all three; desk #415): tag `v0.8.10` on 65cfa25b, GitHub release,
   README.md:94 and CLAUDE.md:84 name 0.8.10, done-line to releases, the registry told. The 0.9 merge is now unblocked
   by the tag; it still waits on the two trials or the person's "skip" (desk #370). Branches cut/v0.8.9, land/v0.8.9,
