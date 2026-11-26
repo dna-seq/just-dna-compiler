@@ -86,7 +86,13 @@ upgrade note is [INTEGRATION_0_9.md](INTEGRATION_0_9.md). Publishing to PyPI is 
 - **The trial rules** (an emerging item goes to the next minor unless a blocker; at most two review rounds) ran for
   0.9 as set on desk #327 and #328. Two review rounds ran, neither found a blocker, and the maintainer made the
   two-round cap the rule for every minor; the first rule is not carried on, and the rescope took its nine back. The
-  gate for the redone cut was real enrich and compile runs over the reference modules, not a third review round.
+  gate for the redone cut was real runs, not a third review round: every one of the 22 reference modules enriched
+  online with warm caches, as shipped and with `resolution.csv` removed, by 0.8.10 and by 0.9.0, then compiled by
+  each (176 runs, all exit 0). The enriched trees are equal file for file except the clock fields and
+  `verification.json`'s `producer`; `content_signature` is equal in all 44 pairs, and the 13 `artifact.digest` moves
+  vanish when 0.9.0 compiles 0.8.10's enriched tree (enrich timestamps carried into parquet cells). The network
+  tests ran 45 green and one red, the live ClinVar-GKM manifest check: upstream retired its `v1/1.1` path on
+  2026-11-26, which 0.8.10 fails alike (handed to the liaison).
 
 What 0.9 built, item by item, as it landed on the branch:
 
