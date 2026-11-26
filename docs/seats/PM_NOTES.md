@@ -256,6 +256,7 @@ patches right after real use started, so the pm reads an audit sceptically: the 
 - **Republishing encumbered corpora** (SNPedia, CC BY-NC-SA) is a use case the maintainer envisions; the
   NC and SA terms are recorded as data, never treated as a refusal.
 - Filed 2026-11-27 as kit #677: `ask.py --epic` has no kind for a minor's scope interview (0.10's went as `dream`, #466).
-- **0.10, unattended, waits on quota only** (Claude's 7-day window at 95% on 2026-11-27): RM385's trial (a GRCh38 FASTA
-  against a local sequence store, real indels; the URI is the recorded preference), delegated to Codex where it can run;
-  PM.md's scope pointer to `docs/ROADMAP_0_10.md` once the 0.9 merge lands on `main`.
+- **0.10, unattended:** RM385's trial runs on Codex from 2026-11-27 (the local GRCh38 FASTA at
+  `/data/just-dna-cache/reference/grch38/`, real indels from the reference modules; no seqrepo on this machine, so that
+  half is not measured; report in the scratchpad, then into RM385's entry). PM.md's scope pointer moves to
+  `docs/ROADMAP_0_10.md` once the 0.9 merge lands on `main`.
