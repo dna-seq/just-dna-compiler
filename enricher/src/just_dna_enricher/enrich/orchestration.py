@@ -25,7 +25,8 @@ from just_dna_format.alleles import (
     split_genotype,
     strand_flip_explains,
 )
-from just_dna_format.base import merge_key
+from just_dna_format.base import derive_variant_key, merge_key
+from just_dna_format.concordance import ClinSigAuthorityCallRow, ClinSigConcordanceRow
 from just_dna_format.normalize import now_utc_iso
 from just_dna_format.resolution import ResolutionRow, source_loci_cell
 from just_dna_format.snapshot import release_label as snapshot_release_label
@@ -50,7 +51,10 @@ from just_dna_enricher.clinical import (
 )
 from just_dna_enricher.clinvar_gkm import CLINVAR_GKM_SOURCE
 from just_dna_enricher.concordance import (
+    AUTHORITY_CALLS_CSV,
+    CONCORDANCE_CSV,
     AnsweredCallReport,
+    _replace_checked_subjects,
     answered_call_notes,
     answered_call_sentences,
     write_concordance_tables,
@@ -267,6 +271,8 @@ def enrich(
     verify_datasets: bool = True,
     keep_par_twin: bool = False,
     rederive: bool = False,
+    rederive_subjects: Iterable[str] | None = None,
+    verify_written_only: bool = False,
     keep_staging: bool = False,
     progress: Callable[[int, int], None] | None = None,
     resolver: RsidResolver | None = None,
@@ -363,6 +369,13 @@ def enrich(
     rows — re-deriving must never be a way to shorten the table, which is the very incident this
     transaction exists for.
 
+    `rederive_subjects` limits re-derivation to the named `variant_key` values. A supplied list
+    selects its subjects even without `rederive=True`; all loci of a subject are replaced together.
+    Other recorded rows are carried verbatim. A missing, unselected subject stays unresolved.
+
+    `verify_written_only` limits row checks to fresh resolution rows, including gap fills. A strict
+    run can therefore skip a mismatch on a carried row. Dataset currency still checks module releases.
+
     `progress` is called `(done, total)` over **subjects**, `total` known before the first call. It
     exists for a caller with an idle timeout: what such a caller needs is a keepalive with monotonic
     progress, which a phase counter cannot give (a twenty-nine-minute phase emits nothing) and a link
@@ -408,6 +421,8 @@ def enrich(
     if offline and sequences is not None:
         logger.warning(OFFLINE_OUTRANKS_SEQUENCES)
         sequences = None
+    if isinstance(rederive_subjects, str):
+        rederive_subjects = (rederive_subjects,)
     # The lock spans the whole window — from the read of the recorded table to the commit — so it is
     # taken here and not inside the run. A `write=False` caller touches no file and takes none.
     with spec_lock(spec_dir, enabled=write, error=EnrichmentError):
@@ -432,7 +447,9 @@ def enrich(
             verify_rsids=verify_rsids,
             verify_datasets=verify_datasets,
             keep_par_twin=keep_par_twin,
-            rederive=rederive,
+            rederive=rederive or rederive_subjects is not None,
+            rederive_subjects=frozenset(rederive_subjects) if rederive_subjects is not None else None,
+            verify_written_only=verify_written_only,
             keep_staging=keep_staging,
             progress=progress,
             resolver=resolver,
@@ -571,12 +588,6 @@ def _spelling_of(locus: Mapping[str, object], read_window: ReadWindow | None) ->
     )
 
 
-def _authored_verdict(judged: Mapping[str, SpellingVerdict], v: Subject) -> bool | None:
-    """`left_aligned` for a row recorded with the subject's own coordinate, judged once per subject."""
-    verdict = judged.get(v.variant_key)
-    return None if verdict is None else verdict.verdict
-
-
 def _wider_answer(
     offered: Iterable[Mapping[str, object]], placed: Iterable[Mapping[str, object]], genome_build: str
 ) -> str | None:
@@ -673,6 +684,8 @@ def _run_enrichment(
     verify_datasets: bool,
     keep_par_twin: bool,
     rederive: bool,
+    rederive_subjects: frozenset[str] | None,
+    verify_written_only: bool,
     keep_staging: bool,
     progress: Callable[[int, int], None] | None,
     resolver: RsidResolver | None,
@@ -724,11 +737,12 @@ def _run_enrichment(
     if write:
         # Fail on a placeholder or half-edited licence table now, before the fetch (S98, RM231).
         require_sources_file(spec_dir, error=EnrichmentError)
+    recorded_rows: list[ResolutionRow] = []
     if resolution_path.exists():
-        rows, errors, _ = load_csv_rows(resolution_path, ResolutionRow, resolution_path.name)
+        recorded_rows, errors, _ = load_csv_rows(resolution_path, ResolutionRow, resolution_path.name)
         if errors:
             raise EnrichmentError(f"existing {resolution_path.name} is invalid: {errors[0]}")
-        for row in rows:
+        for row in recorded_rows:
             # Keyed by the row's declared *subject* — `ResolutionRow._KEY_FIELDS`, whose rule is
             # `subject` rather than `equality` because one rsID legitimately resolves to several loci
             # and this pass replaces the group whole (S51).
@@ -764,6 +778,17 @@ def _run_enrichment(
 
     # Every table that can ask for a coordinate, not just variants.csv (a PGx module has none).
     subjects = collect_subjects(spec_dir, variants, genome_build)
+    if rederive_subjects is not None:
+        # An unselected gap has no row to carry. Keeping it in the covered partition prevents
+        # a fetch, and the assembly loop reports it unresolved just like an empty placement.
+        covered = {
+            _subject_key(v): existing.get(_subject_key(v), [])
+            for v in subjects
+            if v.variant_key not in rederive_subjects
+        }
+    check_subjects = (
+        [v for v in subjects if _subject_key(v) not in covered] if verify_written_only else subjects
+    )
     # The progress unit. Constructed here because this is the first moment `total` is knowable, and it
     # reports `(0, total)` immediately so a caller rendering a bar has the denominator before any work
     # starts. Subjects that share an rsID settle together, which is why the map is built once.
@@ -789,7 +814,7 @@ def _run_enrichment(
     # so skipping the pairs it covers would compare the module against itself.
     verify_pairs = [
         (v.rsid, v.chrom, v.start, v.ref)
-        for v in subjects
+        for v in check_subjects
         if v.rsid is not None and v.chrom is not None and v.start is not None
     ]
 
@@ -1064,6 +1089,8 @@ def _run_enrichment(
     # A seeded answer's release was never written down by the run that asked, so it is recorded as
     # unknown rather than as this run's (RM373): `staged_rsids`, defined with the fall-through above.
     for rsid, (staged_source, staged_loci) in staged.items():
+        if rederive_subjects is not None and rsid not in asks_on:
+            continue
         if not (gnomad_runs if staged_source == "gnomad" else live_ensembl_runs):
             dropped_link.append(staged_source)
             continue
@@ -1302,17 +1329,20 @@ def _run_enrichment(
     # the same verdict is stamped on the row the assembly below writes for it.
     spelling = SpellingCheck()
     authored_spelling: dict[str, SpellingVerdict] = {}
-    for v in subjects:
-        if (
-            v.chrom is None
-            or v.start is None
-            or not v.ref
-            or not v.alts
-            or v.variant_key in authored_spelling
-        ):
-            continue
-        authored_spelling[v.variant_key] = spelling_verdict(v.chrom, v.start, v.ref, v.alts, read_window)
-        spelling.judge(v.variant_key, v.chrom, v.start, v.ref, v.alts, authored_spelling[v.variant_key])
+
+    def authored_alignment(v: Subject) -> bool | None:
+        """Judge an authored coordinate once, when its row is in scope."""
+        if v.chrom is None or v.start is None or not v.ref or not v.alts:
+            return None
+        if v.variant_key not in authored_spelling:
+            verdict = spelling_verdict(v.chrom, v.start, v.ref, v.alts, read_window)
+            authored_spelling[v.variant_key] = verdict
+            spelling.judge(v.variant_key, v.chrom, v.start, v.ref, v.alts, verdict)
+        return authored_spelling[v.variant_key].verdict
+
+    if not verify_written_only:
+        for v in subjects:
+            authored_alignment(v)
 
     # ── assemble the table (a row for every subject; expansion → N rows) ───────────────────────
     # **Was any rsID link consulted at all?** (RM98.) Every one of them is gated: the two caches on
@@ -1555,6 +1585,9 @@ def _run_enrichment(
                     (v.rsid, str(t.get("chrom")), int(t.get("start") or 0)) for t in twins
                 )
             if loci:
+                if v.chrom is not None and verify_written_only:
+                    # This pair gets its reference placement, but its authored spelling is checked too.
+                    authored_alignment(v)
                 src = source_of_rsid.get(v.rsid, "cache")
                 # **A coordinate this run fills is written left-aligned (RM270)** — the spelling a
                 # caller's `bcftools norm -m -any` writes, so an exact join meets it. Only for an
@@ -1624,7 +1657,7 @@ def _run_enrichment(
                         genome_build=genome_build,
                         source="authored",
                         status="resolved",
-                        left_aligned=_authored_verdict(authored_spelling, v),
+                        left_aligned=authored_alignment(v),
                         source_loci=_wider_answer(
                             offered, [{"chrom": v.chrom, "start": v.start}], genome_build
                         ),
@@ -1748,7 +1781,7 @@ def _run_enrichment(
                     source_release=releases.of(src),
                     status=status,
                     rsid_alternates=alternates,
-                    left_aligned=_authored_verdict(authored_spelling, v),
+                    left_aligned=authored_alignment(v),
                 )
             )
         else:
@@ -1767,13 +1800,10 @@ def _run_enrichment(
                     genome_build=genome_build,
                     source="authored",
                     status="resolved",
-                    left_aligned=_authored_verdict(authored_spelling, v),
+                    left_aligned=authored_alignment(v),
                 )
             )
 
-    # The subject keys the carry-forward below puts back, so the report can leave them out of its own
-    # denominator: they are in `out` by then, and a subject nothing asked must not be counted as one
-    # that was re-asked.
     if dropped_rsids:
         # Aggregated by reason, once per run, the phrase pinned by its test (`@warning-text-is-api`).
         logger.warning(
@@ -1783,7 +1813,6 @@ def _run_enrichment(
             ", ".join(str(k) for k in dropped_rsids[:5]),
         )
 
-    carried_keys: set[tuple] = set()
     if rederive:
         # **Re-deriving must never be a way to shorten the table.** A recorded subject the sources
         # could not be asked about this run produces no fresh row at all — the three branches above
@@ -1814,7 +1843,6 @@ def _run_enrichment(
                 continue
             out.extend(recorded)
             carried_rows.update(id(row) for row in recorded)
-            carried_keys.add(subject_key)
             # A subject no branch declared a reason for is said without claiming one (RM394).
             carried[recorded[0].variant_key] = no_row_reason.get(subject_key, "not_re_answered")
             if any(r.chrom is not None for r in recorded):
@@ -1887,9 +1915,18 @@ def _run_enrichment(
     # Content-addressed allele identity, stamped after the chain has settled the coordinates (there is
     # nothing to mint from before that). Existing ids are never overwritten. `sequences` is the run's
     # one proxy, built above the table so the hosting filter shares its cache.
+    fresh_rows = (
+        [row for row in out if id(row) not in carried_rows] if (rederive or verify_written_only) else out
+    )
+    writable_rows = fresh_rows if rederive_subjects is not None else out
+    check_rows = fresh_rows if verify_written_only else out
+    checked_keys = {r.variant_key for r in check_rows} if verify_written_only else None
+    check_variants = (
+        [v for v in variants if v.variant_key in checked_keys] if checked_keys is not None else variants
+    )
     mint_result: MintResult | None = None
     if mint_vrs:
-        mint_result = mint_resolution_rows(out, minter=minter)
+        mint_result = mint_resolution_rows(writable_rows, minter=minter)
         logger.info(
             "VRS: minted %d id(s) (%d stdlib, %d normalized), %d unmintable, %d already present",
             mint_result.minted,
@@ -1908,11 +1945,12 @@ def _run_enrichment(
             logger.warning("VRS version — %s", line)
 
     # Validation pass: does the authored data agree with the genome? (Reported, never repaired.)
-    ref_check = (
-        verify_reference_alleles(out, sequences=sequences, offline=offline)
-        if verify_ref
-        else RefCheck([], 0, "not_requested")
-    )
+    if not verify_ref:
+        ref_check = RefCheck([], 0, "not_requested")
+    elif verify_written_only and not check_rows:
+        ref_check = RefCheck([], 0, "nothing_to_check")
+    else:
+        ref_check = verify_reference_alleles(check_rows, sequences=sequences, offline=offline)
     ref_mismatches = ref_check.mismatches
     for line in summarize_ref_mismatches(ref_mismatches):
         logger.warning("Reference-allele mismatch — %s", line)
@@ -1971,9 +2009,12 @@ def _run_enrichment(
     # Which closed `VALID_VERIFICATION_SKIPS` key the prose reason above maps onto. Recorded beside the
     # sentence rather than parsed back out of it, which is the whole point of RM45's vocabularies.
     clin_sig_skip: str | None = None
+    no_variant_checks = verify_written_only and not check_variants
     if not verify_clinsig:
         clin_sig_not_checked = "not_requested"
         clin_sig_skip = "not_requested"
+    elif no_variant_checks:
+        clin_sig_not_checked = clin_sig_skip = "nothing_to_check"
     elif clinvar_ref is None:
         clin_sig_not_checked = "no_snapshot"
         clin_sig_skip = "no_reference"
@@ -1989,7 +2030,7 @@ def _run_enrichment(
             clin_sig_skip = "tautology"
             logger.info("ClinVar clin_sig cross-check not run: %s.", drafted_from_it)
         else:
-            comparison = compare_clin_sig(variants, out, reference=clinvar_ref)
+            comparison = compare_clin_sig(check_variants, check_rows, reference=clinvar_ref)
             if comparison is None:
                 clin_sig_not_checked = "unusable_snapshot"
                 clin_sig_skip = "no_reference"
@@ -2011,8 +2052,12 @@ def _run_enrichment(
     refutation_subjects: int | None = None
     refutation_basis: str | None = None
     civic_ref = resolve_civic_reference(civic_cache)
-    refutation = compare_refutations(variants, out, reference=civic_ref)
-    if refutation is None:
+    refutation = (
+        None if no_variant_checks else compare_refutations(check_variants, check_rows, reference=civic_ref)
+    )
+    if no_variant_checks:
+        refutation_not_checked = refutation_skip = "nothing_to_check"
+    elif refutation is None:
         refutation_not_checked = "no_snapshot" if civic_ref is None else "unusable_snapshot"
         refutation_skip = "no_reference"
     else:
@@ -2024,8 +2069,13 @@ def _run_enrichment(
     # since*: a module can be drafted once and enriched for a year, and only the pass everybody runs
     # will notice. It is a live read, so `--offline` is a real skip; a module that never ran
     # `civic citations` has no recorded status and is `nothing_to_check`, which is not a pass.
+    studies = read_studies(spec_dir)
+    if studies is not None and checked_keys is not None:
+        # A study joins at rsID or position, even when its variant's allele has a VRS key.
+        study_keys = {derive_variant_key(v.rsid, v.chrom, v.start, v.ref) for v in check_variants}
+        studies = [study for study in studies if study.variant_key in study_keys]
     evidence_status = check_evidence_status_currency(
-        variants, out, read_studies(spec_dir), reference=civic_ref, offline=offline
+        check_variants, check_rows, studies, reference=civic_ref, offline=offline
     )
     for moved in evidence_status.findings:
         # Warned in both modes, escalated in neither, and the row is left exactly as authored: CIViC
@@ -2050,10 +2100,10 @@ def _run_enrichment(
     # refused `strict` run must leave the module exactly as it was, and a record written before the
     # gates would survive a refusal.
     clin_sig_record: ConcordanceRecord | None = None
-    if verify_clinsig:
+    if verify_clinsig and not no_variant_checks:
         clin_sig_record = clin_sig_concordance(
-            variants,
-            out,
+            check_variants,
+            check_rows,
             reference=clinvar_ref,
             pubmind_reference=pubmind_ref,
             sources=recorded_sources,
@@ -2090,9 +2140,11 @@ def _run_enrichment(
     #
     # Silent on every module with no overlay answers, which is every module today.
     answered_calls: AnsweredCallReport | None = None
-    if verify_clinsig:
+    if verify_clinsig and not no_variant_checks:
         answered_calls = answered_call_shift(
-            spec_dir, clin_sig_record.calls if clin_sig_record is not None else None
+            spec_dir,
+            clin_sig_record.calls if clin_sig_record is not None else None,
+            checked_keys=checked_keys,
         )
         for line in answered_call_sentences(answered_calls):
             # Warned in both modes and escalated in neither, with more force than the concordance
@@ -2119,7 +2171,10 @@ def _run_enrichment(
         # two keys is a meta-table disagreement hidden as a difference, and NCBI is the merge oracle.
         # The members' ids are asked and reported, never resolved — a verdict is stamped only on a row
         # `resolution.csv` already carries.
-        asked = sorted({r.rsid for r in out if r.rsid} | set(member_rsids))
+        ids = {r.rsid for r in check_rows if r.rsid}
+        if not verify_written_only:
+            ids.update(member_rsids)
+        asked = sorted(ids)
         rsid_subjects = len(asked)
         try:
             statuses = check_rsids(asked, client=dbsnp)
@@ -2146,7 +2201,7 @@ def _run_enrichment(
                 f"dbSNP could not be asked about {rsid_subjects} rsID(s): {exc}",
             )
         by_rsid = {s.rsid: s for s in statuses}
-        for row in out:
+        for row in fresh_rows if verify_written_only else writable_rows:
             status = by_rsid.get(row.rsid or "")
             if status is not None:
                 row.rsid_status = status.state
@@ -2238,7 +2293,7 @@ def _run_enrichment(
     # row's own `source` — and filled only where empty, so a hand-written authority survives exactly as
     # a hand-written `vrs_id` does. A link with no mapping (`authored`, `reversed`, `manual`) keeps
     # `None`, which is the answer rather than a gap: there is no external source to declare.
-    for row in out:
+    for row in writable_rows:
         if row.authority is None:
             row.authority = resolution_authority(row.source)
 
@@ -2247,13 +2302,13 @@ def _run_enrichment(
     # The drift canary, and it fires only where a baseline exists. `rm` plus a re-run destroys the old
     # values before the fresh ones arrive, so nothing holds both sides and that path re-derives
     # silently and correctly; here the recorded table is still in memory and the fresh one has not
-    # been committed, so the comparison costs nothing. `None` when nobody re-derived — an empty list
-    # means every recorded subject was re-asked and every one still answers the same, which is a very
-    # different statement and the only one of the two that is a clean bill.
+    # been committed. Only fresh answers enter the comparison and its denominator.
+    reasked: list[str] | None = None
     rederived: list[SubjectDrift] | None = None
     if rederive:
+        reasked = []
         rederived, compared, off_primary = _rederived_drift(
-            existing, out, skip=carried_keys, mint=mint, read_window=read_window
+            existing, fresh_rows, compared_subjects=reasked, mint=mint, read_window=read_window
         )
         if off_primary:
             # RM400: before it the REST rung wrote GRCh38 patch and alt contig mappings as loci. The fresh
@@ -2402,6 +2457,7 @@ def _run_enrichment(
         placement=placement,
         spelling=spelling,
         rederived=rederived,
+        reasked=reasked,
         dataset_currency=dataset_currency,
         clin_sig_record=clin_sig_record,
         answered_calls=answered_calls,
@@ -2601,6 +2657,20 @@ def _run_enrichment(
     # *a refused strict run changes nothing* a promise rather than an accident of statement order —
     # and it is asserted on the bytes on disk by test, not on a return value.
     if write:
+        if clin_sig_record is not None:
+            parents, calls = clin_sig_record.parents, clin_sig_record.calls
+            if checked_keys is not None:
+                parents = _replace_checked_subjects(
+                    spec_dir, CONCORDANCE_CSV, ClinSigConcordanceRow, parents, checked_keys, EnrichmentError
+                )
+                calls = _replace_checked_subjects(
+                    spec_dir,
+                    AUTHORITY_CALLS_CSV,
+                    ClinSigAuthorityCallRow,
+                    calls,
+                    checked_keys,
+                    EnrichmentError,
+                )
         # The licence rows land inside the table's commit (S98, RM231): `enrich()` was the only pass
         # that consulted sources and recorded none — the reason `VALID_SOURCE_LAYERS` reserves a
         # `"resolution"` member nothing ever wrote. Keyed on the authority rather than the link, so
@@ -2608,6 +2678,8 @@ def _run_enrichment(
         _write_resolution_csv(
             out,
             resolution_path,
+            recorded=recorded_rows,
+            preserve=carried_rows if rederive_subjects is not None else set(),
             before_commit=lambda: record_table_sources(
                 # The link's authority, and every placement witness a written row names (RM267):
                 # a pass that consults a source writes its row (`@write-the-sourcerow`), and one that
@@ -2624,7 +2696,7 @@ def _run_enrichment(
                 error=EnrichmentError,
                 # `--rederive` re-answers every row, so the committed table is this pass's whole answer
                 # and a licence row no row names is retired with it (RM383). A merging run keeps them.
-                answered_every_row=rederive,
+                answered_every_row=rederive and rederive_subjects is None,
             ),
         )
         if clin_sig_record is not None:
@@ -2633,9 +2705,7 @@ def _run_enrichment(
             # the archive caught up with them. A run where nobody could be consulted returns `None`
             # above and writes nothing, so a previous run's record survives a run that could not
             # replace it.
-            write_concordance_tables(
-                spec_dir, clin_sig_record.parents, clin_sig_record.calls, error=EnrichmentError
-            )
+            write_concordance_tables(spec_dir, parents, calls, error=EnrichmentError)
         # The attestation (RM45), written once for the whole run — the proof-of-work binds the
         # document, so recording per check would pay it once per check for one guarantee. It goes after
         # `resolution.csv` and before the licence rows for no reason but reading order; the binding is
@@ -2663,8 +2733,9 @@ def _run_enrichment(
                 rsid_subjects=rsid_subjects,
                 stale_rsids=stale_rsids,
                 rsid_unanswered=rsid_unanswered,
+                written_only=verify_written_only,
                 pairs=pair_check,
-                pair_release=run_label(cache_release, out, "cache"),
+                pair_release=run_label(cache_release, check_rows, "cache"),
                 placement=placement,
                 currency=dataset_currency,
             ),

@@ -365,6 +365,14 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   read returns no bases, and the build is retried at the proxy's next read.`, then what the missing bases cost
   (an indel's VRS id unminted, the reference-allele check not made) and that a run's view asks for the build
   once per run; the same prefix, pinned with the 0.9 texts.
+- **A re-derive can be scoped to named subjects, and the verify passes to the rows a run wrote** (RM467, the
+  rescope; S160). `enrich(rederive_subjects=[...])` (`--rederive-subject KEY`, repeatable) re-asks only those
+  `variant_key`s, replacing each subject's loci together, and carries every other recorded row of
+  `resolution.csv` byte for byte (quoting, column order and a missing last newline included);
+  `EnrichmentResult.reasked` names the subjects whose answers were compared and `rederived` reports what moved
+  as `SubjectDrift`. `enrich(verify_written_only=True)` (`--verify-written-only`) runs the row checks over the
+  fresh rows only, `verification.json` recording the narrower scope. Both default off, and with neither given
+  `enrich` writes what it wrote before. A selection by a declared correction's reach waits for RM441 (0.10).
 
 ## 2026-11-19 — `v0.8.10`: format, compiler and enricher 0.8.10 (a patch, cut from `main`)
 

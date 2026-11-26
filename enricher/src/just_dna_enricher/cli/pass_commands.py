@@ -99,6 +99,14 @@ def enrich_(  # `enrich` command; function name avoids shadowing the imported en
         "report which of them changed value. An ordinary run gap-fills and never re-asks, so a "
         "source that quietly revised an answer moves nothing you could notice.",
     ),
+    rederive_subject: list[str] | None = typer.Option(
+        None,
+        "--rederive-subject",
+        help="Re-derive this variant_key and carry the other recorded rows. Repeat for more subjects.",
+    ),
+    verify_written_only: bool = typer.Option(
+        False, "--verify-written-only", help="Limit row verification to fresh resolution rows."
+    ),
     keep_staging: bool = typer.Option(
         False,
         "--keep-staging",
@@ -126,6 +134,8 @@ def enrich_(  # `enrich` command; function name avoids shadowing the imported en
             verify_datasets=verify_datasets,
             keep_par_twin=keep_par_twin,
             rederive=rederive,
+            rederive_subjects=rederive_subject or None,
+            verify_written_only=verify_written_only,
             keep_staging=keep_staging,
         )
     except EnrichmentError as exc:
@@ -195,9 +205,8 @@ def enrich_(  # `enrich` command; function name avoids shadowing the imported en
     # because those are the rows that need answering.
     if result.clin_sig_comparison is not None:
         typer.secho(f"  clin_sig: {result.clin_sig_comparison}", fg=typer.colors.CYAN)
-    # `None` means nobody re-derived and there is nothing to say; an empty list means every recorded
-    # subject was re-asked and none moved, which prints nothing either — a comparison whose empty
-    # result is the normal case would be announcing a zero as evidence. Only a real difference prints.
+    if rederive_subject:
+        typer.echo(f"  compared recorded subjects: {', '.join(result.reasked or ()) or 'none'}")
     for drift in result.rederived or ():
         typer.secho(f"  re-derived: {drift}", fg=typer.colors.YELLOW, err=True)
     # RM85. One line per superseded release rather than an aggregate: `sources.csv` carries one row

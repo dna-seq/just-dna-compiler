@@ -27,7 +27,7 @@ import httpx
 import pytest
 from just_dna_enricher.clients import LookupClients
 from just_dna_enricher.clinvar_build import build_snapshot as build_clinvar
-from just_dna_enricher.enrich import enrich
+from just_dna_enricher.enrich import EnrichmentError, _write_resolution_csv, enrich
 from just_dna_enricher.enrich.orchestration import OFFLINE_OUTRANKS_SEQUENCES, _RecordedEutils
 from just_dna_enricher.ensembl import BatchResolver, EnsemblResolver, EnsemblSettings, RsidAnswer
 from just_dna_enricher.eutils import EutilsClient, EutilsSettings
@@ -39,6 +39,7 @@ from just_dna_enricher.sequences import (
     verify_reference_alleles,
 )
 from just_dna_format.resolution import ResolutionRow
+from just_dna_format.verification import read_verification
 
 _YAML = (
     "schema_version: '1.0'\nmodule:\n  name: demo\n  title: Demo\n  description: d\n  report_title: Demo\n"
@@ -677,15 +678,22 @@ def test_enrich_with_neither_new_argument_writes_what_a_call_naming_each_as_none
     example: str, ensembl_split_core, tmp_path: Path
 ) -> None:
     """A reference example enriched through the real path, offline, against a manifest-attested Ensembl core (so
-    the rsID-index ladder runs and scans) and a ClinVar snapshot built from the slice, once with `clients`,
-    `sequences` and `rsid_index` left out and once with each passed as `None`: every written file is the same
+    the rsID-index ladder runs and scans) and a ClinVar snapshot built from the slice, once with the optional clients, index
+    and RM467 scopes omitted and once with their defaults explicit: every written file is the same
     bytes, `verification.json`'s clock fields aside. This cannot fail by construction while the defaults are
     `None`; it holds that they stay so. A true 0.8 baseline is another release's code and cannot run inside a
     test: it was measured at the build instead (the branch's report)."""
     core = ensembl_split_core(tmp_path / "ensembl_variations")
     clinvar = build_clinvar(_ASSETS / "clinvar_GRCh38_slice.vcf.gz", tmp_path / "clinvar").out_dir
     written: list[dict[str, bytes]] = []
-    for side, extra in (("default", {}), ("named", {"clients": None, "sequences": None, "rsid_index": None})):
+    defaults = {
+        "clients": None,
+        "sequences": None,
+        "rsid_index": None,
+        "rederive_subjects": None,
+        "verify_written_only": False,
+    }
+    for side, extra in (("default", {}), ("named", defaults)):
         target = tmp_path / side
         shutil.copytree(_REFERENCE_EXAMPLES / example, target)
         (target / "resolution.csv").unlink()
@@ -702,3 +710,34 @@ def test_enrich_with_neither_new_argument_writes_what_a_call_naming_each_as_none
         written.append(_written(target))
     assert "resolution.csv" in written[0]
     assert written[0] == written[1]
+
+
+@pytest.mark.usefixtures("no_ambient_caches")
+def test_verify_written_only_skips_carried_ref_and_dbsnp_even_in_strict_mode(tmp_path: Path) -> None:
+    spec = _spec(tmp_path)
+    baseline = _online(spec, tmp_path, resolver=_Resolver())
+    # Keep the authored pair, whose T ref disagrees with the supplied sequence.
+    carried = next(row for row in baseline.rows if row.chrom == "19")
+    _write_resolution_csv([carried], spec / "resolution.csv")
+    asked = []
+    clients = LookupClients(ensembl=_Resolver(), eutils=_caller_eutils(asked), grch37=_Grch37())
+    options = {
+        "clients": clients,
+        "mode": "strict",
+        "verify_ref": True,
+        "verify_rsids": True,
+        "sequences": _Bases("G"),
+    }
+    with pytest.raises(EnrichmentError, match="reference"):
+        _online(spec, tmp_path, **options)
+    asked.clear()
+    result = _online(spec, tmp_path, verify_written_only=True, **options)
+    assert result.ref_mismatches == []
+    assert {uid for batch in asked for uid in batch} == {
+        row.rsid.removeprefix("rs") for row in result.rows if row.variant_key != carried.variant_key
+    }
+    records = {r.check: r for r in read_verification(spec / "verification.json").records}
+    expected = sum(row.variant_key != carried.variant_key for row in result.rows)
+    assert records["reference_allele"].skipped is None
+    assert records["reference_allele"].subjects == expected
+    assert result.rsid_coordinates.not_checked == "nothing_to_check"
