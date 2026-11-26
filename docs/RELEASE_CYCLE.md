@@ -164,6 +164,11 @@ reported, never asked about, and they never freeze scope.
    dogfooding). Their suggestions become items and the cycle returns to step 5, now also needing the
    pre-integrations to confirm. Skipping it is the maintainer's call only, and the skip is recorded in the
    release's CHANGELOG cut entry and its INTEGRATION file.
+   **By the minor's parity** (the maintainer, 2026-11-26: "should, skip was a one time thing. Preview step is optional
+   for odds tacs, (not much to integrate), a pre-first audit encouraged step for evens (tics)"): in an **even** minor
+   (features) the consumers' preview is encouraged and runs **before the first review round**, so what they find is
+   built before the audits read the branch; in an **odd** minor (fixes) it is optional. The skip at 0.8.0 was a one-time
+   call, not a precedent.
 7. **Release-gate sweep**: the release's INTEGRATION file covers every new warning code, manifest field,
    parquet and verify reason; every new code has a `features/` scenario; every closed item states its
    `**Residuals**`; the docs site builds under `--strict`.
@@ -205,9 +210,11 @@ The maintainer, 2026-11-26: "from now on even versions are features + opinionate
 are like 0.9 - with fixes and mostly decided stuff (minimum blockers, batched fixes, pin movements and such)".
 
 - **An even minor** (0.10, 0.12, …) carries features and the items that need the maintainer's decisions. Its
-  interview (§ Minors, step 1) is where those decisions are taken, before its branch.
+  interview (§ Minors, step 1) is where those decisions are taken, before its branch. Its consumers' preview is encouraged, before
+  the first review round (§ Minors, step 6).
 - **An odd minor** (0.9, 0.11, …) carries fixes and decided work: batched fixes, few blockers, dependency pin
-  movements, the residuals the previous minor left. Nothing in it waits on a decision of the maintainer's.
+  movements, the residuals the previous minor left. Nothing in it waits on a decision of the maintainer's. Its consumers'
+  preview is optional: there is little to integrate.
 - **The pm sorts each item by this when it is filed or placed**: one that needs the maintainer's decision goes to the
   next even minor, one already decided may go to the next odd one. A patch on `main` stays a patch.
 - **Two fix minors in a row skip the even number between them** (the maintainer, the same day: "If we would need two
