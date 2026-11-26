@@ -146,7 +146,8 @@ live the same day:
 typed columns, the test slice (`assets/clinvar_gkm_slice`) re-extracted from 1.2 by its README's recipe, and the
 docs naming `v1/1.1`. The lasting half, a client that reads the root's `current` or the line's `status` and refuses
 naming the new line instead of answering 404, is a design call. Sent to the lead 2026-11-26 (reply to 643876032);
-placement (0.9.0 or a patch) is the lead's and the pm's.
+placement (0.9.0 or a patch) is the lead's and the pm's. **Taken as RM470** the same day, both halves (v1/1.2 with the
+typed columns, and a refusal naming a superseded line), built off the 0.9.0 cut; placement asked of the pm.
 
 ## Verdicts
 
