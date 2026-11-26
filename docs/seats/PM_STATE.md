@@ -21,11 +21,8 @@ rescoped: it builds its own leftovers before its cut is redone, and 0.10 is six 
   where an anonymous client also runs out of requests after a few large lookups.
 
 **Next**
-1. ⏳ 0.9.0 — rescoped and rebuilt the same day: nine of its own leftovers built on Codex builders and merged, full
-   suite 8,338 passed, the cut redone with real runs over the reference modules as its gate. Waiting on your publish
-   (desk #461). RM470 folded in on your word (ClinVar-GKM retired the data line our snapshot builder reads): the lead
-   rebuilds and checks the dists with a `compat` extra (polars' no-AVX-512 runtime, your word), then hands you the
-   publish command.
+1. ✅ 0.9.0 released (2026-11-26, PyPI, tag v0.9.0): rescoped and rebuilt the same day, with the ClinVar-GKM fix and a
+   `compat` extra for a CPU without AVX2. Merging 0.9 into main waits on longevity-loci's trial.
 2. ✅ 0.8.10 released: the registry's four online rsIDs are accepted; its production upgrade can go ahead.
 3. ✅ Rules from you: at most two review rounds per minor; builds go to Codex GPT-6.2 Astra, the lead merges and
    checks; even minors carry features and your decisions, odd minors fixes, a fix minor starting at 10-20 items.
