@@ -365,6 +365,14 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
   read returns no bases, and the build is retried at the proxy's next read.`, then what the missing bases cost
   (an indel's VRS id unminted, the reference-allele check not made) and that a run's view asks for the build
   once per run; the same prefix, pinned with the 0.9 texts.
+- **Every keyed snapshot compare in the enricher is declared in `KEY_COMPARES`** (RM454, the rescope). The
+  registry now covers the local readers too: Ensembl's `id` (an rsID read as one), ClinVar's `rsid`, `chrom`,
+  `gene` and citations, the constraint, MANE, PharmVar, PubMind and Open Targets keys, beside 0.9's remote
+  lanes. Gene keys compare by `gene_key` on both sides: the SQL fold is derived from it, Unicode whitespace and
+  case folding included, so a cell spelled `\tſLCO1B1\xa0` no longer misses where Python's reading matches
+  (it cost about 0.6 s once per process). Contigs fold by the format tier's reading. One walk holds every entry
+  against a real fixture key. A constraint lookup now finds a gene asked in another case; the gene-metrics
+  pass still indexes its answer by the authored spelling (reported to the pm).
 
 ## 2026-11-19 — `v0.8.10`: format, compiler and enricher 0.8.10 (a patch, cut from `main`)
 

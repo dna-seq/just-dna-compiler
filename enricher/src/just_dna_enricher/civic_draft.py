@@ -54,7 +54,7 @@ from just_dna_enricher.drafting import identity_refused_by_model as scaffold_ide
 from just_dna_enricher.key_compare import lane_compare
 from just_dna_enricher.licensing import CIVIC_TERMS, CLINGEN_ALLELE_REGISTRY_TERMS
 from just_dna_enricher.locations import resolve_civic_reference
-from just_dna_enricher.resolver import _asked_genes, _asked_rsids, _typed_rows_connection
+from just_dna_enricher.resolver import _typed_rows_connection
 from just_dna_enricher.sequences import SequenceProxy, _held_by_one_run, _left_align
 from just_dna_enricher.verification import examples
 
@@ -258,7 +258,7 @@ def _select_civic(con: duckdb.DuckDBPyConnection, where: str, params: list) -> l
 
 def _genes_over(con: duckdb.DuckDBPyConnection, genes: Sequence[str]) -> dict[str, list[dict]]:
     """`lookup_genes`' query over a connection exposing `civic`: the one copy."""
-    asked = _asked_genes(genes)
+    asked = _GENE.spellings(genes)
     if not asked:
         return {}
     rows = _select_civic(con, _GENE.predicate("gene"), [_GENE.parameter(sorted(asked))])
@@ -297,7 +297,7 @@ def _genes_from_rows(rows: Sequence[Mapping[str, object]], genes: Sequence[str])
 
 def _rsids_over(con: duckdb.DuckDBPyConnection, rsids: Sequence[str]) -> dict[str, list[dict]]:
     """`lookup_rsids`' query over a connection exposing `civic`: the one copy."""
-    asked = _asked_rsids(rsids)
+    asked = _RSID.spellings(rsids)
     if not asked:
         return {}
     # Each key read as `_RSID` reads it, then the cell compared whole with `IN`, which prunes row groups.

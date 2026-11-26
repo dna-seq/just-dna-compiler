@@ -36,7 +36,6 @@ from just_dna_format.base import derive_variant_key
 from just_dna_format.findings import CodedWarning
 from just_dna_format.snapshot import SNAPSHOT_DATA_DIRNAME
 from just_dna_format.spec import VariantRow
-from just_dna_format.spelling import gene_key
 from just_dna_format.vocab import ALLELE_PATTERN
 from just_dna_format.vrs import normalize_chrom
 
@@ -51,7 +50,7 @@ from just_dna_enricher.events import (
     names_event,
     no_mint,
 )
-from just_dna_enricher.key_compare import _rsid_token
+from just_dna_enricher.key_compare import KeyCompare, lane_compare
 from just_dna_enricher.locations import (
     DUCKDB_NAME,
     ENSEMBL_RSID_INDEX_CACHE_VAR,
@@ -63,6 +62,9 @@ from just_dna_enricher.locations import (
 from just_dna_enricher.sequences import per_alt_loci, trim_allele
 
 logger = logging.getLogger(__name__)
+
+_ID = lane_compare("ensembl", "homo_sapiens", "id")
+_CHROM = lane_compare("ensembl", "homo_sapiens", "chrom")
 
 
 class EnsemblReferenceError(FileNotFoundError):
@@ -341,7 +343,8 @@ def lookup_loci(
     Returns `(rsid -> [loci], (chrom,start,ref,alt) -> [candidate rsids], warnings)` from an injected
     Ensembl reference. The reverse map is **allele-aware** (matches the authored `alt` when given) and
     returns *all* candidate rsIDs at that exact allele — never a silent first-pick — so the caller can
-    take a deterministic pick and flag a genuine multi-rsid allele as ambiguous. Inject-only.
+    take a deterministic pick and flag a genuine multi-rsid allele as ambiguous. Both maps retain the
+    requested spellings of rsIDs and positions. Inject-only.
 
     `non_nucleotide`, when given, receives the rsIDs the snapshot holds with no nucleotide allele at
     any locus (RM271), so a caller can name them rather than read them out of the log (RM272).
@@ -552,28 +555,6 @@ def _typed_rows_connection(
     return con
 
 
-def _asked_rsids(rsids: Sequence[str]) -> dict[str, list[str]]:
-    """`key_compare._rsid_token` → the rsIDs asked under it, as asked and in order; blanks are dropped."""
-    asked: dict[str, list[str]] = {}
-    for rsid in rsids:
-        if rsid.strip() and rsid not in asked.setdefault(_rsid_token(rsid), []):
-            asked[_rsid_token(rsid)].append(rsid)
-    return {token: spellings for token, spellings in asked.items() if spellings}
-
-
-def _asked_genes(genes: Sequence[str]) -> dict[str, list[str]]:
-    """`gene_key` → the genes asked under it, as asked and in order; blanks are dropped.
-
-    `Vhl` and `VHL` are one gene (RM351). The one reading of an asked gene CIViC's, ClinPGx's and the
-    drug labels' keyed functions (RM431) compare in, beside `_asked_rsids`.
-    """
-    asked: dict[str, list[str]] = {}
-    for gene in genes:
-        if gene.strip() and gene not in asked.setdefault(gene_key(gene), []):
-            asked[gene_key(gene)].append(gene)
-    return {key: spellings for key, spellings in asked.items() if spellings}
-
-
 def _loci_from_rows(
     rows: Sequence[Mapping[str, object]],
     rsids: list[str],
@@ -650,12 +631,25 @@ def _sql_literal(cell: object, numeric: bool) -> str:
     return "'" + str(cell).replace("'", "''") + "'"
 
 
+def _allele_spellings(
+    alleles: Sequence[tuple[str, int, str, str]], chrom_compare: KeyCompare
+) -> dict[tuple[str, int, str, str], list[tuple[str, int, str, str]]]:
+    """Group allele probes by snapshot contig while retaining their requested dictionary keys."""
+    asked: dict[tuple[str, int, str, str], list[tuple[str, int, str, str]]] = {}
+    for allele in dict.fromkeys(alleles):
+        chrom, start, ref, alt = allele
+        asked.setdefault((chrom_compare.key(chrom), start, ref, alt), []).append(allele)
+    return asked
+
+
 def _lookup_rsid_candidates(
     con: duckdb.DuckDBPyConnection,
     table: str,
     id_col: str,
     positions: list[tuple[str | None, int | None, str | None, str | None]],
     candidate_loci: dict[tuple, dict[str, list[LocusSpelling]]] | None = None,
+    *,
+    chrom_compare: KeyCompare = _CHROM,
 ) -> dict[tuple, list[str]]:
     """Allele-aware reverse lookup: `(chrom,start,ref,alt) -> sorted [candidate rsids]`.
 
@@ -670,10 +664,15 @@ def _lookup_rsid_candidates(
     `_hosting_rsids` (RM438) without a second query.
     """
     uniq = list(dict.fromkeys(positions))
-    concrete = [(c, s) for c, s, r, a in uniq if c is not None and s is not None]
+    concrete = {
+        (form, start)
+        for chrom, start, _, _ in uniq
+        if chrom is not None and start is not None
+        for form in (chrom, chrom_compare.key(chrom))
+    }
     if not concrete:
         return {pt: [] for pt in uniq}
-    probe_table(con, "_wanted_positions", [("chrom", "VARCHAR"), ("start", "BIGINT")], sorted(set(concrete)))
+    probe_table(con, "_wanted_positions", [("chrom", "VARCHAR"), ("start", "BIGINT")], sorted(concrete))
     rows = con.execute(
         f"SELECT DISTINCT t.chrom, t.start, t.ref, t.alt, t.{id_col} FROM {table} t "
         f"JOIN _wanted_positions w ON t.chrom = w.chrom AND t.start = w.start "
@@ -682,13 +681,13 @@ def _lookup_rsid_candidates(
     ).fetchall()
     by_pos: dict[tuple, list[tuple]] = defaultdict(list)
     for chrom, start, ref, alt, rid in rows:
-        by_pos[(str(chrom), int(start))].append((str(ref), str(alt), str(rid)))
+        by_pos[(chrom_compare.key(chrom), int(start))].append((str(ref), str(alt), str(rid)))
     result: dict[tuple, list[str]] = {}
     for chrom, start, ref, alt in uniq:
         cands: list[str] = []
         matched: dict[str, list[tuple[str, int, str, str]]] = {}
         # RM452: a probe with no start is no position, as one with no chrom is (`concrete` above).
-        here = (str(chrom), int(start)) if chrom is not None and start is not None else ()
+        here = (chrom_compare.key(chrom), int(start)) if chrom is not None and start is not None else ()
         for rref, ralt, rid in by_pos.get(here, []):
             placed = _placeable_alleles(rref, _snapshot_alleles(ralt))
             if placed is None:
@@ -706,7 +705,9 @@ def _lookup_rsid_candidates(
                 continue
             if rid not in cands:  # rows already ordered by ... id
                 cands.append(rid)
-            matched.setdefault(rid, []).extend((str(chrom), int(start), placed[0], a) for a in named)
+            matched.setdefault(rid, []).extend(
+                (chrom_compare.key(chrom), int(start), placed[0], a) for a in named
+            )
         result[(chrom, start, ref, alt)] = cands
         if candidate_loci is not None:
             candidate_loci[(chrom, start, ref, alt)] = {
@@ -905,7 +906,8 @@ def _lookup_positions_by_rsid(
     sorts both the loci and their alts, so the emitted order is stable across runs (Principle 7)."""
     if not rsids:
         return {}
-    rows = _rsid_rows(con, rsids, rsid_index)
+    asked = _ID.spellings(rsids)
+    rows = _rsid_rows(con, sorted(asked), rsid_index) if asked else []
     alleles: dict[str, list[tuple[str, int, str, str]]] = defaultdict(list)
     unplaceable: set[str] = set()
     unpositioned: set[str] = set()
@@ -936,7 +938,7 @@ def _lookup_positions_by_rsid(
         )
     only_unplaceable = sorted(unplaceable - set(result))
     if non_nucleotide is not None:
-        non_nucleotide.update(only_unplaceable)
+        non_nucleotide.update(spelling for token in only_unplaceable for spelling in asked[token])
     if only_unplaceable:
         # In the snapshot, so "not in the injected snapshot" would be false; said once, not per rsID.
         logger.warning(
@@ -947,7 +949,7 @@ def _lookup_positions_by_rsid(
             ", ".join(only_unplaceable),
         )
     for rsid in rsids:
-        if rsid not in result and rsid not in unplaceable:
+        if _ID.key(rsid) not in result and _ID.key(rsid) not in unplaceable:
             # Two things this line must not do, and it did each of them in turn. It must not speak
             # for Ensembl — "in the injected snapshot", not "in Ensembl", because a partial snapshot
             # missing rs1799945 says nothing about the HFE H63D locus Ensembl serves at 6:26090951.
@@ -961,7 +963,7 @@ def _lookup_positions_by_rsid(
                     unresolved_rsid(rsid, searched="the injected Ensembl snapshot"),
                 )
             )
-    return dict(result)
+    return {spelling: loci for token, loci in result.items() for spelling in asked[token]}
 
 
 @dataclass(frozen=True)
@@ -1248,7 +1250,7 @@ def _lookup_rsid_sets_by_position(
     if not concrete:
         return {}
     # By position, the ref compared below: a padded snapshot ref is not the spelling a probe names (RM381).
-    places = list(dict.fromkeys((chrom, start) for chrom, start, _ in concrete))
+    places = sorted({(form, start) for chrom, start, _ in concrete for form in (chrom, _CHROM.key(chrom))})
     conditions = " OR ".join("(chrom = ? AND start = ?)" for _ in places)
     params: list[object] = []
     for chrom, start in places:

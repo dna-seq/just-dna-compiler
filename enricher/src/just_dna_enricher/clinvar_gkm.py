@@ -67,7 +67,7 @@ from just_dna_enricher.net import (
     raise_if_retired,
     retry_if_transient,
 )
-from just_dna_enricher.resolver import _asked_rsids, _typed_rows_connection
+from just_dna_enricher.resolver import _typed_rows_connection
 
 try:  # the one guarded optional import (CLAUDE.md): polars reads the slice
     import polars as pl
@@ -505,11 +505,7 @@ class WitnessPlacement:
 
 def normalize_chrom(chrom: str) -> str:
     """A contig as the `gnomad` expression spells it: no `chr`, upper case, `M` read as `MT`."""
-    token = chrom.strip()
-    if token[:3].lower() == "chr":
-        token = token[3:]
-    token = token.upper()
-    return "MT" if token == "M" else token
+    return _CHROM.key(chrom)
 
 
 @dataclass
@@ -629,6 +625,7 @@ _WITNESS_COLUMNS: tuple[tuple[str, str], ...] = (
 REMOTE_WITNESS_TABLE = "clinvar_gkm-indels"
 #: How `lookup_rsids` compares an rsID with the `rsid` cell, on every route: the key read as an rsID, the cell
 #: whole (`key_compare.KEY_COMPARES`, which the holder reads too).
+_CHROM = lane_compare("clinvar_gkm", REMOTE_WITNESS_TABLE, "chrom")
 _RSID = lane_compare("clinvar_gkm", REMOTE_WITNESS_TABLE, "rsid")
 
 
@@ -726,7 +723,7 @@ def _variants_from_rows(
 
 def _rsids_over(con: duckdb.DuckDBPyConnection, rsids: Sequence[str]) -> dict[str, list[dict]]:
     """`lookup_rsids`' query over a connection exposing `witness`: the one copy."""
-    asked = _asked_rsids(rsids)
+    asked = _RSID.spellings(rsids)
     if not asked:
         return {}
     # Each key read as `_RSID` reads it, then the cell compared whole with `IN`, which prunes row groups.

@@ -70,7 +70,7 @@ from just_dna_enricher.locations import (
     resolve_drug_labels_reference,
 )
 from just_dna_enricher.net import EndpointRetired
-from just_dna_enricher.resolver import _asked_genes, _typed_rows_connection
+from just_dna_enricher.resolver import _typed_rows_connection
 from just_dna_enricher.verification import examples, ran, record_verification, skipped
 
 logger = logging.getLogger(__name__)
@@ -473,7 +473,7 @@ def _labels_connection(reference: Path) -> duckdb.DuckDBPyConnection:
 
 def _genes_over(con: duckdb.DuckDBPyConnection, genes: Sequence[str]) -> dict[str, list[dict]]:
     """`lookup_genes`' query over a connection exposing `drug_labels`: the one copy."""
-    asked = _asked_genes(genes)
+    asked = _GENES.spellings(genes)
     if not asked:
         return {}
     names = ", ".join(f'"{name}"' for name in LABEL_COLUMNS)

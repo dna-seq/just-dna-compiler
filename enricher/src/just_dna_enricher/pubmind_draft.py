@@ -88,7 +88,7 @@ from just_dna_enricher.licensing import (
     PUBMIND_TERMS,
 )
 from just_dna_enricher.locations import RELEASE_FILENAME, resolve_pubmind_reference
-from just_dna_enricher.pubmind import PubMindReferenceError, _connect, pubmind_dataset_label
+from just_dna_enricher.pubmind import _CHROM, PubMindReferenceError, _connect, pubmind_dataset_label
 from just_dna_enricher.pubmind_build import PUBMIND_GENOME_BUILD
 from just_dna_enricher.verification import examples
 
@@ -206,7 +206,7 @@ def select_by_positions(reference: Path, positions: Sequence[tuple[str, int]]) -
     thing this module refuses to infer. Ordered deterministically so a re-draft offers the same rows
     in the same order (Principle 7).
     """
-    wanted = {(normalize_chrom(str(chrom)), int(start)) for chrom, start in positions}
+    wanted = {(_CHROM.key(chrom), int(start)) for chrom, start in positions}
     if not wanted:
         return []
     by_chrom: dict[str, list[int]] = {}
@@ -234,7 +234,7 @@ def select_by_positions(reference: Path, positions: Sequence[tuple[str, int]]) -
             rows.extend(
                 record
                 for record in (dict(zip(columns, row, strict=True)) for row in cursor.fetchall())
-                if (normalize_chrom(str(record["chrom"])), int(record["start"])) in wanted
+                if (_CHROM.key(record["chrom"]), int(record["start"])) in wanted
             )
     finally:
         con.close()

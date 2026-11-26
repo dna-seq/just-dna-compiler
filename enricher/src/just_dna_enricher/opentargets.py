@@ -81,9 +81,9 @@ from just_dna_format.locus_genes import ColocalisationRow, LocusToGeneRow
 from just_dna_format.normalize import now_utc_iso
 from just_dna_format.resolution import ResolutionRow
 from just_dna_format.snapshot import SnapshotRelease, read_release
-from just_dna_format.vrs import normalize_chrom
 from pydantic import BaseModel
 
+from just_dna_enricher.key_compare import lane_compare
 from just_dna_enricher.licensing import (
     OPENTARGETS_TERMS,
     overlaid_input_rows,
@@ -972,8 +972,8 @@ def _wanted_positions(positions: Sequence[tuple[str, int]]) -> dict[tuple[str, i
     """`(chrom, position)` as the release spells it (`normalize_chrom`: no `chr`, `MT`) → the keys asked so."""
     wanted: dict[tuple[str, int], list[tuple[str, int]]] = {}
     for chrom, position in positions:
-        bare = normalize_chrom(str(chrom))
-        if bare is None:
+        bare = lane_compare("opentargets", REMOTE_VARIANTS_TABLE, "chrom").key(chrom)
+        if not bare:
             raise ValueError(f"{chrom!r} names no chromosome")
         asked = (chrom, int(position))
         keys = wanted.setdefault((bare, int(position)), [])
@@ -1050,16 +1050,13 @@ def _variants_from_rows(
         con.close()
 
 
-def _variant_ids(variant_ids: Sequence[str]) -> list[str]:
-    return list(dict.fromkeys(str(v).strip() for v in variant_ids if str(v).strip()))
-
-
 def _consequences_over(con: duckdb.DuckDBPyConnection, variant_ids: Sequence[str]) -> dict[str, list[dict]]:
     """`lookup_consequences`' queries over a connection exposing `consequences` and `members`: the one copy."""
-    ids = _variant_ids(variant_ids)
+    # Keep the caller's order in the result, even when the two tables answer different IDs.
+    compare = lane_compare("opentargets", REMOTE_CONSEQUENCES_TABLE, "variant_id")
+    ids = list(compare.spellings(variant_ids))
     if not ids:
         return {}
-    marks = ", ".join("?" for _ in ids)
     answer: dict[str, list[dict]] = {}
     for view, table, columns, order in (
         ("consequences", REMOTE_CONSEQUENCES_TABLE, _CONSEQUENCE_COLUMNS, "variant_id, transcript"),
@@ -1070,9 +1067,11 @@ def _consequences_over(con: duckdb.DuckDBPyConnection, variant_ids: Sequence[str
             "variant_id, study_locus_id, posterior_probability",
         ),
     ):
+        tokens = lane_compare("opentargets", table, "variant_id").parameter(variant_ids)
+        marks = ", ".join("?" for _ in tokens)
         cursor = con.execute(
             f"SELECT {_select_list(con, view, columns)} FROM {view} WHERE variant_id IN ({marks}) ORDER BY {order}",
-            ids,
+            tokens,
         )
         names = [d[0] for d in cursor.description]
         for values in cursor.fetchall():

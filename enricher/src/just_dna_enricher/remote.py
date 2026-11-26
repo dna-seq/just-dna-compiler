@@ -304,7 +304,7 @@ class _Keys:
     positions: dict[str, list[int]] | None
 
 
-def _read_keys(lane: RemoteLane, keys: Mapping[str, Sequence[Any]]) -> _Keys:
+def _read_keys(lane: RemoteLane, keys: Mapping[str, Sequence[Any]], table: str = "") -> _Keys:
     """`keys` checked against the contract both routes answer, or `ValueError` naming the fault."""
     given = {column: list(dict.fromkeys(values)) for column, values in keys.items()}
     if not given or not all(given.values()):
@@ -333,8 +333,10 @@ def _read_keys(lane: RemoteLane, keys: Mapping[str, Sequence[Any]]) -> _Keys:
         else ((c, s) for c in chroms for s in starts)
     )
     positions: dict[str, list[int]] = {}
+    compare = lane.compare(table, "chrom")
     for chrom, start in pairs:
-        at = positions.setdefault(_bare_chrom(chrom), [])
+        bare = _bare_chrom(chrom) if compare.exact else compare.key(chrom)
+        at = positions.setdefault(bare, [])
         if start not in at:
             at.append(start)
     plain = {column: values for column, values in given.items() if column not in ("chrom", "start")}
@@ -601,7 +603,7 @@ class RemoteSnapshots:
         spec = REMOTE_LANES.get(lane)
         if spec is None:
             raise ValueError(f"{lane!r} is not read remotely; lanes that are: {', '.join(REMOTE_LANES)}")
-        wanted = _read_keys(spec, keys)
+        wanted = _read_keys(spec, keys, table)
         with self._lock:
             if self._closed:
                 raise ValueError(HOLDER_CLOSED)
