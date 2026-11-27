@@ -484,3 +484,29 @@ def test_cli_enrich_shows_store_counts_and_can_bypass_an_existing_file(
         assert result.exit_code == 0, (result.output, result.exception)
         assert server.requests == (["POST 1"] if live else [])
         assert f"stored={int(not live)} live={int(live)}" in result.output
+
+
+@pytest.mark.parametrize("batch_size", [1, 2])
+def test_each_batched_call_owns_one_release_even_when_iterators_overlap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, batch_size: int
+) -> None:
+    monkeypatch.setenv("JUST_DNA_ANSWER_STORE", str(tmp_path / "answers.sqlite3"))
+    server = _Ensembl()
+    releases = iter([116, 117])
+    subjects = ["rs1801133", "rs429358"]
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/info/data":
+            server.requests.append("release")
+            return httpx.Response(200, json={"releases": [next(releases)]})
+        return server(request)
+
+    resolver = _resolver(handle, batch_size=batch_size)
+    first = resolver.resolve_rsids_batched(subjects)
+    head = next(first)
+    assert dict(resolver.resolve_rsids_batched(subjects)) == dict([head, *first])
+    assert server.requests.count("release") == 2
+    store = AnswerStore(tmp_path / "answers.sqlite3")
+    expected = {f"/variation/human/{rsid}": _RECORDS[rsid] for rsid in subjects}
+    for label in ["ensembl_116", "ensembl_117"]:
+        assert store.read(resolver.settings.rest_endpoint, label, list(expected)) == expected

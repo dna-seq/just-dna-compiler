@@ -6,6 +6,7 @@ import sqlite3
 import subprocess
 import sys
 import threading
+import weakref
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import ExitStack, closing
@@ -13,6 +14,7 @@ from pathlib import Path
 
 import httpx
 import pytest
+from just_dna_enricher.answer_store import AnswerRun, answer_run
 from just_dna_enricher.cli import app
 from just_dna_enricher.eutils import EutilsClient, EutilsError, is_missing
 from just_dna_enricher.grch37 import Grch37Client
@@ -116,7 +118,7 @@ def test_builds_isolate_databases_and_only_misses_go_in_batch(store: Path) -> No
         for call in (
             [("einfo.fcgi", db, "")]
             + ([("esummary.fcgi", db, uid)] if db == "snp" else [])
-            + [("esummary.fcgi", db, "3216883")]
+            + [("einfo.fcgi", db, ""), ("esummary.fcgi", db, "3216883")]
         )
     ]
     assert server.asked == expected
@@ -131,8 +133,9 @@ def test_no_dbbuild_bypasses_existing_rows(
     server.asked.clear()
     server.builds["snp"] = (build, "2026/11/24 09:36")
     client = server.client()
-    for _ in range(2):
-        client.esummary("snp", ["334"])
+    with answer_run():
+        for _ in range(2):
+            client.esummary("snp", ["334"])
     assert [p for p, _, _ in server.asked] == ["einfo.fcgi", "esummary.fcgi", "esummary.fcgi"]
     assert sum("answer store" in r.message.lower() for r in caplog.records) == 1
 
@@ -185,8 +188,9 @@ def test_corrupt_store_warns_once_and_completes_live(store: Path, caplog: pytest
     store.write_bytes(b"unreadable as sqlite")
     server = Eutils()
     client = server.client()
-    for uid in ["334", "3216883"]:
-        assert client.esummary("snp", [uid])[uid]["uid"] == uid
+    with answer_run():
+        for uid in ["334", "3216883"]:
+            assert client.esummary("snp", [uid])[uid]["uid"] == uid
     assert sum("answer store" in r.message.lower() for r in caplog.records) == 1
     assert store.read_bytes() == b"unreadable as sqlite"
 
@@ -204,7 +208,7 @@ def test_two_threads_one_client_and_store(store: Path) -> None:
     server.reply = together
     with ThreadPoolExecutor(2) as pool:
         rows = list(pool.map(lambda uid: client.esummary("snp", [uid]), ids))
-    assert server.asked.count(("einfo.fcgi", "snp", "")) == 1
+    assert server.asked.count(("einfo.fcgi", "snp", "")) == len(ids)
     server.reply = server.summary
     server.asked.clear()
     assert server.client().esummary("snp", ids) == {uid: row[uid] for uid, row in zip(ids, rows, strict=True)}
@@ -259,7 +263,8 @@ def test_grch37_uses_its_own_server_for_release_and_distinguishes_empty_body(sto
             return httpx.Response(200, text="")
         return httpx.Response(200, json=[])
 
-    for host in ["grch37.rest.ensembl.org", "grch37.rest.ensembl.org", "mirror.test"]:
+    hosts = ["grch37.rest.ensembl.org", "grch37.rest.ensembl.org", "mirror.test"]
+    for host in hosts:
         client = Grch37Client(gate=PacingGate(0), _client=httpx.Client(transport=httpx.MockTransport(handle)))
         client.settings.endpoint = f"https://{host}"
         assert client.variants_at("7", 140453136) == []
@@ -267,11 +272,7 @@ def test_grch37_uses_its_own_server_for_release_and_distinguishes_empty_body(sto
     overlap = "/overlap/region/human/7:140453136-140453136"
     assert seen.count(("grch37.rest.ensembl.org", overlap)) == 1
     assert ("mirror.test", overlap) in seen
-    assert [h for h, p in seen if p == "/info/data"] == [
-        "grch37.rest.ensembl.org",
-        "grch37.rest.ensembl.org",
-        "mirror.test",
-    ]
+    assert [h for h, p in seen if p == "/info/data"] == [host for host in hosts for _ in range(2)]
     assert len([p for _, p in seen if "sequence" in p]) == 3
 
 
@@ -286,8 +287,9 @@ def test_einfo_outage_is_retried_then_bypassed_once(store: Path) -> None:
         return server.summary(request)
 
     client = EutilsClient(gate=PacingGate(0), _client=httpx.Client(transport=httpx.MockTransport(outage)))
-    for _ in range(2):
-        assert client.esummary("snp", ["334"])["334"]["uid"] == "334"
+    with answer_run():
+        for _ in range(2):
+            assert client.esummary("snp", ["334"])["334"]["uid"] == "334"
     assert calls == ["einfo.fcgi"] * 4 + ["esummary.fcgi"] * 2
     assert not store.exists()
 
@@ -403,3 +405,45 @@ def test_seqrepo_does_not_store_a_refusal_body_or_a_truncated_interval(store: Pa
     reads = [SequenceProxy(_proxy=Proxy()).subsequence(accession, 0, 2) for _ in range(4)]
     assert reads[-2:] == ["AC", "AC"]
     assert next(replies) == "unexpected extra call"
+
+
+@pytest.mark.parametrize("source", ["eutils", "seqrepo"])
+def test_client_releases_the_run_after_each_of_100_calls(
+    source: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    counted: weakref.WeakSet[AnswerRun] = weakref.WeakSet()
+    count = AnswerRun.count
+
+    def observe(run: AnswerRun, source: str, release: str | None, *, stored: int = 0, live: int = 0) -> None:
+        counted.add(run)
+        count(run, source, release, stored=stored, live=live)
+
+    monkeypatch.setattr(AnswerRun, "count", observe)
+    calls = range(100)
+    if source == "eutils":
+        server = Eutils()
+        client = server.client()
+        uid = _SUMMARIES["snp"]["uids"][0]
+        for _ in calls:
+            assert client.esummary("snp", [uid])[uid] == _SUMMARIES["snp"][uid]
+        assert server.asked == [("esummary.fcgi", "snp", uid)] * len(calls)
+    else:
+        intervals: list[tuple[str, int, int]] = []
+
+        class Proxy:
+            def get_sequence(self, name: str, start: int, end: int) -> str:
+                intervals.append((name, start, end))
+                return "A"
+
+        accession = refget_accession("1")
+        assert accession is not None
+        proxy = SequenceProxy(_proxy=Proxy())
+        for start in calls:
+            assert proxy.subsequence(accession, start, start + 1) == "A"
+        assert intervals == [(f"ga4gh:{accession}", start, start + 1) for start in calls]
+    assert not list(counted), [run.report() for run in counted]
+
+
+def test_nested_answer_run_uses_the_host_run(store: Path) -> None:
+    with answer_run(store) as host, answer_run(False) as nested:
+        assert nested is host

@@ -110,8 +110,6 @@ class Grch37Client(Withholding):
     gate: PacingGate | None = None
     _client: httpx.Client | None = None
 
-    _answers: AnswerRun = field(default_factory=AnswerRun, init=False, repr=False, compare=False)
-
     def _release(self) -> str | None:
         try:
             payload = self._get("/info/data", "application/json").json()
@@ -122,7 +120,7 @@ class Grch37Client(Withholding):
         return f"{ENSEMBL_RELEASE_PREFIX}{number}" if number is not None else None
 
     def _source_answers(self) -> SourceAnswers:
-        run = self._answers.current()
+        run = AnswerRun.current()
         source = self.settings.endpoint.rstrip("/")
         release = run.release(source, self._release) if run.store is not None else None
         return SourceAnswers(run, source, release)

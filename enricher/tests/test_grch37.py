@@ -16,8 +16,12 @@ No credential is involved anywhere in this module — the GRCh37 service is unau
 `.env`-neutralizing fixture the keyed clients need has no counterpart here.
 """
 
+from pathlib import Path
+
 import httpx
 import pytest
+from just_dna_enricher.answer_store import AnswerStore, answer_run
+from just_dna_enricher.clients import LookupClients
 from just_dna_enricher.grch37 import (
     GRCH37_BUILD,
     VALID_RECOVERY_OUTCOME,
@@ -27,6 +31,7 @@ from just_dna_enricher.grch37 import (
     recover_rsid,
     summarize_build_diagnoses,
 )
+from just_dna_enricher.lookup import lookup_old_assembly
 from just_dna_enricher.net import PacingGate
 from just_dna_enricher.sequences import RefMismatch
 
@@ -570,3 +575,73 @@ def test_the_live_service_recovers_a_real_hg19_coordinate() -> None:
     finally:
         client.close()
     assert GRCH37_BUILD == "GRCh37"
+
+
+class _Releases:
+    """The recorded dbSNP features appear at release 117 after an absence at 116."""
+
+    def __init__(self) -> None:
+        self.release = 116
+        self.requests: list[str] = []
+        self.overlap = "/overlap/region/human/7:140453136-140453136"
+
+    def __call__(self, request: httpx.Request) -> httpx.Response:
+        self.requests.append(request.url.path)
+        if request.url.path == "/info/data":
+            return httpx.Response(200, json={"releases": [self.release]})
+        assert request.url.path == self.overlap
+        return httpx.Response(200, json=[] if self.release == 116 else _BRAF_OVERLAP)
+
+
+def test_reused_lookup_clients_follow_the_serving_release(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "default.sqlite3"
+    monkeypatch.setenv("JUST_DNA_ANSWER_STORE", str(path))
+    server = _Releases()
+    grch37 = _client(server)
+    clients = LookupClients(grch37=grch37)
+    assert lookup_old_assembly(chrom="7", start=140453136, clients=clients).recovery.rsids == []
+    server.release = 117
+    result = lookup_old_assembly(chrom="7", start=140453136, clients=clients)
+    records = [row for row in _BRAF_OVERLAP if row["source"] == "dbSNP"]
+    assert set(result.recovery.rsids) == {row["id"] for row in records if row["start"] == 140453136}
+    assert server.requests == ["/info/data", server.overlap] * 2
+    store = AnswerStore(path)
+    key = server.overlap + "?feature=variation"
+    for release, expected in [(116, []), (117, records)]:
+        assert store.read(grch37.settings.endpoint, f"ensembl_{release}", [key]) == {key: expected}
+
+
+@pytest.mark.parametrize("setting", ["path", "store", "off"])
+def test_lookup_store_setting_overrides_the_default(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, setting: str
+) -> None:
+    default = tmp_path / "default.sqlite3"
+    monkeypatch.setenv("JUST_DNA_ANSWER_STORE", str(default))
+    server = _Releases()
+    path = tmp_path / "s.sqlite3"
+    clients = LookupClients(
+        grch37=_client(server),
+        answer_store={"path": path, "store": AnswerStore(path), "off": False}[setting],
+    )
+    for _ in range(2):
+        assert lookup_old_assembly(chrom="7", start=140453136, clients=clients).recovery.outcome == "none"
+    if setting == "off":
+        assert server.requests == [server.overlap] * 2
+        assert set(tmp_path.iterdir()) == set()
+    else:
+        assert server.requests == ["/info/data", server.overlap, "/info/data"]
+        assert set(tmp_path.iterdir()) == {path}
+
+
+def test_host_run_owns_three_lookup_calls(tmp_path: Path) -> None:
+    server = _Releases()
+    clients = LookupClients(grch37=_client(server), answer_store=False)
+    with answer_run(tmp_path / "batch.sqlite3") as batch:
+        for _ in range(3):
+            assert lookup_old_assembly(chrom="7", start=140453136, clients=clients).recovery.outcome == "none"
+        assert server.requests == ["/info/data", server.overlap]
+        assert [(u.release, u.live, u.stored) for u in batch.report()] == [("ensembl_116", 1, 2)]
+    lookup_old_assembly(chrom="7", start=140453136, clients=clients)
+    assert server.requests == ["/info/data", server.overlap, server.overlap]

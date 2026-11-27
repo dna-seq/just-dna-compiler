@@ -2805,8 +2805,35 @@ exports an empty value over a path in `.env`.
 Every key includes the server's base URL. One release probe per queried source or database still
 goes live on a warm run. A changed build makes only that source's old rows ineligible. A missing
 release bypasses the store for that source for the run. An Ensembl batch sends only its missing rsIDs,
-and an E-utilities batch sends only its missing UIDs. A direct client outside an enrichment run
-holds its release observation for its lifetime.
+and an E-utilities batch sends only its missing UIDs.
+
+The scope of a lookup determines its release-probe cost.
+
+* With the defaults, each direct client call or `lookup_*` call probes each release it needs once,
+  even when the host reuses the same clients. Answers persist at the configured location. Usage
+  counters belong to that call.
+* `LookupClients(answer_store=...)` chooses the store for lookups made with that bundle. A path or
+  an `AnswerStore` instance has the same per-call probe cost as the default. Pass `False` to ask
+  live and skip the store and its release probes. Pass `None` to use the configured location.
+* Open `answer_run` around a batch to share one observation per queried source or NCBI database
+  across all its lookups. The outer block selects the store and owns the counters. The next batch
+  checks the releases again. Remote seqrepo needs zero release probes in every case.
+
+For example, these three hints share one GRCh37 release probe.
+
+```python
+from contextlib import closing
+
+from just_dna_enricher.answer_store import answer_run
+from just_dna_enricher.lookup import LookupClients, lookup_old_assembly
+
+with closing(LookupClients()) as clients, answer_run("lookups.sqlite3") as batch:
+    hints = [
+        lookup_old_assembly(chrom="7", start=position, clients=clients)
+        for position in (140453135, 140453136, 140453137)
+    ]
+    usage = batch.report()
+```
 
 A subject the source explicitly answers as absent can be served again, including an Ensembl
 no-record response or NCBI's invalid-UID envelope. Refusals, outages, exhausted throttles, unreadable
@@ -3523,7 +3550,7 @@ asked". The diagnosis travels **inside** the `strict` refusal rather than beside
 run raises and returns nothing, so a result-object-only answer would be visible to the mode that does
 not need it and invisible to the one whose whole output is that sentence.
 
-**It writes nothing.** `just-dna-enricher hint recover --chrom 7 --start 140453136 --ref A --alts T`
+**The module stays untouched.** `just-dna-enricher hint recover --chrom 7 --start 140453136 --ref A --alts T`
 reports `rs113488022` as an advisory `Alteration` with `applied=False` and `refusal="identity_bearing"`
 — the sharpest refusal in the table, because an rs-number *is* the row's identity and a machine filling
 one performs an identity migration by network lookup with no authored edit anywhere. Several candidates

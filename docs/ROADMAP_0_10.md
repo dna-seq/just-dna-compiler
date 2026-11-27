@@ -406,6 +406,11 @@ release observation and report for each enrichment run. Empty settings, the Pyth
 the CLI flag bypass persistence. The store has no snapshot or publish stage. The ClinVar currency
 probe still reads the live VCF header, and ClinVar-GKM reads its own distribution.
 
+**Preview finding S163, built (2026-11-27).** Direct client calls and lookups now scope release
+observations and counters to the call. `LookupClients(answer_store=...)` selects the host's store
+or disables persistence. A host-opened `answer_run` takes precedence and shares one probe per
+queried source across the batch. Remote seqrepo still uses the refget accession without a probe.
+
 **Residuals** Direct VRS metadata and out-of-window reads bypass `SequenceProxy.subsequence` and
 remain live. ClinVar's bulk release and ClinVar-GKM probes remain outside E-utilities by design.
 
