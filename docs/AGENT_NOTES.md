@@ -1189,13 +1189,12 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   right (that equality is a property of the transform, not a contract, and `Stats` is documented as
   *display* facets), but **before adding a computed field, check whether another block already carries
   the number, and if it does, say in the code why the new home is the right one.**
-  **0.9's texts are walked (review round 1, 2026-11-18).** `enricher/tests/test_every_new_text_is_pinned.py`
-  lists every log, `Finding` and `warnings` text the 0.9 diff added, with the fragment of each that does not
-  move with its arguments, and holds three things: the module still says it, an `assert` in the test file
-  the entry names says it (a string merely present in a test pins nothing, and an unrelated assert elsewhere
-  saying the same short words pinned two texts before the code review caught it), and a module wholly new in 0.9 emits no text
-  the list does not name. Its limit is stated there: a test may not read git, so a new text in an older
-  module reaches the list at review, not by itself.
+
+  **Register a new enricher text in `enricher/tests/emitted_texts.py` (RM469, for 0.11).** Choose
+  the words a consumer can grep after the arguments have been filled in. If a test asserts them,
+  name its file in the entry. A call that only forwards a message records its placeholder or
+  expression. The walk checks every package module and reports an extra emission or a missing one,
+  including a missing call whose words still occur elsewhere. Every `_warn_once` text also owes a pin.
 
 - `@warning-code-names-the-finding` — **A warning code is a permanent published key, so it names the
   FINDING and never the site that builds it (RM131).** The channel was a flat `list[str]`: 14 kB of

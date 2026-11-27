@@ -338,6 +338,13 @@ primary literature and disagrees with a one-star submission is doing their job. 
 would make the format arbitrate a clinical dispute, which the data-agnostic charter forbids. The
 finding therefore carries ClinVar's review-star count so a reader can weigh it themselves.
 
+**Diagnostic wording (RM469, for 0.11).** The tests catalogue the stable fragments of logger messages,
+`_warn_once` warnings, `Finding` messages, `warnings.warn` and appends to a local list whose name
+contains `warning`. The catalogue lives in `enricher/tests/emitted_texts.py`. The walk includes
+package initializers and skips the generated Atlas bindings under `just_dna_enricher/generated/`.
+An entry with a test filename points to an assertion on those words or their named constant. An entry without one records the emission site. For a call that forwards
+all its wording, the entry identifies the template or expression and the caller supplies the words.
+
 The division of labour with the compiler is a consequence of Principle 2, not a coincidence: a check
 that can be settled by **computation over injected data** belongs in the compiler (it runs on every
 compile, offline, and cannot be bypassed), while a check that needs **a reference** can only live here.

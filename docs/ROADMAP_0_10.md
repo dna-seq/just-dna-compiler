@@ -380,7 +380,12 @@ holds only the fragments 0.9's diff added, so a warning text added later to an o
 grep (`@warning-text-is-api`), and the walk over every module held to it by set equality, so a new text with no
 entry fails the suite. Filling it is the bulk of the work; the walk is small once the registry exists.
 
-**Residuals** none yet.
+**Built (2026-11-27, on its own branch, for 0.11).** The tests register a fragment for each emission
+and walk every hand-written enricher module in both directions. Existing assert pins keep their test
+files, and repeated calls each owe an entry. CLI output and exception messages stay outside the walk.
+The build waits on its branch for 0.11. It adds no runtime text or package version bump.
+
+**Residuals** CLI refusal texts stay outside the walk, by the walk's existing definition of an emission: 98 stderr lines before a nonzero exit (70 distinct message expressions) and 15 `BadParameter` sites, counted by the build. Whether a consumer greps them, and so whether the walk widens, is for the pm to size (the lead, 2026-11-27).
 
 # After 0.10: the methylation minor, undated
 

@@ -41,6 +41,13 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md). The `0.8` branch merged into `main` at the 0.8.0 cut (2026-11-05).
 
+## 2026-11-27 — RM469: the warning-text walk covers every enricher module (a minor, for 0.11)
+
+A warning added to an older enricher module now fails the suite until its stable fragment is in
+`enricher/tests/emitted_texts.py`. Removing a registered emission also fails, even when another call
+still says the same words. Entries name the test that pins the wording where one exists. The change
+lives in the tests and is held on its branch for 0.11.
+
 ## 2026-11-26 — `v0.9.0`: format, compiler and enricher 0.9.0 (a minor, the `0.9` branch)
 
 **Cut on 2026-11-26 from the `0.9` branch**, built from 2026-11-16 to 2026-11-26: the enricher reads its reference data
