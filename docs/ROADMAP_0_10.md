@@ -385,7 +385,7 @@ and walk every hand-written enricher module in both directions. Existing assert 
 files, and repeated calls each owe an entry. CLI output and exception messages stay outside the walk.
 The build waits on its branch for 0.11. It adds no runtime text or package version bump.
 
-**Residuals** CLI refusal texts stay outside the walk, by the walk's existing definition of an emission: 98 stderr lines before a nonzero exit (70 distinct message expressions) and 15 `BadParameter` sites, counted by the build. Whether a consumer greps them, and so whether the walk widens, is for the pm to size (the lead, 2026-11-27).
+**Residuals** CLI refusal texts outside the walk (98 stderr lines before a nonzero exit, 70 distinct message expressions, and 15 `BadParameter` sites): won't fix, the pm (2026-11-27): no consumer is known to grep CLI stderr: the consumers call the Python API, and a CLI caller acts on the exit code; a report of one grepping a refusal text reopens it as its own item (`@absence-is-weighted-by-the-base-rate`).
 
 # After 0.10: the methylation minor, undated
 
