@@ -1699,12 +1699,13 @@ VALID_WARNING_CODES: frozenset[str] = frozenset(
         "rsid_unresolved",  # an rsID the resolution table does not place
         "rsid_without_resolution_label",  # coordinate-authored rows the table knows no rsID for
         "rsid_expanded_to_multiple_loci",  # one authored row became several, because the source says so
+        "rsid_genotype_reads_as_two_events",  # the same genotype spells an insertion and a deletion at one site
         "rsid_ambiguous",  # the table marks the rsID ambiguous; the pick is a pick
         "rsid_coordinate_disagrees",  # an authored rsID+coordinate pair the table contradicts
         "rsid_placements_disagree",  # one rsID placed two ways by two subjects of one table (RM374)
         "locus_hosting_undecidable",  # whether a locus can host the genotype could not be decided
         "locus_cannot_host_genotype",  # a locus contradicts the authored genotype and was dropped
-        "rsid_no_hosting_locus",  # every candidate locus contradicts the authored genotype
+        "rsid_no_hosting_locus",  # no position filled: loci contradict the genotype or are all claimed
         # ── VRS ──
         "vrs_id_unverifiable",  # a recorded `ga4gh:VA.` this tier cannot recompute
         "vrs_coverage_incomplete",  # alleles in resolution.csv that carry no VA at all
@@ -1815,6 +1816,7 @@ CARRIED_WARNING_CODES: frozenset[str] = frozenset(
         "resolution_skipped_cross_build",
         "contig_ploidy_undecidable",
         "rsid_expanded_to_multiple_loci",
+        "rsid_genotype_reads_as_two_events",
         "locus_hosting_undecidable",
         "vrs_id_unverifiable",
         "vrs_coverage_incomplete",

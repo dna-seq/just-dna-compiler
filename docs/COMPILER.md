@@ -249,10 +249,9 @@ stay as before 0.8.9, and the warning says so. A site whose only recorded verdic
 could not judge, as a run with no reference sequence writes) reads the same way: both stay, under a sentence
 saying the source asked "could not decide whether either is the same event". Whatever the witness, an expansion member re-keyed onto an
 authored coordinate row's exact `(variant_key, genotype)` is not filled: the coordinate row picks its event, and
-the warning names the key. Each outcome is a warning and none is escalated in 0.8. In 0.8.9 each sentence
-borrows the code of what the row became, since a code added in a patch is refused by an older format reader:
-`rsid_no_hosting_locus` where no position is written, `rsid_expanded_to_multiple_loci` where one or more loci are
-filled (so a site narrowed to one locus counts as an expansion). 0.9 adds `rsid_genotype_reads_as_two_events`.
+the warning names the key. Since 0.10 the mirrored-site fill sentences carry
+`rsid_genotype_reads_as_two_events` in both compile modes (RM460). Where authored rows claim every spelling,
+the sentence naming the claimed keys carries `rsid_no_hosting_locus` because the rsID row has no position.
 A positional row was already left unplaced where two loci host it. It is a corrected derivation:
 an artifact compiled before 0.8.9 may hold the claim on both spellings. S158 is the report.
 
@@ -2093,7 +2092,8 @@ each is on this side:
 | `non_grch38_variant_keys` | VRS allele identity is GRCh38-only, so a non-GRCh38 module is coordinate-keyed |
 | `resolution_skipped_cross_build` | resolution and the positional fill are GRCh38-bound (RM15) |
 | `contig_ploidy_undecidable` | the build carries no pseudoautosomal table here, so ploidy cannot be decided |
-| `rsid_expanded_to_multiple_loci` | the source maps one rsID onto several loci; that is a fact about dbSNP |
+| `rsid_expanded_to_multiple_loci` | the source maps one rsID onto several loci and the resolver emits multiple rows |
+| `rsid_genotype_reads_as_two_events` | the same strings describe opposite events at the source's site. The fill reports which spellings it used |
 | `locus_hosting_undecidable` | deciding needs the reference sequence, which this tier never fetches (P2) |
 | `vrs_id_unverifiable` | the recomputation is beyond this tier — `_carried_vrs_warnings` is the shape the split generalises |
 | `vrs_coverage_incomplete` | the alleles a VA does not reach; minting more is not an authored edit |
@@ -2112,7 +2112,7 @@ actionable, which is `vocab.ACTIONABLE_WARNING_CODES`, derived by subtraction:
   `contig_ploidy_mismatch`
 - **resolution** — `resolution_disabled`, `resolution_not_injected`, `resolution_skipped_cross_build`,
   `positional_identity_contradicted`, `positional_rows_unjoinable`, `rsid_unresolved`,
-  `rsid_without_resolution_label`, `rsid_expanded_to_multiple_loci`, `rsid_ambiguous`,
+  `rsid_without_resolution_label`, `rsid_expanded_to_multiple_loci`, `rsid_genotype_reads_as_two_events`, `rsid_ambiguous`,
   `rsid_coordinate_disagrees`, `rsid_placements_disagree`, `locus_hosting_undecidable`,
   `locus_cannot_host_genotype`, `rsid_no_hosting_locus`
 - **VRS** — `vrs_id_unverifiable`, `vrs_coverage_incomplete`, `vrs_version_differs`
@@ -2220,6 +2220,15 @@ LOG_NOT_SHIPPED_PHRASE         = "does not ship with the module"
 PLACEMENTS_DISAGREE_PHRASE     = "two placement sets for this one rsID"   # resolution.py, RM374
 UNDECIDED_PHRASE               = "could not decide whether either is the same event"   # resolution.py, RM449
 ```
+
+At a mirrored site the code for a sentence depends on what it reports (RM460, 0.10).
+
+| Code | Fragments in the published warning |
+|---|---|
+| `rsid_genotype_reads_as_two_events` | “opposite events spelled with the same strings” when narrowed to the witnessed spelling. When both are kept, the sentence says “a second source places both under this rsID”, “placed neither as the same event”, “no second source was asked” or “could not decide whether either is the same event”. |
+| `rsid_genotype_reads_as_two_events` | “which picks that event” when an authored coordinate claims a spelling and the rsID row still has a position. |
+| `rsid_no_hosting_locus` | “which picks that event” when authored coordinates claim all spellings and the rsID row stays unpositioned. A row whose candidates all contradict its genotype still says “position remains unset”. |
+| `rsid_expanded_to_multiple_loci` | “expanded to” counts the separate finding about actual row expansion. A site narrowed to one locus has only the mirrored-site finding. |
 
 **Retired phrases.** A consumer may still grep manifests compiled before the retirement, so the text
 stays listed here after nothing emits it.

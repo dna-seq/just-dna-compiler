@@ -11,12 +11,16 @@ deletion without one, VCV 3653980), and the registry's published `superhuman@2.4
 import csv
 import io
 import shutil
+from collections import Counter
 from pathlib import Path
 
 import polars as pl
 import pytest
 from just_dna_compiler.compiler import compile_module, reverse_module
 from just_dna_compiler.compiler.reverse import reconstructed_projection
+from just_dna_compiler.compiler.validate import _validate_spec
+from just_dna_compiler.models import CompilationResult
+from just_dna_format.findings import CodedWarning
 
 _YAML = (
     "schema_version: '1.0'\nmodule:\n  name: rm449\n  title: RM449\n  description: d\n  report_title: RM449\n"
@@ -54,8 +58,29 @@ def _placed(out: Path) -> list[tuple]:
 _S158_LOCI = _locus("rs1057516393", 0, 108256251, "C", "CT", "same_event") + _locus(
     "rs1057516393", 1, 108256251, "CT", "C", "unplaced"
 )
+_S158_UNASKED_LOCI = _locus("rs1057516393", 0, 108256251, "C", "CT", "") + _locus(
+    "rs1057516393", 1, 108256251, "CT", "C", ""
+)
 _HEADER = "rsid,chrom,start,ref,alts,genotype,state,conclusion,gene\n"
 _RSID_ROW = "rs1057516393,,,,,C/CT,risk,ins,ATM\n"
+
+
+def _assert_finding(
+    spec: Path, result: CompilationResult, sentence: str, code: str = "rsid_genotype_reads_as_two_events"
+) -> None:
+    """Check the code before pydantic strips it, then the text and the whole summary after publication."""
+    assert result.manifest is not None, result.errors
+    compilation = result.manifest.compilation
+    _, findings = _validate_spec(spec, strict=compilation.resolution_mode == "strict")
+    (finding,) = [w for w in findings if w == sentence]
+    assert isinstance(finding, CodedWarning)
+    assert sentence in compilation.warnings
+    assert (sentence in compilation.carried) == (code == "rsid_genotype_reads_as_two_events")
+    coded = [w for w in findings if isinstance(w, CodedWarning)]
+    expected = Counter(code if w == sentence else w.code for w in coded)
+    assert compilation.warnings_summary == expected
+    assert finding.code == code
+    assert all(w.code == "rsid_expanded_to_multiple_loci" for w in coded if "; expanded to " in w)
 
 
 def test_the_rsid_row_alone_lands_on_the_witnessed_spelling_only(tmp_path: Path) -> None:
@@ -64,8 +89,14 @@ def test_the_rsid_row_alone_lands_on_the_witnessed_spelling_only(tmp_path: Path)
     result = compile_module(spec, tmp_path / "out", strict=True)
     assert result.success, result.errors
     assert _placed(tmp_path / "out") == [("rs1057516393", 108256251, "C", ("CT",), "ins")]
-    (sentence,) = [w for w in result.warnings if _PHRASE in w]
-    assert "C>CT, is filled and CT>C is not (RM449)" in sentence
+    _assert_finding(
+        spec,
+        result,
+        "rs1057516393: the genotype C/CT reads as an insertion and as a deletion at 11:108256251 "
+        "(C>CT, CT>C), opposite events spelled with the same strings, so which one the row means "
+        "could not be decided from its genotype; the placement a second source witnessed as the "
+        "same event, C>CT, is filled and CT>C is not (RM449)",
+    )
 
 
 def test_an_authored_deletion_row_beside_it_no_longer_collides(tmp_path: Path) -> None:
@@ -122,8 +153,15 @@ def test_a_witness_that_placed_neither_spelling_leaves_both_filled_and_says_so(t
     result = compile_module(spec, tmp_path / "out", strict=True)
     assert result.success, result.errors
     assert len(_placed(tmp_path / "out")) == 2
-    (said,) = [w for w in result.warnings if "placed neither as the same event" in w]
-    assert "so both are filled as before (RM453)" in said
+    _assert_finding(
+        spec,
+        result,
+        "rs1057516393: its row's genotype reads as an insertion and as a deletion at 11:108256251 "
+        "(C>CT, CT>C), and the second source asked placed neither as the same event (`placement_verdict` is "
+        "`unplaced`: it holds no counterpart under this rsID), so both are filled as before (RM453). "
+        "If the row is about one of them, replace it with a row authoring that event's coordinate and "
+        "re-run the enricher so the table files it",
+    )
 
 
 def test_both_spellings_witnessed_keep_the_expansion(tmp_path: Path) -> None:
@@ -138,7 +176,14 @@ def test_both_spellings_witnessed_keep_the_expansion(tmp_path: Path) -> None:
     assert not [w for w in result.warnings if _PHRASE in w]
     # Never silent (the pm, 2026-11-18): one sentence for the rsID, in both modes, never escalated in 0.8.
     (said,) = [w for w in result.warnings if "a second source places both under this rsID" in w]
-    assert "rs281864532" in said and "5225481" in said and "authoring that event's coordinate" in said
+    _assert_finding(
+        spec,
+        result,
+        "rs281864532: its row's genotype reads as an insertion and as a deletion at 11:5225481 "
+        "(G>GT, GT>G), and a second source places both under this rsID, so the row's one claim is filled on two "
+        "opposite events (RM449). If it is about one of them, replace the rsID row with a row "
+        "authoring that event's coordinate, and re-run the enricher so the table files it",
+    )
     lenient = compile_module(spec, tmp_path / "lenient", strict=False)
     assert [w for w in lenient.warnings if "a second source places both under this rsID" in w] == [said]
 
@@ -171,25 +216,20 @@ def test_a_site_no_second_source_was_asked_about_keeps_the_expansion_and_says_so
 
     `test_clinvar`'s `rs777`, a ClinVar fill offline, compiled under strict before RM449 and must still.
     """
-    loci = _locus("rs1057516393", 0, 108256251, "C", "CT", "") + _locus(
-        "rs1057516393", 1, 108256251, "CT", "C", ""
-    )
-    spec = _spec(tmp_path, _HEADER + _RSID_ROW, loci, "rs1057516393")
+    spec = _spec(tmp_path, _HEADER + _RSID_ROW, _S158_UNASKED_LOCI, "rs1057516393")
     result = compile_module(spec, tmp_path / "out", strict=True)
     assert result.success, result.errors
     assert len(_placed(tmp_path / "out")) == 2
     (said,) = [w for w in result.warnings if "no second source was asked" in w]
     assert "so both are filled as before (RM449)" in said
+    _assert_finding(spec, result, said)
 
 
 def test_an_authored_coordinate_row_wins_over_an_unwitnessed_expansion_onto_its_key(tmp_path: Path) -> None:
     """RM449's own remedy, where no witness was asked: the coordinate row picks its event, and the rsID row's
     expansion onto that exact (variant_key, genotype) is dropped and named, never a strict duplicate."""
-    loci = _locus("rs1057516393", 0, 108256251, "C", "CT", "") + _locus(
-        "rs1057516393", 1, 108256251, "CT", "C", ""
-    )
     rows = _HEADER + _RSID_ROW + ",11,108256251,CT,C,C/CT,risk,del,ATM\n"
-    spec = _spec(tmp_path, rows, loci, "rs1057516393")
+    spec = _spec(tmp_path, rows, _S158_UNASKED_LOCI, "rs1057516393")
     result = compile_module(spec, tmp_path / "out", strict=True)
     assert result.success, result.errors
     assert _placed(tmp_path / "out") == [
@@ -198,6 +238,25 @@ def test_an_authored_coordinate_row_wins_over_an_unwitnessed_expansion_onto_its_
     ]
     (said,) = [w for w in result.warnings if "which picks that event (RM449)" in w]
     assert "11:108256251:CT:C" in said
+    _assert_finding(spec, result, said)
+
+
+def test_all_spellings_claimed_counts_the_unpositioned_rsid_row(tmp_path: Path) -> None:
+    rows = _HEADER + _RSID_ROW + ",11,108256251,CT,C,C/CT,risk,del,ATM\n"
+    rows += ",11,108256251,C,CT,C/CT,risk,ins,ATM\n"
+    spec = _spec(tmp_path, rows, _S158_UNASKED_LOCI, "rs1057516393")
+    out = tmp_path / "out"
+    result = compile_module(spec, out, strict=False)
+    assert result.success, result.errors
+    weights = pl.read_parquet(out / "weights.parquet")
+    assert weights.filter(pl.col("rsid") == "rs1057516393").select("chrom", "start").rows() == [(None, None)]
+    _assert_finding(
+        spec,
+        result,
+        "rs1057516393: its row's genotype C/CT is not filled on 11:108256251:C:CT, 11:108256251:CT:C, "
+        "because the module authors that coordinate row with the same genotype, which picks that event (RM449)",
+        code="rsid_no_hosting_locus",
+    )
 
 
 _EXAMPLE = Path(__file__).resolve().parents[2] / "reference_examples" / "pathogenic_clinvar"
@@ -252,6 +311,7 @@ def test_a_site_judged_undecided_both_ways_keeps_the_expansion_and_says_so(tmp_p
     assert len(_placed(tmp_path / "out")) == 2
     (said,) = [w for w in result.warnings if _UNDECIDED_PHRASE in w]
     assert "so both are filled as before (RM449)" in said and "108256251" in said
+    _assert_finding(spec, result, said)
     # Its own sentence: the not-asked one says `placement_verdict` is empty, which this table contradicts.
     assert not [w for w in result.warnings if "no second source was asked" in w]
 
@@ -336,58 +396,6 @@ def test_an_example_judged_undecided_at_every_mirrored_site_compiles_strict_and_
     assert second.success, second.errors
     assert first.manifest.artifact.digest == second.manifest.artifact.digest
     assert reconstructed_projection(first.manifest) == reconstructed_projection(second.manifest)
-
-
-# ── 0.8.9 borrows two existing codes, by what the row became (the pm, 2026-11-18, 5c5d4a52) ────────────
-# A code added in a patch is an old-reader break: `warnings_summary` validates its keys against the closed
-# vocabulary, so a just-dna-format 0.8.6 reader refuses a manifest carrying one it does not know. 0.9 adds
-# `rsid_genotype_reads_as_two_events` and moves these sentences to it.
-
-
-def _summary_and_carried(result) -> tuple[dict[str, int], list[str]]:
-    compilation = result.manifest.compilation
-    return compilation.warnings_summary, compilation.carried
-
-
-def test_a_filled_mirrored_site_is_counted_as_an_expansion_until_0_9(tmp_path: Path) -> None:
-    """Both spellings witnessed, one witnessed, and none asked: the row is filled, so the sentence counts under
-    `rsid_expanded_to_multiple_loci` (carried, as that code is) and never under a code 0.8.6 cannot read."""
-    cases = {
-        "both": ("same_event", "same_event", "a second source places both under this rsID"),
-        "one": ("same_event", "unplaced", _PHRASE),
-        "unasked": ("", "", "no second source was asked"),
-        "undecided": ("undecided", "undecided", _UNDECIDED_PHRASE),
-    }
-    for name, (insertion, deletion, phrase) in cases.items():
-        loci = _locus("rs1057516393", 0, 108256251, "C", "CT", insertion) + _locus(
-            "rs1057516393", 1, 108256251, "CT", "C", deletion
-        )
-        spec = _spec(tmp_path / name, _HEADER + _RSID_ROW, loci, "rs1057516393")
-        result = compile_module(spec, tmp_path / name / "out", strict=True)
-        assert result.success, (name, result.errors)
-        summary, carried = _summary_and_carried(result)
-        (said,) = [w for w in result.manifest.compilation.warnings if phrase in w]
-        assert said in carried, name
-        assert "rsid_genotype_reads_as_two_events" not in summary
-        # The RM449 sentence, plus the ordinary expansion sentence where two loci are filled.
-        assert summary["rsid_expanded_to_multiple_loci"] == (1 if name == "one" else 2), name
-
-
-def test_a_mirrored_site_no_spelling_was_witnessed_at_is_counted_as_an_expansion_until_0_9(
-    tmp_path: Path,
-) -> None:
-    """Since RM453 no mirrored site leaves a row unpositioned, so nothing here is `rsid_no_hosting_locus`: the
-    sentence rides the borrowed `rsid_expanded_to_multiple_loci` until 0.9 gives it its own code."""
-    loci = _locus("rs1057516393", 0, 108256251, "C", "CT", "unplaced") + _locus(
-        "rs1057516393", 1, 108256251, "CT", "C", "unplaced"
-    )
-    spec = _spec(tmp_path, _HEADER + _RSID_ROW, loci, "rs1057516393")
-    result = compile_module(spec, tmp_path / "out", strict=False)
-    summary, carried = _summary_and_carried(result)
-    (said,) = [w for w in result.manifest.compilation.warnings if "placed neither as the same event" in w]
-    assert said in carried
-    assert "rsid_no_hosting_locus" not in summary and summary.get("rsid_expanded_to_multiple_loci", 0) >= 1
-    assert "rsid_genotype_reads_as_two_events" not in summary
 
 
 @pytest.mark.skipif(not _EXAMPLE.is_dir(), reason="the pathogenic_clinvar example is not in this checkout")
