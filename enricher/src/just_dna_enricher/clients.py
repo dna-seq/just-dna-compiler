@@ -11,6 +11,7 @@ import threading
 from collections.abc import Callable
 from dataclasses import dataclass, field, fields
 
+from just_dna_enricher.answer_store import StoreSetting
 from just_dna_enricher.ensembl import EnsemblResolver
 from just_dna_enricher.eutils import EutilsClient
 from just_dna_enricher.gnomad import GnomadClient
@@ -63,6 +64,8 @@ class LookupClients:
     ensembl: EnsemblResolver | None = None
     grch37: Grch37Client | None = None
     snapshots: RemoteSnapshots | None = None
+    #: Store for lookup calls. An enclosing answer_run owns the store for its batch.
+    answer_store: StoreSetting = field(default=None, kw_only=True, metadata={"client": False})
     # Not part of the value, and every bundle gets its own: `ensure` mutates a caller-shared
     # dataclass, and a server running its blocking work through a thread pool shares one bundle by
     # following our own advice (the same reason `PacingGate` grew a lock, S15).
@@ -92,4 +95,6 @@ class LookupClients:
 
 
 #: The client fields of `LookupClients`, derived rather than listed (`@registry-completeness`).
-CLIENT_FIELDS: tuple[str, ...] = tuple(f.name for f in fields(LookupClients) if not f.name.startswith("_"))
+CLIENT_FIELDS: tuple[str, ...] = tuple(
+    f.name for f in fields(LookupClients) if not f.name.startswith("_") and f.metadata.get("client", True)
+)

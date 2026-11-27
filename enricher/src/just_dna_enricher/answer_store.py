@@ -125,8 +125,10 @@ class AnswerRun:
         self._usage: dict[tuple[str, str | None], AnswerUsage] = {}
         self._lock = threading.Lock()
 
-    def current(self) -> AnswerRun:
-        return _ACTIVE.get() or self
+    @staticmethod
+    def current() -> AnswerRun:
+        """The caller's run, or a fresh run owned only by this client call."""
+        return _ACTIVE.get() or AnswerRun()
 
     def release(self, source: str, probe: Callable[[], str | None]) -> str | None:
         with self._lock:
@@ -178,7 +180,22 @@ _ACTIVE: ContextVar[AnswerRun | None] = ContextVar("live_answer_run", default=No
 
 @contextmanager
 def answer_run(setting: StoreSetting = None) -> Iterator[AnswerRun]:
-    """Isolate concurrent enrich calls, including those borrowing exactly the same live clients."""
+    """Share one release observation per source and usage counts across the lookups in this block.
+
+    An enclosing run owns the store and the observations for nested lookups, even when a
+    lookup bundle supplies a different setting.
+    """
+    parent = _ACTIVE.get()
+    if parent is not None:
+        yield parent
+    else:
+        with enrichment_answer_run(setting) as run:
+            yield run
+
+
+@contextmanager
+def enrichment_answer_run(setting: StoreSetting = None) -> Iterator[AnswerRun]:
+    """Start a distinct enrichment report, inheriting the enclosing store when no setting is given."""
     parent = _ACTIVE.get()
     if setting is None and parent is not None:
         setting = parent.store if parent.store is not None else False

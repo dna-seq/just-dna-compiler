@@ -27,7 +27,7 @@ from just_dna_format.vocab import ALLELE_PATTERN
 from just_dna_format.vrs import contig_length, refget_accession
 from tenacity import retry
 
-from just_dna_enricher.answer_store import AnswerRun, SourceAnswers
+from just_dna_enricher.answer_store import AnswerRun, SourceAnswers, answer_run
 from just_dna_enricher.clingen_allele import anchor_indel
 from just_dna_enricher.net import (
     PacingGate,
@@ -212,8 +212,6 @@ class EnsemblResolver(Withholding):
     # resolver that arrive while it is being built wait for that one rather than each building another.
     _reader_lock: threading.Lock = field(default_factory=threading.Lock, repr=False, compare=False)
 
-    _answers: AnswerRun = field(default_factory=AnswerRun, init=False, repr=False, compare=False)
-
     def __post_init__(self) -> None:
         if self.gate is None:
             self.gate = PacingGate(interval=self.settings.interval)
@@ -277,7 +275,9 @@ class EnsemblResolver(Withholding):
         mapping puts the rsID, through RM268's anchor, and an injected resolver's `resolve_rsid` may
         answer from any surface. It is an optional capability of an injected one (`RestWitness`).
         """
-        answers = self._source_answers()
+        return self._resolve_one(rsid, self._source_answers())
+
+    def _resolve_one(self, rsid: str, answers: SourceAnswers) -> RsidAnswer:
         found = answers.read([rsid])
         if rsid in found:
             return self._record_answer(rsid, found[rsid])
@@ -288,13 +288,10 @@ class EnsemblResolver(Withholding):
         return self._live_rsid(rsid, answers)
 
     def _source_answers(self) -> SourceAnswers:
-        run = self._answers.current()
-        return SourceAnswers(
-            run,
-            self.settings.rest_endpoint.rstrip("/"),
-            self.data_release() if run.store is not None else None,
-            f"/variation/{self.settings.species}/",
-        )
+        with answer_run() as run:
+            source = self.settings.rest_endpoint.rstrip("/")
+            release = self.data_release() if run.store is not None else None
+            return SourceAnswers(run, source, release, f"/variation/{self.settings.species}/")
 
     def _record_answer(
         self, rsid: str, record: dict | None, answers: SourceAnswers | None = None
@@ -362,13 +359,13 @@ class EnsemblResolver(Withholding):
         self.settings._check()
         asked = list(rsids)
         size = self.settings.batch_size
-        if size == 1:
-            for rsid in asked:
-                yield rsid, self.resolve_rsid_rest(rsid)
-            return
         if not asked:
             return
         answers = self._source_answers()
+        if size == 1:
+            for rsid in asked:
+                yield rsid, self._resolve_one(rsid, answers)
+            return
         for chunk in batched(asked, size):
             found = answers.read(chunk)
             missing = list(dict.fromkeys(rsid for rsid in chunk if rsid not in found))
@@ -473,7 +470,7 @@ class EnsemblResolver(Withholding):
         A transport failure is retried; a status error, a body that is not JSON or one naming no single
         release is `None` with a log line: the rows are written, and only the release goes unrecorded.
         """
-        run = self._answers.current()
+        run = AnswerRun.current()
         if run.store is not None:
             return run.release(self.settings.rest_endpoint.rstrip("/"), self._read_release)
         release = self._read_release()

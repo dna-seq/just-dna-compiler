@@ -35,7 +35,7 @@ from just_dna_format.vocab import ALLELE_PATTERN
 from just_dna_format.vrs import normalize_chrom, par_partner, refget_accession
 
 from just_dna_enricher import clinvar
-from just_dna_enricher.answer_store import StoreSetting, answer_run
+from just_dna_enricher.answer_store import StoreSetting, enrichment_answer_run
 from just_dna_enricher.civic_citations import check_evidence_status_currency, read_studies
 from just_dna_enricher.civic_refutation import RefutationFinding, compare_refutations
 from just_dna_enricher.clients import LookupClients
@@ -430,7 +430,10 @@ def enrich(
         rederive_subjects = (rederive_subjects,)
     # The lock spans the whole window — from the read of the recorded table to the commit — so it is
     # taken here and not inside the run. A `write=False` caller touches no file and takes none.
-    with spec_lock(spec_dir, enabled=write, error=EnrichmentError), answer_run(answer_store) as answers:
+    with (
+        spec_lock(spec_dir, enabled=write, error=EnrichmentError),
+        enrichment_answer_run(answer_store) as answers,
+    ):
         result = _run_enrichment(
             spec_dir,
             mode=mode,

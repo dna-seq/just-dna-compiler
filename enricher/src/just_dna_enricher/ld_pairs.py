@@ -54,7 +54,7 @@ from just_dna_format.spec import StudyRow
 from just_dna_format.vocab import RSID_PATTERN
 from tenacity import retry
 
-from just_dna_enricher.answer_store import AnswerRun, AnswerUsage, SourceAnswers, answer_run
+from just_dna_enricher.answer_store import AnswerRun, AnswerUsage, SourceAnswers, enrichment_answer_run
 from just_dna_enricher.ensembl import DEFAULT_REST_ENDPOINT, ENSEMBL_RELEASE_PREFIX, ensembl_data_release
 from just_dna_enricher.licensing import (
     ENSEMBL_TERMS,
@@ -141,8 +141,6 @@ class LdClient:
     timeout: float = LD_TIMEOUT
     client: httpx.Client | None = None
     gate: PacingGate | None = None
-
-    _answers: AnswerRun = field(default_factory=AnswerRun, init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         if self.gate is None:
@@ -231,7 +229,7 @@ class LdClient:
         return answer
 
     def _source_answers(self) -> SourceAnswers:
-        run = self._answers.current()
+        run = AnswerRun.current()
         source = self.endpoint.rstrip("/")
         release = run.release(source, self._optional_release) if run.store is not None else None
         return SourceAnswers(run, source, release)
@@ -417,7 +415,7 @@ def _ask(
     pair alone: it gets no row, is named in `result.unusable`, and the queue goes on, so the pairs already
     paid for are committed.
     """
-    if isinstance(ensembl, LdClient) and ensembl._answers.current().store is not None:
+    if isinstance(ensembl, LdClient) and AnswerRun.current().store is not None:
         result.dataset = ensembl._source_answers().release
     else:
         try:
@@ -531,7 +529,7 @@ def enrich_ld_pairs(
         owned = client is None
         ensembl = client or LdClient()
         try:
-            with answer_run() as answers:
+            with enrichment_answer_run() as answers:
                 outage = _ask(ensembl, to_ask, result, fresh, fetched_at)
                 result.answer_usage = answers.report()
         finally:

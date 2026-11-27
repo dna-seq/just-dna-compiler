@@ -28,7 +28,7 @@ from typing import Any
 import httpx
 from tenacity import retry
 
-from just_dna_enricher.answer_store import AnswerRun, SourceAnswers
+from just_dna_enricher.answer_store import AnswerRun, SourceAnswers, answer_run
 from just_dna_enricher.locations import env_value
 from just_dna_enricher.net import (
     EndpointRetired,
@@ -130,8 +130,6 @@ class EutilsClient:
     gate: PacingGate | None = None
     _client: httpx.Client | None = None
 
-    _answers: AnswerRun = field(default_factory=AnswerRun, init=False, repr=False, compare=False)
-
     def __post_init__(self) -> None:
         # NCBI's budget is per key or per address, never per client (RM418): a client built without a
         # gate takes the process's, so the rsID check and the literature pass running at once share it.
@@ -211,7 +209,7 @@ class EutilsClient:
         return f"{self.settings.base_url.rstrip('/')}?db={db}"
 
     def db_build(self, db: str) -> str | None:
-        """The database's own build, once per client (or per enrich run borrowing this client)."""
+        """The database's own build, once per run or standalone call."""
 
         def probe() -> str | None:
             try:
@@ -225,7 +223,7 @@ class EutilsClient:
             build = info[0].get("dbbuild")
             return build if isinstance(build, str) and build.strip() else None
 
-        return self._answers.current().release(self._source(db), probe)
+        return AnswerRun.current().release(self._source(db), probe)
 
     def esummary(self, db: str, ids: list[str]) -> dict[str, dict[str, Any]]:
         """`uid -> record` across as many batches as `ids` needs, in first-occurrence order.
@@ -238,8 +236,9 @@ class EutilsClient:
         wanted = dedupe(i for i in ids if i)
         if not wanted:
             return {}
-        run = self._answers.current()
-        answers = SourceAnswers(run, self._source(db), self.db_build(db) if run.store is not None else None)
+        with answer_run() as run:
+            release = self.db_build(db) if run.store is not None else None
+            answers = SourceAnswers(run, self._source(db), release)
         out = answers.read(wanted)
         missing = [uid for uid in wanted if uid not in out]
         for batch in batched(missing, self.settings.batch_size):

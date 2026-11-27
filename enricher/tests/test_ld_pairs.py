@@ -471,3 +471,22 @@ def test_a_missing_ld_release_leaves_the_pair_live_and_unlabelled(
         (row,) = enrich_ld_pairs(spec, client=_client(handle), write=False).rows
         assert row.dataset is None and row.r2 == float(json.loads(_EUR)[0]["r2"])
     assert asked == ["/info/data", pair] * 2 and not path.exists()
+
+
+def test_direct_pairwise_calls_recheck_the_release(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("JUST_DNA_ANSWER_STORE", str(tmp_path / "answers.sqlite3"))
+    releases = iter([116, 117])
+    paths: list[str] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        paths.append(request.url.path)
+        if request.url.path == "/info/data":
+            return httpx.Response(200, json={"releases": [next(releases)]})
+        return httpx.Response(200, text=_EUR)
+
+    row = json.loads(_EUR)[0]
+    client = _client(handle)
+    for _ in range(2):
+        assert client.pairwise(row["variation1"], row["variation2"], row["population_name"]).rows == (row,)
+    pair = f"/ld/human/pairwise/{row['variation1']}/{row['variation2']}"
+    assert paths == ["/info/data", pair] * 2

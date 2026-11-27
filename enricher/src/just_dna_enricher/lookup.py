@@ -3,9 +3,8 @@
 The network half of the authoring surface. `just_dna_compiler.hints` inspects rows using nothing but
 the module's own bytes; this module adds the facts that need a reference, in the same report shape.
 
-**It writes nothing — not a file, not a cell.** Every pass in this package that *does* write does so
-into a sidecar (`resolution.csv`, `frequencies.csv`, …) after a deliberate command. A lookup is a
-question, and its answers come back as `hints.Alteration`s with `applied=False` and a `refusal`
+Live lookups may cache answers in the host's answer store. They leave the module's authored
+cells and sidecars untouched. Advisory answers come back as `hints.Alteration`s with `applied=False` and a `refusal`
 naming why the value is the author's to type.
 
 That refusal is not fastidiousness. Almost every fact here is cross-examined later by a check that
@@ -27,6 +26,8 @@ Offline is a first-class answer, not a failure: a check that could not run repor
 
 import functools
 import logging
+from collections.abc import Iterator
+from contextlib import closing, contextmanager, nullcontext
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -36,6 +37,7 @@ from just_dna_compiler.hints import Alteration, Finding
 from just_dna_format.vrs import normalize_chrom
 
 from just_dna_enricher import clinvar, resolver
+from just_dna_enricher.answer_store import answer_run
 
 # Re-exported so `lookup.LookupClients` and `lookup.CLIENT_FIELDS` stay importable (P3); the home is `clients`.
 from just_dna_enricher.clients import CLIENT_FIELDS as CLIENT_FIELDS
@@ -220,6 +222,14 @@ class _ClinVarSites:
             self.route = self.route or answer.route
 
 
+@contextmanager
+def _lookup_clients(clients: LookupClients | None) -> Iterator[LookupClients]:
+    """Scope answers to the lookup and close any bundle the lookup owns."""
+    session = closing(LookupClients()) if clients is None else nullcontext(clients)
+    with session as bundle, answer_run(bundle.answer_store):
+        yield bundle
+
+
 def lookup_variant(
     *,
     rsid: str | None = None,
@@ -238,8 +248,8 @@ def lookup_variant(
 ) -> VariantHint:
     """Answer "what is this variant?" — validity, coordinates, alleles, frequencies, clinical calls.
 
-    Give an `rsid`, a coordinate, or both. Nothing is written and nothing is decided: a one-to-many
-    rsID returns every locus rather than picking one, and a position matching several rsIDs returns
+    Give an `rsid`, a coordinate, or both. A one-to-many rsID returns every locus,
+    and a position matching several rsIDs returns
     every candidate. `ambiguity=True` adds the explicit warning; the candidates are always returned,
     because hiding them would be a decision too.
 
@@ -259,13 +269,9 @@ def lookup_variant(
     holder) raises its `ValueError`, since it is wrong on every route.
     """
     hint = VariantHint(rsid=rsid)
-    owned = clients is None
-    clients = clients or LookupClients()
-    # The remote step sits where the local snapshot sits (RM430), and only with a holder: `--offline`
-    # keeps zero egress at zero.
-    remote = None if offline else clients.snapshots
-    clinvar_sites = _ClinVarSites()
-    try:
+    with _lookup_clients(clients) as clients:
+        remote = None if offline else clients.snapshots
+        clinvar_sites = _ClinVarSites()
         _lookup_from_cache(
             hint,
             rsid,
@@ -309,11 +315,6 @@ def lookup_variant(
             )
         _offer_coordinates(hint)
         _state_position_outcome(hint, rsid)
-    finally:
-        # A bundle this call built is this call's to close (S92): the legs no longer close what
-        # they build, so the connections they opened would otherwise outlive the question.
-        if owned:
-            clients.close()
     return hint
 
 
@@ -943,21 +944,16 @@ def lookup_old_assembly(
     unverifiable-by-construction identity, which is the hazard class behind this tree's 3,038-row
     off-by-one.
 
-    Nothing is written, and the refusal is the sharpest one in `_REFUSAL_BY_COLUMN`: `rsid` is
+    The module stays untouched. The refusal for `rsid` in `_REFUSAL_BY_COLUMN` is
     `identity_bearing`, so a machine filling it would be performing an identity migration by network
     lookup, exactly as `_check_rsid_currency` refuses to do for a merged id.
 
     Several candidates are **reported, never picked** — `ref`/`alts` narrow them, and a pick among
     equals is not a finding.
     """
-    owned = clients is None
-    clients = clients or LookupClients()
-    try:
+    with _lookup_clients(clients) as clients:
         client = None if offline else clients.ensure("grch37", Grch37Client)
         recovery = recover_rsid(chrom, start, ref=ref, alts=alts, client=client, offline=offline)
-    finally:
-        if owned:
-            clients.close()
     hint = OldAssemblyHint(recovery=recovery)
     level = {
         "recovered": "info",
@@ -1010,9 +1006,7 @@ def lookup_citation(
     if offline:
         hint.findings.append(Finding(None, None, "info", "offline: citation existence was not checked"))
         return hint
-    owned = clients is None
-    clients = clients or LookupClients()
-    try:
+    with _lookup_clients(clients) as clients:
         resolved_pmid: str | None = None
         if pmcid:
             resolved_pmid = _check_pmcid(hint, hint.pmcid or pmcid, clients, authored_pmid=pmid)
@@ -1031,9 +1025,6 @@ def lookup_citation(
             # The **authored** DOI, never a derived one: a DOI the registry just handed over exists
             # by construction, so checking it would answer a question nobody asked.
             _check_doi(hint, doi, clients)
-    finally:
-        if owned:
-            clients.close()
     return hint
 
 
@@ -1334,24 +1325,14 @@ def _check_availability(hint: CitationHint, pmid: str, clients: LookupClients) -
 
 def lookup_trait(curie: str, *, clients: LookupClients | None = None) -> TraitStatus:
     """Is this trait CURIE current, obsolete, or unknown? (OLS4; `unchecked` when it cannot be asked.)"""
-    owned = clients is None
-    clients = clients or LookupClients()
-    try:
+    with _lookup_clients(clients) as clients:
         return clients.ensure("ontology", OntologyClient).trait(curie)
-    finally:
-        if owned:
-            clients.close()
 
 
 def lookup_gene(symbol: str, *, clients: LookupClients | None = None) -> GeneStatus:
     """Is this gene symbol approved or retired? (HGNC exact endpoints, never the fuzzy search.)"""
-    owned = clients is None
-    clients = clients or LookupClients()
-    try:
+    with _lookup_clients(clients) as clients:
         return clients.ensure("ontology", OntologyClient).gene(symbol)
-    finally:
-        if owned:
-            clients.close()
 
 
 def as_report_rows(hint: Any) -> list[dict[str, Any]]:

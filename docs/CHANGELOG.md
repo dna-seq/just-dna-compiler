@@ -97,6 +97,10 @@ without a release gets another live lookup. `JUST_DNA_ANSWER_STORE` chooses the 
 when empty, and `--no-answer-store` bypasses it for one command. The enrichment report gives the
 release and the number of subjects served from the store and asked live.
 
+Preview finding S163. Reusing a live client or a `LookupClients` bundle now checks the serving
+release on each call. A host can pass its store as `LookupClients(answer_store=...)`, or wrap several
+lookups in `answer_run(...)` to share one probe per source and one set of usage counts for the batch.
+
 ## 2026-11-26 — `v0.9.0`: format, compiler and enricher 0.9.0 (a minor, the `0.9` branch)
 
 **Cut on 2026-11-26 from the `0.9` branch**, built from 2026-11-16 to 2026-11-26: the enricher reads its reference data

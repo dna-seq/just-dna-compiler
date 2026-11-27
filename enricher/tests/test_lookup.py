@@ -712,7 +712,8 @@ def test_every_client_field_is_built_once_kept_and_closed_by_the_bundle() -> Non
     `finally`; the call site could not tell which, and only one of the eight was the leg whose
     unfilled field actually mattered. One path now: built under the lock, stored, closed by `close()`."""
     bundle = LookupClients()
-    assert set(CLIENT_FIELDS) == {name for name in bundle.__dataclass_fields__ if not name.startswith("_")}
+    public_fields = {name for name in bundle.__dataclass_fields__ if not name.startswith("_")}
+    assert set(CLIENT_FIELDS) == public_fields - {"answer_store"}
     assert all(getattr(bundle, name) is None for name in CLIENT_FIELDS)
     built: dict[str, _Closable] = {}
     calls: dict[str, int] = dict.fromkeys(CLIENT_FIELDS, 0)

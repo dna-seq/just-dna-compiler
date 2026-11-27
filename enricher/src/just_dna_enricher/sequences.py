@@ -118,8 +118,6 @@ class SequenceProxy:
             return str(exc)
         return f"local FASTA: could not read the requested interval on {chrom}"
 
-    _answers: AnswerRun = field(default_factory=AnswerRun, init=False, repr=False, compare=False)
-
     def proxy(self):
         """The underlying `ga4gh.vrs` data proxy, or `None` when offline or unreachable.
 
@@ -175,7 +173,7 @@ class SequenceProxy:
                 if accession.startswith("SQ.") and VRS_ID_PATTERN.fullmatch(f"ga4gh:{accession}")
                 else None
             )
-            answers = SourceAnswers(self._answers.current(), self.uri.rstrip("/"), release)
+            answers = SourceAnswers(AnswerRun.current(), self.uri.rstrip("/"), release)
             bases = answers.read([interval]).get(interval)
         if bases is None:
             proxy = local if local is not None else self.proxy()
