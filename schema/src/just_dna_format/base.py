@@ -360,10 +360,8 @@ class Companion(NamedTuple):
     with no magnitude names an instrument nothing was measured on, and refusing it would refuse a
     harmless cell, so a pair is symmetric only where both entries are declared.
 
-    `refuse=False` marks a pair whose columns a published module may already hold half-stated. It is
-    never refused at load — that would stop a module that validated under an earlier release of this
-    line from validating (P3/P8) — and is reported instead, by `half_stated`'s caller in the compiler,
-    as `paired_field_half_stated`.
+    `refuse=False` keeps a half-stated row and reports it as `paired_field_half_stated` in the
+    compiler. This preserves published rows (P3/P8) and study evidence with an unknown effect allele.
     """
 
     field: str

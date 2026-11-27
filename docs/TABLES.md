@@ -264,6 +264,8 @@ without its population, so it is computed rather than typed.
 
 **`effect_measure` is the kind of estimate, `effect_unit` what one unit of it is.** A `beta` can be in
 years of parental lifespan per allele, Martingale residuals or a hazard; write the unit as the paper does.
+A study's `effect_direction` records which way its allele moves the measured trait, while
+`VariantRow.direction` records the module's clinical interpretation across studies.
 A variant's row in `weights.parquet` carries it only when every study row of that variant that states a
 unit states the same one, so two units for one variant leave it empty rather than picking one.
 

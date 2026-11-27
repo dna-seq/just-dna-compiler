@@ -43,6 +43,9 @@ _ROOT = Path(__file__).resolve().parents[2]
 
 _SEMVER = re.compile(r"^\d+\.\d+\.\d+$")
 
+#: The open minor accepts authored fields before the cut bumps the package versions.
+_UNCUT = "0.10.0"
+
 #: Releases that exist, plus the uncut one this work lands in. A field may not claim a version that
 #: was never published — the commonest way a hand-edited marker goes wrong is a typo'd number, and
 #: nothing else in the model would catch it.
@@ -87,20 +90,13 @@ _RELEASES: frozenset[str] = frozenset(
         "0.8.9",
         # Cut on `main` 2026-11-19, published and tagged 2026-11-26, before 0.9.0 (the lead's order).
         "0.8.10",
-        # Uncut until its tag: the minor the `0.9` branch lands in, which `_UNCUT` names.
         "0.9.0",
+        _UNCUT,
     }
 )
 
-#: The release a field in no tag lands in: the format package's own version, read from its
-#: `pyproject.toml` (where versions live) rather than restated or taken from an installed distribution's
-#: metadata, which lags a bump until the next sync. The cut that bumps it moves this answer with it.
-_UNCUT = tomllib.loads((_ROOT / "schema" / "pyproject.toml").read_text(encoding="utf-8"))["project"][
-    "version"
-]
-
 #: The version each workspace package's `pyproject.toml` names. A cut that moves the enricher alone (0.8.1,
-#: 0.8.7) leaves format's version, `_UNCUT`, on the previous tag, so the release being cut is named by the
+#: 0.8.7) leaves format's version on the previous tag, so the release being cut is named by the
 #: package that moved; under one number per cut, the newest of these is the release.
 _WORKSPACE_VERSIONS = frozenset(
     tomllib.loads((_ROOT / tier / "pyproject.toml").read_text(encoding="utf-8"))["project"]["version"]
@@ -273,12 +269,11 @@ def _fields_by_class_at(tag: str) -> dict[str, set[str]]:
 
 def test_the_release_list_is_the_tags_and_the_uncut_one() -> None:
     """`_RELEASES` is a list, so it is held equal to what it lists: it was three patch tags short. The
-    uncut release is whichever version a workspace package names that no tag does yet; format's alone missed
-    an enricher-only cut."""
+    open minor is known before its package bump. Include workspace versions for enricher-only cuts."""
     tags = _release_tags()
     if not tags:
         pytest.skip("no full history with release tags here (shallow clone or no git); nothing to measure")
-    assert _RELEASES == {tag[1:] for tag in tags} | _WORKSPACE_VERSIONS
+    assert _RELEASES == {tag[1:] for tag in tags} | _WORKSPACE_VERSIONS | {_UNCUT}
 
 
 def test_every_field_declares_the_first_release_whose_model_carries_it() -> None:

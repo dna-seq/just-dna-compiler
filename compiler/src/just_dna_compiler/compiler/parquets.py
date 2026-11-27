@@ -675,8 +675,9 @@ def _build_studies(
                 # RM332: the unit of `effect_size`, verbatim.
                 "effect_unit": s.effect_unit,
                 # RM331: the proxy's resolved loci, so reverse can re-emit its `resolution.csv` row.
-                # Compiler-filled and never authored; last, so no earlier column moves.
+                # Compiler-filled and never authored.
                 "proxy_loci": resolution_loci(s.proxy_rsid, resolution or {}, genome_build),
+                "effect_direction": s.effect_direction,
             }
         )
     schema = {
@@ -719,5 +720,6 @@ def _build_studies(
         "proxy_rsid": pl.Utf8,
         "effect_unit": pl.Utf8,
         "proxy_loci": pl.List(RESOLUTION_LOCUS_DTYPE),
+        "effect_direction": pl.Utf8,
     }
     return pl.DataFrame(records, schema=schema)

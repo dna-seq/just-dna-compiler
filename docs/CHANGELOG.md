@@ -64,6 +64,19 @@ releases, causes and items behind the answer. S161's kept table can be used acro
 that could change a table is computed from the same records. The format's release records
 continue to answer the compiled-output question.
 
+## 2026-11-27 — RM435: a study can state its effect direction without a size (a minor, for 0.10)
+
+`studies.csv` accepts the optional `effect_direction` column. A replication study can now say
+that its effect allele increases or decreases the measured trait even when the paper prints
+only a direction and a P value. The column survives compile and reverse. Stating it changes
+`content_signature`, and an empty or absent column keeps the existing signature.
+
+A direction without an allele keeps the study row and warns with `paired_field_half_stated`.
+Validate and compile also warn when a stated direction disagrees with the size on its measure's
+scale, including in strict mode. The new warning code `study_effect_direction_disagrees_with_size`
+is an **old-reader break**. A format reader older than 0.10 refuses a manifest whose
+`warnings_summary` contains that key.
+
 ## 2026-11-26 — `v0.9.0`: format, compiler and enricher 0.9.0 (a minor, the `0.9` branch)
 
 **Cut on 2026-11-26 from the `0.9` branch**, built from 2026-11-16 to 2026-11-26: the enricher reads its reference data

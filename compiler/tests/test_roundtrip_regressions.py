@@ -460,6 +460,7 @@ def test_every_column_the_studies_writer_declares_is_actually_written(tmp_path: 
         "stratum_level": "father",
         "proxy_rsid": "rs4970836",
         "effect_unit": "years of parental lifespan per allele",
+        "effect_direction": "increase",
     }
     # Derived from the model, so a column added to StudyRow without a value here fails loudly rather
     # than being quietly excluded from the guard.

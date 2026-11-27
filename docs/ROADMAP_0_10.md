@@ -188,7 +188,14 @@ reporter is the seat building that module, and the value is being written today 
 cost is paid either way. Built in the precedent's shape only: the name `effect_direction`, `VALID_EFFECT_DIRECTIONS`,
 the warning on a stated size that disagrees, and nothing from `VariantRow.direction`'s vocabulary.
 
-**Residuals** none yet.
+**Built (2026-11-27, on the `0.10` branch).** `StudyRow.effect_direction` records the study's
+`increase` or `decrease` relative to its effect allele, including when no size was reported. It
+round-trips through the study parquet and participates in authored identity when stated. A missing
+allele and a direction that contradicts a comparable estimate warn in both modes. Measures with no
+known scale and estimates at the null withhold. Clinical interpretation stays on `VariantRow`, and
+the compiler leaves directions unstated when the author supplied none.
+
+**Residuals** none.
 
 ## RM265 — the `panel:` deprecation has no "accepted" signal: on the replaced branch the warning fires whether or not you need the three fields it tells you to keep the block for
 
