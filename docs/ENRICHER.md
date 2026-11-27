@@ -4971,7 +4971,10 @@ pattern by accident. That is worth a bound rather than a compiled dependency —
 **child process**, not a thread. The thread version looks correct and is not: `re` cannot be interrupted,
 threads cannot be killed, and the interpreter joins pool threads at exit, so a runaway pattern returns on
 schedule and then hangs the process on the way out. A timeout is recorded as **not checked**, never as
-not-found.
+not-found. **The timeout (`regex_timeout`, 5 s) starts when the child says it is ready, not when it is asked to
+start (RM471):** under `forkserver` the child imports the enricher first, 2 to 4 s on a loaded machine, and that
+start-up has its own 60 s allowance and its own warning ("the matching process did not start"), so the "exceeded"
+warning means the pattern itself ran too long.
 
 **Existence is not identity, so a citation lookup says *which* paper it found (S12, 0.5.4).** PMIDs are
 densely allocated, so a recalled or invented eight-digit number is usually a real record for a
