@@ -168,6 +168,9 @@ patches right after real use started, so the pm reads an audit sceptically: the 
   neutral to good, the pm already checked live and now says "as of"; kit #624.
 - reflected 2026-11-24: v0.1.224 (only a real fork goes to the person): good, ~20 placements made without asking,
   #347 held as the one fork; cost, daily still-true notes on unmoved facts; joined kit #607.
+- reflect after 2026-12-04: classes/base/BASE.md as of v0.1.287 (a step handed to the person carries its exact action;
+  a wake let go with no tool call counts itself; several seats on one person's posts claim first; read 2026-11-27, no
+  concern: the pm's handed steps already carry the command, where and success).
 - reflect after 2026-12-01: classes/base/BASE.md as of v0.1.274 (only the seats a post is for react; your own reset
   and memory in three levels, the diary written by the nightly retro; an asked action is yours until it works; a
   covered step taken, not asked; a procedure run before it is handed; no parking on a quota figure; read 2026-11-24,
