@@ -49,7 +49,7 @@ The lead's working state, rewritten to the present before each reset. Last rewri
   format floor first. Worktrees `.worktrees/010-rm*` unlocked (the person's to remove); `.worktrees/010` (branch
   `0.10`) stays locked for merges. **Next:** the consumers' preview (registry: RM399/441, RM468, RM385 are its asks);
   RM469 asked of the pm (in scope, not in the five); waiting on desk epic #466: RM265, RM302, RM350, RM294; RM459 on
-  the registry's S36. Then at most two review rounds, the cut. The kit pin to v0.1.287 (`bin/move-to-tag.py --take`).
+  the registry's S36. Preview: module-creator clean (644039827); for INTEGRATION_0_10, with the store on a run asks each source's release (/info/data, einfo) before its first answer. The registry's S163/S165 fixes build on Codex (`.worktrees/010-rm468b`, `010-rm385b`); S164: the 0.10.0 DERIVATION_RECORDS entry at the cut must state RM385 and RM460. RM469 builds on `build/011-rm469` off main, held for 0.11 (the pm). Measuring which GRCh38 FASTA binds all 25 (NCBI RefSeq, UCSC) in `/data/just-dna-cache/reference/grch38-candidates/`. Then at most two review rounds, the cut. The kit pin to v0.1.287 (`bin/move-to-tag.py --take`).
 - **0.9.0 released and merged, 2026-11-27.** PyPI 2026-11-26 21:11Z (all three), tag `v0.9.0` on 93160691, GitHub
   release up, `0.9` merged into `main` (7f79299b, landed 28fa1719) without waiting for longevity-loci's trial: a
   published release cannot change, and main was red on the tag (the pm agreed, 643997014). Main's suite 8353 passed,
