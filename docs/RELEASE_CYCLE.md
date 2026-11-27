@@ -182,6 +182,7 @@ reported, never asked about, and they never freeze scope.
    compiler fixed), the INTEGRATION file finished, the branch merged into `main`, the dists built and
    checked, and the cache-lane gates green (§ Patches; a lane with a repository and nothing published in
    it blocks the cut). Publishing to PyPI stays the maintainer's; step 10 follows the publish.
+   Write the enricher's `DERIVATION_RECORDS` entry for this release.
 10. **After the publish** (added 2026-11-05: at 0.8.0 the tag, the GitHub release and the docs refresh were
     all missing hours after the publish). Once the maintainer has published, the lead does all three
     without asking:

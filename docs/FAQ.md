@@ -109,6 +109,14 @@ digest, so forbidding a tool the same move proves too much. → ROADMAP, the row
 
 ## Sidecars, re-runs and regeneration
 
+**How do I know whether to re-derive a module's `resolution.csv` after an enricher upgrade?**
+Call `just_dna_enricher.derivation_records.needs_rederive(old, new, "resolution.csv")` with the
+enricher versions. `True` means a release changed how the table could be written. For example,
+0.8.5 corrected which rsID a coordinate row could acquire. `False` means the table can be kept
+across this upgrade, as from 0.8.9 to 0.8.10. `None` means the records cannot settle it.
+`rederive_reasons` names the changes and any releases that could not say.
+[Enricher release records](ENRICHER.md#re-deriving-tables-after-an-enricher-upgrade).
+
 **Why can't the enricher just fill my empty `weight` cells from a GWAS effect?**
 Because a null `weight` means *the author has not modelled this*, not *nobody has computed this yet* —
 `MODULE_LIFECYCLE` § Stage 3 lists `weight`/`direction`/`effect_size` among the cells no tool fills, and

@@ -41,6 +41,16 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md). The `0.8` branch merged into `main` at the 0.8.0 cut (2026-11-05).
 
+## 2026-11-27 — RM399, RM441: an enricher upgrade says which tables to re-derive (a minor, for 0.10)
+
+RM399 and RM441 give readers one offline route for a reference lane move and a corrected
+derivation. `just_dna_enricher.derivation_records.needs_rederive` reports both the 0.8.0
+Ensembl switch and 0.8.5's rsID correction for `resolution.csv`. A reader can ask for the
+releases, causes and items behind the answer. S161's kept table can be used across 0.8.9 to
+0.8.10, and an unexamined release still answers *cannot say*. S156's newest enricher release
+that could change a table is computed from the same records. The format's release records
+continue to answer the compiled-output question.
+
 ## 2026-11-26 — `v0.9.0`: format, compiler and enricher 0.9.0 (a minor, the `0.9` branch)
 
 **Cut on 2026-11-26 from the `0.9` branch**, built from 2026-11-16 to 2026-11-26: the enricher reads its reference data
