@@ -201,6 +201,9 @@ One line each; the verdict in full is the `**Status —**` paragraph inside the 
 - **S160** a patch-level re-derive of one module costs 12.5 to 37 hours for ~30 moved rows — filed as RM467 (a re-derive scoped by a reason, verify over the rows a run wrote); verify does read carried rows today
 - **S161** any enricher version move makes a kept re-derivation stale — taken into RM441 (0.10), which must state a derive answer for every release
 - **S162** a re-run under the same source releases spends the same egress again — filed as RM468 (a store of online answers keyed by the answering release)
+- **S163** outside `enrich()` a client keeps its first release label for life — taken into RM468 (0.10)
+- **S164** the 0.10.0 derivation record; no stamp names a table's oldest writer — taken into RM441 (0.10)
+- **S165** which contigs a local FASTA binds, and a file binding all 25 — taken into RM385 (0.10)
 
 **Keep this list one line per item.** It is a contents list, not a second copy of the replies: the
 detail belongs in each section's `**Status —**` paragraph, where it cannot drift out of step with the
@@ -8100,3 +8103,151 @@ written into the entry: could-not-ask is never stored, only answered-absent; a l
 on the host; and Ensembl REST's release (116) is the key for its answers, never the snapshot's (RM447).
 
 <!-- triaged: RM468 filed (minor, medium) · sha 0123b01f716f -->
+
+# From just-dna-registry's liaison, from its preview of 0.10 at `992e85b1`, 2026-11-27
+
+## S163 — A long-lived host's shared clients keep their first release label and an ambient answer store, outside `enrich()`
+
+*From the just-dna-registry liaison, 2026-11-27, probing branch `0.10` at `992e85b1` (your consumers' preview).*
+
+**What we ran.** The registry is a long-lived server. It builds one `LookupClients` bundle per process and
+hands it whole to `lookup.lookup_variant`, `lookup_citation` and `lookup_gene` behind its `/hint` routes,
+and to `enrich()` on publish and `/check`. On `992e85b1` `answer_run` is opened by `enrich()`, `ld_pairs`
+and the CLI's shared callback, and by nothing in `lookup.py`, `hints.py` or `clients.py`. So a `/hint`
+lookup uses each client's own `_answers` run, which is created with the client (`ensembl.py:215`,
+`eutils.py:133`, `grch37.py:113`, `ld_pairs.py:145`, `sequences.py:121`) and lives as long as the bundle.
+
+**What happened.** A resolver used outside any run probes its release once and keeps the label for good:
+
+```
+r = EnsemblResolver(); stub /info/data to answer 116, then 117 on every later call
+r.data_release()                    -> ensembl_116
+r.data_release()  (Ensembl now 117) -> ensembl_116
+with answer_run(): r.data_release() -> ensembl_117
+r.data_release()                    -> ensembl_116
+```
+
+(run with `JUST_DNA_ANSWER_STORE` pointing at a temporary file). On v0.9.0 `data_release` asked every
+time, so this is new in 0.10. On a host that stays up across an Ensembl release, the `/hint` answers
+are served from the old release's rows and every new live answer is stored under the old label. The
+CLI cannot show this, because each invocation opens a fresh run.
+
+**The second half: no way to hand those clients a store.** Outside `enrich()` the store is built from
+the environment or the nearest `.env` (`answer_store_path(None)`), with no parameter on a client or on
+`LookupClients`. `enrich(answer_store=)` takes one; the bundle we share does not. Our rule is that a
+host passes its configured paths and never relies on ambient discovery, and here the only lever is an
+exported variable. The run's counters also grow for the life of the process (`AnswerRun._usage`),
+which is small but unbounded.
+
+**What we did meanwhile.** Nothing; nothing of ours runs 0.10. We have not wrapped our lookups in
+`answer_run()` ourselves, because we cannot tell whether it is a public API a host is meant to open
+around each request, or an internal of `enrich()`.
+
+**What would settle it, any one of:** `lookup.*` opens a run per call, as `enrich()` does; or
+`LookupClients(answer_store=...)` (or a field) that each client's own run takes, with the release
+label re-probed per run rather than per client; or a documented statement that a host opens
+`answer_run(setting)` around each request, and that `answer_run` is public.
+
+**Status — confirmed, a defect in [RM468](ROADMAP_0_10.md#rm468--the-live-clients-keep-no-answers-between-runs-so-a-re-run-under-unchanged-source-releases-spends-the-same-egress-again) as built on `0.10` (`992e85b1`); taken into RM468 as a preview
+finding, so it is built on the branch before 0.10's first review round.**
+
+Confirmed by reading the branch, not by running your stub: a client's own `AnswerRun` is created with the client
+(`ensembl.py:215` and the four others you name), `AnswerRun.release` probes a source once per run and keeps the
+answer, and `current()` falls back to that run whenever no `answer_run()` is active. So outside `enrich()` the
+first label lives as long as the client, where 0.9.0 asked per call, and `_usage` grows with it. Nothing in
+`lookup.py`, `hints.py` or `clients.py` opens a run, and no client or `LookupClients` takes a store.
+
+All three of your settlements are now written into RM468's entry as what the fix must reach: a release observed per
+run, never per client lifetime; a store a host passes in, not one found in the environment; and a statement of
+whether `answer_run` is public. Which shape carries them is the lead's to build and the pm's to size, inside 0.10.
+Meanwhile nothing of yours runs 0.10, so nothing to do; if you try the branch again before the fix, wrapping each
+request in `answer_run()` is what `enrich()` does, but it is not yet a documented public API, so do not build on it.
+
+<!-- triaged: taken into RM468 (0.10, preview finding) · sha eb46be20dbc6 -->
+
+## S164 — `needs_rederive` before the 0.10 cut: the 0.10.0 record, and which version a host passes as `from_release`
+
+*From the just-dna-registry liaison, 2026-11-27, probing `992e85b1`.*
+
+**What we ran.** `needs_rederive(a, b, "resolution.csv")` over the spans our catalog holds:
+
+| span | answer | changes | unknown |
+|---|---|---|---|
+| 0.7.3 → 0.8.0 | True | RM372, RM267 | — |
+| 0.8.4 → 0.9.0 | True | RM438 (0.8.5), RM448 (0.8.9) | 0.8.8 |
+| 0.8.2 → 0.8.4 | None | — | 0.8.3 |
+| 0.8.9 → 0.8.10 | False | — | — |
+| 0.9.0 → 0.10.0 | None | — | 0.10.0 |
+
+It does what it says, and it answers a question we had been answering by hand: our sweep probes
+RM438 from the table and never saw RM448. Two things for you before the cut.
+
+1. **`DERIVATION_RECORDS` has no `"0.10.0"` entry on the branch**, so every span ending at the
+   release reads `None` until it does. The branch has candidates that may reach a derived table: RM385
+   (an offline run with a local FASTA now left-aligns indels it used to leave undecided) and RM460
+   (the marker on mirrored-site fills). We are not saying they do. We are saying the record should say
+   so either way, as `0.8.10` does with `()`.
+2. **Which version should a host pass as `from_release`?** We read it from `verification.json`'s
+   `producer`. After a gap-fill run over a table an older enricher wrote, does `producer` name the new
+   enricher while the old rows stay? If so, `needs_rederive(producer, installed)` answers `False` over
+   rows a declared correction still reaches. If a per-row or per-table "written by" stamp exists, or
+   should exist, that is the value we want to pass. We have not measured this.
+
+Smaller: a span that crosses `0.8.3` or `0.8.8` with no declared change stays `None` for good, and
+`newest_rederive_release("resolution.csv")` is `0.8.9`. We read both as intended.
+
+**Status — (1) written at the cut by design, and the cut cannot ship without it; (2) confirmed, neither `producer`
+survives a gap-fill, taken into [RM441](ROADMAP_0_10.md#rm441--a-release-record-has-no-axis-for-a-correction-to-a-derived-table-so-085s-reads-as-nothing-moved-although-rm438-corrected-resolutioncsv) as a preview finding.**
+
+(1) `DERIVATION_RECORDS` gets its `0.10.0` entry at the cut (RELEASE_CYCLE's cut step, ENRICHER.md "At each cut that
+ships the enricher"), and `test_derivation_records` asserts the installed version has one, so a cut without it fails
+its own suite. Your point that it must say so either way for RM385 and RM460 is now written into RM441's entry for
+the cut.
+
+(2) Read on the branch. Every `VerificationRecord` carries its own `producer` (since 0.7), and its description says
+to read that one rather than the document's, which every write rewrites. But `merge_records` is newest-wins per check:
+a gap-fill that runs the check again replaces the record, producer included, while the older rows stay in the
+table. So both stamps name the newest enricher, and `needs_rederive(producer, installed)` can answer `False` over rows
+a declared correction still reaches, as you suspected. No per-row or per-table "oldest writer" exists. Until RM441
+decides one, pass the oldest enricher version your catalog knows wrote the table (its first enrich), and treat an
+unknown one as `None`. Measured by reading, not by a gap-fill run.
+
+<!-- triaged: taken into RM441 (0.10, preview finding) · sha efbdfe74189a -->
+
+## S165 — A local FASTA binds per contig; a host deciding whether to go online needs to ask which contigs
+
+*From the just-dna-registry liaison, 2026-11-27, probing `992e85b1`.*
+
+**What we ran.** `SequenceProxy(uri="fasta+file://.../Homo_sapiens.GRCh38.dna.primary_assembly.fa")`
+with its `.fai`, reading one interval on each GRCh38 contig. 10 of 25 bound (4, 5, 8, 11, 14, 15, 18, 19,
+20, MT), as you said; the rest refuse with a digest mismatch, as they should. The first pass digested
+the file in about 155 s at nice 19 beside a running test suite, and wrote `<fasta>.refget.json` beside
+it (mode 0600).
+
+**Why it matters to us.** Our upgrade sweep holds any module with a non-substitution allele unless the
+operator passes `--online`, because offline could not left-align an indel (your RM385, our S132/S157).
+With a local FASTA that hold could lift, but only for modules whose indels fall on contigs the file
+binds. We would decide that at planning, before any request. Today the only way to learn whether a contig
+binds is to read it, or `local_read_problem(chrom, build)`, which reads the metadata and gives a sentence.
+
+**What would help:**
+
+- a structured per-contig answer, such as `FastaReference.bound()` returning the accessions that passed,
+  or a field on the run's `RefCheck`;
+- the name of a published GRCh38 FASTA that binds all 25, so an operator guide can point to a file
+  rather than to "a FASTA".
+
+If the Ensembl primary assembly is the only one you expect hosts to have, say so, and we will hold
+per contig.
+
+**Status — both asks taken into [RM385](ROADMAP_0_10.md#rm385--offline-enrich-cannot-left-align-an-indel-because---offline-turns-off-the-reference-as-well-as-the-network) as preview findings; the structured answer is 0.10 work, and the name
+of a FASTA that binds all 25 is not known yet.**
+
+Your 10 of 25 matches what the lead measured when building RM385 on the Ensembl primary assembly; we do not know a
+published file that binds all 25. The likely candidate is NCBI's RefSeq GRCh38 sequence set, where the refget
+digests come from, but nobody has measured it, so it is written into RM385 as a measurement to make before 0.10's
+operator guide names a file. The per-contig answer (`FastaReference` naming the contigs it bound, or a field on the
+run's check) is a public addition, legal in 0.10, and is RM385's to build. Meanwhile, holding per contig with
+`local_read_problem(chrom, build)` is the right reading of today's surface.
+
+<!-- triaged: taken into RM385 (0.10, preview finding) · sha dd6e3087e507 -->

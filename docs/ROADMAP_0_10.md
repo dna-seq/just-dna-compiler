@@ -137,6 +137,19 @@ offline from the installed enricher. A record in `just_dna_format` would force a
 patch, the opposite of the small patches the maintainer asked for. The release records in the format stay about
 compiled output. It rides with RM441 and RM399, one design, in the minor desk #326 places them in (0.10 as proposed).
 
+**Preview finding (S164, just-dna-registry, 2026-11-27, at `992e85b1`): two things for the cut and one gap.**
+(1) The `0.10.0` `DERIVATION_RECORDS` entry is written at the cut (RELEASE_CYCLE's cut step; `test_derivation_records`
+asserts the installed version has one), and **it must state RM385 and RM460 either way**: an offline run with a local
+FASTA now left-aligns indels it left undecided, and RM460 marks mirrored-site fills, so whether either reaches a
+derived table is declared, with `()` if neither does, as 0.8.10's is. (2) **No stamp names the oldest enricher that
+wrote a row still in a table.** A host reads `from_release` off `verification.json`; the document's `producer` is
+rewritten by every write, and each record's own `producer` (0.7) is replaced too, since `merge_records` is newest-wins
+per check. After a gap-fill over rows an older enricher wrote, both name the new enricher, so
+`needs_rederive(producer, installed)` can answer `False` over rows a declared correction reaches. Read on the branch,
+not measured by a gap-fill run. Whether to add a per-table "oldest writer" stamp, and where it lives (a derived-CSV
+column, a record field, or a statement that a host keeps its own), is the pm's to size; until then the registry was
+told to pass the oldest version its catalog knows wrote the table.
+
 **Residuals** none yet.
 
 ## RM435 — a study row has no direction of its own, so a study that prints its allele and direction but no size puts the direction in free text
@@ -287,6 +300,15 @@ actually used: the REF attestation's hardcoded `source="seqrepo"`, the CLI's com
 the minter's "rerun online" advice each say the local reference where it answered. Offline stays network-free: the
 explicit local reader is the one sequence source the offline gate admits.
 
+**Preview finding (S165, just-dna-registry, 2026-11-27, at `992e85b1`): a host needs to ask which contigs a FASTA
+binds, and a file that binds all 25.** The registry reproduced the 10 of 25 (4, 5, 8, 11, 14, 15, 18, 19, 20, MT) on
+the Ensembl primary assembly; its first digest pass took about 155 s at nice 19 beside a test suite. It decides at
+planning whether a module's indels can be left-aligned offline, and today only `local_read_problem(chrom, build)`
+answers, as a sentence. **Asked:** a structured per-contig answer (`FastaReference` naming the contigs that bound, or
+a field on the run's check), a public addition legal in 0.10; and the name of a published GRCh38 FASTA that binds all
+25, for the operator guide. Nobody has measured one; NCBI's RefSeq GRCh38 sequence set, where the refget digests come
+from, is the candidate to measure first.
+
 **Residuals** none yet.
 
 ## RM459 — with the registry's proxy set and Hugging Face off, a gene lookup on clinpgx, cpic, drug_labels or civic answers could-not-ask
@@ -362,6 +384,19 @@ and a report saying which answers came from the store.
 never is (`@unreachable-not-absent`). A licence-gated source's answers inherit its terms, so the store is per host
 and never published (`@gated-source-caches`). Ensembl REST's release lags the snapshot's (RM447), so the key is the
 release REST states, never the snapshot's. A new setting and a new lane-like location: a minor.
+
+**Preview finding (S163, just-dna-registry, 2026-11-27, at `992e85b1`): outside `enrich()` a client keeps its first
+release label for life, and a host cannot hand its clients a store.** Confirmed by reading the branch: each live client
+creates its own `AnswerRun` (`ensembl.py:215`, `eutils.py:133`, `grch37.py:113`, `ld_pairs.py:145`, `sequences.py:121`),
+`AnswerRun.release` probes once per run, and `current()` falls back to the client's run when no `answer_run()` is
+active. `lookup.py`, `hints.py` and `clients.py` open none, so on a long-lived host (one `LookupClients` per process
+behind `/hint`) the label never moves after the first probe, new answers are stored under it, and `AnswerRun._usage`
+grows for the life of the process. 0.9.0 asked per call. The store is found only through `answer_store_path(None)`,
+the environment or `.env`; `enrich(answer_store=)` takes one, `LookupClients` does not. **The fix must reach, in 0.10
+before the first review round:** a release observed per run or per call, never per client lifetime; a store a host
+passes to the bundle (S163's three settlements: `lookup.*` opening a run per call, `LookupClients(answer_store=...)`,
+or `answer_run` documented as public for a host to open per request); and bounded counters. Which shape is the
+lead's to build and the pm's to size; a public `LookupClients` field is minor-legal here.
 
 **Residuals** none yet.
 
