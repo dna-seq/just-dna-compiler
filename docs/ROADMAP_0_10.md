@@ -60,6 +60,13 @@ changes RM372's lane or any digest.
 **Sizing.** A new optional field or vocabulary member in the format tier: a minor, and an old-reader break if
 it is a new change kind, as `toolchain` was (INTEGRATION_0_8 § 1.11). P9: near free; no authored column.
 
+**Built (2026-11-27, on the `0.10` branch).** The enricher's release records declare the
+0.8.0 Ensembl lane move against `resolution.csv`, with RM372, RM267 and the split snapshot's
+release label. The predecessor had no label. A reader can see the move across 0.7 to 0.8
+offline. This required no format or compiler change. **The shape question above is answered**: the route lives in the enricher (`just_dna_enricher.derivation_records`), the package that moves, by the pm's 2026-11-16 call under RM441; the format's release records stay about compiled output.
+
+**Residuals** none.
+
 ## RM441 — a release record has no axis for a correction to a derived table, so 0.8.5's reads as "nothing moved" although RM438 corrected `resolution.csv`
 
 **In 0.10's scope, the pm (2026-11-16)**: [desk #326](https://github.com/winternewt/desk/issues/326), item 2, applied on its default. 0.10 is a small minor right after 0.9. The status line below predates this.
@@ -136,7 +143,15 @@ offline from the installed enricher. A record in `just_dna_format` would force a
 patch, the opposite of the small patches the maintainer asked for. The release records in the format stay about
 compiled output. It rides with RM441 and RM399, one design, in the minor desk #326 places them in (0.10 as proposed).
 
-**Residuals** none yet.
+**Built (2026-11-27, on the `0.10` branch).** RM438's correction is recorded against 0.8.5.
+The same span query reports the affected table, the cause and the items for either kind of
+change. A fully examined span can establish that a kept table is reusable (S161), and the newest
+release that could change a given table is derived from those entries (S156). Every enricher
+release since 0.8.0 has an entry. The cut test checks the tagged and installed versions.
+
+**Residuals** table-wide reach: won't fix in 0.10, decided 2026-11-12 (ask 2): `requires` stays `None` for a
+derivation correction until a consumer shows it costing a needless re-derive; RM467's explicit subject list
+narrows a run meanwhile (the pm, 2026-11-27).
 
 ## RM435 — a study row has no direction of its own, so a study that prints its allele and direction but no size puts the direction in free text
 

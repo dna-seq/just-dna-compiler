@@ -421,6 +421,7 @@ core was ported, not depended on, dropping `fastmcp`/`eliot`). In the workspace:
 | `provenance` | RM73: telling a value still copied from a source from one a human has edited — the axis every tautology skip reads | compiler `draft`, format |
 | `verification` | RM45: the load-merge-write that records **what each pass checked** into `verification.json`, so the manifest can say it | format `verification` |
 | `verdict` | **0.7** (RM235): a gate's yes/no with the reason codes that made it a `no` — the one place the house tri-state is deliberately not used, because `--strict` must choose an exit code | — |
+| `derivation_records` | **0.10** (RM399, RM441): which releases changed a derived table, what caused each change, and where its history is unknown | `caches`, `producers`, format version and layout helpers |
 | `producers` | **0.7**: which pass fills each machine-produced table, from which source, checking what — the derived counterpart to `drafting.DRAFT_PROVIDERS`, and what lets the docs site's per-table reference name a writer instead of hand-keeping one | `licensing` |
 | `pgs` | **0.7** (RM163): the PGS Catalog REST client, its release record, and the per-score shape `identifiers` compares against | `httpx`, `tenacity` |
 | `licensing` | per-source terms + the declared-use gate; emits `SourceRow` | format `SourceRow` |
@@ -1716,6 +1717,55 @@ one field a host drops to keep its layout private. duckdb's own first line may s
 is upstream's sentence and stays as evidence.
 
 The REST endpoint, species and timeout are configurable via `EnsemblSettings`.
+
+## Re-deriving tables after an enricher upgrade
+
+Compare the enricher that wrote the table with the release you intend to run. The installed
+`just_dna_enricher.derivation_records` module answers offline. A reader can ask about a single
+derived CSV or omit the table to ask about all of them.
+
+```python
+from just_dna_enricher.derivation_records import (
+    needs_rederive,
+    newest_rederive_release,
+    rederive_reasons,
+)
+
+needs_rederive("0.8.4", "0.8.5", "resolution.csv")   # True
+needs_rederive("0.8.9", "0.8.10", "resolution.csv")  # False
+rederive_reasons("0.8.4", "0.8.5", "resolution.csv").changes[0][1].items  # ("RM438",)
+newest_rederive_release("resolution.csv")  # includes releases whose effects are unknown
+```
+
+The span excludes the producing release and includes the target. Both arguments accept a bare
+version or a producer stamp such as `just-dna-enricher 0.8.4`. Equal versions give `False`, even
+outside the recorded history. A backwards span raises `ValueError`.
+
+| Answer | What a reader knows |
+| --- | --- |
+| `True` | At least one release changed what the enricher could write to this table. A matching change still counts when another release could not say. |
+| `False` | Every release in the span was examined and none declared a change reaching this table. A consumer can keep its derived copy across that upgrade. |
+| `None` | No matching change is known and some of the span is uncovered. Keeping the table on the strength of this answer would treat missing evidence as a measurement. |
+
+`rederive_reasons` returns two tuples in release order. Each pair in `.changes` gives the enricher
+release and a frozen change with its table, cause and roadmap items. For `lane_moved`, it also gives
+the cache lane and its old and new release labels. In 0.8.0 the old Ensembl snapshot stated no
+label, so `old_release` is `None` even though the move is known. For `derivation_corrected`, the
+items identify the corrected calculation. The licence table is keyed as `sources.csv` and can
+also be queried as `licensing.csv`. The reach is table-wide. For RM438, for example, the reader
+knows to inspect coordinate-authored rows with a back-filled rsID, but the record supplies no row selector.
+
+`.unknown_releases` names releases with unknown effects, including earlier enricher releases
+before coverage began at 0.8.0. A target beyond the installed history appears there too.
+`newest_rederive_release(table)` reads the same registry and returns the latest release with a
+matching change or unknown effects. It returns `None` when the registry places neither.
+
+At each cut that ships the enricher, add the version to `DERIVATION_RECORDS`. Record a tuple
+of changes, an empty tuple for an examined release that changed no derived table, or `None`
+when its effects cannot be established. The coverage test compares the keys with the enricher
+versions in the release tags and the installed version. The format tier's `needs_recompile`
+continues to describe compiled output from the supplied inputs. Re-deriving a table first can
+change those inputs.
 
 ## The caches
 
