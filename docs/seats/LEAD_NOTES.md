@@ -40,22 +40,16 @@ The lead's working state, rewritten to the present before each reset. Last rewri
 ## In flight
 
 - mitomap behind source (liaison 643088167, 2026-11-24): the dump moved 2026-11-18 (mmutation edited 2026-11-17, 603 rows, +6 citation links). Built as mitomap_2026-11-17+2026-11-03 into `data/caches/rebuild-2026-11-24/mitomap`, upload rehearsed (5 files). `blocked: the person` (the classifier refuses a seat's publish, kit #529): `uv run just-dna-enricher mitomap publish data/caches/rebuild-2026-11-24/mitomap`. After it: `cache pull --only mitomap`, then `mitomap miss` (mitomap_miss follows its parents).
-- **0.10 batch, opened 2026-11-27 (the pm, 644000283; the maintainer: "push on it", Codex heavily while Astra has
-  quota).** Branch `0.10` off main at 4daaf10d, pushed. **Five Codex builds started 2026-11-27 ~00:00Z** (relaunched inside auto-mode rule 30, e3978216). **RM460 merged** (b37c11ac). The other four were killed at 00:32Z by a session restart, each in its final verification: their work is uncommitted in the worktrees, snapshotted to `data/interim/run1-snapshot/`; the lead takes each over (review, suites outside the sandbox, commit, merge in the order RM399+441, RM435, RM385, RM468, the merged tree green before each push). Kit pin: move to v0.1.287 (`bin/move-to-tag.py --take`) at a safe point., one locked
-  worktree each, `.worktrees/010-rm{399-441,435,385,468,460}` on `build/010-rm*`, brief in each one's
-  `data/interim/rm*/BRIEF.md` (shared preamble: scratchpad, restated in each brief). Choices the lead made in the
-  briefs, to check at merge: **RM399+441** live in the enricher only (`derivation_records.py`, `DERIVATION_RECORDS`
-  keyed by every enricher release from 0.8.0, three-valued entries, `needs_rederive` Kleene, S156's newest release
-  derived not stored; format untouched); Codex drafts the 0.8.1–0.9.0 entries from the CHANGELOG, **each checked by
-  the lead before merge** (a wrong "nothing" makes the registry keep a stale table). **RM435** companion warns (never
-  refuses) without `effect_allele`; measure map signed/ratio/neither, withhold otherwise. **RM460** desk #469 option 1
-  (stays `rsid_no_hosting_locus`), a one-line switch. **RM385** `fasta+file://`, `.fai` beside, digest cache beside the
-  FASTA keyed size+mtime; lead cut the chrMT fixture into `assets/grch38_mt_fasta/` (digest = refget). **RM468** SQLite
-  store, `JUST_DNA_ANSWER_STORE`, default on, E-utilities keyed on `einfo` `dbbuild` (probed 2026-11-27), seqrepo keyed
-  on the accession; RM385 and RM468 both touch `sequences.py`: merge RM385 first. Two new warning codes (RM435, RM460)
-  make 0.10 an old-reader break: INTEGRATION_0_10 says raise the format floor first. Next: check each diff, tests at
-  nice 19 `-n 4`, commit on its build branch, merge into `0.10`, push; then the consumers' preview, then at most two
-  audit rounds. Waiting on desk epic #466: RM265 (#468), RM302, RM350, RM294 (#467, #470).
+- **0.10 batch, 2026-11-27: all five decided items built and on `0.10` (992e85b1, pushed).** RM460 (b37c11ac),
+  RM399+RM441 (d019f0b9; the pm confirmed the enricher-only reading and the old label None, 644030607), RM435
+  (457e8989), RM385 (848fbbfb), RM468 (85189b83; merged over RM385 by hand, 992e85b1). Merged tree: 8452 passed, the
+  one failure the AlphaGenome interrupt bound at load (3/3 alone); docs strict green. Codex built all five inside
+  auto-mode rule 30 (e3978216); four were cut off by a session restart at 00:32Z and finished by the lead. 0.10 now
+  has **two new warning codes** (RM460, RM435): an old-reader break, so INTEGRATION_0_10 tells consumers to raise the
+  format floor first. Worktrees `.worktrees/010-rm*` unlocked (the person's to remove); `.worktrees/010` (branch
+  `0.10`) stays locked for merges. **Next:** the consumers' preview (registry: RM399/441, RM468, RM385 are its asks);
+  RM469 asked of the pm (in scope, not in the five); waiting on desk epic #466: RM265, RM302, RM350, RM294; RM459 on
+  the registry's S36. Then at most two review rounds, the cut. The kit pin to v0.1.287 (`bin/move-to-tag.py --take`).
 - **0.9.0 released and merged, 2026-11-27.** PyPI 2026-11-26 21:11Z (all three), tag `v0.9.0` on 93160691, GitHub
   release up, `0.9` merged into `main` (7f79299b, landed 28fa1719) without waiting for longevity-loci's trial: a
   published release cannot change, and main was red on the tag (the pm agreed, 643997014). Main's suite 8353 passed,
