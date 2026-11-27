@@ -41,6 +41,8 @@ from dataclasses import dataclass, field
 import httpx
 from tenacity import retry
 
+from just_dna_enricher.answer_store import AnswerRun, SourceAnswers
+from just_dna_enricher.ensembl import ENSEMBL_RELEASE_PREFIX, ensembl_data_release
 from just_dna_enricher.net import (
     PacingGate,
     Withholding,
@@ -108,6 +110,23 @@ class Grch37Client(Withholding):
     gate: PacingGate | None = None
     _client: httpx.Client | None = None
 
+    _answers: AnswerRun = field(default_factory=AnswerRun, init=False, repr=False, compare=False)
+
+    def _release(self) -> str | None:
+        try:
+            payload = self._get("/info/data", "application/json").json()
+        except (httpx.HTTPError, ValueError) as exc:
+            logger.info("GRCh37 data release unavailable: %s", exc)
+            return None
+        number = ensembl_data_release(payload)
+        return f"{ENSEMBL_RELEASE_PREFIX}{number}" if number is not None else None
+
+    def _source_answers(self) -> SourceAnswers:
+        run = self._answers.current()
+        source = self.settings.endpoint.rstrip("/")
+        release = run.release(source, self._release) if run.store is not None else None
+        return SourceAnswers(run, source, release)
+
     def __post_init__(self) -> None:
         if self.gate is None:
             self.gate = PacingGate(interval=self.settings.interval)
@@ -151,6 +170,12 @@ class Grch37Client(Withholding):
         Only dbSNP features with an `rs` id are returned. The endpoint also serves HGMD-PUBLIC records
         (`CM112509` at 7:140453136), and an id that is not an rs-number is not what this recovers.
         """
+        key = f"/overlap/region/human/{chrom}:{start}-{start}?feature=variation"
+        answers = self._source_answers()
+        found = answers.read([key])
+        if key in found:
+            return found[key]
+        answers.asked()
         try:
             response = self._get(
                 f"/overlap/region/human/{chrom}:{start}-{start}",
@@ -163,6 +188,8 @@ class Grch37Client(Withholding):
                 logger.warning("GRCh37 overlap for %s:%d failed (%s)", chrom, start, exc)
                 return None
             logger.info("GRCh37 has no region %s:%d (%s)", chrom, start, exc)
+            if _missing_region(exc.response):
+                answers.write({key: ([], True)})
             return []
         except (httpx.TransportError, httpx.TimeoutException, httpx.HTTPError) as exc:
             logger.warning("GRCh37 overlap for %s:%d could not be reached: %s", chrom, start, exc)
@@ -180,13 +207,15 @@ class Grch37Client(Withholding):
                 "GRCh37 overlap for %s:%d answered %s, not a list", chrom, start, type(features).__name__
             )
             return None
-        return [
+        kept = [
             feature
             for feature in features
             if feature.get("assembly_name") == GRCH37_BUILD
             and feature.get("source") == "dbSNP"
             and str(feature.get("id", "")).startswith("rs")
         ]
+        answers.write({key: (kept, not kept)})
+        return kept
 
     def reference_bases(self, chrom: str, start: int, end: int) -> str | None:
         """The GRCh37 bases over the 1-based inclusive span `chrom:start..end`. **Three-valued.**
@@ -202,19 +231,42 @@ class Grch37Client(Withholding):
         `start`/`end` are the 1-based VCF convention this whole codebase stores, passed through
         unconverted — the instinctive `-1` is the off-by-one that cost 3,038 rows once already.
         """
+        key = f"/sequence/region/human/{chrom}:{start}..{end}"
+        answers = self._source_answers()
+        found = answers.read([key])
+        if key in found:
+            return found[key]
+        answers.asked()
         try:
-            response = self._get(f"/sequence/region/human/{chrom}:{start}..{end}", "text/plain")
+            response = self._get(key, "text/plain")
         except httpx.HTTPStatusError as exc:
             if exc.response.status_code != GRCH37_NOTHING_THERE_STATUS:
                 self.note_retired("The GRCh37 REST service", exc)
                 logger.warning("GRCh37 sequence for %s:%d-%d failed (%s)", chrom, start, end, exc)
                 return None
             logger.info("GRCh37 has no sequence at %s:%d-%d (%s)", chrom, start, end, exc)
+            if _missing_region(exc.response):
+                answers.write({key: ("", True)})
             return ""
         except (httpx.TransportError, httpx.TimeoutException, httpx.HTTPError) as exc:
             logger.warning("GRCh37 sequence for %s:%d-%d could not be reached: %s", chrom, start, end, exc)
             return None
-        return response.text.strip().upper()
+        bases = response.text.strip().upper()
+        if bases and all(base in "ACGTN" for base in bases):
+            answers.write({key: (bases, False)})
+        return bases
+
+
+def _missing_region(response: httpx.Response) -> bool:
+    """Only carry an explicit missing/out-of-range region across runs, never a generic 400."""
+    try:
+        payload = response.json()
+    except ValueError:
+        return False
+    error = payload.get("error") if isinstance(payload, dict) else None
+    return isinstance(error, str) and error.lower().startswith(
+        ("no such region", "no slice found", "cannot request a slice whose start")
+    )
 
 
 @dataclass

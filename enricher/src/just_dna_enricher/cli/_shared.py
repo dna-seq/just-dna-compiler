@@ -3,12 +3,14 @@ more than one command group calls (RM260 split this out of the former single-fil
 """
 
 from pathlib import Path
+from typing import Annotated
 
 import typer
 from just_dna_compiler.draft import DraftError
 from just_dna_format.manifest import VerificationRecord
 from just_dna_format.vocab import VALID_DECLARED_USE, match_vocab
 
+from just_dna_enricher.answer_store import answer_run
 from just_dna_enricher.enrich import EnrichmentError
 from just_dna_enricher.verification import record_verification
 
@@ -17,6 +19,17 @@ app = typer.Typer(
     help="Fill the source-independent resolution table (cache + live Ensembl) the compiler consumes.",
     no_args_is_help=True,
 )
+
+
+NoAnswerStore = Annotated[
+    bool, typer.Option("--no-answer-store", help="Bypass the host's live answer store.")
+]
+
+
+@app.callback()
+def answer_store_option(ctx: typer.Context, no_answer_store: NoAnswerStore = False) -> None:
+    """Scope the live clients to this invocation, including clients built by nested commands."""
+    ctx.with_resource(answer_run(False if no_answer_store else None))
 
 
 #: What a drafting command must catch beyond its own source's error, and **why it is a named tuple

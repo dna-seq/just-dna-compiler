@@ -11,7 +11,7 @@ from just_dna_enricher.assertions import (
     ClinicalAssertionError,
     enrich_clinical_assertions,
 )
-from just_dna_enricher.cli._shared import _mode, _use, app
+from just_dna_enricher.cli._shared import NoAnswerStore, _mode, _use, app
 from just_dna_enricher.clingen import DEFAULT_CLINGEN_URL, ClinGenError, enrich_dosage_sensitivity
 from just_dna_enricher.currency import unchecked_sentences
 from just_dna_enricher.enrich import EnrichmentError, enrich
@@ -114,6 +114,7 @@ def enrich_(  # `enrich` command; function name avoids shadowing the imported en
         "removed by default; a killed run leaves them either way, and the next run resumes "
         "from them.",
     ),
+    no_answer_store: NoAnswerStore = False,
 ) -> None:
     """Resolve a spec's variants into resolution.csv beside the spec. Exit 1 in strict mode if unresolved."""
     try:
@@ -121,6 +122,7 @@ def enrich_(  # `enrich` command; function name avoids shadowing the imported en
             spec_dir,
             mode=_mode(strict),
             offline=offline,
+            answer_store=False if no_answer_store else None,
             ensembl_cache=ensembl_cache,
             clinvar_cache=clinvar_cache,
             clinvar_gkm_cache=clinvar_gkm_cache,
@@ -151,6 +153,8 @@ def enrich_(  # `enrich` command; function name avoids shadowing the imported en
     typer.echo(
         f"rows: {len(result.rows)}  fully_resolved: {result.fully_resolved}  sources: {result.sources}"
     )
+    for usage in result.answer_usage:
+        typer.echo(str(usage))
     if result.unresolved:
         typer.secho(f"  unresolved: {result.unresolved}", fg=typer.colors.YELLOW, err=True)
     if result.par_twins_dropped:
@@ -775,6 +779,8 @@ def ld_pairs_(
         f"rows: {len(result.rows)}  written this run: {len(result.written)}  requests: {result.requests}  "
         f"release: {result.dataset or '-'}"
     )
+    for usage in result.answer_usage:
+        typer.echo(str(usage))
     for status in sorted(statuses):
         typer.echo(f"  {status}: {statuses[status]}")
 

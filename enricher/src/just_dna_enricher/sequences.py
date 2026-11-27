@@ -39,9 +39,11 @@ from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 
 from ga4gh.vrs.dataproxy import create_dataproxy
-from just_dna_format.alleles import trim_allele
+from just_dna_format.alleles import IUPAC_AMBIGUITY_CODES, trim_allele
 from just_dna_format.resolution import ResolutionRow
-from just_dna_format.vrs import UnsupportedBuildError, refget_accession, refget_supports_build
+from just_dna_format.vrs import VRS_ID_PATTERN, UnsupportedBuildError, refget_accession, refget_supports_build
+
+from just_dna_enricher.answer_store import AnswerRun, SourceAnswers
 
 logger = logging.getLogger(__name__)
 
@@ -94,6 +96,8 @@ class SequenceProxy:
     _cache: OrderedDict[tuple[str, int, int], str] = field(default_factory=OrderedDict)
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False, compare=False)
 
+    _answers: AnswerRun = field(default_factory=AnswerRun, init=False, repr=False, compare=False)
+
     def proxy(self):
         """The underlying `ga4gh.vrs` data proxy, or `None` when offline or unreachable.
 
@@ -129,17 +133,40 @@ class SequenceProxy:
             if key in self._cache:
                 self._cache.move_to_end(key)
                 return self._cache[key]
-        proxy = self.proxy()
-        if proxy is None:
-            return None
-        try:
-            fetched = proxy.get_sequence(f"ga4gh:{accession}", start, end)
-        except Exception as exc:
-            logger.warning("Sequence read failed for %s:[%d,%d) (%s)", accession, start, end, exc)
-            return None
-        if not fetched:
-            return None
-        bases = fetched.upper()
+        bases = None
+        answers = None
+        interval = f"{start}:{end}"
+        if not self.offline and self.uri.startswith(("seqrepo+https://", "seqrepo+http://")):
+            # A refget digest names immutable bytes. Other names a proxy accepts carry no release.
+            release = (
+                accession
+                if accession.startswith("SQ.") and VRS_ID_PATTERN.fullmatch(f"ga4gh:{accession}")
+                else None
+            )
+            answers = SourceAnswers(self._answers.current(), self.uri.rstrip("/"), release)
+            bases = answers.read([interval]).get(interval)
+        if bases is None:
+            proxy = self.proxy()
+            if proxy is None:
+                return None
+            try:
+                if answers is not None:
+                    answers.asked()
+                fetched = proxy.get_sequence(f"ga4gh:{accession}", start, end)
+            except Exception as exc:
+                logger.warning("Sequence read failed for %s:[%d,%d) (%s)", accession, start, end, exc)
+                return None
+            if not fetched:
+                return None
+            bases = fetched.upper()
+            # The REST proxy returns response.text. A truncated interval or a 200 interstitial
+            # is not a durable answer for a sequence digest.
+            if (
+                answers is not None
+                and len(bases) == end - start
+                and set(bases) <= _ACGT | IUPAC_AMBIGUITY_CODES
+            ):
+                answers.write({interval: (bases, False)})
         with self._lock:
             self._cache[key] = bases
             self._cache.move_to_end(key)

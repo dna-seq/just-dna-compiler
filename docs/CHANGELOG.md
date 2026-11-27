@@ -41,6 +41,16 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md). The `0.8` branch merged into `main` at the 0.8.0 cut (2026-11-05).
 
+## 2026-11-27 — RM468: repeat online lookups reuse answers from the same release (a minor, for 0.10)
+
+Two modules that ask about the same rsID can now share its answer. Ensembl states its REST release
+and NCBI states its build per database before the client reads the host's SQLite store. A moved
+release sends just that source's subjects back to the service. Remote seqrepo intervals use their
+refget accession as the release. An explicit absence survives a re-run. A failed request or a source
+without a release gets another live lookup. `JUST_DNA_ANSWER_STORE` chooses the file or disables it
+when empty, and `--no-answer-store` bypasses it for one command. The enrichment report gives the
+release and the number of subjects served from the store and asked live.
+
 ## 2026-11-26 — `v0.9.0`: format, compiler and enricher 0.9.0 (a minor, the `0.9` branch)
 
 **Cut on 2026-11-26 from the `0.9` branch**, built from 2026-11-16 to 2026-11-26: the enricher reads its reference data

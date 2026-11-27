@@ -55,6 +55,12 @@ The chain is **first-hit-wins**, in this order:
 5. **Live Ensembl** — REST, paced under Ensembl's published budget.
 6. **gnomAD** — last.
 
+Online runs share a per-host answer store. Set `JUST_DNA_ANSWER_STORE` to a file or existing directory
+to choose its disk. An unchanged source release lets a second module reuse the subjects the first one
+asked about. The `stored` and `live` counts in the report show which route answered. To bypass the store
+for one run, use `just-dna-enricher --no-answer-store enrich --rederive ./my_module`. To disable it for
+the shell, use `export JUST_DNA_ANSWER_STORE=`. [Store settings and keys](ENRICHER.md#the-live-answer-store).
+
 Every row now names the release that answered it in `source_release`
 (`ensembl-variation-2026_07_13-vep116.0` for the split snapshot, `clinvar_<date>` for ClinVar,
 `ensembl_116` for live REST). An empty cell means not recorded, never current.

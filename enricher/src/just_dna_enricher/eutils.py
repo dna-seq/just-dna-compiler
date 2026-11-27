@@ -28,6 +28,7 @@ from typing import Any
 import httpx
 from tenacity import retry
 
+from just_dna_enricher.answer_store import AnswerRun, SourceAnswers
 from just_dna_enricher.locations import env_value
 from just_dna_enricher.net import (
     EndpointRetired,
@@ -129,6 +130,8 @@ class EutilsClient:
     gate: PacingGate | None = None
     _client: httpx.Client | None = None
 
+    _answers: AnswerRun = field(default_factory=AnswerRun, init=False, repr=False, compare=False)
+
     def __post_init__(self) -> None:
         # NCBI's budget is per key or per address, never per client (RM418): a client built without a
         # gate takes the process's, so the rsID check and the literature pass running at once share it.
@@ -204,6 +207,26 @@ class EutilsClient:
         except ValueError as exc:
             raise EutilsError(f"eutils returned a non-JSON body for {path}: {exc}") from exc
 
+    def _source(self, db: str) -> str:
+        return f"{self.settings.base_url.rstrip('/')}?db={db}"
+
+    def db_build(self, db: str) -> str | None:
+        """The database's own build, once per client (or per enrich run borrowing this client)."""
+
+        def probe() -> str | None:
+            try:
+                payload = self._get("einfo.fcgi", {"db": db, "retmode": "json"})
+            except EutilsError:
+                return None
+            result = payload.get("einforesult") if isinstance(payload, dict) else None
+            info = result.get("dbinfo") if isinstance(result, dict) else None
+            if not isinstance(info, list) or not info or not isinstance(info[0], dict):
+                return None
+            build = info[0].get("dbbuild")
+            return build if isinstance(build, str) and build.strip() else None
+
+        return self._answers.current().release(self._source(db), probe)
+
     def esummary(self, db: str, ids: list[str]) -> dict[str, dict[str, Any]]:
         """`uid -> record` across as many batches as `ids` needs, in first-occurrence order.
 
@@ -213,8 +236,14 @@ class EutilsClient:
         """
         self.settings._check()  # a field may have been set since the settings were built (RM455)
         wanted = dedupe(i for i in ids if i)
-        out: dict[str, dict[str, Any]] = {}
-        for batch in batched(wanted, self.settings.batch_size):
+        if not wanted:
+            return {}
+        run = self._answers.current()
+        answers = SourceAnswers(run, self._source(db), self.db_build(db) if run.store is not None else None)
+        out = answers.read(wanted)
+        missing = [uid for uid in wanted if uid not in out]
+        for batch in batched(missing, self.settings.batch_size):
+            answers.asked(len(batch))
             payload = self._get("esummary.fcgi", {"db": db, "id": ",".join(batch), "retmode": "json"})
             result = payload.get("result") if isinstance(payload, dict) else None
             if result is None and _invalid_uid_envelope(payload):
@@ -228,16 +257,23 @@ class EutilsClient:
                 # `not_found` on real PMIDs (RM361); it is the could-not-ask type instead.
                 said = " ".join(str(payload).split())[:200]
                 raise EutilsError(f"eutils answered esummary for {db} with no summary block: {said}")
+            storable = {}
             for uid in batch:
                 record = result.get(uid)
                 if isinstance(record, dict):
                     out[uid] = record
+                    absent = is_missing(record)
+                    if absent or (record and "error" not in record):
+                        storable[uid] = (record, absent)
                 else:
-                    # Absent from `result` entirely — rarer than the `error` record, and it means the
-                    # same thing to a caller, so it is normalized into the same shape rather than
-                    # silently omitted.
+                    # Preserve the client's normalized answer. A malformed entry, or a uid listed
+                    # as present with no record attached, cannot establish a persistent negative.
                     out[uid] = {"uid": uid, "error": NO_SUMMARY}
-        return out
+                    if uid not in result and uid not in result["uids"]:
+                        storable[uid] = (out[uid], True)
+            if "error" not in payload and "error" not in result:
+                answers.write(storable)
+        return {uid: out[uid] for uid in wanted}
 
 
 def _invalid_uid_envelope(payload: object) -> bool:

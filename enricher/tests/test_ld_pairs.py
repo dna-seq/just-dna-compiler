@@ -19,6 +19,7 @@ rs646776, proxy rs4970836, the snapshot rows as the provisioned Ensembl cache ca
 """
 
 import csv
+import json
 from collections.abc import Callable
 from pathlib import Path
 
@@ -431,3 +432,42 @@ def test_a_defect_and_an_outage_are_told_apart_by_type(status: int, body: str, r
     with pytest.raises(LdError) as caught:
         client.pairwise("rs4970836", "rs646776", f"{LD_POPULATION_PREFIX}EUR")
     assert isinstance(caught.value, LdUnavailable) is (raised is LdUnavailable)
+
+
+def test_ld_store_reuses_a_pair_under_the_release_that_answered(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("JUST_DNA_ANSWER_STORE", str(tmp_path / "store"))
+    spec = _spec(tmp_path, _ONE_EUR_STUDY)
+    path = "/ld/human/pairwise/rs4970836/rs646776"
+    server = _Ensembl({path: [_json(200, _EUR)]})
+    first = enrich_ld_pairs(spec, client=_client(server), write=False)
+    server.asked.clear()
+    again = enrich_ld_pairs(spec, client=_client(server), write=False)
+    assert [(r.r2, r.d_prime, r.dataset) for r in first.rows] == [
+        (r.r2, r.d_prime, r.dataset) for r in again.rows
+    ]
+    assert server.asked == []
+    assert again.requests == 0
+    assert [(use.release, use.stored, use.live) for use in again.answer_usage] == [
+        (first.dataset, len(first.rows), 0)
+    ]
+
+
+def test_a_missing_ld_release_leaves_the_pair_live_and_unlabelled(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "store.sqlite"
+    monkeypatch.setenv("JUST_DNA_ANSWER_STORE", str(path))
+    spec = _spec(tmp_path, _ONE_EUR_STUDY)
+    asked: list[str] = []
+    pair = "/ld/human/pairwise/rs4970836/rs646776"
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        asked.append(request.url.path)
+        return httpx.Response(200, text="{}" if request.url.path == "/info/data" else _EUR)
+
+    for _ in range(2):
+        (row,) = enrich_ld_pairs(spec, client=_client(handle), write=False).rows
+        assert row.dataset is None and row.r2 == float(json.loads(_EUR)[0]["r2"])
+    assert asked == ["/info/data", pair] * 2 and not path.exists()

@@ -18,11 +18,16 @@ failed batch, a POST 400 included, is could-not-ask for every rsID in it, never 
 
 import json
 import logging
+import sqlite3
+from collections.abc import Callable
+from contextlib import closing
 from pathlib import Path
 
 import httpx
 import pytest
-from just_dna_enricher.enrich import enrich
+from just_dna_enricher.answer_store import AnswerStore, StoreSetting
+from just_dna_enricher.cli import app
+from just_dna_enricher.enrich import EnrichmentResult, enrich
 from just_dna_enricher.ensembl import (
     _REST_BATCH_CEILING,
     BatchResolver,
@@ -32,6 +37,7 @@ from just_dna_enricher.ensembl import (
     _RestBatchWitness,
 )
 from just_dna_enricher.net import RETRY_ATTEMPTS_ENV, PacingGate
+from typer.testing import CliRunner
 
 
 def _mapping(chrom: str, start: int, allele_string: str) -> dict:
@@ -92,7 +98,9 @@ class _Ensembl:
         return httpx.Response(200, json=record)
 
 
-def _resolver(server: _Ensembl, batch_size: int | None = None) -> EnsemblResolver:
+def _resolver(
+    server: Callable[[httpx.Request], httpx.Response], batch_size: int | None = None
+) -> EnsemblResolver:
     settings = EnsemblSettings() if batch_size is None else EnsemblSettings(batch_size=batch_size)
     resolver = EnsemblResolver(settings=settings, gate=PacingGate(interval=0.0))
     resolver._client = httpx.Client(transport=httpx.MockTransport(server))
@@ -156,6 +164,31 @@ def test_the_no_variation_rsid_is_collected_as_its_get_collects_it() -> None:
     resolver = _resolver(_Ensembl())
     dict(resolver._resolve_rsids_rest(_ASKED))
     assert resolver.non_nucleotide_rsids == {"rs6"}
+
+
+def test_the_absence_column_agrees_with_each_resolved_answer(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "store"
+    monkeypatch.setenv("JUST_DNA_ANSWER_STORE", str(path))
+    server = _Ensembl()
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/info/data":
+            return httpx.Response(200, json={"releases": [116]})
+        return server(request)
+
+    answers = dict(_resolver(handle).resolve_rsids_batched(_ASKED))
+    with closing(sqlite3.connect(path)) as db:
+        absent = {
+            key.rsplit("/", 1)[1] for (key,) in db.execute("SELECT request_key FROM answers WHERE absent")
+        }
+    assert absent == {rsid for rsid, (loci, _) in answers.items() if loci == []}
+    server.requests.clear()
+    warm = _resolver(handle)
+    assert dict(warm.resolve_rsids_batched(_ASKED)) == answers
+    assert warm.non_nucleotide_rsids == {"rs6"}
+    assert server.requests == []
 
 
 def test_two_records_naming_an_rsid_send_it_to_the_get() -> None:
@@ -308,3 +341,146 @@ def test_the_live_link_asks_its_misses_in_one_batch_and_a_host_resolver_one_at_a
     placed = {row.rsid: (row.chrom, row.start) for row in result.rows if row.status != "not_found"}
     assert placed == {"rs1801133": ("1", 11796321), "rs8192284": ("1", 154454494)}
     assert result.unreachable_rsids == []
+
+
+@pytest.mark.usefixtures("no_ambient_caches")
+def test_shared_resolver_rechecks_release_and_reports_only_this_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    release = [116]
+    subjects = ["rs1801133", "rs8192284", "rs99999999999"]
+    server = _Ensembl()
+    posts: list[list[str]] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/info/data":
+            server.requests.append("release")
+            return httpx.Response(200, json={"releases": release})
+        if request.method == "POST":
+            posts.append(json.loads(request.content)["ids"])
+        return server(request)
+
+    resolver = _resolver(handle)
+    (tmp_path / "module_spec.yaml").write_text(_YAML)
+    (tmp_path / "studies.csv").write_text("rsid,pmid\nrs1801133,9545397\n")
+    path = tmp_path / "host.sqlite"
+    monkeypatch.setenv("JUST_DNA_ANSWER_STORE", str(path))
+    caplog.set_level(logging.INFO)
+
+    def run(ids: list[str], answer_store: StoreSetting = None) -> EnrichmentResult:
+        (tmp_path / "variants.csv").write_text(
+            "rsid,genotype,state,conclusion\n" + "".join(f"{rsid},A/G,risk,c\n" for rsid in ids)
+        )
+        server.requests.clear()
+        posts.clear()
+        return enrich(
+            tmp_path,
+            resolver=resolver,
+            write=False,
+            download=False,
+            use_gnomad=False,
+            verify_ref=False,
+            verify_datasets=False,
+            verify_clinsig=False,
+            verify_rsids=False,
+            answer_store=answer_store,
+        )
+
+    run(subjects, answer_store=False)
+    assert not path.exists() and posts == [subjects]
+    monkeypatch.setenv("JUST_DNA_ANSWER_STORE", "")
+    cold = run(subjects, answer_store=path)
+    assert server.requests == ["release", f"POST {len(subjects)}", f"GET {subjects[-1]}"]
+    warm = run(subjects, answer_store=AnswerStore(path))
+    assert server.requests == ["release"]
+    assert warm.rows == cold.rows
+    (usage,) = warm.answer_usage
+    assert (usage.source, usage.release, usage.stored, usage.live) == (
+        resolver.settings.rest_endpoint,
+        "ensembl_116",
+        len(subjects),
+        0,
+    )
+    assert str(usage) in caplog.text
+    extra = ["rs429358"]
+    monkeypatch.setenv("JUST_DNA_ANSWER_STORE", str(path))
+    mixed = run(subjects + extra)
+    assert posts == [extra]
+    assert [(u.stored, u.live) for u in mixed.answer_usage] == [(len(subjects), len(extra))]
+    release[:] = [117]
+    moved = run(subjects + extra)
+    assert posts == [subjects + extra]
+    assert [(u.release, u.stored, u.live) for u in moved.answer_usage] == [
+        ("ensembl_117", 0, len(subjects + extra))
+    ]
+    release.clear()
+    for _ in range(2):
+        unknown = run(subjects)
+        assert posts == [subjects] and server.requests.count("release") == 1
+        assert unknown.answer_usage[0].release is None
+
+
+@pytest.mark.parametrize(
+    "body,status",
+    [
+        ({}, 200),
+        ({"error": "service unavailable"}, 200),
+        ({"error": "request refused"}, 400),
+        ({"mappings": [_mapping("1", 11796321, "-/A")]}, 200),
+        ({"mappings": [_mapping("1", 11796321, "-/A"), _mapping("1", 11796321, "A/G")]}, 200),
+    ],
+)
+def test_a_failed_or_partly_anchored_get_is_not_replayed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, body: dict, status: int
+) -> None:
+    monkeypatch.setenv("JUST_DNA_ANSWER_STORE", str(tmp_path / "store"))
+    rsid = "rs1801133"
+    paths: list[str] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        paths.append(request.url.path)
+        if request.url.path == "/info/data":
+            return httpx.Response(200, json={"releases": [116]})
+        return httpx.Response(status, json=body)
+
+    for _ in range(2):
+        _resolver(handle).resolve_rsid(rsid)
+    assert paths == ["/info/data", f"/variation/human/{rsid}"] * 2
+
+
+@pytest.mark.usefixtures("no_ambient_caches")
+def test_cli_enrich_shows_store_counts_and_can_bypass_an_existing_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = tmp_path / "store.sqlite"
+    monkeypatch.setenv("JUST_DNA_ANSWER_STORE", str(store))
+    monkeypatch.setattr("just_dna_enricher.enrich.orchestration.ensure_snapshot", lambda *_: None)
+    rsid = "rs1801133"
+    (tmp_path / "module_spec.yaml").write_text(_YAML)
+    (tmp_path / "variants.csv").write_text(f"rsid,genotype,state,conclusion\n{rsid},A/G,risk,c\n")
+    server = _Ensembl()
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/info/data":
+            return httpx.Response(200, json={"releases": [116]})
+        return server(request)
+
+    http = httpx.Client(transport=httpx.MockTransport(handle))
+    monkeypatch.setattr(EnsemblResolver, "_http", lambda self: http)
+    args = [
+        "enrich",
+        str(tmp_path),
+        "--rederive",
+        "--no-gnomad",
+        "--no-clinvar",
+        "--no-verify-ref",
+        "--no-verify-clinsig",
+        "--no-verify-rsids",
+        "--no-verify-datasets",
+    ]
+    for flags, live in [([], True), ([], False), (["--no-answer-store"], True)]:
+        server.requests.clear()
+        result = CliRunner().invoke(app, [*args, *flags])
+        assert result.exit_code == 0, (result.output, result.exception)
+        assert server.requests == (["POST 1"] if live else [])
+        assert f"stored={int(not live)} live={int(live)}" in result.output

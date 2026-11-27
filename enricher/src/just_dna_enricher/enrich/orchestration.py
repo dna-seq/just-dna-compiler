@@ -35,6 +35,7 @@ from just_dna_format.vocab import ALLELE_PATTERN
 from just_dna_format.vrs import normalize_chrom, par_partner, refget_accession
 
 from just_dna_enricher import clinvar
+from just_dna_enricher.answer_store import StoreSetting, answer_run
 from just_dna_enricher.civic_citations import check_evidence_status_currency, read_studies
 from just_dna_enricher.civic_refutation import RefutationFinding, compare_refutations
 from just_dna_enricher.clients import LookupClients
@@ -281,8 +282,13 @@ def enrich(
     release_probes: Mapping[str, ReleaseProbe] | None = None,
     clients: LookupClients | None = None,
     sequences: SequenceProxy | None = None,
+    answer_store: StoreSetting = None,
 ) -> EnrichmentResult:
     """Resolve a spec's variants into `resolution.csv`. See the module docstring for the chain/modes.
+
+    Online answers use the configured per-host SQLite store. `answer_store` accepts an AnswerStore,
+    a file or existing directory, or False to disable it. Each call checks fresh release labels
+    even when clients are shared, and returns the per-source counts in `answer_usage`.
 
     The chain is: existing rows → Ensembl cache → ClinVar cache (`use_clinvar`, stamps
     `source="clinvar"`) → live Ensembl → live gnomAD (`use_gnomad`, stamps `source="gnomad"`). Each
@@ -425,8 +431,8 @@ def enrich(
         rederive_subjects = (rederive_subjects,)
     # The lock spans the whole window — from the read of the recorded table to the commit — so it is
     # taken here and not inside the run. A `write=False` caller touches no file and takes none.
-    with spec_lock(spec_dir, enabled=write, error=EnrichmentError):
-        return _run_enrichment(
+    with spec_lock(spec_dir, enabled=write, error=EnrichmentError), answer_run(answer_store) as answers:
+        result = _run_enrichment(
             spec_dir,
             mode=mode,
             offline=offline,
@@ -459,6 +465,10 @@ def enrich(
             eutils=eutils,
             sequences=sequences,
         )
+        result.answer_usage = answers.report()
+        for usage in result.answer_usage:
+            logger.info("%s", usage)
+        return result
 
 
 def _grch38_window(

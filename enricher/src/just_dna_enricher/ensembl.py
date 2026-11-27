@@ -27,6 +27,7 @@ from just_dna_format.vocab import ALLELE_PATTERN
 from just_dna_format.vrs import contig_length, refget_accession
 from tenacity import retry
 
+from just_dna_enricher.answer_store import AnswerRun, SourceAnswers
 from just_dna_enricher.clingen_allele import anchor_indel
 from just_dna_enricher.net import (
     PacingGate,
@@ -211,6 +212,8 @@ class EnsemblResolver(Withholding):
     # resolver that arrive while it is being built wait for that one rather than each building another.
     _reader_lock: threading.Lock = field(default_factory=threading.Lock, repr=False, compare=False)
 
+    _answers: AnswerRun = field(default_factory=AnswerRun, init=False, repr=False, compare=False)
+
     def __post_init__(self) -> None:
         if self.gate is None:
             self.gate = PacingGate(interval=self.settings.interval)
@@ -274,25 +277,62 @@ class EnsemblResolver(Withholding):
         mapping puts the rsID, through RM268's anchor, and an injected resolver's `resolve_rsid` may
         answer from any surface. It is an optional capability of an injected one (`RestWitness`).
         """
+        answers = self._source_answers()
+        found = answers.read([rsid])
+        if rsid in found:
+            return self._record_answer(rsid, found[rsid])
         if self._held():
             logger.info("V1 REST for %s not asked: Ensembl's Retry-After has not passed", rsid)
             return None, None
+        answers.asked()
+        return self._live_rsid(rsid, answers)
+
+    def _source_answers(self) -> SourceAnswers:
+        run = self._answers.current()
+        return SourceAnswers(
+            run,
+            self.settings.rest_endpoint.rstrip("/"),
+            self.data_release() if run.store is not None else None,
+            f"/variation/{self.settings.species}/",
+        )
+
+    def _record_answer(
+        self, rsid: str, record: dict | None, answers: SourceAnswers | None = None
+    ) -> RsidAnswer:
+        if record is None:  # the stored explicit no-record answer
+            return [], "ensembl-rest"
         try:
-            parsed = self._rest_rsid(rsid)
+            parsed = _loci_from_rest(record, self._base_reader())
+        except (httpx.HTTPError, EnsemblError) as exc:
+            logger.warning("V1 REST for %s could not be placed: %s", rsid, exc)
+            return None, None
+        result = self._rest_answer(rsid, parsed)
+        if (
+            answers is not None
+            and isinstance(record.get("mappings"), list)
+            and "error" not in record
+            and parsed[1] == 0  # every needed anchor was available
+        ):
+            answers.write({rsid: (record, result[0] == [])})
+        return result
+
+    def _live_rsid(self, rsid: str, answers: SourceAnswers) -> RsidAnswer:
+        try:
+            return self._record_answer(rsid, self._rest_rsid(rsid), answers)
         except httpx.HTTPStatusError as exc:
             self._hold_for(exc)
-            # Only a 400 is "no record" (RM361): a 5xx or a 429 after the retries, a 403, a 404 path or a
-            # 410 retired route answered nothing about the rsID (`@unreachable-not-absent`).
             if exc.response.status_code != _REST_NO_RECORD_STATUS:
                 self.note_retired("Ensembl REST", exc)
                 logger.warning("V1 REST for %s failed: %s", rsid, exc)
                 return None, None
             logger.info("V1 REST has no record for %s (%s)", rsid, exc)
+            # Only persist the explicit not-found body. A generic 400 is not reusable evidence.
+            if f"no variation found for id '{rsid.lower()}'" in exc.response.text.lower():
+                answers.write({rsid: (None, True)})
             return [], "ensembl-rest"
         except (httpx.HTTPError, EnsemblError) as exc:
             logger.warning("V1 REST for %s could not be reached: %s", rsid, exc)
             return None, None
-        return self._rest_answer(rsid, parsed)
 
     def resolve_rsids_batched(self, rsids: Sequence[str]) -> Iterator[tuple[str, RsidAnswer]]:
         """`resolve_rsid` for many rsIDs (`BatchResolver`, RM401); REST is the only surface, as there."""
@@ -326,48 +366,48 @@ class EnsemblResolver(Withholding):
             for rsid in asked:
                 yield rsid, self.resolve_rsid_rest(rsid)
             return
+        if not asked:
+            return
+        answers = self._source_answers()
         for chunk in batched(asked, size):
-            if self._held():
-                logger.info(
-                    "V1 REST not asked about %d rsID(s): Ensembl's Retry-After has not passed", len(chunk)
-                )
-                for rsid in chunk:
-                    yield rsid, (None, None)
-                continue
-            try:
-                payload = self._rest_batch(tuple(dict.fromkeys(chunk)))
-            except httpx.HTTPStatusError as exc:
-                self._hold_for(exc)
-                self.note_retired("Ensembl REST", exc)
-                logger.warning(
-                    "V1 REST batch of %d rsID(s) failed: %s; none of them was answered", len(chunk), exc
-                )
-                for rsid in chunk:
-                    yield rsid, (None, None)
-                continue
-            except (httpx.HTTPError, EnsemblError) as exc:
-                logger.warning(
-                    "V1 REST batch of %d rsID(s) could not be reached: %s; none of them was answered",
-                    len(chunk),
-                    exc,
-                )
-                for rsid in chunk:
-                    yield rsid, (None, None)
-                continue
-            records = _batch_records(payload, chunk)
+            found = answers.read(chunk)
+            missing = list(dict.fromkeys(rsid for rsid in chunk if rsid not in found))
+            records = self._live_batch(missing, answers) if missing else {}
             for rsid in chunk:
-                record = records.get(rsid)
-                if record is None:
-                    # Left out, or two records name it: the GET says which (RM361's 400 is "no record").
-                    yield rsid, self.resolve_rsid_rest(rsid)
-                    continue
-                try:
-                    parsed = _loci_from_rest(record, self._base_reader())
-                except (httpx.HTTPError, EnsemblError) as exc:
-                    logger.warning("V1 REST for %s could not be placed: %s", rsid, exc)
+                if rsid in found:
+                    yield rsid, self._record_answer(rsid, found[rsid])
+                elif records is None:
                     yield rsid, (None, None)
-                    continue
-                yield rsid, self._rest_answer(rsid, parsed)
+                elif rsid not in records:
+                    # A POST omission needs the GET verdict. Count the subject once across both.
+                    yield rsid, self._live_rsid(rsid, answers) if not self._held() else (None, None)
+                else:
+                    yield rsid, self._record_answer(rsid, records[rsid], answers)
+
+    def _live_batch(self, chunk: list[str], answers: SourceAnswers) -> dict[str, dict] | None:
+        if self._held():
+            logger.info(
+                "V1 REST not asked about %d rsID(s): Ensembl's Retry-After has not passed", len(chunk)
+            )
+            return None
+        answers.asked(len(chunk))
+        try:
+            payload = self._rest_batch(tuple(chunk))
+        except httpx.HTTPStatusError as exc:
+            self._hold_for(exc)
+            self.note_retired("Ensembl REST", exc)
+            logger.warning(
+                "V1 REST batch of %d rsID(s) failed: %s; none of them was answered", len(chunk), exc
+            )
+            return None
+        except (httpx.HTTPError, EnsemblError) as exc:
+            logger.warning(
+                "V1 REST batch of %d rsID(s) could not be reached: %s; none of them was answered",
+                len(chunk),
+                exc,
+            )
+            return None
+        return _batch_records(payload, chunk)
 
     def _held(self) -> bool:
         """Whether a throttle's `Retry-After` that outlived the retries still forbids asking."""
@@ -433,16 +473,26 @@ class EnsemblResolver(Withholding):
         A transport failure is retried; a status error, a body that is not JSON or one naming no single
         release is `None` with a log line: the rows are written, and only the release goes unrecorded.
         """
+        run = self._answers.current()
+        if run.store is not None:
+            return run.release(self.settings.rest_endpoint.rstrip("/"), self._read_release)
+        release = self._read_release()
+        if release is None:
+            logger.warning("Ensembl REST did not state its data release; recorded as unknown.")
+        return release
+
+    def _read_release(self) -> str | None:
+        if self._held():
+            return None
         try:
             payload = self._rest_info_data()
-        except (httpx.HTTPError, EnsemblError) as exc:
-            logger.warning("Ensembl REST did not state its data release (%s); recorded as unknown.", exc)
+        except httpx.HTTPStatusError as exc:
+            self._hold_for(exc)
+            return None
+        except (httpx.HTTPError, EnsemblError):
             return None
         release = ensembl_data_release(payload)
         if release is None:
-            logger.warning(
-                "Ensembl REST's /info/data states no single release (%r); recorded as unknown.", payload
-            )
             return None
         return f"{ENSEMBL_RELEASE_PREFIX}{release}"
 
@@ -477,7 +527,7 @@ class EnsemblResolver(Withholding):
         retry=retry_if_transient_within(),
         reraise=True,
     )
-    def _rest_rsid(self, rsid: str) -> tuple[list[dict], int, int, int]:
+    def _rest_rsid(self, rsid: str) -> dict:
         assert self.gate is not None
         self.gate.wait()
         resp = self._http().get(
@@ -486,7 +536,7 @@ class EnsemblResolver(Withholding):
             headers={"Accept": "application/json"},
         )
         resp.raise_for_status()
-        return _loci_from_rest(_json(resp), self._base_reader())
+        return _json(resp)
 
     # The same policy as one rsID's GET (RM354's predicate, RM403's lines). A batch timing out is retried
     # like a GET timing out: the read timeout is the batch's own, so a retry is a slow server, not a short
