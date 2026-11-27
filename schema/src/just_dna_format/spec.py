@@ -62,6 +62,7 @@ from just_dna_format.vocab import (
     VALID_AGE_OF,
     VALID_CLIN_SIG,  # noqa: F401 — re-exported for backward compat (see note below)
     VALID_DIRECTIONS,  # noqa: F401 — re-exported for backward compat
+    VALID_EFFECT_DIRECTIONS,
     VALID_SAMPLE_UNITS,
     VALID_SIGNIFICANCE,  # noqa: F401 — re-exported for backward compat
     VALID_SUPERPOPULATIONS,
@@ -253,7 +254,8 @@ def validate_doi_cell(value: str | None) -> str | None:
 _MAGNITUDE_WITHOUT_MEASURE = (
     "effect_measure is what the number means (OR, HR, beta), and an odds ratio of 1.3 and a beta of "
     "1.3 are different claims, so a magnitude with no measure is a number nothing can read. Set "
-    "effect_measure, or clear effect_size"
+    "effect_measure, or clear effect_size. Reported rather than refused: a module published before "
+    "this rule may hold the half"
 )
 
 
@@ -1234,6 +1236,13 @@ class StudyRow(CitationPair, AuthoredModel):
             "no modifier cannot be told from another axis (RM330)",
         ),
         Companion("effect_size", ("effect_measure",), _MAGNITUDE_WITHOUT_MEASURE, refuse=False),
+        Companion(
+            "effect_direction",
+            ("effect_allele",),
+            "state the allele if the study identifies it. Without the allele the evidence is kept "
+            "but cannot be weighted",
+            refuse=False,
+        ),
     )
 
     rsid: str | None = Field(
@@ -1321,7 +1330,7 @@ class StudyRow(CitationPair, AuthoredModel):
         json_schema_extra=since("0.6.0"),
         default=None,
         description=(
-            "The allele this study's `effect_size` is stated relative to — bases, or a "
+            "The allele this study's `effect_size` or `effect_direction` is relative to — bases, or a "
             "symbolic/structural allele carrying its length (e.g. <DEL:1500>). Absent means the "
             "study did not state one, which is not the same as the reference allele."
         ),
@@ -1591,9 +1600,24 @@ class StudyRow(CitationPair, AuthoredModel):
         description=(
             "The unit of `effect_size`, verbatim as the paper states it, e.g. `years of parental "
             "lifespan per allele`, `-ln HR per allele`. Free text. A sign convention is not a unit: "
-            "`effect_allele` with `direction` already says which way."
+            "`effect_allele` with `effect_direction` already says which way."
         ),
     )
+
+    effect_direction: str | None = Field(
+        default=None,
+        json_schema_extra={**vocabulary("effect_direction", VALID_EFFECT_DIRECTIONS), **since("0.10.0")},
+        description=(
+            "Whether this study's effect allele increases or decreases the measured trait. "
+            "**Not clinical direction**. Increasing the trait may be beneficial, harmful or neither. "
+            "The module's clinical interpretation belongs in `VariantRow.direction`."
+        ),
+    )
+
+    @field_validator("effect_direction")
+    @classmethod
+    def _check_effect_direction(cls, v: str | None) -> str | None:
+        return check_vocab(v, VALID_EFFECT_DIRECTIONS, "effect_direction")
 
     @property
     def variant_key(self) -> str | None:

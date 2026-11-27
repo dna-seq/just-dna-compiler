@@ -138,7 +138,17 @@ Feature: The spec directory and the cells inside it
     # out of an upstream export, so refusing it would refuse a faithful transcription. `stats.genes` is
     # what a registry's gene index reads, which is what makes a composite cell a third gene.
 
+  # source: compiler/src/just_dna_compiler/compiler/table_checks.py
+  # anchor: _check_study_effect_directions
+  @code:study_effect_direction_disagrees_with_size @actionable @both_modes
+  Scenario: a study reports a decrease and an odds ratio above one
+    Given a study reporting a decrease for its effect allele with OR 1.3
+    When the module is validated or compiled in either mode
+    Then the warning says "effect_direction disagrees with effect_size" and names the study and both values
+    And the study row is kept
+
   # source: compiler/src/just_dna_compiler/compiler/validate.py
+  # text: schema/src/just_dna_format/spec.py
   # anchor: _check_half_stated_pairs
   @code:paired_field_half_stated @actionable @both_modes
   Scenario: a published column stated without its companion

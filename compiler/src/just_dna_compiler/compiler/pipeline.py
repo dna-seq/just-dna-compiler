@@ -1027,6 +1027,7 @@ def compile_module(
         "weights_rows": weights_df.height if weights_df is not None else 0,
         "annotations_rows": annotations_df.height if annotations_df is not None else 0,
         "studies_rows": studies_df.height if studies_df is not None else 0,
+        "study_effect_direction_withheld": validation.stats["study_effect_direction_withheld"],
         "table_rows": table_rows,
     }
     return CompilationResult(

@@ -1390,6 +1390,7 @@ STUDIES_CSV_FIELDS: tuple[str, ...] = (
     "stratum_level",
     "proxy_rsid",
     "effect_unit",
+    "effect_direction",
 )
 
 
@@ -1440,5 +1441,6 @@ def _write_studies_csv(studies_df: pl.DataFrame, output_path: Path) -> None:
                     "stratum_level": _scalar_cell(row.get("stratum_level")),
                     "proxy_rsid": _scalar_cell(row.get("proxy_rsid")),
                     "effect_unit": _scalar_cell(row.get("effect_unit")),
+                    "effect_direction": _scalar_cell(row.get("effect_direction")),
                 }
             )

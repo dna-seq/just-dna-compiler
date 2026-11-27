@@ -35,6 +35,7 @@ from just_dna_compiler.compiler import (
 from just_dna_compiler.compiler.subjects import module_subjects
 from just_dna_format.base import field_first_seen, field_vocabularies
 from just_dna_format.gwas import GwasEffectRow
+from just_dna_format.identity import parse_version
 from just_dna_format.pgs import VALID_TRAINING_ANCESTRY, PgsRow
 from just_dna_format.spec import StudyRow, VariantRow
 from just_dna_format.vocab import (
@@ -215,7 +216,8 @@ def test_the_columns_are_0_8_and_come_after_every_0_7_column(item: str) -> None:
     first_seen = field_first_seen(StudyRow)
     fields = list(StudyRow.model_fields)
     assert {c: first_seen[c] for c in columns} == dict.fromkeys(columns, "0.8.0")
-    last_old = max(i for i, name in enumerate(fields) if first_seen[name] != "0.8.0")
+    introduction = parse_version("0.8.0")
+    last_old = max(i for i, name in enumerate(fields) if parse_version(first_seen[name]) < introduction)
     assert all(fields.index(c) > last_old for c in columns)
 
 

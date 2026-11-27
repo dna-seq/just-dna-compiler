@@ -698,15 +698,23 @@ VALID_IMPACTS: frozenset[str] = frozenset({"HIGH", "MODERATE", "LOW", "MODIFIER"
 RECOMMENDED_QTL_STUDY_TYPES: frozenset[str] = frozenset({"eqtl", "sqtl", "pqtl", "tuqtl", "sceqtl", "gwas"})
 
 # `effect_measure` is intentionally NOT a closed vocabulary (kept permissive so PGS-Catalog
-# `weight_type` additions survive). These are the recommended values, for documentation only.
+# `weight_type` additions survive). The recommended values describe known scales without restricting the field.
 #
 # **Lives here rather than in `spec.py`, where it was defined until 0.6**, because `gwas.py` binds the
 # same vocabulary and a fact-table module importing the authored-DSL module to reach a shared
 # constant is the wrong direction of dependency. `spec.py` re-exports it, the same backward-compat
 # pattern `VALID_CLIN_SIG` and `VALID_DIRECTIONS` already use, so no importer had to change.
-RECOMMENDED_EFFECT_MEASURES: frozenset[str] = frozenset(
-    {"OR", "HR", "RR", "beta", "log(OR)", "log(HR)", "NR"}
-)
+# Null effect on each recommended scale. NR names no scale, so it supplies no comparison.
+EFFECT_MEASURE_NULLS: dict[str, float | None] = {
+    "OR": 1,
+    "HR": 1,
+    "RR": 1,
+    "beta": 0,
+    "log(OR)": 0,
+    "log(HR)": 0,
+    "NR": None,
+}
+RECOMMENDED_EFFECT_MEASURES: frozenset[str] = frozenset(EFFECT_MEASURE_NULLS)
 
 # ── The 0.8 `StudyRow` batch (PROPOSAL_0_8_PT2 §3 items 11–15) ──────────────────────────────────
 # What `StudyRow.sample_size` counts (RM325). A parental-lifespan study counts LIVES, two parents per
@@ -1739,9 +1747,10 @@ VALID_WARNING_CODES: frozenset[str] = frozenset(
         "study_variant_orphan",  # a studies.csv row naming a variant the module does not carry
         "duplicate_study_citation",  # two study rows on one (variant, pmid)
         "p_value_encodings_disagree",  # `p_value` and `p_value_num` are two readings of one number
+        "study_effect_direction_disagrees_with_size",  # direction and estimate point opposite ways
         "study_effect_allele_not_at_locus",  # a study's `effect_allele` is not among the resolved alleles
         "phenotype_class_unrecognized",  # a study's `phenotype_class` outside the recommended set (RM326)
-        "paired_field_half_stated",  # a column whose companion is empty, on a published pair (RM366)
+        "paired_field_half_stated",  # a stated column whose advisory companion is empty
         "citation_not_in_pubmed",  # a `pmid` PubMed has no record of
         "literature_row_uncited",  # a literature row nothing in the module cites — kept in the CSV
         "quote_counter_stale",  # `quotes_authored` disagrees with the quotes that cite it

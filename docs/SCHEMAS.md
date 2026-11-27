@@ -275,7 +275,7 @@ reason its `source` column is inside its fact set while everywhere else `source`
   | `VALID_DECLARED_USE` | 3 (closed) |  |
   | `VALID_DIRECTIONS` | 5 (closed) |  |
   | `VALID_DOSAGE_SENSITIVITY` | 6 (closed) |  |
-  | `VALID_EFFECT_DIRECTIONS` | 2 (closed) | which way a GWAS or expression effect moves; `increase`/`decrease` only, with absence as the third state |
+  | `VALID_EFFECT_DIRECTIONS` | 2 (closed) | which way a study, GWAS or expression effect moves its measured trait; `increase`/`decrease` only, with absence as the third state |
   | `VALID_ELEMENT_RULES` | 8 (closed) | the composition rules a `Display` element may declare |
   | `VALID_EVIDENCE_LEVELS` | 6 (closed) |  |
   | `VALID_FREQUENCY_STATUS` | 3 (closed) |  |
@@ -300,7 +300,7 @@ reason its `source` column is inside its fact set while everywhere else `source`
   | `VALID_VERIFICATION_CHECKS` | 27 (closed) |  |
   | `VALID_VERIFICATION_SKIPS` | 9 (closed) |  |
   | `VALID_VERIFICATION_INDEPENDENCE` | 2 (closed) | `VerificationRecord.independence`, derived from the record's two sources and never typed (RM292) |
-  | `VALID_WARNING_CODES` | 84 (closed) | every code a compile may stamp on a finding (members in `RETIRED_WARNING_CODES` are no longer emitted); the catalogue with texts is in [COMPILER.md](COMPILER.md) |
+  | `VALID_WARNING_CODES` | 85 (closed) | every code a compile may stamp on a finding (members in `RETIRED_WARNING_CODES` are no longer emitted); the catalogue with texts is in [COMPILER.md](COMPILER.md) |
 
   Vocabularies owned by a leaf rather than by `vocab` (`spec`, `binning`, `pgx`, `pgs`, `manifest`,
   `sources`) are reached through the field markers above and not listed here, for the reason the bullet
@@ -332,12 +332,12 @@ reason its `source` column is inside its fact set while everywhere else `source`
   `PairedFields` mixin reads every model's declaration; `AuthoredModel` inherits it, and so do the fact
   rows that carry a pair (`ResolutionRow`, `GwasEffectRow`, `ColocalisationRow`,
   `ClinSigAuthorityCallRow`). `paired_fields(model)` is the reader, and it adds the element-rule pairs
-  derived from `VCF_POINTER_COMPANIONS` rather than restating them. An entry marked `refuse=False` is a
-  pair a published module may already hold half-stated (`effect_size` without `effect_measure` on
-  `variants.csv`/`studies.csv`, both 0.3): never refused, reported by the compiler as
-  `paired_field_half_stated`. Every refusing entry on an authored model either was refused before RM366
-  declared it or names only 0.8 columns, and `test_paired_fields.py` asserts that set as an equality, so
-  a new refusal on a published column fails there rather than in a consumer's module.
+  derived from `VCF_POINTER_COMPANIONS` rather than restating them. An entry marked `refuse=False`
+  keeps the row and reports `paired_field_half_stated`. This preserves published rows stating
+  `effect_size` without `effect_measure` and study evidence stating a direction without an effect allele.
+  Every refusing entry on an authored model either was refused before RM366 declared it or names only
+  0.8 columns, and `test_paired_fields.py` asserts that set as an equality, so a new refusal on a
+  published column fails there rather than in a consumer's module.
 - **`vocab.TEMPLATE_PLACEHOLDER` (`<<REPLACE>>`, 0.5).** The cell a generated template writes where a
   human must decide. Refused by a recursive `mode="before"` guard on every authored row and on
   `module_spec.yaml`, so an unreplaced stub is diagnosed by column and row instead of surfacing as a
@@ -615,6 +615,14 @@ free text and verbatim, as on `gwas_effects.csv`; `StudyRow` only (the `VariantR
 `outcome_healthspan`/`outcome_lifespan`/`outcome_exceptional` (from `phenotype_class` through
 `vocab.OUTCOME_STRIP_CELLS`), both Kleene and neither authored; COMPILER.md § Locus-level columns has
 the rules.
+
+**`effect_direction?` (0.10, RM435).** A study can record whether its `effect_allele` increases
+or decreases the measured trait even when the paper gives no effect size. The closed vocabulary
+is the same `increase`/`decrease` used by `GwasEffectRow`. A direction with no allele draws
+`paired_field_half_stated` and the row survives. With a stated size and measure,
+`study_effect_direction_disagrees_with_size` warns when the estimate points the other way.
+The null is zero for `beta`, `log(OR)` and `log(HR)`, and one for `OR`, `HR` and `RR`.
+An estimate at the null, `NR` or another measure with no known scale yields no verdict.
 
 **The pmid/doi pair (0.8, RM336) — one rule on every table that cites.** `pmid` never holds a DOI: a
 cell whose only identifier is a DOI is refused, naming the DOI, the way RM50 refuses a PMC id, because

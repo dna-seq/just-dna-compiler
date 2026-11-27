@@ -14,7 +14,7 @@ from just_dna_format.layout import DERIVED_SUBDIR, VERIFICATION_JSON, sidecar_sp
 from just_dna_format.pgx import is_hla_gene
 from just_dna_format.spec import StudyRow, citation_key, cited_as
 from just_dna_format.spelling import gene_key
-from just_dna_format.vocab import RECOMMENDED_PHENOTYPE_CLASSES
+from just_dna_format.vocab import EFFECT_MEASURE_NULLS, RECOMMENDED_PHENOTYPE_CLASSES
 from pydantic import BaseModel
 
 from just_dna_compiler.compiler.subjects import MODULE_LOCUS_TABLES, VARIANTS_CSV, ModuleSubjects
@@ -425,6 +425,34 @@ def _distinct_study_rows(a: StudyRow, b: StudyRow) -> bool:
         x is not None and y is not None and x != y
         for x, y in zip(_narrowing_cells(a), _narrowing_cells(b), strict=True)
     )
+
+
+def _check_study_effect_directions(studies: list[StudyRow]) -> tuple[list[str], int]:
+    """Compare complete direction/size/measure triples and count those with no directional verdict."""
+    disagreements: list[str] = []
+    withheld = 0
+    for row in studies:
+        if row.effect_direction is None or row.effect_size is None or row.effect_measure is None:
+            continue
+        null = EFFECT_MEASURE_NULLS.get(row.effect_measure)
+        if null is None or row.effect_size == null:
+            withheld += 1
+            continue
+        expected = "increase" if row.effect_size > null else "decrease"
+        if row.effect_direction != expected:
+            disagreements.append(
+                f"{row.variant_key or 'module'} (PMID {cited_as(row.pmid, row.doi)}): "
+                f"{row.effect_direction} with {row.effect_measure} {row.effect_size}"
+            )
+    if not disagreements:
+        return [], withheld
+    return [
+        CodedWarning(
+            "study_effect_direction_disagrees_with_size",
+            f"studies.csv: effect_direction disagrees with effect_size in {len(disagreements)} row(s): "
+            + "; ".join(disagreements),
+        )
+    ], withheld
 
 
 def _check_phenotype_classes(studies: list[StudyRow]) -> list[str]:

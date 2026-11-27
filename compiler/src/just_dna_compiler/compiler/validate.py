@@ -86,6 +86,7 @@ from just_dna_compiler.compiler.subjects import module_subjects
 from just_dna_compiler.compiler.table_checks import (
     _check_misspelled_tables,
     _check_phenotype_classes,
+    _check_study_effect_directions,
     _cross_validate_haplotype_definitions,
     _cross_validate_phase_ambiguity,
     _cross_validate_studies,
@@ -1027,7 +1028,9 @@ def _validate_spec(
                 f"{sorted(RESERVED_FLAGS)}): {unknown_flags}"
             )
 
-    stats: dict[str, Any] = {"study_count": len(studies)}
+    direction_warnings, withheld = _check_study_effect_directions(studies)
+    all_warnings.extend(direction_warnings)
+    stats: dict[str, Any] = {"study_count": len(studies), "study_effect_direction_withheld": withheld}
     if config:
         stats["module_name"] = config.module.name
     if kind_row_counts:
@@ -1077,13 +1080,12 @@ def _validate_spec(
 
 
 def _check_half_stated_pairs(tables: dict[str, list[Any]]) -> list[str]:
-    """Report every column stated without its companion, on a pair a published module may hold (RM366).
+    """Report each advisory companion rule whose required companion is absent.
 
     The pairs are declared on the models (`_PAIRED_FIELDS`, `base.Companion`) and the ones that refuse
-    never reach here — the row failed to load. What is left is `refuse=False`: a pair whose columns
-    predate the rule, so refusing would stop a module that validated under an earlier release of this
-    line from validating (P3). It reports and never fills: the companion is a claim (which measure a
-    number is), and no tool may supply one.
+    never reach here — the row failed to load. What is left is `refuse=False`: keep a published
+    shape, or retain evidence even when its effect allele is unknown. Only the author can supply
+    that missing allele or say which measure a number represents.
 
     One warning per (table, column, companion), with the row count and one example value, never one
     per row — a table missing a measure is usually missing it on every row.
@@ -1097,8 +1099,7 @@ def _check_half_stated_pairs(tables: dict[str, list[Any]]) -> list[str]:
         CodedWarning(
             "paired_field_half_stated",
             f"{csv_name}: {len(values)} row(s) state {rule.field} with {' or '.join(rule.needs)} empty "
-            f"(e.g. {rule.field}={values[0]!r}) — {rule.reason}. Reported rather than refused: a "
-            f"module published before this rule may hold the half.",
+            f"(e.g. {rule.field}={values[0]!r}) — {rule.reason}.",
         )
         for (csv_name, rule), values in sorted(found.items(), key=lambda item: (item[0][0], item[0][1].field))
     ]

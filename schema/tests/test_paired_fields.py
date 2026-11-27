@@ -119,6 +119,8 @@ _SAMPLE: dict[str, object] = {
     "quality_from": "FORMAT/GQ",
     "min_quality": 20.0,
     "effect_size": 1.3,
+    "effect_direction": "increase",
+    "effect_allele": "A",
     "effect_measure": "OR",
     "confidence": "accepted",
     "confidence_unit": "civic_evidence_status",
