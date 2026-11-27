@@ -406,9 +406,8 @@ def enrich(
     One proxy may be shared by parallel runs; its memo is locked, and holds answers only: the run reads
     the proxy through a view of its own, which holds the failures the run sees (a failed build, a read
     that raised or came back empty), so the next run sharing the proxy asks again. Under `offline=True`
-    it is **not used**:
-    offline outranks it as it outranks an injected client (`@gated-source-caches`), and the run warns
-    once (`OFFLINE_OUTRANKS_SEQUENCES`) and reads no sequence, exactly as an offline run with none.
+    only a fasta+file URI can supply bases. Any other injected source receives the
+    OFFLINE_OUTRANKS_SEQUENCES notice and the run reads no sequence.
     """
     spec_dir = Path(spec_dir)
     # The bundle's fields fill only what no explicit argument gave; a caller's client is never closed,
@@ -418,7 +417,7 @@ def enrich(
         gnomad_client = gnomad_client if gnomad_client is not None else clients.gnomad
         grch37_client = grch37_client if grch37_client is not None else clients.grch37
     eutils = clients.eutils if clients is not None else None
-    if offline and sequences is not None:
+    if offline and sequences is not None and not getattr(sequences, "local_fasta", False):
         logger.warning(OFFLINE_OUTRANKS_SEQUENCES)
         sequences = None
     if isinstance(rederive_subjects, str):
@@ -1948,9 +1947,9 @@ def _run_enrichment(
 
     # Validation pass: does the authored data agree with the genome? (Reported, never repaired.)
     if not verify_ref:
-        ref_check = RefCheck([], 0, "not_requested")
+        ref_check = RefCheck([], 0, "not_requested", source=sequences.source)
     elif verify_written_only and not check_rows:
-        ref_check = RefCheck([], 0, "nothing_to_check")
+        ref_check = RefCheck([], 0, "nothing_to_check", source=sequences.source)
     else:
         ref_check = verify_reference_alleles(check_rows, sequences=sequences, offline=offline)
     ref_mismatches = ref_check.mismatches
@@ -2432,6 +2431,7 @@ def _run_enrichment(
         sources=sources,
         mode=mode,
         ref_mismatches=ref_mismatches,
+        ref_check=ref_check,
         clin_sig_conflicts=clin_sig_conflicts,
         clin_sig_not_checked=clin_sig_not_checked,
         clin_sig_comparison=clin_sig_comparison,

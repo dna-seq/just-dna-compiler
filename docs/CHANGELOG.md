@@ -41,6 +41,16 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md). The `0.8` branch merged into `main` at the 0.8.0 cut (2026-11-05).
 
+## 2026-11-27 — RM385: an offline run can use a verified local GRCh38 FASTA (a minor, for 0.10)
+
+An operator can now give `enrich` or `vrs mint` a local reference with `--sequence-uri`, or pass a
+`SequenceProxy` with a `fasta+file:///…` URI to `enrich()`. The enricher checks each requested
+contig against its GRCh38 refget digest before using it to left-align an indel, mint its VRS ID or
+check an authored REF. A missing or mismatched contig stays unread and the report names the reason.
+The REF attestation names the answering source, `fasta` or `seqrepo`. Both source fields already
+accept free text. The new reader uses the adjacent FASTA index and caches digests beside the
+reference. It adds no dependency or cache lane.
+
 ## 2026-11-26 — `v0.9.0`: format, compiler and enricher 0.9.0 (a minor, the `0.9` branch)
 
 **Cut on 2026-11-26 from the `0.9` branch**, built from 2026-11-16 to 2026-11-26: the enricher reads its reference data

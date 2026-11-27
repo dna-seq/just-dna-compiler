@@ -5,12 +5,14 @@ of the former single-file `cli.py`).
 from pathlib import Path
 
 import typer
+from just_dna_compiler.compiler import load_csv_rows
 from just_dna_compiler.draft import DraftError, authoring_requirements, blank_template
 from just_dna_format.manifest import VerificationRecord
+from just_dna_format.resolution import ResolutionRow
 
 from just_dna_enricher import pgx_draft
-from just_dna_enricher.cli._shared import _attest_on_the_way_out, _use, app
-from just_dna_enricher.enrich import EnrichmentError
+from just_dna_enricher.cli._shared import SequenceURI, _attest_on_the_way_out, _use, app, sequence_source
+from just_dna_enricher.enrich import EnrichmentError, _write_resolution_csv
 from just_dna_enricher.identifiers import IdentifierCheckError, IdentifierUnavailable, check_identifiers
 from just_dna_enricher.identifiers import pgs_withheld_sentences as identifier_pgs_withheld
 from just_dna_enricher.identifiers import unreachable_records as identifier_unreachable
@@ -20,7 +22,7 @@ from just_dna_enricher.net import could_not_ask_reason
 from just_dna_enricher.pgx_draft import draft_gene
 from just_dna_enricher.sequences import SequenceProxy, held_by_one_run
 from just_dna_enricher.verification import record_verification, skipped
-from just_dna_enricher.vrs import MintResult
+from just_dna_enricher.vrs import MintResult, VrsMinter, mint_resolution_rows
 
 
 @app.command("draft")
@@ -382,7 +384,7 @@ vrs_app = typer.Typer(
 )
 
 
-def _mint_record(result: MintResult) -> VerificationRecord:
+def _mint_record(result: MintResult, witness: str) -> VerificationRecord:
     """What a minting run can honestly attest about `vrs_allele_id` (RM45).
 
     The member names the **cross-check** — a source's own `ga4gh:VA.…` against the one minted here —
@@ -405,7 +407,7 @@ def _mint_record(result: MintResult) -> VerificationRecord:
     gaps = result.coverage_warnings()[1:]
     if gaps:
         detail += ". Not named: " + "; ".join(line.strip() for line in gaps)
-    return skipped("vrs_allele_id", "nothing_to_check", detail=detail)
+    return skipped("vrs_allele_id", "nothing_to_check", detail=detail, witness_source=witness)
 
 
 @vrs_app.command("mint")
@@ -414,16 +416,11 @@ def vrs_mint_(
     offline: bool = typer.Option(
         False,
         "--offline",
-        help="Substitutions only: indels need the reference sequence, which means a network call.",
+        help="Never use the network. Indels require a local reference FASTA.",
     ),
+    sequence_uri: SequenceURI = None,
 ) -> None:
-    """Stamp ga4gh:VA.… allele ids onto resolution.csv (substitutions offline, indels online)."""
-    from just_dna_compiler.compiler import load_csv_rows
-    from just_dna_format.resolution import ResolutionRow
-
-    from just_dna_enricher.enrich import _write_resolution_csv
-    from just_dna_enricher.vrs import mint_resolution_rows
-
+    """Stamp ga4gh:VA.… allele ids onto resolution.csv using the selected reference."""
     path = sidecar_path(spec_dir, "resolution.csv", error=EnrichmentError)
     if not path.exists():
         typer.secho(f"no resolution.csv in {spec_dir} — run `enrich` first.", fg=typer.colors.RED, err=True)
@@ -432,7 +429,9 @@ def vrs_mint_(
     if errors:
         typer.secho(f"{path.name} is invalid: {errors[0]}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1)
-    result = mint_resolution_rows(rows, offline=offline)
+    sequences = sequence_source(sequence_uri, offline) or SequenceProxy(offline=offline)
+    minter = VrsMinter(offline=offline, sequences=sequences)
+    result = mint_resolution_rows(rows, minter=minter)
     _write_resolution_csv(rows, path)
     typer.secho(f"minted: {path}", fg=typer.colors.GREEN)
     typer.echo(
@@ -447,7 +446,7 @@ def vrs_mint_(
     for mismatch in result.mismatches:
         typer.secho(f"  mismatch: {mismatch}", fg=typer.colors.YELLOW, err=True)
     try:
-        record_verification([_mint_record(result)], spec_dir, error=EnrichmentError)
+        record_verification([_mint_record(result, sequences.source)], spec_dir, error=EnrichmentError)
     except EnrichmentError as exc:
         # The mint did **not** fail — the ids are on disk and the line above says so. What failed is
         # the attestation, and the only way this raises is a module carrying `verification.json` in

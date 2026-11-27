@@ -414,7 +414,14 @@ def test_a_shared_proxy_carries_no_failure_into_the_next_run(
         assert first[1] and len(first[1]) == len(set(first[1]))
 
     backend.fails = None
-    _online(_spec(second_root), second_root, **hosts, sequences=shared)
+    second_spec = _spec(second_root)
+    _online(second_spec, second_root, **hosts, sequences=shared)
+    ref = next(
+        r
+        for r in read_verification(second_spec / "verification.json").records
+        if r.check == "reference_allele"
+    )
+    assert ref.subjects and (ref.skipped, ref.source, ref.witness_source) == (None, "seqrepo", "seqrepo")
     asked_again = backend.reads[len(first[1]) :]
     assert asked_again, "the second run asked again rather than reading the first run's failure"
     if fails != "build":

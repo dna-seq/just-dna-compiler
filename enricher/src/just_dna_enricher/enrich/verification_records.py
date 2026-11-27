@@ -139,7 +139,7 @@ def _verification_records(
     # Reference allele. The reason comes off the check, which is the only thing that knows whether the
     # sequence service answered — `offline` is the caller's request, not the outcome.
     if not verify_ref:
-        records.append(skipped("reference_allele", "not_requested"))
+        records.append(skipped("reference_allele", "not_requested", witness_source=ref_check.source))
     elif ref_check.not_checked is not None:
         # The detail follows the reason rather than assuming one: `unsupported` is not a sequence
         # failure at all — the service was fine and the *assembly* has no refget table, so saying
@@ -148,7 +148,8 @@ def _verification_records(
             skipped(
                 "reference_allele",
                 ref_check.not_checked,
-                detail=(
+                detail="; ".join(ref_check.unread_reasons)
+                or (
                     "no fresh resolution row to compare"
                     if ref_check.not_checked == "nothing_to_check"
                     else "this tier has a refget table for GRCh38 only, so an authored ref on another "
@@ -158,7 +159,7 @@ def _verification_records(
                     if ref_check.unread
                     else "no sequence access this run, so no authored ref was compared"
                 ),
-                source="seqrepo",
+                source=ref_check.source,
             )
         )
     else:
@@ -167,10 +168,11 @@ def _verification_records(
                 "reference_allele",
                 subjects=ref_check.subjects,
                 findings=len(ref_check.mismatches),
-                source="seqrepo",
+                source=ref_check.source,
                 detail="; ".join(
                     [
                         *summarize_ref_mismatches(ref_check.mismatches),
+                        *ref_check.unread_reasons,
                         *(
                             [
                                 f"{ref_check.unread} row(s) outside this denominator: their reference read failed"

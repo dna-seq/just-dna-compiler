@@ -3,6 +3,7 @@ more than one command group calls (RM260 split this out of the former single-fil
 """
 
 from pathlib import Path
+from typing import Annotated
 
 import typer
 from just_dna_compiler.draft import DraftError
@@ -10,6 +11,8 @@ from just_dna_format.manifest import VerificationRecord
 from just_dna_format.vocab import VALID_DECLARED_USE, match_vocab
 
 from just_dna_enricher.enrich import EnrichmentError
+from just_dna_enricher.fasta import FastaConfigurationError
+from just_dna_enricher.sequences import SequenceProxy
 from just_dna_enricher.verification import record_verification
 
 app = typer.Typer(
@@ -17,6 +20,29 @@ app = typer.Typer(
     help="Fill the source-independent resolution table (cache + live Ensembl) the compiler consumes.",
     no_args_is_help=True,
 )
+
+
+SequenceURI = Annotated[
+    str | None,
+    typer.Option(
+        "--sequence-uri",
+        help=(
+            "Reference sequence URI. fasta+file:///abs/path.fa reads an indexed GRCh38 FASTA, including offline."
+        ),
+    ),
+]
+
+
+def sequence_source(uri: str | None, offline: bool) -> SequenceProxy | None:
+    if uri is None:
+        return None
+    sequences = SequenceProxy(uri=uri, offline=offline)
+    if sequences.local_fasta:
+        try:
+            sequences.proxy()
+        except FastaConfigurationError as exc:
+            raise typer.BadParameter(str(exc), param_hint="--sequence-uri") from exc
+    return sequences
 
 
 #: What a drafting command must catch beyond its own source's error, and **why it is a named tuple
