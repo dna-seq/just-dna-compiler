@@ -44,7 +44,7 @@ from just_dna_format.resolution import ResolutionRow
 from just_dna_format.vrs import VRS_ID_PATTERN, UnsupportedBuildError, refget_accession, refget_supports_build
 
 from just_dna_enricher.answer_store import AnswerRun, SourceAnswers
-from just_dna_enricher.fasta import FASTA_SCHEME, FastaReference
+from just_dna_enricher.fasta import FASTA_SCHEME, FastaContigIdentity, FastaReference
 
 logger = logging.getLogger(__name__)
 
@@ -105,17 +105,27 @@ class SequenceProxy:
     def source(self) -> str:
         return "fasta" if self.local_fasta else "seqrepo"
 
+    def contig_identity(self, chroms: Iterable[str] | None = None) -> dict[str, FastaContigIdentity] | None:
+        """Check selected local FASTA primaries (all by default). Other sources cannot answer."""
+        if not self.local_fasta:
+            return None
+        return self.proxy().contig_identity(chroms)
+
     def local_read_problem(self, chrom: str, build: str) -> str:
         """Explain a withheld local read using the identity check the reader itself performs."""
         if not refget_supports_build(build):
             return f"local FASTA: {chrom} on {build} is outside GRCh38"
-        accession = refget_accession(chrom, build)
-        if accession is None:
+        if refget_accession(chrom, build) is None:
             return f"local FASTA: {chrom} is outside the GRCh38 refget table"
         try:
-            self.proxy().get_metadata(f"ga4gh:{accession}")
+            records = self.contig_identity(chrom)
         except (OSError, ValueError) as exc:
             return str(exc)
+        if records is not None:
+            (record,) = records.values()
+            problem = record.identity_problem()
+            if problem is not None:
+                return problem
         return f"local FASTA: could not read the requested interval on {chrom}"
 
     def proxy(self):

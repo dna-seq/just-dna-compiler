@@ -125,6 +125,8 @@ your uncompressed GRCh38 FASTA, in the form `fasta+file:///abs/path.fa`, with `p
 it. Run `just-dna-enricher enrich ./my_module --offline --sequence-uri "$reference_uri"`. Each contig
 must match its GRCh38 refget digest. The output reports how many rows the local FASTA checked
 and names contigs it could not read. The GRCh37 wrong-build diagnosis still requires the network.
+To see which chromosomes can supply bases before running enrichment, use
+[`SequenceProxy.contig_identity` with your local reference](ENRICHER.md#local-grch38-reference).
 
 ### The build
 

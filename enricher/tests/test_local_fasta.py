@@ -4,6 +4,7 @@ import gzip
 import os
 import shutil
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import FrozenInstanceError, replace
 from pathlib import Path
 from unittest.mock import Mock
 
@@ -12,7 +13,9 @@ import pytest
 from ga4gh.core import digests
 from just_dna_compiler.compiler import load_csv_rows
 from just_dna_enricher.cli import app
+from just_dna_enricher.clinvar_gkm_build import GRCH38_ACCESSIONS
 from just_dna_enricher.enrich.orchestration import _grch38_window
+from just_dna_enricher.fasta import FastaConfigurationError, FastaReference
 from just_dna_enricher.sequences import (
     SequenceProxy,
     held_by_one_run,
@@ -22,7 +25,7 @@ from just_dna_enricher.sequences import (
 from just_dna_enricher.vrs import VrsMinter
 from just_dna_format.resolution import ResolutionRow
 from just_dna_format.verification import read_verification
-from just_dna_format.vrs import refget_accession
+from just_dna_format.vrs import REFGET_GRCh38, refget_accession
 from typer.testing import CliRunner
 
 _ROOT = Path(__file__).resolve().parents[2]
@@ -63,6 +66,115 @@ def _mt_deletion() -> tuple[tuple[str, int, str, str], str]:
 def _change_one_base(fasta: Path) -> None:
     header, sep, body = fasta.read_bytes().partition(b"\n")
     fasta.write_bytes(header + sep + (b"A" if body[:1] != b"A" else b"C") + body[1:])
+
+
+def _mt_with_headers(fasta: Path, headers: list[str]) -> None:
+    """Write the real wrapped MT bases under each header, with matching FAI byte offsets."""
+    body = fasta.read_bytes().split(b"\n", 1)[1]
+    index = Path(f"{fasta}.fai")
+    _, length, _, bases, width = index.read_text().split()
+    entries = []
+    with fasta.open("wb") as stream:
+        for header in headers:
+            stream.write(f">{header}\n".encode())
+            entries.append(f"{header.split()[0]}\t{length}\t{stream.tell()}\t{bases}\t{width}\n")
+            stream.write(body)
+    index.write_text("".join(entries))
+
+
+@pytest.mark.parametrize("changed", [False, True], ids=["bound", "digest_mismatch"])
+def test_contig_identity_and_local_read_problem(fasta: Path, changed: bool) -> None:
+    sequences = _proxy(fasta)
+    if changed:
+        _change_one_base(fasta)
+    digest = "SQ." + digests.sha512t24u(_bases(fasta))
+    records = sequences.contig_identity(["chrM", "chr1"])
+    assert set(records) == {"MT", "1"}
+    mt = records["MT"]
+    expected = REFGET_GRCh38["MT"]
+    assert (mt.chrom, mt.fasta_name, mt.expected_accession, mt.found_digest) == ("MT", "MT", expected, digest)
+    assert mt.status == ("digest_mismatch" if changed else "bound")
+    assert (mt.found_digest == mt.expected_accession) == (not changed)
+    with pytest.raises(FrozenInstanceError):
+        mt.status = "absent"
+    with pytest.raises(ValueError, match="status"):
+        replace(mt, status="unknown")
+    if changed:
+        assert sequences.local_read_problem("MT", "GRCh38") == (
+            f"local FASTA: MT digest mismatch (found {digest}, expected {expected})"
+        )
+    else:
+        assert sequences.local_read_problem("MT", "GRCh38") == (
+            "local FASTA: could not read the requested interval on MT"
+        )
+    absent = records["1"]
+    assert (
+        absent.chrom,
+        absent.fasta_name,
+        absent.expected_accession,
+        absent.found_digest,
+        absent.status,
+    ) == (
+        "1",
+        None,
+        REFGET_GRCh38["1"],
+        None,
+        "absent",
+    )
+    assert sequences.local_read_problem("1", "GRCh38") == "local FASTA: no such contig 1"
+
+
+def test_contig_identity_full_pass_and_cache(fasta: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    counted = Mock(wraps=digests.sha512t24u)
+    monkeypatch.setattr(digests, "sha512t24u", counted)
+    reader = FastaReference(_proxy(fasta).uri)
+    assert set(reader.contig_identity("10")) == {"10"}
+    assert reader.contig_identity([]) == {}
+    counted.assert_not_called()
+    records = reader.contig_identity()
+    assert set(records) == set(REFGET_GRCh38)
+    assert {chrom for chrom, r in records.items() if r.status == "absent"} == set(REFGET_GRCh38) - {"MT"}
+    assert {chrom for chrom, r in records.items() if r.status == "bound"} == {"MT"}
+    assert _proxy(fasta).contig_identity() == records
+    counted.assert_called_once()
+    with pytest.raises(ValueError, match="outside the GRCh38 refget table"):
+        reader.contig_identity(["GL000205.2"])
+
+
+def test_refseq_header_binds_real_mt(fasta: Path) -> None:
+    bases = _bases(fasta)
+    name = "NC_012920.1"
+    _mt_with_headers(fasta, [f"{name} Homo sapiens mitochondrion, complete genome"])
+    proxy = _proxy(fasta)
+    assert proxy.subsequence(REFGET_GRCh38["MT"], 0, len(bases)) == bases.decode()
+    mt = proxy.contig_identity("MT")["MT"]
+    assert (mt.fasta_name, mt.status, mt.found_digest) == (name, "bound", "SQ." + digests.sha512t24u(bases))
+
+
+def test_refseq_header_and_short_name_are_ambiguous(fasta: Path) -> None:
+    _mt_with_headers(fasta, ["MT", "NC_012920.1"])
+    with pytest.raises(FastaConfigurationError, match="ambiguous .fai entries for MT"):
+        _proxy(fasta).proxy()
+
+
+def test_refseq_header_recognition_is_version_specific(fasta: Path) -> None:
+    # Reuse MT sequence under every header. Only MT should bind, though every primary is present.
+    _mt_with_headers(fasta, [*GRCH38_ACCESSIONS, "NC_000002.11", "GL000205.2", "KI270728.1"])
+    records = _proxy(fasta).contig_identity()
+    assert {r.fasta_name: r.chrom for r in records.values()} == GRCH38_ACCESSIONS
+    assert {r.chrom for r in records.values() if r.status == "digest_mismatch"} == set(REFGET_GRCh38) - {"MT"}
+
+
+@pytest.mark.parametrize("uri", ["seqrepo+https://example.invalid", "seqrepo+file:///unused"])
+def test_non_fasta_contig_identity_withheld_without_opening_seqrepo(
+    uri: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    builder = Mock(side_effect=AssertionError("identity is local FASTA only"))
+    monkeypatch.setattr("just_dna_enricher.sequences.create_dataproxy", builder)
+    sequences = SequenceProxy(uri=uri)
+    assert sequences.contig_identity() is None
+    assert sequences.contig_identity([]) is None
+    builder.assert_not_called()
 
 
 @pytest.mark.parametrize("offline", [True, False])

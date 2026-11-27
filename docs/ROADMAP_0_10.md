@@ -314,6 +314,12 @@ shares the reference across alignment, minting and REF checks, and names the wit
 contigs in reports. Seqrepo remains disabled offline. This adds neither provisioning nor a GRCh37
 reference and requires no format or compiler change.
 
+**Preview finding S165, built (2026-11-27).** The reader and proxy expose the indexed name,
+expected accession, computed digest and binding status per requested GRCh38 primary. The same
+verdict supplies the reason for a withheld local read. Versioned RefSeq headers use the existing
+enricher accession map and go through the same digest and duplicate-name checks. The lead will
+measure which published FASTA binds all 25 and name it in the enricher reference.
+
 **Residuals** none.
 
 ## RM459 — with the registry's proxy set and Hugging Face off, a gene lookup on clinpgx, cpic, drug_labels or civic answers could-not-ask

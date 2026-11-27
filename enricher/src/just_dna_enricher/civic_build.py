@@ -59,6 +59,7 @@ from just_dna_format.layout import atomic_write_text
 from just_dna_format.normalize import now_utc_iso
 from just_dna_format.snapshot import SnapshotRelease, SnapshotWrite, begin_snapshot_write
 
+from just_dna_enricher._refseq import GRCH38_REFSEQ_ACCESSIONS
 from just_dna_enricher.civic_identities import (
     CIVIC_CURATION_STATES,
     CIVIC_NAME_IDENTITY_BY_VARIANT,
@@ -194,15 +195,6 @@ _G37_ACCESSIONS: dict[str, str] = {
     for i, v, c in zip(
         range(1, 25),
         (10, 11, 11, 11, 9, 11, 13, 10, 11, 10, 9, 11, 10, 8, 9, 9, 10, 9, 9, 10, 8, 10, 10, 9),
-        [str(n) for n in range(1, 23)] + ["X", "Y"],
-        strict=True,
-    )
-}
-GRCH38_REFSEQ_ACCESSIONS: dict[str, str] = {
-    f"NC_{i:06d}.{v}": c
-    for i, v, c in zip(
-        range(1, 25),
-        (11, 12, 12, 12, 10, 12, 14, 11, 12, 11, 10, 12, 11, 9, 10, 10, 11, 10, 10, 11, 9, 11, 11, 10),
         [str(n) for n in range(1, 23)] + ["X", "Y"],
         strict=True,
     )

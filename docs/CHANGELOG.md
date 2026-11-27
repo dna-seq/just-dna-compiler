@@ -87,6 +87,11 @@ The REF attestation names the answering source, `fasta` or `seqrepo`. Both sourc
 accept free text. The new reader uses the adjacent FASTA index and caches digests beside the
 reference. It adds no dependency or cache lane.
 
+For preview finding S165, `SequenceProxy.contig_identity()` reports which GRCh38 primaries the
+local FASTA can serve. Pass the chromosomes used by a module to hash only those contigs. Each
+record gives the indexed name, expected accession, computed digest and binding status. The reader
+also recognizes NCBI's versioned RefSeq names, using the enricher's existing chromosome map.
+
 ## 2026-11-27 — RM468: repeat online lookups reuse answers from the same release (a minor, for 0.10)
 
 Two modules that ask about the same rsID can now share its answer. Ensembl states its REST release

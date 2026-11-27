@@ -34,7 +34,8 @@ from just_dna_format.snapshot import (
     begin_snapshot_write,
 )
 
-from just_dna_enricher.civic_build import GRCH38_REFSEQ_ACCESSIONS
+from just_dna_enricher._refseq import GRCH38_ACCESSIONS
+from just_dna_enricher._refseq import GRCH38_REFSEQ_ACCESSIONS as GRCH38_REFSEQ_ACCESSIONS
 from just_dna_enricher.clinvar_gkm import (
     ALLELE_FILE,
     CLINVAR_GKM_VRS_VERSION,
@@ -68,11 +69,6 @@ logger = logging.getLogger(__name__)
 DBSNP_SYSTEM = "https://www.ncbi.nlm.nih.gov/snp/"
 #: The constraint linking a ClinVar variation to the one allele that defines it.
 DEFINING_ALLELE_CONSTRAINT = "DefiningAlleleConstraint"
-
-#: GRCh38 primary-assembly accessions, per chromosome, with the mitochondrion. The same map `civic_build`
-#: scores accessions with (the version alone names no build, `@accession-version-names-no-build`).
-GRCH38_ACCESSIONS: dict[str, str] = {**GRCH38_REFSEQ_ACCESSIONS, "NC_012920.1": "MT"}
-
 
 # ── the download, verified against the manifest ─────────────────────────────────────────────────
 
