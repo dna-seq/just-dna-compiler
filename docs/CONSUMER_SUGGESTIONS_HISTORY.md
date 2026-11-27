@@ -8251,7 +8251,11 @@ sequences are NCBI's RefSeq ones, so that sequence set is the candidate; but the
 `X`, `Y`, `MT` (with or without `chr`), and an NCBI FASTA headed `NC_000001.11` binds nothing until its headers are
 renamed. Nobody has measured one, so it is written into RM385 as a measurement to make before 0.10's operator guide
 names a file. (Corrected 2026-11-27, the same day: the first version of this reply said the digests came from RefSeq
-directly and did not mention the header names.) The per-contig answer (`FastaReference` naming the contigs it bound, or a field on the
+directly and did not mention the header names.)
+
+**Update, 2026-11-27 (later the same day): on `0.10` at `d23fd638` the reader maps versioned RefSeq names, and NCBI's
+`GCF_000001405.40` GRCh38 FASTA binds all 25 through it, measured by the lead.** The `NC_` caveat above held at
+`992e85b1` and no longer does; the lead told you so in agent-chat (644050847). The per-contig answer (`FastaReference` naming the contigs it bound, or a field on the
 run's check) is a public addition, legal in 0.10, and is RM385's to build. Meanwhile, holding per contig with
 `local_read_problem(chrom, build)` is the right reading of today's surface.
 
