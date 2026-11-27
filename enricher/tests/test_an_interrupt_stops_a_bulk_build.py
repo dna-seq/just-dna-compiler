@@ -38,6 +38,8 @@ from just_dna_enricher import opentargets_build as ot
 #: and the AVI build's stop measured 1.6 to 1.7 s at a load average of 35 to 48 on 16 threads (twice,
 #: at the 0.8.3 and 0.8.7 cuts): the stop itself, slowed, never the wait. 10 s against 4 s keeps the
 #: old behaviour failing by 6 s, and a passing run takes no longer, since it ends at the stop.
+#: The AVI test no longer holds `BOUND` (RM471): its stop took 5.17 s at a load of 40 to 57, so it asks
+#: the stand-in `tabix` processes instead whether any ran to its end.
 TICKS = 200
 TICK = 0.05
 BOUND = 4.0
@@ -270,9 +272,16 @@ def test_an_interrupt_stops_the_alphagenome_build_mid_contig(
         )
     stopped = time.monotonic() - when["interrupt"]
 
-    assert stopped < BOUND, (
-        f"the build took {stopped:.2f}s to stop after the interrupt; the in-flight contigs needed "
-        f"~{TICKS * TICK:.0f}s more, so it waited for them"
+    # Whether the build waited for its in-flight contigs is asked of the stand-ins, never of the clock
+    # (RM471): each one streams for `TICKS * TICK` seconds of its own sleeping, so a stand-in exits 0
+    # only if it was read to its end, and a stopped one exits nonzero on its closed pipe. A loaded machine
+    # slows the stop and the stand-ins alike, where a fixed bound in seconds failed at 5.17 s.
+    exits = {c.args[-1]: c.poll() for c in children if "-l" not in c.args}
+    assert sorted(exits) == list(contigs[:WORKERS]), "the interrupt did not find every worker mid-contig"
+    finished = sorted(contig for contig, code in exits.items() if code == 0)
+    assert finished == [], (
+        f"{', '.join(finished)} streamed to the end (~{TICKS * TICK:.0f}s of work) before the build "
+        f"returned, {stopped:.2f}s after the interrupt: it waited for them"
     )
     data = out / ab.SNAPSHOT_DATA_DIRNAME
     assert sorted(p.name for p in data.glob("alphagenome_avi-*.parquet")) == [], (

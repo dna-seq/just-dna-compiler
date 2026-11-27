@@ -2423,6 +2423,35 @@ the maintainer highlights touches it, or the roadmap is empty.
 
 **Residuals** none yet.
 
+## RM471 — a `provenance_regex` timeout counted the matching process's start-up, and the AVI interrupt test timed a stop the machine's load decides
+
+**Severity** low · **Status** open — **a patch, built on `main` 2026-11-27, uncut, for 0.9.1** · **Owner** enricher
+(`literature.regex_matches`) and the enricher suite · **Motivating case** the lead's 0.10 suite run, 2026-11-27, at a
+load average of 40 to 57 on 16 threads: `test_literature.py::test_a_regex_locator_matches_the_fulltext` (`assert None
+is True`) and `test_an_interrupt_stops_a_bulk_build.py::test_an_interrupt_stops_the_alphagenome_build_mid_contig`
+("the build took 5.17s to stop"), each green alone and both on `main` too · *related* RM409, RM421
+
+**What was seen.** The regex half was parked here without a number ("the regex timeout counts the worker's start-up";
+unparks when that bound guards a real regex), and a real run met it. `regex_matches` timed the match with a `join` on
+its child, so the child's start-up was charged to the 5 s: under `forkserver` (Python 3.14's default here) that child
+imports `just_dna_enricher.literature`, measured at 2 to 4 s per call at a load of 69. A trivial pattern then reads
+as **not checked** on a loaded machine, in an enrich run as much as in the test, and the catastrophic-pattern test's
+0.25 s could run out before the pattern started, so it passed whether the bound worked or not. The AVI test held the
+stop to `BOUND` (4.0 s, widened from 1.0 at 0.8.7), which load decides; the stand-ins it stops sleep in wall-clock
+time.
+
+**The fix.** The child sends a ready signal over a pipe once its imports are done, and the match's timeout starts
+there. Its start-up has its own allowance (60 s) and its own warning ("the matching process did not start"); the
+"exceeded" warning now means the pattern ran. Measured at a load of about 52 with a 1 s timeout on a trivial pattern:
+the old code answered `None` once in five calls, the new one `True` five times, one of them after 1.7 s of start-up. The AVI
+test asks the stand-in `tabix` processes instead of the clock: an in-flight stand-in that exits 0 was read to its
+end, which is the old behaviour, and a stopped one exits nonzero on its closed pipe. With `_stopped` disabled the test
+fails on that check ("streamed to the end"). Tests: `test_a_regex_timeout_counts_the_match_not_the_start.py`, three;
+the touched files green three times running under `-n 4` with 40 extra busy loops (load 50 to 88).
+
+**Residuals** each regex check still pays a fresh interpreter importing the enricher (2 to 4 s under load). Not filed:
+it is time, not a wrong answer, and regex rows are few.
+
 # Not format scope
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.
@@ -2979,8 +3008,6 @@ maintainer highlights touches it, or the roadmap is empty. One line each, so the
 - **The S85 warning "recorded as unresolved" fires for an rsID+coordinate pair** (written `authored`/`resolved`; since 0.7) and for an
   rsID-only subject whose placement `--rederive` carries (RM382). Wrong words on a correct table. Unparks on a report of it.
 - **RM391's test fence lets a loopback `HTTPS_PROXY` through.** No proxy is set on any machine that runs the suite. Unparks when one is.
-- **The regex timeout counts the worker's start-up** (0.4 s under forkserver), so `test_literature.py`'s catastrophic-regex test cannot
-  fail. Since 0.7. Unparks when that bound guards a real regex.
 - **A ClinVar witness on another contig reads `unplaced`** (`placement.py` `events.counterparts` needs the same contig). Measured: 0 of
   145 corpus rows. Unparks on the first real one.
 - **`test_acmg.py` depends on the working directory** (fails from `enricher/`). Since 0.7. Unparks when the suite runs per package.
