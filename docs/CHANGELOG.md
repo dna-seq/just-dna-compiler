@@ -77,6 +77,16 @@ scale, including in strict mode. The new warning code `study_effect_direction_di
 is an **old-reader break**. A format reader older than 0.10 refuses a manifest whose
 `warnings_summary` contains that key.
 
+## 2026-11-27 — RM385: an offline run can use a verified local GRCh38 FASTA (a minor, for 0.10)
+
+An operator can now give `enrich` or `vrs mint` a local reference with `--sequence-uri`, or pass a
+`SequenceProxy` with a `fasta+file:///…` URI to `enrich()`. The enricher checks each requested
+contig against its GRCh38 refget digest before using it to left-align an indel, mint its VRS ID or
+check an authored REF. A missing or mismatched contig stays unread and the report names the reason.
+The REF attestation names the answering source, `fasta` or `seqrepo`. Both source fields already
+accept free text. The new reader uses the adjacent FASTA index and caches digests beside the
+reference. It adds no dependency or cache lane.
+
 ## 2026-11-26 — `v0.9.0`: format, compiler and enricher 0.9.0 (a minor, the `0.9` branch)
 
 **Cut on 2026-11-26 from the `0.9` branch**, built from 2026-11-16 to 2026-11-26: the enricher reads its reference data

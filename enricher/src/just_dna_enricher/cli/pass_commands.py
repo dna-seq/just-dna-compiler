@@ -11,7 +11,7 @@ from just_dna_enricher.assertions import (
     ClinicalAssertionError,
     enrich_clinical_assertions,
 )
-from just_dna_enricher.cli._shared import _mode, _use, app
+from just_dna_enricher.cli._shared import SequenceURI, _mode, _use, app, sequence_source
 from just_dna_enricher.clingen import DEFAULT_CLINGEN_URL, ClinGenError, enrich_dosage_sensitivity
 from just_dna_enricher.currency import unchecked_sentences
 from just_dna_enricher.enrich import EnrichmentError, enrich
@@ -33,6 +33,7 @@ def enrich_(  # `enrich` command; function name avoids shadowing the imported en
     spec_dir: Path = typer.Argument(..., exists=True, file_okay=False, help="Module spec directory"),
     strict: bool = typer.Option(False, "--strict/--best-effort", help="Fail unless every variant resolves."),
     offline: bool = typer.Option(False, "--offline", help="Cache-only: never touch the network."),
+    sequence_uri: SequenceURI = None,
     ensembl_cache: Path | None = typer.Option(
         None, "--ensembl-cache", help="Explicit Ensembl cache dir/.duckdb."
     ),
@@ -121,6 +122,7 @@ def enrich_(  # `enrich` command; function name avoids shadowing the imported en
             spec_dir,
             mode=_mode(strict),
             offline=offline,
+            sequences=sequence_source(sequence_uri, offline),
             ensembl_cache=ensembl_cache,
             clinvar_cache=clinvar_cache,
             clinvar_gkm_cache=clinvar_gkm_cache,
@@ -174,16 +176,19 @@ def enrich_(  # `enrich` command; function name avoids shadowing the imported en
     # whole module is re-authored from rs-numbers.
     for line in summarize_build_diagnoses(result.build_diagnoses):
         typer.secho(f"  old-assembly coordinate: {line}", fg=typer.colors.RED, err=True)
-    # Unconditional on `ref_mismatches`, because gating it on them made it unreachable: offline
-    # skips the reference check too, so the list is always empty in exactly the runs this notice is
-    # about. Which is the point worth saying — an offline run checked neither, and silence here would
-    # read as "checked, all clear" (S4).
+    if result.ref_check is not None:
+        check = result.ref_check
+        if check.not_checked == "offline":
+            typer.echo("  reference-allele check not run: --offline with no local FASTA")
+        elif check.source == "fasta":
+            if check.not_checked:
+                typer.echo(f"  reference-allele check with local FASTA not run: {check.not_checked}")
+            else:
+                typer.echo(f"  reference-allele check: compared {check.subjects} row(s) against local FASTA")
+            for reason in check.unread_reasons:
+                typer.echo(f"  {reason}")
     if result.build_not_diagnosed == "skipped_offline":
-        typer.secho(
-            "  reference-allele check and wrong-build diagnosis not run: --offline (both need a "
-            "live sequence service, and neither has a local equivalent)",
-            fg=typer.colors.CYAN,
-        )
+        typer.echo("  wrong-build diagnosis not run: --offline (requires the GRCh37 service)")
     for stale in result.stale_rsids:
         typer.secho(f"  stale rsid: {stale}", fg=typer.colors.YELLOW, err=True)
     for conflict in result.clin_sig_conflicts:

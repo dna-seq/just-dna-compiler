@@ -308,7 +308,13 @@ actually used: the REF attestation's hardcoded `source="seqrepo"`, the CLI's com
 the minter's "rerun online" advice each say the local reference where it answered. Offline stays network-free: the
 explicit local reader is the one sequence source the offline gate admits.
 
-**Residuals** none yet.
+**Built (2026-11-27, on the `0.10` branch).** The enricher reads an operator's indexed,
+uncompressed GRCh38 FASTA by URI online or offline. It verifies and caches identity per contig,
+shares the reference across alignment, minting and REF checks, and names the witness and unread
+contigs in reports. Seqrepo remains disabled offline. This adds neither provisioning nor a GRCh37
+reference and requires no format or compiler change.
+
+**Residuals** none.
 
 ## RM459 — with the registry's proxy set and Hugging Face off, a gene lookup on clinpgx, cpic, drug_labels or civic answers could-not-ask
 

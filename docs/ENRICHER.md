@@ -16,11 +16,11 @@ the mode** (`best_effort` warns and carries on; `strict` refuses). What exists t
 
 | Check | Compares | Where | Reads | Against | Attests as |
 |---|---|---|---|---|---|
-| **Reference allele** | authored `ref` vs the actual reference sequence | `sequences.verify_reference_alleles` | `authored` | `seqrepo` | `reference_allele` |
+| **Reference allele** | authored `ref` vs the actual reference sequence | `sequences.verify_reference_alleles` | `authored` | `seqrepo` or `fasta` | `reference_allele` |
 | **Wrong build** | a ref-mismatched row vs the same coordinate on GRCh37 (0.6) | `grch37.diagnose_wrong_build` (**warns in both modes**) | `authored` | `ensembl-grch37` | `genome_build_agreement` |
-| **VRS cross-check** | a source's own `vrs_id` vs the locally-minted one | `vrs.mint_resolution_rows` | `reporting_source` | `seqrepo` | `vrs_allele_id` |
+| **VRS cross-check** | a source's own `vrs_id` vs the locally-minted one | `vrs.mint_resolution_rows` | `reporting_source` | `seqrepo` or `fasta` | `vrs_allele_id` |
 | **rsid↔coordinate** | an authored pair vs what the reference says | `compiler/resolution.py::_verify` over the injected table (warning), and `enrich()` against the injected Ensembl snapshot (`resolver.check_rsid_coordinates`, warning in both modes) — one question, two tiers, so one attestation name, and the enricher's half is the one that attests. An indel authored at another anchor of its repeat is the same event (`events.names_event`, against the reference, 0.8 RM375) | `authored`; abstentions counted in `undecided` | `ensembl` | `rsid_coordinate_agreement` |
-| **Authored spelling** | a subject's authored coordinate (whole, or CPIC's half) vs each locus written for it, where the two spellings differ (0.8, RM375) | `events.authored_event`, stamped as `resolution.csv` `authored_event` by `enrich()`; the compiler reads `same_event` as agreement (`resolution.recorded_verdicts`, bound to `judged_coordinate`) and judges nothing itself | — | — | — *(recorded onto the row, not attested; the reference is read through `seqrepo`)* |
+| **Authored spelling** | a subject's authored coordinate (whole, or CPIC's half) vs each locus written for it, where the two spellings differ (0.8, RM375) | `events.authored_event`, stamped as `resolution.csv` `authored_event` by `enrich()`; the compiler reads `same_event` as agreement (`resolution.recorded_verdicts`, bound to `judged_coordinate`) and judges nothing itself | — | — | — *(recorded onto the row, not attested; the run reads its selected reference)* |
 | **Placement agreement** | where the run's own link placed an rsID vs where ClinVar and ClinVar-GKM place it, and, online with the merge check on, where dbSNP's own record places a snapshot indel neither holds (0.8, RM267; dbSNP since RM398, Ensembl REST before); a disagreement **withholds** the disputed locus | `placement.compare_placements`, called by `enrich()` before the table is assembled (warns in both modes; `strict` refuses through the unresolved gate, since a withheld rsID-only row is unresolved) | `reporting_source`, or `ensembl` on a record where only REST answered before RM398 (Ensembl against itself); abstentions counted in `undecided` | `clinvar`, `clinvar_gkm`, `dbsnp`, `ensembl` | `placement_agreement` |
 | **Ambiguous back-fill** | ≥2 rsIDs for one exact allele → recorded, never guessed | `resolver._lookup_rsid_candidates` | — | — | — *(recorded onto the row, not attested)* |
 | **Clinical significance** | authored `clin_sig` vs **every annotation authority** consulted — ClinVar and, since 0.7, PubMind — allele-exactly | `clinical.verify_clin_sig` (**warns in both modes**), persisted as the N-authority concordance record by `clinical.clin_sig_concordance` (0.7, RM130 + RM134 § B) | `authored` | `clinvar` | `clinical_significance` |
@@ -476,6 +476,7 @@ core was ported, not depended on, dropping `fastmcp`/`eliot`). In the workspace:
 | `gene_metrics` | pass 3: the module's genes → `gene_metrics.csv` (snapshot first, live API second) | `duckdb`, format |
 | `constraint_build` | **`[dev]`** builder: gnomAD constraint TSV → gene-level parquet + `release.json` | `polars` (lazy), `httpx` |
 | `vrs` | GA4GH VRS allele-id minting onto `resolution.csv` (substitutions stdlib, indels normalized) | `ga4gh.vrs` |
+| `fasta` | Indexed local GRCh38 FASTA reads and the per-contig digest cache | `ga4gh.core`, format |
 | `sequences` | reference-sequence access (cached), the reference-allele check, and the one left-alignment every pass uses (`left_normalize`, `normalize_locus`, `spelling_verdict`; RM270 writes a fill left-aligned with it) | `ga4gh.vrs` |
 | `placement` | **0.8** (RM267): where the run's own link placed each rsID against where ClinVar and ClinVar-GKM place it, and, online, where Ensembl REST places a snapshot indel neither holds — by VRS id, else the left-aligned spelling; a disagreement withholds the rsID | `sequences`, `clinvar`, `clinvar_gkm` |
 | `locations` | cache-location resolution — **one `resolve`/`default_dir`/`env_var` triple per lane in `CACHE_LANES`**, paired by a test rather than counted here — plus `.env` and the pull record. The snapshot layout names and `read_release` are imported from `just_dna_format.snapshot` since 0.8 (RM303) and stay importable from here | `platformdirs`, `python-dotenv` |
@@ -770,10 +771,28 @@ wants the resolver's reads to go through that proxy, gives the proxy to the reso
 `EnsemblResolver` builds a default proxy for that read, and 0.9 has no public parameter to point it
 elsewhere. The run reads the proxy through a view of its own, so a failure it sees is held for the run and
 never stored on the caller's proxy. A local seqrepo (`uri="seqrepo+file://…"`,
-with `biocommons.seqrepo` installed by the host) is how a host reads locally with the network up. Under `offline=True` the passed proxy is not used, as an
-injected client is not (`@gated-source-caches`): the run warns once, in the words of
-`orchestration.OFFLINE_OUTRANKS_SEQUENCES`, and reads no sequence. The missing timeout beneath
-ga4gh's seqrepo REST proxy stays vrs-python's (RM407's residual); no proxy of ours wraps it.
+with `biocommons.seqrepo` installed by the host) is how a host reads locally with the network up. Offline runs skip both REST and file-backed seqrepo.
+
+**A local GRCh38 reference (0.10, RM385).** Pass `SequenceProxy(uri="fasta+file:///abs/path.fa")`
+to `enrich(sequences=…)`, or give the URI to `enrich --sequence-uri` or `vrs mint --sequence-uri`.
+The file must be uncompressed and have a FASTA index beside it at `<path.fa>.fai`. The reader seeks
+directly to the requested bases and works with or without `--offline`. The FASTA supplies the entire
+sequence service for that run. The wrong-build diagnosis still needs the GRCh37 service online.
+
+The first request for a contig hashes its uppercased bases with GA4GH `sha512t24u`. Its digest must
+match the format's GRCh38 refget accession before either bases or metadata are returned. The format's
+chromosome fold accepts names such as `chr1` and `1`, or `chrM` and `MT`. Equal length alone cannot
+establish identity. In the Ensembl primary assembly trial all 25 chromosome lengths agreed, but only
+ten whole sequences matched. The reader saves the computed digests atomically in `<path.fa>.refget.json`
+and invalidates them when the size or modification time of the FASTA or index changes. On a read-only
+volume it logs once and shares the digests in memory across readers in the process.
+
+The REF record names `fasta` in both `source` and `witness_source` when the local file answers.
+Missing contigs, digest mismatches and off-table coordinates have named reasons in the report. They
+contribute neither a REF comparison nor a normalized VRS ID. If every comparable read fails, the
+check publishes `unreachable`; a module off GRCh38 still gets `unsupported`. When only some reads
+fail, the report gives the checked denominator and describes the omitted reads. Seqrepo answers
+continue to name `seqrepo`.
 
 **`genome_build=None` means "read the module's declaration"** (`spec_genome_build`), not "assume
 GRCh38". It defaulted to the literal `"GRCh38"` and no caller ever passed anything else, which made every
@@ -1145,7 +1164,7 @@ the trimmed spelling (`sequences.per_alt_loci`): the three loci `G>GT`, `GT>G` a
 Ensembl and ClinVar rsID lookups, REST's `allele_string` (`TCTT/T/TCTTCTT` is one such frame), gnomAD's
 variant ids, and the three position→rsID readers, which match an authored allele as the row spells it or as trimmed. The old
 repo's pipe-joined row is trimmed the same way. Left-alignment past the trim still reads the reference
-(`left_normalize`), so offline an indel piece is written trimmed with `left_aligned` unknown. The split
+(`left_normalize`), so without a reference an indel piece is written trimmed with `left_aligned` unknown. The split
 repo anchors left, so for its sites the trim is usually the whole normalization.
 `test_split_snapshot_per_alt.py` holds the readers to ClinVar's own per-ALT records on real rows, and
 an AST walk keeps every function whose SQL reads a snapshot's `alt` in its registry.
@@ -1317,7 +1336,7 @@ within the window an indel can slide in, with the same kind of event (an inserti
 same length, or a substitution to the same bases). A counterpart is the same event when the spellings
 are identical, when both are substitutions with the same trimmed spelling, when both mint one VRS id
 (exact, no tolerance), or when both left-align to one spelling against the reference. Otherwise it is
-**undecided** and counted, which is what an offline run gets for an indel respelling. ClinVar-GKM's own
+**undecided** and counted, which is what a run without reference bases gets for an indel respelling. ClinVar-GKM's own
 ids are VRS 2.1.1 and ours 2.0, so its VCF spelling is minted here rather than its id compared.
 
 - **A disagreement withholds the locus.** The locus holding the disputed allele is not written; a locus
@@ -1336,7 +1355,7 @@ ids are VRS 2.1.1 and ours 2.0, so its VCF spelling is minted here rather than i
   counterpart of the others (RM448, 0.8.9).** At a multi-allelic site, ClinVar's `A>AC` is the same kind
   and length as Ensembl's other insertion `A>AT`. Judged against it with the reference read, it was a
   different event, so the whole locus was withheld and the rsID got no row. That happened online only,
-  since offline nothing judges an indel. The witness's allele is accounted for by the placed allele it
+  when no reference can judge an indel. The witness's allele is accounted for by the placed allele it
   matches, and says nothing about the others, which read `unplaced`. S158 met it on 12 rsIDs of the
   registry's `pathogenic` and one of `cardio`. A witness allele that matches none of the rsID's alleles
   still disagrees (S117's `rs8176719`).
@@ -1440,8 +1459,8 @@ misses the row, though nobody is wrong (S120).
   to the one spelling judge (`events.same_allele_sets`, against the reference when the run has one), so a
   respelling reads `True`, a different event `False` (the drift warning), and a change this run cannot
   settle `None`, warned apart as undecided rather than blamed on the source. An unmatched substitution is
-  a change; an unmatched indel is undecided, because an offline run keeps indel ALTs the online hosting
-  filter and RM270's split would drop (RM376's `rs746071566`).
+  a change; an unmatched indel is undecided, because a run without reference bases keeps indel ALTs
+  that the hosting filter and RM270's split can drop when the reference answers (RM376's `rs746071566`).
 
 The pass is not a `verification.json` check: it compares the module's spelling with a convention, not a
 claim with a witness, and the reference-allele check already attests the bases it reads.
@@ -1474,8 +1493,8 @@ substitution); `--rederive` called the respelling a source change whenever a row
   where the spellings agree (the compiler sees that on its own) and on a row written before 0.8. A row, not `verification.json`: the record is rewritten per run over the subjects that run
   asked, and merge-not-clobber keeps a row's verdict beside the row it judges. Not `placement_verdict`:
   that is who else places the rsID, this is whether the module's own cells name the answer (P5).
-- **Offline is `undecided`** for an indel: the reference is read through seqrepo, which has no local
-  equivalent here, so an offline run never settles a respelled indel. `--rederive` online settles it.
+- **An unreadable reference leaves a respelled indel `undecided`.** An offline run can settle it
+  when its local FASTA supplies the verified contig.
 
 ### The rsID's whole answer beside the narrowed one (0.8, RM387)
 
@@ -3391,8 +3410,8 @@ work "is skipped this run", which the proxy, remembering no failure, does not do
 (`sequences._MEMO_SIZE`), the least recently used evicted first, because a shared proxy may live as long as
 the service. An `EnsemblResolver` that builds its own anchor reader (no `_read_base` given) builds it once,
 lazily and under a lock of its own, so threads sharing one resolver wait for that build rather than each
-starting another. Needs sequence access, so `--offline` skips it:
-a check that cannot run is not a check that passed, and the run says so rather than implying success.
+starting another. Under `--offline` the REF check needs a local FASTA. The skip reason is
+`offline` when the operator supplied none.
 
 ### The old assembly: rs-number recovery and a wrong-build diagnosis (`grch37.py`, RM48)
 
@@ -3482,14 +3501,14 @@ rows by three routes:
 
 1. **stdlib** — a substitution, via the format tier's `derive_vrs_allele_id`. Zero egress, zero heavy
    dependency, and byte-identical to what `ga4gh.vrs` and the live gnomAD API produce.
-2. **normalized** — an indel/MNV, justified against the reference through the seqrepo REST data proxy.
-   Needs the network, so `--offline` skips it. One read per locus since RM407: `normalize` is handed a
+2. **normalized** — an indel/MNV, justified against the reference through seqrepo or the verified local FASTA.
+   One read per locus since RM407: `normalize` is handed a
    window of 1,024 bases each side, read once through the run's `SequenceProxy`, and every slice it takes
    while trimming and rolling through a repeat is served from it (before, each slice was its own HTTP read,
-   about ten per indel). A slice past the window is read from seqrepo as before, so no id changes. The run's
+   about ten per indel). A slice past the window is read from the selected reference, so no id changes. The run's
    one minter keeps what it minted, so the placement comparison and the minting pass normalize an allele
    once.
-3. **null** — an indel offline, an unreachable sequence service, an off-assembly contig, or an allele
+3. **null** — an indel without a readable reference, an unreachable sequence service, an off-assembly contig, or an allele
    that names no sequence at all. A missing id is honest; an unjustified one would be a `ga4gh:VA.…`
    that *looks* interoperable and is not.
 
@@ -6548,6 +6567,7 @@ and `EnsemblResolver` are the latter, and are exempt from the contract suite for
 | `currency` | `ReleaseProbeError` | `ReleaseUnavailable`, `ReleaseRetired` (under the one before it) |
 | `drug_labels` | `DrugLabelError` | `DrugLabelUnavailable`, `DrugLabelRetired` (under the one before it; a 410, RM361) |
 | `enrich` | `EnrichmentError` | — |
+| `fasta` | `FastaConfigurationError` | — |
 | `expression` | `ExpressionError` | `ExpressionUnavailable` |
 | `frequencies` | `FrequencyEnrichmentError` | `FrequencyUnavailable` |
 | `gene_metrics` | `GeneMetricsEnrichmentError` | `GeneMetricsUnavailable` |

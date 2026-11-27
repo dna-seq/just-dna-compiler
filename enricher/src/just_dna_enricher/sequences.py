@@ -43,6 +43,8 @@ from just_dna_format.alleles import trim_allele
 from just_dna_format.resolution import ResolutionRow
 from just_dna_format.vrs import UnsupportedBuildError, refget_accession, refget_supports_build
 
+from just_dna_enricher.fasta import FASTA_SCHEME, FastaReference
+
 logger = logging.getLogger(__name__)
 
 # The public seqrepo REST instance sequences are read from. A deployment with its own seqrepo points at
@@ -64,7 +66,7 @@ _MEMO_SIZE = 262_144
 
 @dataclass
 class SequenceProxy:
-    """Lazy, cached access to reference bases. `offline` makes every read return `None`.
+    """Lazy, cached access to reference bases. Only an explicit local FASTA can answer offline.
 
     Two properties earn the wrapper over `create_dataproxy` directly: the proxy is built **at most
     once and only if actually needed** (a module of pure substitutions never touches the network for
@@ -94,6 +96,27 @@ class SequenceProxy:
     _cache: OrderedDict[tuple[str, int, int], str] = field(default_factory=OrderedDict)
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False, compare=False)
 
+    @property
+    def local_fasta(self) -> bool:
+        return self.uri.startswith(FASTA_SCHEME)
+
+    @property
+    def source(self) -> str:
+        return "fasta" if self.local_fasta else "seqrepo"
+
+    def local_read_problem(self, chrom: str, build: str) -> str:
+        """Explain a withheld local read using the identity check the reader itself performs."""
+        if not refget_supports_build(build):
+            return f"local FASTA: {chrom} on {build} is outside GRCh38"
+        accession = refget_accession(chrom, build)
+        if accession is None:
+            return f"local FASTA: {chrom} is outside the GRCh38 refget table"
+        try:
+            self.proxy().get_metadata(f"ga4gh:{accession}")
+        except (OSError, ValueError) as exc:
+            return str(exc)
+        return f"local FASTA: could not read the requested interval on {chrom}"
+
     def proxy(self):
         """The underlying `ga4gh.vrs` data proxy, or `None` when offline or unreachable.
 
@@ -102,6 +125,12 @@ class SequenceProxy:
         not remembered here: the next call tries again, and a run's view is what holds it (see the
         class docstring).
         """
+        if self.local_fasta:
+            with self._lock:
+                if self._proxy is None or not self._proxy.current():
+                    self._proxy = FastaReference(self.uri)
+                    self._cache.clear()
+                return self._proxy
         if self.offline:
             return None
         with self._lock:
@@ -124,12 +153,16 @@ class SequenceProxy:
 
     def subsequence(self, accession: str, start: int, end: int) -> str | None:
         """Uppercased reference bases over the interbase interval `[start, end)`, or `None`."""
+        if self.offline and not self.local_fasta:
+            return None
+        # A changed FASTA must earn the accession again, even for a memoized interval.
+        local = self.proxy() if self.local_fasta else None
         key = (accession, start, end)
         with self._lock:
             if key in self._cache:
                 self._cache.move_to_end(key)
                 return self._cache[key]
-        proxy = self.proxy()
+        proxy = local if local is not None else self.proxy()
         if proxy is None:
             return None
         try:
@@ -141,6 +174,8 @@ class SequenceProxy:
             return None
         bases = fetched.upper()
         with self._lock:
+            if local is not None and local is not self._proxy:
+                return None
             self._cache[key] = bases
             self._cache.move_to_end(key)
             while len(self._cache) > _MEMO_SIZE:
@@ -207,11 +242,13 @@ class _RunSequences(SequenceProxy):
         return None
 
 
-def held_by_one_run(sequences: SequenceProxy) -> SequenceProxy:
+def held_by_one_run(sequences: SequenceProxy, *, offline: bool = False) -> SequenceProxy:
     """Return a view that holds failed sequence reads for one run and shares successful reads.
 
     Pass the same view to every reader in the run. Wrapping that view again returns it unchanged.
     """
+    if offline and not getattr(sequences, "local_fasta", False) and not getattr(sequences, "offline", False):
+        sequences = SequenceProxy(offline=True)
     return sequences if isinstance(sequences, _RunSequences) else _RunSequences(sequences)
 
 
@@ -606,6 +643,8 @@ class RefCheck:
     #: Comparable rows whose reference read failed (RM361): never in `subjects`, and when every one
     #: failed the whole check is `unreachable` rather than a clean pass over nothing.
     unread: int = 0
+    source: str = "seqrepo"
+    unread_reasons: tuple[str, ...] = ()
 
 
 def verify_reference_alleles(
@@ -642,14 +681,19 @@ def verify_reference_alleles(
     one row this tier has no sequence for and belongs outside `subjects` exactly as it is today, while
     an unbuilt *assembly* means the question cannot be put for any row in the module.
     """
-    sequences = held_by_one_run(sequences or SequenceProxy(offline=offline))
+    sequences = held_by_one_run(sequences or SequenceProxy(offline=offline), offline=offline)
     builds = {row.genome_build for row in rows if row.genome_build}
     if builds and all(not refget_supports_build(build) for build in builds):
         logger.info(
             "Reference-allele check skipped: no refget table for build(s) %s.",
             ", ".join(sorted(builds)),
         )
-        return RefCheck([], 0, "unsupported")
+        reasons = (
+            {sequences.local_read_problem(row.chrom, row.genome_build) for row in rows if row.chrom}
+            if sequences.local_fasta
+            else set()
+        )
+        return RefCheck([], 0, "unsupported", source=sequences.source, unread_reasons=tuple(sorted(reasons)))
     if sequences.proxy() is None:
         logger.info("Reference-allele check skipped: no sequence access this run.")
         # `offline` is a choice and `unreachable` is a failure, and only the second is worth a re-run.
@@ -660,6 +704,7 @@ def verify_reference_alleles(
     mismatches: list[RefMismatch] = []
     subjects = 0
     unread = 0
+    reasons: set[str] = set()
     for row in rows:
         if row.chrom is None or row.start is None or not row.ref:
             continue
@@ -669,14 +714,19 @@ def verify_reference_alleles(
         try:
             accession = refget_accession(row.chrom, row.genome_build)
         except UnsupportedBuildError:
-            continue
+            accession = None
         if accession is None:
+            if sequences.local_fasta:
+                unread += 1
+                reasons.add(sequences.local_read_problem(row.chrom, row.genome_build))
             continue
         actual, shift = _read_with_neighbours(
             sequences.subsequence, accession, row.start, len(claimed), claimed
         )
-        if actual is None:
+        if actual is None or len(actual) != len(claimed):
             unread += 1
+            if sequences.local_fasta:
+                reasons.add(sequences.local_read_problem(row.chrom, row.genome_build))
             continue
         subjects += 1
         if actual == claimed:
@@ -695,8 +745,10 @@ def verify_reference_alleles(
     if unread and not subjects:
         # Rows were there to compare and no read came back: a check that could not run (RM361), never
         # `ran(subjects=0)` and a build diagnosis saying no authored ref disagreed.
-        return RefCheck([], 0, "unreachable", unread=unread)
-    return RefCheck(mismatches, subjects, unread=unread)
+        return RefCheck([], 0, "unreachable", unread, sequences.source, tuple(sorted(reasons)))
+    return RefCheck(
+        mismatches, subjects, unread=unread, source=sequences.source, unread_reasons=tuple(sorted(reasons))
+    )
 
 
 def _read_with_neighbours(

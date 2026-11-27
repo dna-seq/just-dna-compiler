@@ -20,7 +20,7 @@ from just_dna_enricher.grch37 import BuildDiagnosis
 from just_dna_enricher.identifiers import RsidStatus
 from just_dna_enricher.placement import PlacementCheck
 from just_dna_enricher.resolver import AlleleMismatch, PairCheck
-from just_dna_enricher.sequences import RefMismatch, SpellingCheck
+from just_dna_enricher.sequences import RefCheck, RefMismatch, SpellingCheck
 from just_dna_enricher.vrs import MintResult
 
 
@@ -360,6 +360,8 @@ class EnrichmentResult:
 
     reasked: list[str] | None = None
     """Sorted recorded variant keys compared for drift. A gap-fill run returns None."""
+
+    ref_check: RefCheck | None = None
 
     @property
     def fully_resolved(self) -> bool:

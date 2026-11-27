@@ -117,11 +117,15 @@ class CheckWitness:
     reason: str
     columns: tuple[str, ...] = ()
     tolerance: str | None = None
+    default_witness: str | None = None  # A check choosing one sequence source per run.
 
     @property
     def witness_source(self) -> str:
         """The record's `witness_source`: the authorities `+`-joined in sorted order."""
         return "+".join(sorted(self.witness))
+
+
+_SEQUENCE_WITNESSES = ("fasta", "seqrepo")
 
 
 #: **The check roster (RM292): every emitting check states its witness, as data.** Keyed on the
@@ -133,10 +137,11 @@ CHECK_WITNESSES: dict[str, CheckWitness] = {
     # ── `enrich` ──
     "reference_allele": CheckWitness(
         AUTHORED_SOURCE,
-        ("seqrepo",),
+        _SEQUENCE_WITNESSES,
         "the authored `ref` against the GRCh38 sequence itself — independent, and tolerant by "
         "construction of a misplaced indel anchor, which is a real genome base wherever it sits",
         columns=("ref",),
+        default_witness="seqrepo",
     ),
     "genome_build_agreement": CheckWitness(
         AUTHORED_SOURCE,
@@ -240,8 +245,9 @@ CHECK_WITNESSES: dict[str, CheckWitness] = {
     ),
     "vrs_allele_id": CheckWitness(
         REPORTING_SOURCE,
-        ("seqrepo",),
+        _SEQUENCE_WITNESSES,
         "a source-reported `ga4gh:VA.…` against the id minted here over the reference sequence (`vrs mint`)",
+        default_witness="seqrepo",
     ),
     "acmg_secondary_findings": CheckWitness(
         AUTHORED_SOURCE,
@@ -323,7 +329,7 @@ def _witnessed(
             f"{check!r} records source {source!r}, outside the witness its roster entry declares "
             f"({entry.witness_source!r})"
         )
-    witness = entry.witness_source
+    witness = (source or entry.default_witness) if entry.default_witness else entry.witness_source
     if witness_source is not None:
         named = witness_source.split("+")
         if not set(named) <= set(entry.witness) or named != sorted(set(named)):
@@ -557,6 +563,7 @@ def skipped(
     *,
     detail: str | None = None,
     source: str | None = None,
+    witness_source: str | None = None,
     undecided: int | None = None,
     reported_by: Collection[str] | None = None,
     now: str | None = None,
@@ -579,7 +586,7 @@ def skipped(
         source=source,
         checked_at=now or now_utc_iso(),
         producer=producer_label(),
-        **_witnessed(check, source, None, undecided, ran_=False, reported_by=reported_by),
+        **_witnessed(check, source, witness_source, undecided, ran_=False, reported_by=reported_by),
     )
 
 

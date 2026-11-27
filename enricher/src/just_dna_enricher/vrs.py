@@ -4,8 +4,7 @@ The format tier mints a `ga4gh:VA.…` for a **substitution** with pure stdlib a
 (`just_dna_format.vrs.derive_vrs_allele_id`). That covers most rows and costs nothing, online or off.
 What it cannot do is an **indel**: a VRS allele id is defined over the *fully justified* allele, and
 justifying an indel means reading the reference sequence around it to see how far the event can slide.
-Sequence access is network access, and network access belongs here (Principle 2) — so the indel half
-of minting lives in this module and nowhere else.
+This tier reads those bases through seqrepo or a verified local GRCh38 FASTA.
 
 **Complete allele identity is the default, not an extra.** The plan budgeted for `ga4gh.vrs[extras]`
 — `seqrepo` + `pysam` + `hgvs`, a compiled extension and a multi-gigabyte local sequence store — on
@@ -13,7 +12,7 @@ the belief that normalization needs a *local* seqrepo. Probing showed it does no
 plus the seqrepo **REST** data proxy normalizes indels over HTTP, at a cost of 14 pure-Python packages
 with no compiled dependencies. Reading a remote sequence is exactly what a network tier is for, so at
 that price there is no reason to make complete identity opt-in. `ga4gh.vrs` is therefore a **core**
-dependency, indels are minted by default, and `--offline` is the only thing that turns it off.
+dependency and indels are minted by default when the reference answers.
 
 (`AlleleTranslator` is deliberately unused despite being the obvious entry point: it imports `hgvs` at
 module scope, which drags the heavy tree back in for a convenience wrapper we do not need.
@@ -24,9 +23,8 @@ Three ways a row can get an id, in precedence order:
 1. **Minted locally, stdlib** — a substitution. Zero egress, and verified against the library itself
    to be byte-identical (see `schema/tests/test_vrs.py`), so the offline answer and the online answer
    for a substitution are the same answer.
-2. **Minted, normalized** — an indel/MNV, justified against the reference over the REST proxy. Needs
-   the network, so `--offline` skips it.
-3. **Left null** — an indel in an offline run, an unreachable sequence service, an off-assembly
+2. **Minted, normalized** — an indel/MNV, justified against seqrepo or the selected local FASTA.
+3. **Left null** — an indel without a readable reference, an unreachable sequence service, an off-assembly
    contig, or an allele that names no sequence at all (`_sequence_free_reason`). A missing id is the
    honest outcome; an unjustified one would be a `ga4gh:VA.…` string that *looks* interoperable and
    silently is not.
@@ -64,6 +62,7 @@ from just_dna_format.vrs import (
     vrs_spec_release,
 )
 
+from just_dna_enricher.fasta import FastaReference
 from just_dna_enricher.sequences import DEFAULT_SEQREPO_URI, SequenceProxy, held_by_one_run
 
 logger = logging.getLogger(__name__)
@@ -280,7 +279,7 @@ class _WindowedReference:
 
 @dataclass
 class VrsMinter:
-    """Mints allele ids: substitutions always, indels whenever the run is allowed to reach the network.
+    """Mints allele ids: substitutions always, indels whenever the selected reference answers.
 
     Sequence access comes from a shared `SequenceProxy`, so a run that both mints indels and checks
     reference alleles builds one proxy and shares one read cache between them.
@@ -295,17 +294,28 @@ class VrsMinter:
     #: Each sequence's metadata, read once per run rather than once per allele (RM407).
     _metadata: dict[str, dict] = field(default_factory=dict, repr=False)
 
+    _local_reference: FastaReference | None = field(default=None, init=False, repr=False)
+
+    # Report the failure observed by normalize, including reads made directly by vrs-python.
+    _failures: dict[tuple[str, int, str, str, str], str] = field(default_factory=dict, init=False, repr=False)
+
     def __post_init__(self) -> None:
         # A minter is one run: it holds the failures it sees, and the proxy it reads holds only answers.
         self.sequences = held_by_one_run(
-            self.sequences or SequenceProxy(uri=self.seqrepo_uri, offline=self.offline)
+            self.sequences or SequenceProxy(uri=self.seqrepo_uri, offline=self.offline), offline=self.offline
         )
 
     def _data_proxy(self):
         """The underlying data proxy, or `None` when offline or unreachable (a normal outcome —
         the caller leaves the indel's id unset, exactly as it leaves an unresolved position unset)."""
         assert self.sequences is not None
-        return self.sequences.proxy()
+        proxy = self.sequences.proxy()
+        if isinstance(proxy, FastaReference) and proxy is not self._local_reference:
+            self._metadata.clear()
+            self._normalized.clear()
+            self._failures.clear()
+            self._local_reference = proxy
+        return proxy
 
     def mint(
         self,
@@ -373,19 +383,31 @@ class VrsMinter:
         sequence_free = _sequence_free_reason(ref, alt)
         if sequence_free is not None:
             return sequence_free
+        assert self.sequences is not None
         try:
             accession = refget_accession(chrom, build)
         except UnsupportedBuildError as exc:
+            if self.sequences.local_fasta:
+                return self.sequences.local_read_problem(chrom, build)
             return str(exc)
         if accession is None:
+            if self.sequences.local_fasta:
+                return self.sequences.local_read_problem(chrom, build)
             return f"{chrom} is outside the primary assembly, so there is no refget accession for it"
         if is_substitution(ref, alt):
             return f"{chrom}:{start} is past the end of the contig"
-        if self.offline or self._data_proxy() is None:
+        failure = self._failures.get((chrom, start, (ref or "").upper(), alt.upper(), build))
+        if failure:
+            return failure
+        if self.sequences.local_fasta:
+            return self.sequences.local_read_problem(chrom, build)
+        if self.offline or self.sequences.offline:
             return (
                 "an indel/MNV, which must be justified against the reference sequence — re-run "
-                "without --offline to mint it"
+                "without --offline to mint it, or supply a local GRCh38 FASTA with --sequence-uri"
             )
+        if self._data_proxy() is None:
+            return "an indel/MNV whose sequence service was unreachable"
         return "an indel/MNV whose normalization failed (see the warning logged for it)"
 
     def _mint_normalized(self, chrom: str, start: int, ref: str, alt: str, build: str) -> str | None:
@@ -417,6 +439,12 @@ class VrsMinter:
                 normalize(allele, data_proxy=self._window_for(proxy, accession, start, ref))
             )
         except Exception as exc:
+            assert self.sequences is not None
+            self._failures.pop(key, None)
+            if self.sequences.local_fasta:
+                self._failures[key] = f"local FASTA could not normalize an allele on {chrom} ({exc})"
+            elif isinstance(exc, OSError):
+                self._failures[key] = f"an indel/MNV whose seqrepo reference was unreachable ({exc})"
             logger.warning(
                 "VRS normalization failed for %s:%s %s>%s (%s); leaving vrs_id unset",
                 chrom,
@@ -426,6 +454,7 @@ class VrsMinter:
                 exc,
             )
             return None
+        self._failures.pop(key, None)
         self._normalized[key] = minted
         return minted
 

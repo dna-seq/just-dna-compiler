@@ -114,6 +114,12 @@ just-dna-enricher enrich ./my_module --strict     # fail unless every variant re
 `--strict` refuses rather than half-writing: an enrich run is a transaction, and a refused one commits
 nothing.
 
+To check REF and left-align and mint indels offline, set `reference_uri` to the absolute URI of
+your uncompressed GRCh38 FASTA, in the form `fasta+file:///abs/path.fa`, with `path.fa.fai` beside
+it. Run `just-dna-enricher enrich ./my_module --offline --sequence-uri "$reference_uri"`. Each contig
+must match its GRCh38 refget digest. The output reports how many rows the local FASTA checked
+and names contigs it could not read. The GRCh37 wrong-build diagnosis still requires the network.
+
 ### The build
 
 `enrich` is GRCh38-bound. A module declaring another build gets a warning, **no** link is run and **no**
