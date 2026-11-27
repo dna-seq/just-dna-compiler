@@ -413,8 +413,9 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   The warning has no code of its own in 0.8.9: a code added in a patch is an old-reader break
   (`warnings_summary`'s keys are a closed vocabulary), and an uncoded sentence cannot ship because
   `findings.classify` refuses a part-classified channel. So each sentence borrows the code of what the
-  row became, `rsid_no_hosting_locus` or `rsid_expanded_to_multiple_loci`, and 0.9 adds
-  `rsid_genotype_reads_as_two_events` (`@warning-code-names-the-finding`).
+  row became, `rsid_no_hosting_locus` or `rsid_expanded_to_multiple_loci`, through 0.9. RM460 gives
+  the fill sentences `rsid_genotype_reads_as_two_events` in 0.10. When authored coordinates claim every
+  spelling, the skipped fill still counts under `rsid_no_hosting_locus` (`@warning-code-names-the-finding`).
 
 - `@rsid-not-per-allele` — **An rsID is position/multi-allelic-level, not per-allele.** One rsID (`rs33922842`) legitimately spans
   pathogenic + benign + uncertain alleles at one locus, so clinical identity keys on `variant_key`+

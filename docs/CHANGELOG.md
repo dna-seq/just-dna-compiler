@@ -41,6 +41,19 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md). The `0.8` branch merged into `main` at the 0.8.0 cut (2026-11-05).
 
+## 2026-11-27 — RM460: mirrored-site fills have their own warning code (a minor, for 0.10)
+
+The compiler now counts a genotype that reads as an insertion and a deletion at the same site under
+`rsid_genotype_reads_as_two_events` in `compilation.warnings_summary`. Narrowing the fill to one spelling
+clears the old expansion count. Filling both spellings still produces a separate
+`rsid_expanded_to_multiple_loci` finding for the rows actually emitted. Where authored coordinates claim
+every spelling, the sentence about the skipped fill keeps `rsid_no_hosting_locus`. The warning text,
+the filled rows and the treatment under `--strict` are the same as in 0.9.
+
+**Old-reader break.** A format reader older than 0.10 refuses a manifest whose `warnings_summary` contains
+the new key. This was measured on `hboc_palb2` during the 0.8.9 build. Consumers should raise their
+`just-dna-format` floor to 0.10 before reading such manifests.
+
 ## 2026-11-26 — `v0.9.0`: format, compiler and enricher 0.9.0 (a minor, the `0.9` branch)
 
 **Cut on 2026-11-26 from the `0.9` branch**, built from 2026-11-16 to 2026-11-26: the enricher reads its reference data

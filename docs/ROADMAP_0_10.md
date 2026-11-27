@@ -339,7 +339,16 @@ INTEGRATION file of the minor that ships it tells consumers to raise their forma
 did. The release record declares the `warnings` move. Whether the site witnessed both ways is then refused under
 `--strict` is RM449's open question and stays separate.
 
-**Residuals** none yet.
+**Built (2026-11-27, on the `0.10` branch).** The mirrored-site fill sentences now carry
+`rsid_genotype_reads_as_two_events`, including a partial fill beside an authored coordinate. A real
+multi-row expansion still has its own finding. Desk #469 received no answer, so its default (option 1)
+applies: when authored coordinates claim every spelling, the sentence stays under `rsid_no_hosting_locus`
+because the rsID row has no position. The one-line switch is `ALL_SPELLINGS_CLAIMED_CODE` in
+`compiler/src/just_dna_compiler/resolution.py`. This changes the summary keys only. Escalating a site
+witnessed both ways under `--strict` remains RM449's separate question. The integration note and the
+release record's `warnings` axis belong to the cut.
+
+**Residuals** none.
 
 ## RM468 — the live clients keep no answers between runs, so a re-run under unchanged source releases spends the same egress again
 
