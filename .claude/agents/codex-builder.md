@@ -22,7 +22,7 @@ The caller gives you:
    `OUT/codex-build.txt`:
 
    ```
-   cd WT && (UV_CACHE_DIR=WT/data/interim/uv-cache UV_NO_SYNC=1 nice -n 19 codex exec -p secrets-denied \
+   cd WT && (UV_CACHE_DIR=WT/data/interim/uv-cache UV_NO_SYNC=1 nice -n 18 codex exec -p secrets-denied \
      -m gpt-6.2-astra -c service_tier=fast -s workspace-write -C WT --ephemeral -o OUT/codex-build.txt \
      "$(cat BRIEF)" > OUT/codex-build.log 2>&1; echo "codex exit $?" >> OUT/codex-build.log) &
    ```
@@ -34,8 +34,8 @@ The caller gives you:
    The command stays inside the kit's auto-mode rule 30 (delegating to Codex, the person's word of 2026-11-26):
    `-p secrets-denied` always, no `--add-dir` outside the clone, `-o` in the seat's scratchpad, the working folder a
    worktree under the clone's `.worktrees/`. A first form with `--add-dir /data/uv` and `-o` inside WT was refused by
-   the classifier on 2026-11-27. Why each part: `nice -n 19`, since a build runs tests and un-niced test runs starved
-   the person's desktop; `UV_CACHE_DIR` inside WT's git-ignored `data/interim/` and `UV_NO_SYNC=1`, since the shared
+   the classifier on 2026-11-27. Why each part: `nice -n 18`, since a build runs tests and un-niced test runs starved
+   the person's desktop, and 18 rather than 19 since DeepVariant's jobs run at 19 (the person, 2026-11-27); `UV_CACHE_DIR` inside WT's git-ignored `data/interim/` and `UV_NO_SYNC=1`, since the shared
    uv cache `/data/uv` is outside the sandbox and the lead already synced the environment (`uv run --no-sync` with a
    cache in WT was checked 2026-11-27; the profile's `inherit = "all"` passes both to Codex's shell);
    `workspace-write`, so Codex writes only WT. Codex cannot commit (the worktree's git directory is outside WT,
