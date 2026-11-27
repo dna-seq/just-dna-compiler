@@ -414,6 +414,7 @@ core was ported, not depended on, dropping `fastmcp`/`eliot`). In the workspace:
 | `concordance` | **0.7** (RM130): the other half of that check — the two verdicts, the per-authority calls behind them, and the writer that puts `clin_sig_concordance.csv` + `clin_sig_authority_calls.csv` beside the spec | format `concordance`, compiler `load_csv_rows` |
 | `clin_sig` | **0.7**: the one raw-significance → `VALID_CLIN_SIG` normalizer, shared by every source that reports one. Dependency-free on purpose, so a runtime pass reads it without the `[dev]` extra | format `VALID_CLIN_SIG` |
 | `net` | shared HTTP politeness: `PacingGate`, `batched`, `dedupe`, `attempt_floor`, and **`stream_to_file`** — the one body every bulk download in this package uses, atomic, translated and retried (RM187), with a 120 s timeout by default (RM421) | `httpx`, `tenacity` |
+| `answer_store` | Per-host online subject answers, release observations and per-run counts (RM468) | `sqlite3`, `locations` |
 | `eutils` | NCBI E-utilities client (esummary), shared by the literature and rsID checks | `httpx`, `tenacity` |
 | `literature` | pass 4: a module's citations (`studies.csv` + binning `pmid`s) → `literature.csv` (PubMed + Europe PMC), fulltext quote match, per-article licence, PMCID→PMID | `httpx`, `tenacity` |
 | `identifiers` | rsID / trait-CURIE / gene-symbol / PGS-accession currency (dbSNP, OLS4, HGNC, PGS Catalog) | `httpx`, `tenacity` |
@@ -611,13 +612,10 @@ Org limits apply **per member**, not shared. Source of truth:
   `ValueError` when the settings are built, and again from `resolve_rsids_batched` before any request when a
   field was set to one afterwards (the dataclass is mutable), never clamped (1 is one GET per rsID, the
   off-switch). `_RestBatchWitness`, the witness's batch twin, stays private: nothing asks it since RM398.
-- **No response cache for the live clients.** NCBI / PharmVar / gnomAD GraphQL / Crossref / Europe PMC
-  / OLS4 / HGNC / PGS Catalog / LitVar2 / the CIViC API / the ClinGen Allele Registry / GRCh37 Ensembl /
-  the ClinVar release probe / live Ensembl are paced only. Persistence is the authored sidecars
-  (`resolution.csv`, `frequencies.csv`, …) and the published snapshots `cache pull` fetches (the
-  `CACHE_LANES` rows with a repo — see "The caches") — delete a sidecar to force a refetch. Note which entries in that list are also the
-  **licence-gated** ones: CPIC and PharmVar are paced-only *and* forbid sale, so they are the two RM38
-  gives a snapshot (see *On a host, or in a service* below).
+- **Repeat online lookups.** Ensembl REST, E-utilities summaries and remote seqrepo reads can reuse
+  answers from the [host's answer store](#the-live-answer-store). Each new run checks the release
+  before it reuses an answer. A seqrepo interval already names its release through its refget accession.
+  Other services, including live CPIC and PharmVar, keep their existing pacing and snapshot rules.
 - **A shared IP shares one budget.** Every figure above is per-IP or per-token, never per caller, so a
   hosted deployment multiplies its users onto one allowance rather than getting one each. This is a
   *separate* reason from licensing for reaching a source through a snapshot, and it applies to ungated
@@ -2789,10 +2787,50 @@ consequence was that the flagless path fell through to scraping NCBI's page — 
 ACMG published v3.3 in June 2025, so a correctly authored row came back reported as wrong. It has a
 resolver and a roster row since RM176.
 
-- **No response cache for the live clients.** NCBI, PharmVar's live path, gnomAD GraphQL, Crossref,
-  Europe PMC, OLS4, HGNC and live Ensembl are **paced only**. Persistence is the authored sidecars
-  (`resolution.csv`, `frequencies.csv`, …) — delete a sidecar to force a refetch, because `enrich()`
-  treats an existing one as authoritative and merges into it rather than clobbering it.
+### The live answer store
+
+Since 0.10 an online run can reuse answers across modules. The SQLite file defaults to
+`live-answers.sqlite3` under `$JUST_DNA_PIPELINES_CACHE_DIR` or the usual platform cache base.
+Set `JUST_DNA_ANSWER_STORE` to a filename or an existing directory to choose its location.
+A path that does not yet exist names a file. The setting is read from the environment, then the
+nearest `.env`. An explicitly empty value disables both reads and writes, including when a shell
+exports an empty value over a path in `.env`.
+
+| Source | Release checked before the first lookup | Unit of reuse |
+| --- | --- | --- |
+| Ensembl REST | The serving endpoint's `/info/data` release, e.g. `ensembl_116` | One variation by species and requested rsID (including a merged alias), one pair and population for LD, or one GRCh37 overlap or sequence interval |
+| NCBI E-utilities | `einfo.fcgi`'s `dbbuild` for the requested database | One `esummary` UID in that database |
+| Remote seqrepo | The refget accession itself identifies the sequence bytes | One interbase interval on that accession |
+
+Every key includes the server's base URL. One release probe per queried source or database still
+goes live on a warm run. A changed build makes only that source's old rows ineligible. A missing
+release bypasses the store for that source for the run. An Ensembl batch sends only its missing rsIDs,
+and an E-utilities batch sends only its missing UIDs. A direct client outside an enrichment run
+holds its release observation for its lifetime.
+
+A subject the source explicitly answers as absent can be served again, including an Ensembl
+no-record response or NCBI's invalid-UID envelope. Refusals, outages, exhausted throttles, unreadable
+bodies and failed sequence reads are asked again. Local seqrepo reads use the existing memory memo.
+VRS normalization can still ask the underlying proxy for metadata or for bases outside its
+prefetched window. A damaged or inaccessible SQLite file logs a warning and the client continues live. SQLite transactions
+and WAL protect simultaneous users on the host. Source terms still apply and the store stays on that host.
+
+In Python, `enrich(spec_dir, answer_store=...)` accepts a path, an
+`answer_store.AnswerStore` instance, or `False` to bypass the store. Omit the parameter to use the
+configured location. The `enrich` command accepts `--no-answer-store` directly. For any CLI invocation
+you can also put `--no-answer-store` before the command, for example
+`just-dna-enricher --no-answer-store enrich --rederive ./my_module`. The usual resolver chain and
+`--offline` still decide whether a live client is consulted.
+
+`EnrichmentResult.answer_usage` and the CLI report one line per source and release, for example
+`Answer store https://rest.ensembl.org release=ensembl_116 stored=2 live=0`. Counts are subjects
+served from SQLite and subjects asked live. Release probes, HTTP retries and in-memory hits do not
+increment either count. Each seqrepo accession used has its own release line. The `ld-pairs` command
+also reports this split, and its `requests` count excludes pairs served from SQLite.
+
+A caller asking `esummary("clinvar", ...)` uses the ClinVar database's own build. The enrichment
+chain's ClinVar placements and clinical calls come from the local snapshot. Its currency probe reads
+the live VCF header, and ClinVar-GKM reads its own distribution. Neither goes through E-utilities.
 
 ### When something is wrong with a cache
 

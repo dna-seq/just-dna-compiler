@@ -9,6 +9,7 @@ from just_dna_format.base import merge_key
 from just_dna_format.resolution import RESOLUTION_FACT_FIELDS, ResolutionRow
 from just_dna_format.vrs import PRIMARY_CONTIG_LENGTHS, contig_length, split_vrs_ids
 
+from just_dna_enricher.answer_store import AnswerUsage
 from just_dna_enricher.civic_citations import EvidenceStatusCheck
 from just_dna_enricher.civic_refutation import RefutationFinding
 from just_dna_enricher.clinical import ClinSigComparison, ClinSigConflict, ConcordanceRecord
@@ -362,6 +363,8 @@ class EnrichmentResult:
     """Sorted recorded variant keys compared for drift. A gap-fill run returns None."""
 
     ref_check: RefCheck | None = None
+    answer_usage: list[AnswerUsage] = field(default_factory=list)
+    """Live subjects asked and stored subjects served, per endpoint and release."""
 
     @property
     def fully_resolved(self) -> bool:

@@ -168,6 +168,12 @@ def _fenced_provisioner(real):
 
 
 @pytest.fixture(autouse=True)
+def _no_ambient_answer_store(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An exported empty setting also fences a developer's .env. Store tests opt into tmp_path."""
+    monkeypatch.setenv(locations.ANSWER_STORE_VAR, "")
+
+
+@pytest.fixture(autouse=True)
 def _fenced_hub(monkeypatch: pytest.MonkeyPatch) -> None:
     """The real hub is unreachable unless opted in, and no real cache directory is ever provisioned."""
     monkeypatch.setattr(huggingface_hub, "HfFileSystem", _FencedHfFileSystem)

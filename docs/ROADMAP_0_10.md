@@ -399,7 +399,15 @@ never is (`@unreachable-not-absent`). A licence-gated source's answers inherit i
 and never published (`@gated-source-caches`). Ensembl REST's release lags the snapshot's (RM447), so the key is the
 release REST states, never the snapshot's. A new setting and a new lane-like location: a minor.
 
-**Residuals** none yet.
+**Built (2026-11-27, on the `0.10` branch).** The enricher keeps per-subject Ensembl REST and
+E-utilities answers in a per-host SQLite file under the release the endpoint states. GRCh37 probes
+its own server and remote seqrepo intervals use their refget accession. Shared clients take a fresh
+release observation and report for each enrichment run. Empty settings, the Python off switch and
+the CLI flag bypass persistence. The store has no snapshot or publish stage. The ClinVar currency
+probe still reads the live VCF header, and ClinVar-GKM reads its own distribution.
+
+**Residuals** Direct VRS metadata and out-of-window reads bypass `SequenceProxy.subsequence` and
+remain live. ClinVar's bulk release and ClinVar-GKM probes remain outside E-utilities by design.
 
 ## RM469 — the pinned-text walk sees only the texts 0.9 added, so a new text in a module older than 0.9 is held by nothing
 

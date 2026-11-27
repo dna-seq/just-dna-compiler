@@ -224,11 +224,11 @@ ENSEMBL_RSID_INDEX_SUBDIR: str = "ensembl_rsid_index"
 # Named here rather than as a literal inside each resolver (S89, RM184), so `caches.CACHE_LANES`
 # can carry the variable that steers a lane as a field — `env_var` — and a consumer generating a
 # `.env.template`, clearing its test environment, or auditing which caches were provisioned by
-# variable reads the registry instead of hand-keeping fourteen names. `CACHE_BASE_VAR` is the one
-# variable no lane owns: it moves every lane's default directory at once. Every string here is the
-# whole set — a test walks this module for `JUST_DNA_*` values and asserts the lanes claim exactly
-# those, so a resolver reading a variable no lane names fails the walk.
+# variable reads the registry. The base moves every lane's default directory. The answer store
+# also lives under that base, but its own override points to a private SQLite file outside the lanes.
 CACHE_BASE_VAR: str = "JUST_DNA_PIPELINES_CACHE_DIR"
+ANSWER_STORE_VAR = "JUST_DNA_ANSWER_STORE"
+ANSWER_STORE_FILENAME = "live-answers.sqlite3"
 ENSEMBL_CACHE_VAR: str = "JUST_DNA_ENSEMBL_CACHE"
 CLINVAR_CACHE_VAR: str = "JUST_DNA_CLINVAR_CACHE"
 CONSTRAINT_CACHE_VAR: str = "JUST_DNA_GNOMAD_CONSTRAINT_CACHE"
@@ -835,6 +835,19 @@ def env_value(var: str) -> str | None:
     if not path:
         return None
     return dotenv_values(path).get(var)
+
+
+def answer_store_path(explicit: Path | None = None) -> Path | None:
+    """An explicit file or existing directory, then the setting (empty disables), then the cache base."""
+    if explicit is not None:
+        return explicit
+    value = env_value(ANSWER_STORE_VAR)
+    if value == "":
+        return None
+    if value is not None:
+        return Path(value)
+    base = env_value(CACHE_BASE_VAR) or user_cache_dir(appname=APPNAME)
+    return Path(base) / ANSWER_STORE_FILENAME
 
 
 def missing_credential_reason(var: str) -> str:

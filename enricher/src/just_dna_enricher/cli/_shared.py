@@ -10,6 +10,7 @@ from just_dna_compiler.draft import DraftError
 from just_dna_format.manifest import VerificationRecord
 from just_dna_format.vocab import VALID_DECLARED_USE, match_vocab
 
+from just_dna_enricher.answer_store import answer_run
 from just_dna_enricher.enrich import EnrichmentError
 from just_dna_enricher.fasta import FastaConfigurationError
 from just_dna_enricher.sequences import SequenceProxy
@@ -43,6 +44,17 @@ def sequence_source(uri: str | None, offline: bool) -> SequenceProxy | None:
         except FastaConfigurationError as exc:
             raise typer.BadParameter(str(exc), param_hint="--sequence-uri") from exc
     return sequences
+
+
+NoAnswerStore = Annotated[
+    bool, typer.Option("--no-answer-store", help="Bypass the host's live answer store.")
+]
+
+
+@app.callback()
+def answer_store_option(ctx: typer.Context, no_answer_store: NoAnswerStore = False) -> None:
+    """Scope the live clients to this invocation, including clients built by nested commands."""
+    ctx.with_resource(answer_run(False if no_answer_store else None))
 
 
 #: What a drafting command must catch beyond its own source's error, and **why it is a named tuple

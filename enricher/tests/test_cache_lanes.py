@@ -987,7 +987,7 @@ def test_every_lane_names_the_variable_its_own_resolver_reads(
 
 def test_the_variables_the_module_reads_are_exactly_the_ones_the_lanes_claim() -> None:
     """Equality over a walked module (`@registry-completeness`): every `JUST_DNA_*` string constant
-    in `locations` is either one lane's `env_var` or the shared base, and every lane's is a constant
+    in `locations` is a lane's `env_var`, the shared base, or the per-host answer store. Every lane's is a constant
     there under the `<LANE>_CACHE_VAR` name. A resolver reading a variable no lane names, or a lane
     naming one no resolver reads, fails here rather than drifting.
     """
@@ -997,7 +997,8 @@ def test_the_variables_the_module_reads_are_exactly_the_ones_the_lanes_claim() -
         if isinstance(value, str) and value.startswith("JUST_DNA_")
     }
     claimed = {lane.env_var for lane in CACHE_LANES}
-    assert declared == claimed | {locations.CACHE_BASE_VAR}
+    assert declared == claimed | {locations.CACHE_BASE_VAR, locations.ANSWER_STORE_VAR}
+    assert locations.ANSWER_STORE_VAR not in claimed
     assert len(claimed) == len(CACHE_LANES), "two lanes share a variable"
     for lane in CACHE_LANES:
         assert lane.env_var is getattr(locations, f"{lane.name.upper()}_CACHE_VAR"), lane.name

@@ -54,6 +54,7 @@ from just_dna_format.spec import StudyRow
 from just_dna_format.vocab import RSID_PATTERN
 from tenacity import retry
 
+from just_dna_enricher.answer_store import AnswerRun, AnswerUsage, SourceAnswers, answer_run
 from just_dna_enricher.ensembl import DEFAULT_REST_ENDPOINT, ENSEMBL_RELEASE_PREFIX, ensembl_data_release
 from just_dna_enricher.licensing import (
     ENSEMBL_TERMS,
@@ -122,6 +123,7 @@ class LdAnswer:
 
     rows: tuple[dict, ...] = ()
     unknown: str | None = None
+    _from_store: bool = field(default=False, compare=False, repr=False, kw_only=True)
 
 
 @dataclass
@@ -139,6 +141,8 @@ class LdClient:
     timeout: float = LD_TIMEOUT
     client: httpx.Client | None = None
     gate: PacingGate | None = None
+
+    _answers: AnswerRun = field(default_factory=AnswerRun, init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         if self.gate is None:
@@ -189,6 +193,14 @@ class LdClient:
     def pairwise(self, proxy: str, lead: str, population: str) -> LdAnswer:
         """r² and D′ between `proxy` and `lead` in `population`, as the reference serves them."""
         path = f"ld/{self.species}/pairwise/{proxy}/{lead}"
+        answers = self._source_answers()
+        release = answers.release
+        key = f"{path}?population_name={population}"
+        found = answers.read([key])
+        if key in found:
+            record = found[key]
+            return LdAnswer(rows=tuple(record["rows"]), unknown=record["unknown"], _from_store=True)
+        answers.asked()
         response = self._request(path, {"population_name": population})
         if response.status_code == 400:
             try:
@@ -199,12 +211,36 @@ class LdClient:
                 ) from exc
             message = payload.get("error") if isinstance(payload, dict) else None
             if isinstance(message, str) and _UNKNOWN_VARIATION.search(message):
+                answers.write({key: ({"rows": [], "unknown": message}, True)})
                 return LdAnswer(unknown=message)
             raise LdError(f"Ensembl refused {path} for {population}: {message or payload!r}")
         payload = _json(response, path)
         if not isinstance(payload, list) or not all(isinstance(row, dict) for row in payload):
             raise LdError(f"Ensembl answered {path} with {type(payload).__name__}, not a list of pairs")
-        return LdAnswer(rows=tuple(payload))
+        answer = LdAnswer(rows=tuple(payload))
+        # Persist only a response the pass can use. Its population and numeric checks live there.
+        if release is not None:
+            if any(not row or "error" in row for row in payload):
+                return answer
+            try:
+                row = _answered_row(_Wanted((proxy, lead, population), lead, None), answer, release, None)
+            except (LdError, ValueError):
+                # A direct client returns its raw rows. The pass diagnoses an unusable value.
+                return answer
+            answers.write({key: ({"rows": payload, "unknown": None}, row.status == "not_reported")})
+        return answer
+
+    def _source_answers(self) -> SourceAnswers:
+        run = self._answers.current()
+        source = self.endpoint.rstrip("/")
+        release = run.release(source, self._optional_release) if run.store is not None else None
+        return SourceAnswers(run, source, release)
+
+    def _optional_release(self) -> str | None:
+        try:
+            return f"{LD_DATASET_PREFIX}{self.release()}"
+        except LdError:
+            return None
 
     def release(self) -> int:
         """The Ensembl release answering, from `/info/data` (`{"releases": [116]}`)."""
@@ -259,6 +295,7 @@ class LdPairsResult:
     requests: int = 0
     dataset: str | None = None
     skipped_offline: bool = False
+    answer_usage: list[AnswerUsage] = field(default_factory=list)
 
 
 #: `(chrom, start, ref)` → the one rsID `resolution.csv` back-filled at that place, for a coordinate lead.
@@ -303,7 +340,7 @@ def _wanted(studies: list[StudyRow], backfilled: dict[Place, str]) -> list[_Want
     return list(out.values())
 
 
-def _answered_row(want: _Wanted, answer: LdAnswer, dataset: str, fetched_at: str) -> LdPairRow:
+def _answered_row(want: _Wanted, answer: LdAnswer, dataset: str | None, fetched_at: str | None) -> LdPairRow:
     proxy, lead_key, population = want.key
     base = {
         "proxy_rsid": proxy,
@@ -380,11 +417,14 @@ def _ask(
     pair alone: it gets no row, is named in `result.unusable`, and the queue goes on, so the pairs already
     paid for are committed.
     """
-    try:
-        result.dataset = f"{LD_DATASET_PREFIX}{ensembl.release()}"
-    except LdUnavailable as exc:
-        result.unasked = [w.key for w in to_ask]
-        return exc
+    if isinstance(ensembl, LdClient) and ensembl._answers.current().store is not None:
+        result.dataset = ensembl._source_answers().release
+    else:
+        try:
+            result.dataset = f"{LD_DATASET_PREFIX}{ensembl.release()}"
+        except LdUnavailable as exc:
+            result.unasked = [w.key for w in to_ask]
+            return exc
     for index, want in enumerate(to_ask):
         proxy, _lead_key, population = want.key
         assert want.lead_rsid is not None and population is not None
@@ -397,7 +437,8 @@ def _ask(
             result.requests += 1
             result.unusable.append((want.key, str(exc)))
             continue
-        result.requests += 1
+        if not getattr(answer, "_from_store", False):
+            result.requests += 1
         try:
             fresh.append(_answered_row(want, answer, result.dataset, fetched_at))
         except LdError as exc:
@@ -490,7 +531,9 @@ def enrich_ld_pairs(
         owned = client is None
         ensembl = client or LdClient()
         try:
-            outage = _ask(ensembl, to_ask, result, fresh, fetched_at)
+            with answer_run() as answers:
+                outage = _ask(ensembl, to_ask, result, fresh, fetched_at)
+                result.answer_usage = answers.report()
         finally:
             if owned:
                 ensembl.close()
@@ -513,7 +556,7 @@ def enrich_ld_pairs(
     result.rows = sorted(merged.values(), key=_sort_key)
 
     if write and (fresh or result.dropped):
-        answered = result.requests > 0
+        answered = result.requests > 0 or any(usage.stored for usage in result.answer_usage)
         _write(
             result.rows,
             target,
@@ -545,7 +588,7 @@ def enrich_ld_pairs(
     if outage is not None:
         raise LdUnavailable(
             f"{outage} — {len(result.unasked)} pair(s) were not asked and have no row; "
-            f"{result.requests} answered this run {'were committed' if write else 'are in the result'}, and "
+            f"{result.requests + sum(usage.stored for usage in result.answer_usage)} answered this run {'were committed' if write else 'are in the result'}, and "
             f"a re-run asks only the rest."
         ) from outage
     return result

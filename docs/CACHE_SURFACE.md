@@ -11,6 +11,9 @@ hand-kept list that had drifted three lanes behind reality (RM176), so the stand
 `@registry-completeness`: **assert an equality over a walked set, never a count and never a list
 beside the thing it lists.**
 
+The live answer store stays outside `CACHE_LANES` because it accumulates per-subject answers on one
+host and has no snapshot to acquire, build or publish.
+
 ## The three stages, and why a lane may lack one
 
 A lane has an **acquire** stage, a **build** stage and a **publish** stage. Any of them may be
