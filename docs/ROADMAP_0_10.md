@@ -8,7 +8,8 @@ plus the items 0.9 filed for the next minor.
 
 | Minor | Theme | Items |
 |---|---|---|
-| **0.10** | a small schema release: four optional additions, and what 0.9 placed in the next minor | RM399 + RM441 (with S156), RM435, RM265, RM385; RM460, RM468, RM469, and RM459 once the registry reads `KEY_COMPARES` |
+| **0.10** | an **even** minor (features and the maintainer's decisions, RELEASE_CYCLE.md § Tic/tac): the re-derive signals, four optional additions, the live-answer store; desk epic [#466](https://github.com/winternewt/desk/issues/466) decides the rest | RM399 + RM441 (with S156), RM435, RM385, RM460, RM468 (built); RM265 (desk #468); RM302, RM350, RM294 if desk #467 takes them in |
+| **0.11** | the next **odd** minor (fixes and decided work), started at 10–20 decided items | RM469; RM459 once the registry reads `KEY_COMPARES` |
 | **methylation** | after 0.10, undated until the PacBio samples are in hand | RM317–RM319, RM433, RM56, RM65, RM66 |
 
 Everything here is **additive under Principles 3/4/8**; an item waiting on a version belongs in
@@ -290,7 +291,7 @@ explicit local reader is the one sequence source the offline gate admits.
 
 ## RM459 — with the registry's proxy set and Hugging Face off, a gene lookup on clinpgx, cpic, drug_labels or civic answers could-not-ask
 
-**Severity** low · **Status** open — **a minor, 0.10; waits on the registry** (its S36) · **Owner** enricher
+**Severity** low · **Status** open — **a minor, 0.11; waits on the registry** (its S36; moved from 0.10 by the pm, 2026-11-27, under the tic/tac rule) · **Owner** enricher
 (`remote.RemoteLane.proxy_compares`, `key_compare.KEY_COMPARES`) · **Motivating case** the RM430 follow-up's readings,
 placed by the pm on 2026-11-18 as a 0.9 known issue, filed at the 0.9.0 cut · *related* RM430, RM454
 
@@ -366,7 +367,7 @@ release REST states, never the snapshot's. A new setting and a new lane-like loc
 
 ## RM469 — the pinned-text walk sees only the texts 0.9 added, so a new text in a module older than 0.9 is held by nothing
 
-**Severity** low · **Status** open — **a minor, 0.10** (the pm, 2026-11-26, from RM461's build) · **Owner** enricher
+**Severity** low · **Status** open — **a minor, 0.11** (the pm, 2026-11-27: decided fix work, so the next odd minor under the tic/tac rule; it may be built early on a branch held for 0.11; from RM461's build) · **Owner** enricher
 (`test_every_new_text_is_pinned.py`, the emitted texts) · **Motivating case** RM461's fourth point, which its build in
 0.9 did not reach · *related* RM461, RM430
 
