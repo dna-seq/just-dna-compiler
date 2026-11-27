@@ -41,7 +41,7 @@ The lead's working state, rewritten to the present before each reset. Last rewri
 
 - mitomap behind source (liaison 643088167, 2026-11-24): the dump moved 2026-11-18 (mmutation edited 2026-11-17, 603 rows, +6 citation links). Built as mitomap_2026-11-17+2026-11-03 into `data/caches/rebuild-2026-11-24/mitomap`, upload rehearsed (5 files). `blocked: the person` (the classifier refuses a seat's publish, kit #529): `uv run just-dna-enricher mitomap publish data/caches/rebuild-2026-11-24/mitomap`. After it: `cache pull --only mitomap`, then `mitomap miss` (mitomap_miss follows its parents).
 - **0.10 batch, opened 2026-11-27 (the pm, 644000283; the maintainer: "push on it", Codex heavily while Astra has
-  quota).** Branch `0.10` off main at 4daaf10d, pushed. **Five Codex builds started 2026-11-27 ~00:56Z**, one locked
+  quota).** Branch `0.10` off main at 4daaf10d, pushed. **Five Codex builds started 2026-11-27 ~00:00Z** (relaunched inside auto-mode rule 30, e3978216). **RM460 merged** (b37c11ac). The other four were killed at 00:32Z by a session restart, each in its final verification: their work is uncommitted in the worktrees, snapshotted to `data/interim/run1-snapshot/`; the lead takes each over (review, suites outside the sandbox, commit, merge in the order RM399+441, RM435, RM385, RM468, the merged tree green before each push). Kit pin: move to v0.1.287 (`bin/move-to-tag.py --take`) at a safe point., one locked
   worktree each, `.worktrees/010-rm{399-441,435,385,468,460}` on `build/010-rm*`, brief in each one's
   `data/interim/rm*/BRIEF.md` (shared preamble: scratchpad, restated in each brief). Choices the lead made in the
   briefs, to check at merge: **RM399+441** live in the enricher only (`derivation_records.py`, `DERIVATION_RECORDS`
