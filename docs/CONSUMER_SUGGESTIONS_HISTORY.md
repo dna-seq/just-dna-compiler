@@ -8208,9 +8208,11 @@ the cut.
 to read that one rather than the document's, which every write rewrites. But `merge_records` is newest-wins per check:
 a gap-fill that runs the check again replaces the record, producer included, while the older rows stay in the
 table. So both stamps name the newest enricher, and `needs_rederive(producer, installed)` can answer `False` over rows
-a declared correction still reaches, as you suspected. No per-row or per-table "oldest writer" exists. Until RM441
-decides one, pass the oldest enricher version your catalog knows wrote the table (its first enrich), and treat an
-unknown one as `None`. Measured by reading, not by a gap-fill run.
+a declared correction still reaches, as you suspected. No row or table names the enricher version that wrote it; each
+`resolution.csv` row does carry `fetched_at`, the time it was answered, so a host that records which enricher it ran
+when can map the oldest `fetched_at` to a version. Until RM441 decides a stamp, pass the oldest enricher version your
+catalog knows wrote the table (its first enrich, or the one running at its oldest `fetched_at`), and treat an unknown
+one as `None`. Measured by reading, not by a gap-fill run.
 
 <!-- triaged: taken into RM441 (0.10, preview finding) · sha efbdfe74189a -->
 
@@ -8244,9 +8246,12 @@ per contig.
 of a FASTA that binds all 25 is not known yet.**
 
 Your 10 of 25 matches what the lead measured when building RM385 on the Ensembl primary assembly; we do not know a
-published file that binds all 25. The likely candidate is NCBI's RefSeq GRCh38 sequence set, where the refget
-digests come from, but nobody has measured it, so it is written into RM385 as a measurement to make before 0.10's
-operator guide names a file. The per-contig answer (`FastaReference` naming the contigs it bound, or a field on the
+published file that binds all 25. The expected digests were fetched from the public seqrepo REST, whose GRCh38
+sequences are NCBI's RefSeq ones, so that sequence set is the candidate; but the reader names contigs `1` to `22`,
+`X`, `Y`, `MT` (with or without `chr`), and an NCBI FASTA headed `NC_000001.11` binds nothing until its headers are
+renamed. Nobody has measured one, so it is written into RM385 as a measurement to make before 0.10's operator guide
+names a file. (Corrected 2026-11-27, the same day: the first version of this reply said the digests came from RefSeq
+directly and did not mention the header names.) The per-contig answer (`FastaReference` naming the contigs it bound, or a field on the
 run's check) is a public addition, legal in 0.10, and is RM385's to build. Meanwhile, holding per contig with
 `local_read_problem(chrom, build)` is the right reading of today's surface.
 

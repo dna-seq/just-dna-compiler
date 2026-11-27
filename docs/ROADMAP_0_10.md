@@ -145,8 +145,8 @@ derived table is declared, with `()` if neither does, as 0.8.10's is. (2) **No s
 wrote a row still in a table.** A host reads `from_release` off `verification.json`; the document's `producer` is
 rewritten by every write, and each record's own `producer` (0.7) is replaced too, since `merge_records` is newest-wins
 per check. After a gap-fill over rows an older enricher wrote, both name the new enricher, so
-`needs_rederive(producer, installed)` can answer `False` over rows a declared correction reaches. Read on the branch,
-not measured by a gap-fill run. Whether to add a per-table "oldest writer" stamp, and where it lives (a derived-CSV
+`needs_rederive(producer, installed)` can answer `False` over rows a declared correction reaches. Each `resolution.csv`
+row carries `fetched_at`, a time, never a version. Read on the branch, not measured by a gap-fill run. Whether to add a per-table "oldest writer" stamp, and where it lives (a derived-CSV
 column, a record field, or a statement that a host keeps its own), is the pm's to size; until then the registry was
 told to pass the oldest version its catalog knows wrote the table.
 
@@ -306,8 +306,10 @@ the Ensembl primary assembly; its first digest pass took about 155 s at nice 19 
 planning whether a module's indels can be left-aligned offline, and today only `local_read_problem(chrom, build)`
 answers, as a sentence. **Asked:** a structured per-contig answer (`FastaReference` naming the contigs that bound, or
 a field on the run's check), a public addition legal in 0.10; and the name of a published GRCh38 FASTA that binds all
-25, for the operator guide. Nobody has measured one; NCBI's RefSeq GRCh38 sequence set, where the refget digests come
-from, is the candidate to measure first.
+25, for the operator guide. Nobody has measured one. `REFGET_GRCh38` was fetched from the public seqrepo REST, whose
+GRCh38 sequences are NCBI's RefSeq ones, so that set is the candidate to measure first; the reader keys contigs as
+`1` to `22`, `X`, `Y`, `MT` (`chr` accepted) through `normalize_chrom`, so a FASTA headed `NC_000001.11` binds nothing
+until renamed, which the guide must say or the reader must map.
 
 **Residuals** none yet.
 
