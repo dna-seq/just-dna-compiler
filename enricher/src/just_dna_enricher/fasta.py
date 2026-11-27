@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import threading
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
@@ -14,9 +15,12 @@ from ga4gh.core import digests
 from just_dna_format.layout import atomic_writer
 from just_dna_format.vrs import REFGET_GRCh38, refget_accession
 
+from just_dna_enricher._refseq import GRCH38_ACCESSIONS
+
 logger = logging.getLogger(__name__)
 
 FASTA_SCHEME = "fasta+file:"
+VALID_FASTA_CONTIG_STATUS: frozenset[str] = frozenset({"bound", "digest_mismatch", "absent"})
 _CHROM = {accession: chrom for chrom, accession in REFGET_GRCh38.items()}
 
 
@@ -25,7 +29,34 @@ class FastaConfigurationError(ValueError):
 
 
 @dataclass(frozen=True)
+class FastaContigIdentity:
+    """How an indexed FASTA entry compares with one GRCh38 primary sequence."""
+
+    chrom: str
+    fasta_name: str | None
+    expected_accession: str
+    found_digest: str | None
+    status: str
+
+    def __post_init__(self) -> None:
+        if self.status not in VALID_FASTA_CONTIG_STATUS:
+            raise ValueError(f"unknown FASTA contig status: {self.status!r}")
+
+    def identity_problem(self) -> str | None:
+        """The reason identity prevents a read, or None when the contig is bound."""
+        if self.status == "absent":
+            return f"local FASTA: no such contig {self.chrom}"
+        if self.status == "digest_mismatch":
+            return (
+                f"local FASTA: {self.chrom} digest mismatch "
+                f"(found {self.found_digest}, expected {self.expected_accession})"
+            )
+        return None
+
+
+@dataclass(frozen=True)
 class _Entry:
+    name: str
     length: int
     offset: int
     bases: int
@@ -107,7 +138,7 @@ class FastaReference:
             self.index_stamp = _stamp(self.index.stat())
             for line in self.index.read_text().splitlines():
                 name, length, offset, bases, width = line.split("\t")
-                entry = _Entry(int(length), int(offset), int(bases), int(width))
+                entry = _Entry(name, int(length), int(offset), int(bases), int(width))
                 if (
                     entry.length < 1
                     or entry.offset < 0
@@ -115,7 +146,7 @@ class FastaReference:
                     or entry.width - entry.bases not in (0, 1, 2)
                 ):
                     raise ValueError(f"invalid .fai coordinates for {name}")
-                accession = refget_accession(name)
+                accession = refget_accession(GRCH38_ACCESSIONS.get(name, name))
                 if accession:
                     if accession in self._entries:
                         raise ValueError(f"ambiguous .fai entries for {_CHROM[accession]}")
@@ -157,14 +188,11 @@ class FastaReference:
             self._state.memory = self._digests
             logger.warning("Could not write %s (%s); keeping FASTA digests in memory", self.cache, exc)
 
-    def _verified(self, identifier: str, stream: BinaryIO) -> _Entry:
-        accession = identifier.removeprefix("ga4gh:")
-        chrom = _CHROM.get(accession)
-        if chrom is None:
-            raise ValueError(f"local FASTA: {identifier} is outside the GRCh38 refget table")
+    def _identity(self, accession: str, stream: BinaryIO) -> FastaContigIdentity:
+        chrom = _CHROM[accession]
         entry = self._entries.get(accession)
         if entry is None:
-            raise ValueError(f"local FASTA: no such contig {chrom}")
+            return FastaContigIdentity(chrom, None, accession, None, "absent")
         with self._state.lock:
             if _stamp(os.fstat(stream.fileno())) != self.stamp:
                 raise OSError(f"local FASTA changed while reading {chrom}")
@@ -177,11 +205,40 @@ class FastaReference:
                 if self._state.memory is None:
                     self._save_cache()
             actual = known[accession]
-            if actual != accession:
-                raise ValueError(
-                    f"local FASTA: {chrom} digest mismatch (found {actual}, expected {accession})"
-                )
-        return entry
+        status = "bound" if actual == accession else "digest_mismatch"
+        return FastaContigIdentity(chrom, entry.name, accession, actual, status)
+
+    def contig_identity(self, chroms: Iterable[str] | None = None) -> dict[str, FastaContigIdentity]:
+        """Return identities keyed by canonical GRCh38 chromosome, for all primaries by default.
+
+        A cold full pass reads and hashes every indexed primary in full (about 155 seconds at
+        nice 19 on the registry's Ensembl FASTA). A subset hashes only the requested contigs,
+        and later reads reuse the same cached digests. An off-table request raises ValueError.
+        """
+        if chroms is None:
+            chroms = REFGET_GRCh38
+        elif isinstance(chroms, str):
+            chroms = (chroms,)
+        records = {}
+        with self.path.open("rb") as stream:
+            for chrom in chroms:
+                accession = refget_accession(chrom)
+                if accession is None:
+                    raise ValueError(f"local FASTA: {chrom} is outside the GRCh38 refget table")
+                record = self._identity(accession, stream)
+                records[record.chrom] = record
+        if not self.current():
+            raise OSError(f"indexed FASTA changed while checking contig identity: {self.path}")
+        return records
+
+    def _verified(self, identifier: str, stream: BinaryIO) -> _Entry:
+        accession = identifier.removeprefix("ga4gh:")
+        if accession not in _CHROM:
+            raise ValueError(f"local FASTA: {identifier} is outside the GRCh38 refget table")
+        problem = self._identity(accession, stream).identity_problem()
+        if problem is not None:
+            raise ValueError(problem)
+        return self._entries[accession]
 
     def get_metadata(self, identifier: str) -> dict[str, int]:
         with self.path.open("rb") as stream:

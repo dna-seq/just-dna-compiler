@@ -478,6 +478,7 @@ core was ported, not depended on, dropping `fastmcp`/`eliot`). In the workspace:
 | `constraint_build` | **`[dev]`** builder: gnomAD constraint TSV → gene-level parquet + `release.json` | `polars` (lazy), `httpx` |
 | `vrs` | GA4GH VRS allele-id minting onto `resolution.csv` (substitutions stdlib, indels normalized) | `ga4gh.vrs` |
 | `fasta` | Indexed local GRCh38 FASTA reads and the per-contig digest cache | `ga4gh.core`, format |
+| `_refseq` | Versioned GRCh38 chromosome names shared by the FASTA reader and the CIViC and ClinVar GKM builders | stdlib |
 | `sequences` | reference-sequence access (cached), the reference-allele check, and the one left-alignment every pass uses (`left_normalize`, `normalize_locus`, `spelling_verdict`; RM270 writes a fill left-aligned with it) | `ga4gh.vrs` |
 | `placement` | **0.8** (RM267): where the run's own link placed each rsID against where ClinVar and ClinVar-GKM place it, and, online, where Ensembl REST places a snapshot indel neither holds — by VRS id, else the left-aligned spelling; a disagreement withholds the rsID | `sequences`, `clinvar`, `clinvar_gkm` |
 | `locations` | cache-location resolution — **one `resolve`/`default_dir`/`env_var` triple per lane in `CACHE_LANES`**, paired by a test rather than counted here — plus `.env` and the pull record. The snapshot layout names and `read_release` are imported from `just_dna_format.snapshot` since 0.8 (RM303) and stay importable from here | `platformdirs`, `python-dotenv` |
@@ -740,6 +741,60 @@ rule instead of an apparent inconsistency.
 `gene_validity` and `acmg` accept an already-downloaded export, which cannot egress by construction.
 That is the documented "inject what you already hold" escape.
 
+### Local GRCh38 reference
+
+Since 0.10 (RM385), pass `SequenceProxy(uri="fasta+file:///abs/path.fa")`
+to `enrich(sequences=…)`, or give the URI to `enrich --sequence-uri` or `vrs mint --sequence-uri`.
+The file must be uncompressed and have a FASTA index beside it at `<path.fa>.fai`. The reader seeks
+directly to the requested bases and works with or without `--offline`. The FASTA supplies the entire
+sequence service for that run. The wrong-build diagnosis still needs the GRCh37 service online.
+
+The first request for a contig hashes its uppercased bases with GA4GH `sha512t24u`. Its digest must
+match the format's GRCh38 refget accession before either bases or metadata are returned. The format's
+chromosome fold accepts names such as `chr1` and `1`, or `chrM` and `MT`. The reader also recognizes
+the versioned GRCh38 primary RefSeq names, including `NC_000001.11` and `NC_012920.1`. The index
+may contain alt, patch and unplaced contigs. Two entries naming the same primary are ambiguous and
+the reader refuses the index. In the Ensembl primary assembly trial all 25 chromosome lengths
+agreed, but only ten whole sequences matched. The reader saves the computed digests atomically in `<path.fa>.refget.json`
+and invalidates them when the size or modification time of the FASTA or index changes. On a read-only
+volume it logs once and shares the digests in memory across readers in the process.
+
+To plan an offline run, ask about the chromosomes its indels use. With a local FASTA, the mapping
+is keyed by canonical chromosome (`MT` for `chrM`). Each frozen record gives `chrom`, `fasta_name`
+(the name in the index), `expected_accession`, `found_digest` and `status`.
+
+```python
+from just_dna_enricher.sequences import SequenceProxy
+
+sequences = SequenceProxy(uri=reference_uri)
+identities = sequences.contig_identity(["1", "MT"])
+if identities is not None:
+    can_left_align_mt = identities["MT"].status == "bound"
+```
+
+A `bound` contig can supply bases. A `digest_mismatch` record carries both the computed and
+expected digests. An `absent` record has `None` for the FASTA name and computed digest.
+`contig_identity()` checks all 25 primaries. A cold full pass reads every indexed primary
+sequence in full. The registry measured about 155 seconds at nice 19 on its Ensembl FASTA.
+Later calls reuse the cached digests. Other sequence sources return `None`.
+
+**A FASTA that binds all 25** (measured by the lead, 2026-11-27): NCBI's RefSeq GRCh38 sequence set,
+`GCF_000001405.40_GRCh38.p14_genomic.fna.gz` from
+`https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/000/001/405/GCF_000001405.40_GRCh38.p14/`. Its 25 primaries are named
+by versioned RefSeq accession (`NC_000001.11` … `NC_012920.1`), which the reader maps, and every one matched its
+refget digest; its alt, patch and unplaced contigs are skipped. Unpack it (the reader refuses a compressed file)
+and index it (`samtools faidx`, or any writer of the same five-column `.fai`); the first full
+`contig_identity()` pass over it took 393 s here, later calls read the cached digests. UCSC's `hg38.fa` and
+Ensembl's primary assembly both bind the same 10 of 25 (4, 5, 8, 11, 14, 15, 18, 19, 20, MT): equal lengths,
+different bases elsewhere on the other 15.
+
+The REF record names `fasta` in both `source` and `witness_source` when the local file answers.
+Missing contigs, digest mismatches and off-table coordinates have named reasons in the report. They
+contribute neither a REF comparison nor a normalized VRS ID. If every comparable read fails, the
+check publishes `unreachable`; a module off GRCh38 still gets `unsupported`. When only some reads
+fail, the report gives the checked denominator and describes the omitted reads. Seqrepo answers
+continue to name `seqrepo`.
+
 ## `enrich()` — the resolver chain
 
 ```python
@@ -770,27 +825,6 @@ wants the resolver's reads to go through that proxy, gives the proxy to the reso
 elsewhere. The run reads the proxy through a view of its own, so a failure it sees is held for the run and
 never stored on the caller's proxy. A local seqrepo (`uri="seqrepo+file://…"`,
 with `biocommons.seqrepo` installed by the host) is how a host reads locally with the network up. Offline runs skip both REST and file-backed seqrepo.
-
-**A local GRCh38 reference (0.10, RM385).** Pass `SequenceProxy(uri="fasta+file:///abs/path.fa")`
-to `enrich(sequences=…)`, or give the URI to `enrich --sequence-uri` or `vrs mint --sequence-uri`.
-The file must be uncompressed and have a FASTA index beside it at `<path.fa>.fai`. The reader seeks
-directly to the requested bases and works with or without `--offline`. The FASTA supplies the entire
-sequence service for that run. The wrong-build diagnosis still needs the GRCh37 service online.
-
-The first request for a contig hashes its uppercased bases with GA4GH `sha512t24u`. Its digest must
-match the format's GRCh38 refget accession before either bases or metadata are returned. The format's
-chromosome fold accepts names such as `chr1` and `1`, or `chrM` and `MT`. Equal length alone cannot
-establish identity. In the Ensembl primary assembly trial all 25 chromosome lengths agreed, but only
-ten whole sequences matched. The reader saves the computed digests atomically in `<path.fa>.refget.json`
-and invalidates them when the size or modification time of the FASTA or index changes. On a read-only
-volume it logs once and shares the digests in memory across readers in the process.
-
-The REF record names `fasta` in both `source` and `witness_source` when the local file answers.
-Missing contigs, digest mismatches and off-table coordinates have named reasons in the report. They
-contribute neither a REF comparison nor a normalized VRS ID. If every comparable read fails, the
-check publishes `unreachable`; a module off GRCh38 still gets `unsupported`. When only some reads
-fail, the report gives the checked denominator and describes the omitted reads. Seqrepo answers
-continue to name `seqrepo`.
 
 **`genome_build=None` means "read the module's declaration"** (`spec_genome_build`), not "assume
 GRCh38". It defaulted to the literal `"GRCh38"` and no caller ever passed anything else, which made every
