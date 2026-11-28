@@ -712,6 +712,8 @@ because the rsID row has no position. The one-line switch is `ALL_SPELLINGS_CLAI
 `compiler/src/just_dna_compiler/resolution.py`. This changes the summary keys only. Escalating a site
 witnessed both ways under `--strict` remains RM449's separate question. The integration note and the
 release record's `warnings` axis belong to the cut.
+Round 2 (2026-11-28): Every mirrored-site fill finding is actionable because a coordinate row identifies
+the event, and the tests pin what an empty placement verdict and a recorded `undecided` each mean.
 
 **Residuals** none.
 

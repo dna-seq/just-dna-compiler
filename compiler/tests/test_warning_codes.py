@@ -17,6 +17,7 @@ import ast
 import csv
 import functools
 import io
+import sys
 from pathlib import Path
 
 import pytest
@@ -24,12 +25,19 @@ from just_dna_compiler.compiler import (
     UNCLOSED_PHRASE,
     close_module,
     compile_module,
+    load_csv_rows,
     validate_spec,
 )
+from just_dna_compiler.compiler.fact_checks import _check_gene_validity_currency
+from just_dna_compiler.compiler.validate import _validate_spec
+from just_dna_compiler.compiler.variant_checks import _check_contig_ploidy
+from just_dna_compiler.resolution import resolve_from_table
 from just_dna_compiler.sweep import ModuleOutput, compare_module
 from just_dna_format.findings import CodedWarning, classify, restate
+from just_dna_format.gene_validity import GeneValidityRow
 from just_dna_format.overrides import SUPPRESSED_PHRASE, apply_overrides
 from just_dna_format.resolution import ResolutionRow
+from just_dna_format.spec import VariantRow
 from just_dna_format.vocab import (
     ACTIONABLE_WARNING_CODES,
     CARRIED_WARNING_CODES,
@@ -60,13 +68,23 @@ _YAML = (
 def _coded_calls() -> dict[Path, list[tuple[int, str | None]]]:
     """`{module: [(line, code_or_None)]}` for every `CodedWarning(...)` construction in the tree.
 
-    `code_or_None` is the literal first argument, or `None` where the call passes something the walk
-    cannot read statically — the shape `CodedWarning.restated` uses to carry a code forward.
+    `code_or_None` is the literal first argument or its module constant. Only `CodedWarning.restated`
+    forwards the incoming code (`None` in the walk).
     """
     found: dict[Path, list[tuple[int, str | None]]] = {}
     for root in _SOURCE_ROOTS:
         for path in sorted(root.rglob("*.py")):
-            for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            constants = {
+                target.id: assignment.value
+                for assignment in tree.body
+                if isinstance(assignment, (ast.Assign, ast.AnnAssign))
+                for target in (
+                    assignment.targets if isinstance(assignment, ast.Assign) else [assignment.target]
+                )
+                if isinstance(target, ast.Name)
+            }
+            for node in ast.walk(tree):
                 if not (
                     isinstance(node, ast.Call)
                     and isinstance(node.func, ast.Name)
@@ -75,7 +93,12 @@ def _coded_calls() -> dict[Path, list[tuple[int, str | None]]]:
                 ):
                     continue
                 first = node.args[0]
+                if isinstance(first, ast.Name):
+                    first = constants.get(first.id, first)
                 literal = first.value if isinstance(first, ast.Constant) else None
+                assert literal in VALID_WARNING_CODES or (
+                    path.name == "findings.py" and ast.unparse(node.args[0]) == "self.code"
+                ), f"unrecognised warning code at {path}:{node.lineno}"
                 found.setdefault(path, []).append((node.lineno, literal))
     return found
 
@@ -504,6 +527,105 @@ def test_the_carried_set_is_a_subset_of_the_vocabulary_and_actionable_is_its_com
 
 
 # ── the derivation ───────────────────────────────────────────────────────────────────────────────
+
+
+# Imperatives used in compiler findings to change an authored row, cell, list or file.
+# Suggestions about reading a result, recording provenance or choosing a reference build
+# are not edits that resolve the reported finding.
+_AUTHORED_EDITS = (
+    "replace the rsid row",
+    "replace it with",
+    "author the vcf pos",
+    "correct the row's",
+    "correct the requested or unmatched list",
+    "give the row one symbol",
+    "drop the override rows",
+    "move it to",
+    "delete the vrs_id cell",
+    "spell the length into the allele",
+    "spell the bases out",
+)
+
+
+def _exercise_carried_findings() -> None:
+    for spec in _every_example():
+        _validate_spec(spec)
+
+    # Exercise the alternatives the published examples do not record: a different or
+    # missing witness, an unobservable genotype, a build with no PAR map, and a second curation.
+    spec = _EXAMPLES / "pathogenic_clinvar"
+    variants, errors, _ = load_csv_rows(spec / "variants.csv", VariantRow, "variants.csv")
+    assert not errors
+    placements, errors, _ = load_csv_rows(spec / "resolution.csv", ResolutionRow, "resolution.csv")
+    assert not errors
+    rsid = "rs80356821"
+    loci = [row for row in placements if row.variant_key == rsid]
+    variants = [
+        row
+        for row in variants
+        if row.rsid == rsid or (row.chrom, row.start) == (loci[0].chrom, loci[0].start)
+    ]
+    for verdict in (None, "undecided", "unplaced"):
+        witness = "clinvar" if verdict else None
+        judged = [
+            row.model_copy(update={"placement_verdict": verdict, "placement_witness": witness})
+            for row in loci
+        ]
+        resolve_from_table(variants, {rsid: judged})
+    unobservable = next(row for row in variants if row.rsid == rsid).model_copy(update={"genotype": "*/*"})
+    resolve_from_table([unobservable], {rsid: loci})
+    resolve_from_table(variants, {rsid: loci}, genome_build="GRCh37")
+    _check_contig_ploidy(
+        [VariantRow(chrom="Y", start=359845, genotype="A/G", state="risk", conclusion="SHOX")], "T2T"
+    )
+
+    source = _EXAMPLES / "hboc_palb2" / "gene_validity.csv"
+    curations, errors, _ = load_csv_rows(source, GeneValidityRow, source.name)
+    assert not errors
+    row = curations[0]
+    for date in (None, curations[1].classification_date):
+        _check_gene_validity_currency([row, row.model_copy(update={"classification_date": date})])
+
+
+@pytest.mark.parametrize("legacy", [False, True], ids=["spec", "ensembl-cache"])
+def test_no_carried_warning_proposes_an_authored_edit(monkeypatch: pytest.MonkeyPatch, legacy: bool) -> None:
+    """Check the rendered sentences and require the fixtures to visit every carried construction site."""
+    expected = {
+        (path, line, code)
+        for path, sites in _coded_calls().items()
+        if path.is_relative_to(_SOURCE_ROOTS[2]) == legacy
+        for line, code in sites
+        if code in CARRIED_WARNING_CODES
+    }
+    seen: set[tuple[Path, int, str]] = set()
+    edits: set[tuple[str, int, str, str]] = set()
+    construct = CodedWarning.__new__
+
+    def record(cls: type[CodedWarning], code: str, message: str) -> CodedWarning:
+        warning = construct(cls, code, message)
+        if warning.carried:
+            caller = sys._getframe(1)
+            path = Path(caller.f_code.co_filename)
+            if caller.f_code is not CodedWarning.restated.__code__:
+                seen.add((path, caller.f_lineno, code))
+            for phrase in _AUTHORED_EDITS:
+                if phrase in message.casefold():
+                    edits.add((path.name, caller.f_lineno, code, phrase))
+        return warning
+
+    monkeypatch.setattr(CodedWarning, "__new__", staticmethod(record))
+    if legacy:
+        resolver = pytest.importorskip("just_dna_enricher.resolver")
+        cache = _REPO / "assets" / "ensembl_split_multialt" / "split"
+        row = VariantRow(rsid="rs1569493663", genotype="C/CAG", state="risk", conclusion="SHOX")
+        for build in ("GRCh38", "GRCh37"):
+            resolver.resolve_variants([row], cache, genome_build=build)
+    else:
+        _exercise_carried_findings()
+    # A restatement (table prefix) is also checked for edit language. Only constructors
+    # that choose a code have a fixed (site, code) pair in the source walk.
+    assert seen == expected
+    assert not edits, sorted(edits)
 
 
 def test_the_summary_accounts_for_every_warning_and_carried_is_a_subset_of_them() -> None:
@@ -1064,8 +1186,6 @@ def test_no_two_codes_share_an_identical_message_across_the_corpus(tmp_path: Pat
     summary would then depend on which side ran first — a published field decided by evaluation
     order. Checked over every message the whole reference corpus actually produces.
     """
-    from just_dna_compiler.compiler import _validate_spec
-
     by_message: dict[str, set[str]] = {}
     for spec in _every_example():
         # The internal entry point, because it hands back the classified list — the public one's

@@ -41,6 +41,14 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md). The `0.8` branch merged into `main` at the 0.8.0 cut (2026-11-05).
 
+## 2026-11-28 — 0.10 review round 2: mirrored rsID fill warnings are actionable (a minor, for 0.10)
+
+A catalog can now subtract `compilation.carried` from `compilation.warnings` and still show the
+author every `rsid_genotype_reads_as_two_events` finding (RM460, single 1). Replacing the rsID row
+with the intended event’s coordinate clears each one, including a fill narrowed by a witness.
+The tests also pin the words that tell an empty placement verdict from a second source that was
+asked and could not decide (single 6).
+
 ## 2026-11-28 — 0.10 review round 1: new public Python names are documented in each tier (a minor, for 0.10)
 
 The tier references now name the public definitions added since `v0.9.0` (C6). A caller can

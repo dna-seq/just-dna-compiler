@@ -147,7 +147,7 @@ Feature: Resolution from the injected table
 
   # source: compiler/src/just_dna_compiler/resolution.py
   # anchor: resolve_from_table
-  @code:rsid_genotype_reads_as_two_events @carried @both_modes
+  @code:rsid_genotype_reads_as_two_events @actionable @both_modes
   Scenario: an rsID row's indel genotype reads as an insertion and as a deletion at one position, and is filled
     Given an rsID-only row whose genotype "C/CT" is hosted by both "C>CT" and "CT>C" at one position
     When the module is compiled
@@ -159,7 +159,7 @@ Feature: Resolution from the injected table
 
   # source: compiler/src/just_dna_compiler/resolution.py
   # anchor: resolve_from_table
-  @code:rsid_genotype_reads_as_two_events @carried @both_modes
+  @code:rsid_genotype_reads_as_two_events @actionable @both_modes
   Scenario: an rsID row's indel genotype reads as two events and no spelling was witnessed
     Given an rsID-only row whose genotype "C/CT" is hosted by both "C>CT" and "CT>C" at one position
     And a second source placed neither as "same_event"
@@ -170,7 +170,7 @@ Feature: Resolution from the injected table
 
   # source: compiler/src/just_dna_compiler/resolution.py
   # anchor: resolve_from_table
-  @code:rsid_genotype_reads_as_two_events @carried @both_modes
+  @code:rsid_genotype_reads_as_two_events @actionable @both_modes
   Scenario: an authored coordinate claims one spelling of a mirrored site
     Given a mirrored insertion and deletion with no placement verdict
     And a coordinate row claiming the deletion with the rsID row's genotype

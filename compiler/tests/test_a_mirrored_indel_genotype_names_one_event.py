@@ -75,7 +75,7 @@ def _assert_finding(
     (finding,) = [w for w in findings if w == sentence]
     assert isinstance(finding, CodedWarning)
     assert sentence in compilation.warnings
-    assert (sentence in compilation.carried) == (code == "rsid_genotype_reads_as_two_events")
+    assert sentence not in compilation.carried
     coded = [w for w in findings if isinstance(w, CodedWarning)]
     expected = Counter(code if w == sentence else w.code for w in coded)
     assert compilation.warnings_summary == expected
@@ -222,6 +222,10 @@ def test_a_site_no_second_source_was_asked_about_keeps_the_expansion_and_says_so
     assert len(_placed(tmp_path / "out")) == 2
     (said,) = [w for w in result.warnings if "no second source was asked" in w]
     assert "so both are filled as before (RM449)" in said
+    assert (
+        "no second source was asked where either is placed (`placement_verdict` is empty: "
+        "an offline run, a ClinVar fill, or a table written before 0.8)"
+    ) in said
     _assert_finding(spec, result, said)
 
 
@@ -311,6 +315,10 @@ def test_a_site_judged_undecided_both_ways_keeps_the_expansion_and_says_so(tmp_p
     assert len(_placed(tmp_path / "out")) == 2
     (said,) = [w for w in result.warnings if _UNDECIDED_PHRASE in w]
     assert "so both are filled as before (RM449)" in said and "108256251" in said
+    assert (
+        "the second source asked could not decide whether either is the same event "
+        "(`placement_verdict` is `undecided`: a run with no reference sequence, such as an offline one)"
+    ) in said
     _assert_finding(spec, result, said)
     # Its own sentence: the not-asked one says `placement_verdict` is empty, which this table contradicts.
     assert not [w for w in result.warnings if "no second source was asked" in w]

@@ -2758,6 +2758,10 @@ and the derived `commercial_use` / `redistribution`). All six are out of `artifa
 `compilation.toolchain` (0.8, RM342) records the Python and polars that wrote the bytes; see
 § identity & integrity for how a comparison reads it.
 
+`compilation.carried` contains the warning sentences that no edit to the spec directory clears.
+In 0.10, `rsid_genotype_reads_as_two_events` counts in `compilation.warnings_summary` and its
+sentences are actionable. The author can identify the event by coordinate.
+
 **`stats` describes the module, not `variants.csv`.** `Stats` is the card/detail block a catalog
 facets on — `variant_count`, `study_count`, `gene_count`/`genes`, `categories` and the three ClinVar
 counters. The gene facets are a **union over every authored table kind carrying a `gene` column**, and
