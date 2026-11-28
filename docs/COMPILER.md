@@ -250,7 +250,9 @@ could not judge, as a run with no reference sequence writes) reads the same way:
 saying the source asked "could not decide whether either is the same event". Whatever the witness, an expansion member re-keyed onto an
 authored coordinate row's exact `(variant_key, genotype)` is not filled: the coordinate row picks its event, and
 the warning names the key. Since 0.10 the mirrored-site fill sentences carry
-`rsid_genotype_reads_as_two_events` in both compile modes (RM460). Where authored rows claim every spelling,
+`rsid_genotype_reads_as_two_events` in both compile modes (RM460). The finding is actionable even when
+a witness narrows the fill to one spelling. Replacing the rsID-only row with the intended event’s
+coordinate clears the ambiguity. Where authored rows claim every spelling,
 the sentence naming the claimed keys carries `rsid_no_hosting_locus` because the rsID row has no position.
 A positional row was already left unplaced where two loci host it. It is a corrected derivation:
 an artifact compiled before 0.8.9 may hold the claim on both spellings. S158 is the report.
@@ -2122,7 +2124,6 @@ each is on this side:
 | `resolution_skipped_cross_build` | resolution and the positional fill are GRCh38-bound (RM15) |
 | `contig_ploidy_undecidable` | the build carries no pseudoautosomal table here, so ploidy cannot be decided |
 | `rsid_expanded_to_multiple_loci` | the source maps one rsID onto several loci and the resolver emits multiple rows |
-| `rsid_genotype_reads_as_two_events` | the same strings describe opposite events at the source's site. The fill reports which spellings it used |
 | `locus_hosting_undecidable` | deciding needs the reference sequence, which this tier never fetches (P2) |
 | `vrs_id_unverifiable` | the recomputation is beyond this tier — `_carried_vrs_warnings` is the shape the split generalises |
 | `vrs_coverage_incomplete` | the alleles a VA does not reach; minting more is not an authored edit |

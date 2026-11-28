@@ -1836,7 +1836,6 @@ CARRIED_WARNING_CODES: frozenset[str] = frozenset(
         "resolution_skipped_cross_build",
         "contig_ploidy_undecidable",
         "rsid_expanded_to_multiple_loci",
-        "rsid_genotype_reads_as_two_events",
         "locus_hosting_undecidable",
         "vrs_id_unverifiable",
         "vrs_coverage_incomplete",

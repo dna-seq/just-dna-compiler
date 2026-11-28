@@ -51,6 +51,14 @@ queries walk the published enricher versions (single 3, RM399 and RM441). A miss
 withholds an all-clear. The newest-release query returns `None` for `repeat_grades.csv` across
 the history through 0.9.0. Its first writer ships in 0.10.0.
 
+## 2026-11-28 — 0.10 review round 2: mirrored rsID fill warnings are actionable (a minor, for 0.10)
+
+A catalog can now subtract `compilation.carried` from `compilation.warnings` and still show the
+author every `rsid_genotype_reads_as_two_events` finding (RM460, single 1). Replacing the rsID row
+with the intended event’s coordinate clears each one, including a fill narrowed by a witness.
+The tests also pin the words that tell an empty placement verdict from a second source that was
+asked and could not decide (single 6).
+
 ## 2026-11-28 — 0.10 review round 1: new public Python names are documented in each tier (a minor, for 0.10)
 
 The tier references now name the public definitions added since `v0.9.0` (C6). A caller can
