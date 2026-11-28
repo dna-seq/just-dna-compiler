@@ -24,11 +24,41 @@ instead of re-deriving it.
 
 Indexed in [RM_TOC.md](RM_TOC.md), which is the complete list and the place to look an item up.
 
+**Built and in review (the pm, 2026-11-28).** Every item of 0.10 is on the `0.10` branch (5e20ce89). Review round 1 of
+at most two runs on it now. The consumers' preview ran on the first batch (992e85b1); the second batch (RM265, RM302,
+RM294, RM350, S167) goes to just-module-creator **in parallel with round 1**, not before it as RELEASE_CYCLE step 6
+encourages for an even minor, because the registry holds its ClinVar-scale re-derive for 0.10's release. Its findings
+are placed with the round's classes.
+
+**Review round 1, placed (the pm, 2026-11-28; classes on 5e20ce89, no blocker found).** By RELEASE_CYCLE step 5:
+a class this release introduced on a new surface is fixed in the release, before round 2, each fixed as a class with
+its catch; what 0.10 did not introduce, or what only withholds, is a known issue in 0.11.
+
+- **In 0.10, before round 2:** C1 (`repeat_grade`'s old-reader break: a test listing new closed-vocabulary members
+  against v0.9.0, the upgrade note fed from it; a 0.9 compiler's `table_file_near_miss` on `repeat_grades.csv` joins
+  the note); C2 (the merged block merges every field over both blocks and keeps an authored value the source does not
+  contradict); C3 (an answered `(gene, repeat_unit, locus_id)` replaces its rows, `--rederive` reaches the pass, the
+  licence row from what the run covered, the grade stripped on write, contested keys counted); C5 (as one class:
+  the one-normalizer test's exemptions re-derived, the pre-0.10 sites riding along); C6; C7. From the single-model
+  list: 2 (`effect_direction` dropped when no row states it, as RM302 drops an unstated register, so a studies
+  module's digest does not move for nothing); 3 (a stub in `allele_function.csv` or `repeat_alleles.csv` withholds
+  that pass, never refuses the run 0.9 ran); 4; 6 only if RM265's specified cross-check is missing, else nothing;
+  7 (fixed here).
+- **C4, split:** in 0.10 the HLA record names the tables it read; widening to diplotype and haplotype names is
+  0.11's, decided (`@roster-is-as-wide-as-the-tables-it-reads`), a known issue of 0.10.
+- **Known issues, 0.11:** 1 (the answer store replays an anchored indel as could-not-ask without a sequence service:
+  a withhold, and the host that asked for the store reads a local FASTA); 5 (a corrupt IPD snapshot reads present:
+  judge by payload); 8 (the genotype-mismatch check reads `conclusion` only).
+- **No change:** 9 (a Python caller passing a bad URI gets the `ValueError` the reference documents); 10's contested
+  count rides on C3.
+- **Round 2** reads RM399, RM441, RM460 and RM385's left-alignment core, which round 1 read lightly, with a fourth
+  model in Grok's place, and gets this list so nothing here is reported again.
+
 ---
 
 # 0.10's scope — a small schema release right after 0.9
 
-Five items, each optional for an author: RM399 with RM441 (one design, which also carries S156's per-table "newest enricher release that could change it"), RM435, RM265 and RM385. RM265's open shape question goes to the maintainer when 0.10 opens, as a fork of its own.
+The items, each optional for an author: RM399 with RM441 (one design, which also carries S156's per-table "newest enricher release that could change it"), RM435, RM265, RM385, RM460, RM468, and from desk #467 RM302, RM350 and RM294. The table above is the list to count from.
 
 **Filed at the 0.9.0 cut (2026-11-19), from 0.9's known issues and residuals:** RM459 (the second known issue, waiting on the registry's S36) and RM460 (the warning code RM449 named for 0.9, placed in 0.10 by the pm); their entries follow RM385. RM458, RM461, RM465 and RM466 were filed here too and went back into 0.9 at the rescope (2026-11-26). **Placed at the redone cut (2026-11-26):** RM468 (S162, a persistent store of live answers, the pm's placement beside RM399 and RM441) moved in from ROADMAP.md, and RM469 (RM461's residual) was filed; both follow RM460.
 
