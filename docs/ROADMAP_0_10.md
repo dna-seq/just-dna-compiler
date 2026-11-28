@@ -311,6 +311,14 @@ GRCh38 sequences are NCBI's RefSeq ones, so that set is the candidate to measure
 `1` to `22`, `X`, `Y`, `MT` (`chr` accepted) through `normalize_chrom`, so a FASTA headed `NC_000001.11` binds nothing
 until renamed, which the guide must say or the reader must map.
 
+**S166 (just-dna-registry, 2026-11-28), item 1, the pm: host-provisioned in 0.10, no lane.** The registry asked whether
+the FASTA is a `CACHE_LANES` lane or the host's to place, and named either answer as workable. Host-provisioned:
+decision (2) above stands, since the file is NCBI's own download with nothing of ours to build or publish, and a lane
+would mirror about 3 GB that the source already serves. INTEGRATION_0_10 names `GCF_000001405.40` (it binds all 25),
+the unpack and `.fai` steps, and the first full digest pass (393 s here, cached after). A lane is filed as a parked
+item, **unparked when** a host asks `prepare_caches` to place the file, or a second host provisions it by hand. Items 2
+and 3 (`sequences=` on `EnsemblResolver` and on `civic_draft`) are the lead's preview fixes on `0.10`.
+
 **Residuals** none yet.
 
 ## RM459 — with the registry's proxy set and Hugging Face off, a gene lookup on clinpgx, cpic, drug_labels or civic answers could-not-ask
