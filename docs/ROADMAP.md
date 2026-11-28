@@ -1228,7 +1228,7 @@ unanswered, and a transcribed table shows the columns without showing the semant
 is the shape, never the demand, so what this instance does is **move the entry from parked-on-demand to
 parked-on-shape** — a smaller and much more answerable place to be parked.
 
-**Register cross-reference (2026-09-27).** [RM302](#rm302--one-conclusion-serves-every-place-a-report-shows-it-a-table-cell-a-details-card-and-an-explanatory-mode-want-different-wordings)
+**Register cross-reference (2026-09-27).** [RM302](ROADMAP_0_10.md#rm302--one-conclusion-serves-every-place-a-report-shows-it-a-table-cell-a-details-card-and-an-explanatory-mode-want-different-wordings)
 gives `conclusion` optional lay and concise wordings, two columns by default. If this item lands a
 separate meta-conclusion table, the maintainer's steer is that the registers may live there instead,
 so the two are decided together.
@@ -2119,120 +2119,6 @@ on a run that reports a counted refusal, or a consumer that cannot inject its ow
 field and rides whichever minor is open.
 
 **Residuals** none yet.
-
-## RM302 — one `conclusion` serves every place a report shows it; a table cell, a details card and an explanatory mode want different wordings
-
-**Parked, the pm (2026-11-16)**, out of `ROADMAP_0_9.md`, under the maintainer's rule for smaller minors (2026-11-15: "lets make em smaller"), [desk #326](https://github.com/winternewt/desk/issues/326) item 3, applied on its default. **Unparks when** a consumer's report shows a conclusion in a second register (a table cell, a card, an explanation) and asks for the authored wording rather than its own, or an author writes two registers into one `conclusion`, when a scope the maintainer highlights touches it, or when the roadmap is empty. The maintainer had placed it in 0.9 by name (the next paragraph); [desk #347](https://github.com/winternewt/desk/issues/347) asks whether it stays parked, gets a 0.11 with the other two, or goes into 0.10. Parked is that question's default.
-
-**0.9, decided 2026-11-04 by the maintainer, after the final measuring run.** v2 never uses the two registers, because its `conclusion` is already lay (R-VOICE-1), so they leave 0.8. The shape decided earlier the same day (two columns on four kinds, inside `content_signature`, and `language` reserved) stands for when the item is built.
-
-**Decided 2026-11-04 by the maintainer: two optional columns, `conclusion_lay` and `conclusion_concise`.** They go on `VariantRow`, `DiplotypeRow`, `PharmVariantRow` and the bin kinds, but not `StudyRow`, because a study's finding is not the report's claim. Both are **inside `content_signature`**, as authored claim text. The name `language` is reserved now, as a separate axis from register. Tools never write a register; that was decided on 2026-09-27.
-
-
-**Severity** medium · **Status** open — **a minor, parked**; principle decided, shape kept
-open (see *Decided*) · **Owner** format (the authored models) + compiler (the parquet columns) ·
-**Motivating case** the maintainer, 2026-09-27: a report shows a variant's conclusion in a table, in a details card and in
-an explanatory mode, and one text cannot be right for all three · *related* RM7, RM28, the "not format
-scope" note on lay-language rendering
-
-**For longevitymap v2 (2026-11-03):** v2 writes for three readers (citizen, geneticist, ageing researcher), which is the register question. See [the group](history/ROADMAP_0_8.md#longevitymap-v2--what-its-requirements-need-from-the-format-taken-into-08-as-a-priority-2026-11-03).
-
-**The ask.** Today every annotation carries one `conclusion`, the detailed wording. The report needs up
-to three **registers** of the same claim: **detailed** (today's text), **lay** (a simpler explanation for
-someone without the background), and **concise** (scientifically accurate but very brief, for a table
-cell). They are one claim written three ways, never three claims.
-
-**Where `conclusion` lives today**, all authored: `VariantRow` (required), every `MeasureBinRow` kind
-(required), `DiplotypeRow` (required), `PharmVariantRow` (required) and `StudyRow` (optional). It is
-also inside `annotations.parquet`'s key, `(variant_key, conclusion, negatives)` (USE_CASES § the S-key
-rework), which constrains every option below.
-
-**What the charter already settles.**
-
-- **Legal as a minor** (P3/P8): new optional columns or a new optional table. `conclusion` itself stays
-  what it is and stays required; it becomes the *detailed* register by declaration, not by rename (a
-  rename is a removal plus an addition, major-only).
-- **Not in any key.** A register is a rendering of the claim the key already identifies. Keying on it
-  would split one effect into several rows whenever an author adds a lay text, the dedup failure the
-  annotations key exists to prevent.
-- **Not the refused "lay-language rendering".** That note (§ Not format scope) is about *generating*
-  patient prose from a CURIE, a presentation job. This is text a curator writes and signs, which is
-  annotation data like `conclusion` is. The entry adds a line there so the two are not read as one.
-- **Priced at full** (P9): every option is authored text, the most expensive layer. The argument for
-  paying is that a consumer cannot derive a correct lay or concise wording from the detailed one
-  without an LLM in the loop, which the charter keeps out of every tier.
-
-**Decided by the maintainer, 2026-09-27.**
-
-- **Tools never write a register; authors and curators may, if they see fit.** No drafter, enricher
-  pass or compiler step fills, rewrites or derives a lay or concise wording, and none is required: a
-  module with only `conclusion` is complete. This is the line the § Not format scope note on
-  lay-language rendering draws from the other side.
-- **Shape: kept open, with two columns as the default.** Unless something below changes it, the build
-  is option 1: two optional columns on the carrying kinds.
-- **The exception is meta-conclusions.** If [RM28](ROADMAP.md#rm28--meta-conclusions-the-predicate-half)
-  lands its own table, the registers may belong there instead (a meta-conclusion is the claim a report
-  most needs in lay words), and the two items then decide the shape together.
-
-**Design options, as they stood before the decision.**
-
-1. **Two optional columns on each carrying kind** (`conclusion_lay`, `conclusion_concise`, names to be
-   audited under P5). Simplest to read and to author row by row; costs two columns on five kinds, and
-   every future register is another column on all five.
-2. **One optional side table** (`conclusions.csv`: the row's key, a closed `register` vocabulary, the
-   text). One CSV, one concern: an author who writes no registers never sees it, a new register is a
-   vocabulary member rather than a column, and the key is the carrying row's own. Costs a join for
-   every consumer and a key per carrying kind.
-3. **A register vocabulary with `detailed` implicit** either way, so `conclusion` never has to move.
-
-**Open questions.**
-
-- Which of the five kinds need registers. `StudyRow.conclusion` is a study's finding, not the report's
-  claim, and may not.
-- Does `content_signature` include the registers? They are authored claim text, so the default reading
-  is yes; the counter-argument is that a lay rewording does not change what the module asserts
-  (`@provenance-beside-a-claim-is-outside-content-identity` decides it).
-- Language is a **separate axis** from register (P5: no overloaded fields). A lay text in German is
-  register `lay`, language `de`; a design that folds the two into one vocabulary would have to be
-  unwound when a second language arrives. Reserve the language axis's name now if it is expected.
-- Does the reference consumer (just-dna-lite) need all three, or `concise` first? That orders the build.
-- Should drafting ever fill a register? The house answer so far is that a provider fills facts, never
-  prose; a register is prose.
-
-## RM350 — HLA allele names are checked for grammar only; whether the allele exists is IPD-IMGT/HLA's list, and no lane reads it
-
-**Parked, the pm (2026-11-16)**, out of `ROADMAP_0_9.md`, under the maintainer's rule for smaller minors (2026-11-15: "lets make em smaller"), [desk #326](https://github.com/winternewt/desk/issues/326) item 3, applied on its default. **Unparks when** an author or a consumer reports an HLA allele name in a module that IPD-IMGT/HLA never assigned; the licence probe this entry starts with needs nothing built and may run meanwhile, when a scope the maintainer highlights touches it, or when the roadmap is empty. The maintainer had placed it in 0.9 by name (the next paragraph); [desk #347](https://github.com/winternewt/desk/issues/347) asks whether it stays parked, gets a 0.11 with the other two, or goes into 0.10. Parked is that question's default.
-
-**0.9, filed 2026-11-04 by the lead**: RM334's residual, placed in 0.9 by the maintainer's RM334 decision ("grammar now, the list in 0.9").
-
-**Severity** low · **Status** open — **a minor, parked**, licence unprobed · **Owner** enricher (a new lane) · **Motivating case** RM334 · *related* RM334
-
-RM334 refuses a malformed HLA name on `allele_function.csv`; a well-formed name that IPD-IMGT/HLA never assigned
-passes. The list is the witness. Its terms are unprobed, so the first step is the licence probe
-(`@probe-the-real-file`), then a lane through CACHE_SURFACE.md's checklist.
-
-**Residuals** none yet.
-
-## RM294 — STRchive's evidence grade has no place in the module, so a Refuted locus is doubted only in a draft note
-
-**Parked, the pm (2026-11-16)**, out of `ROADMAP_0_9.md`, under the maintainer's rule for smaller minors (2026-11-15: "lets make em smaller"), [desk #326](https://github.com/winternewt/desk/issues/326) item 3, applied on its default. **Unparks when** an author or a consumer asks for STRchive's own grade beside the module's tier, or a locus STRchive grades Refuted reaches a published module, when a scope the maintainer highlights touches it, or when the roadmap is empty. The maintainer had placed it in 0.9 by name (the next paragraph); [desk #347](https://github.com/winternewt/desk/issues/347) asks whether it stays parked, gets a 0.11 with the other two, or goes into 0.10. Parked is that question's default.
-
-**0.9, decided 2026-11-04.** The maintainer chose one tier column with the scale declared per module, so a source's own grade cannot sit beside the module's tier. This item waits for 0.9, where a separate home for a source's grade can be weighed (a machine-written side table, or the manifest's provenance block).
-
-
-**Severity** low · **Status** open — **a minor, parked** · **Owner** format / enricher ·
-**Motivating case** RM276's minor half, split off when the warning shipped on 2026-09-27 · *related*
-RM276, RM170, RM165
-
-**For longevitymap v2 (2026-11-03):** a source's evidence grade travelling into a module is the same column family as RM324's tier. See [the group](history/ROADMAP_0_8.md#longevitymap-v2--what-its-requirements-need-from-the-format-taken-into-08-as-a-priority-2026-11-03).
-
-RM276 names a drafted locus STRchive grades `Refuted` or `Disputed`, in a note the drafting run prints
-once. Nothing in the module keeps it, so the next reader of `repeat_alleles.csv` sees `DMD`'s bands
-with no trace of the source's doubt. Carrying it is a minor: an authored column costs full price (P9),
-and STRchive's vocabulary is open upstream (`combobox: true`), so a closed `frozenset` would have to be
-priced against a source that adds members. The alternatives to weigh first are a derived sidecar
-(half price) or the manifest's provenance block, and whether RM170's CIViC answer already fixed the
-shape. Decide on the `0.8` branch.
 
 ## RM345 — `SourceRow` cannot state five licence shapes: AlphaGenome's four, and a host licence that defers to owners a row cannot name
 
