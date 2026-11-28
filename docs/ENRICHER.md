@@ -753,7 +753,7 @@ to `enrich(sequences=…)`. If the host also supplies its own Ensembl resolver, 
 `draft_panel_from_civic(..., sequences=proxy)` for both the anchor and the left-alignment window.
 The host provisions the FASTA and its index. The CLI's `sequence_source` opens an explicit
 local reference before starting the command. `SequenceProxy.local_fasta` identifies that URI
-scheme, and `SequenceProxy.source` gives the source label used in reports.
+scheme (`fasta.FASTA_SCHEME`, the prefix `fasta+file:`), and `SequenceProxy.source` gives the source label used in reports.
 
 On the CLI, `--sequence-uri` selects this reference for `enrich`, `vrs mint`, CPIC `draft` and
 `draft-panel --source civic`. Other panel sources do not read sequence. On `civic reproduce`, the
@@ -787,6 +787,7 @@ if identities is not None:
     can_left_align_mt = identities["MT"].status == "bound"
 ```
 
+The three statuses are `fasta.VALID_FASTA_CONTIG_STATUS`.
 A `bound` contig can supply bases. A `digest_mismatch` record carries both the computed and
 expected digests. An `absent` record has `None` for the FASTA name and computed digest.
 `FastaContigIdentity.identity_problem` gives the reason a contig cannot supply bases, or `None`
@@ -2922,6 +2923,11 @@ Set `JUST_DNA_ANSWER_STORE` to a filename or an existing directory to choose its
 A path that does not yet exist names a file. The setting is read from the environment, then the
 nearest `.env`. An explicitly empty value disables both reads and writes, including when a shell
 exports an empty value over a path in `.env`.
+
+Where a caller passes a store (`enrich(answer_store=…)`, `LookupClients(answer_store=…)`, `answer_run(…)`,
+`AnswerRun(…)`), the accepted values are the type alias `answer_store.StoreSetting`: an open `AnswerStore`, a
+file path as `Path` or `str`, `False` to use no store for that call, or `None` for the location above. `True`
+is refused, since it names no store.
 
 | Source | Release checked before the first lookup | Unit of reuse |
 | --- | --- | --- |

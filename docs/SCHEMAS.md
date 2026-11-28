@@ -1506,7 +1506,7 @@ the record’s evidence list occupies its own row. Genes compare through `gene_k
 retains the first authored gene spelling. `grade` is open and preserves the word after trimming cell padding. Known words are
 `Definitive`, `Strong`, `Moderate`, `Limited`, `Disputed`, `Refuted` and `Provisional`
 (STRchive’s *not yet curated*). An empty grade means the matched record supplied no word.
-`repeat_grade_signature` hashes the key and `dataset`. The descriptive disease label and
+`repeat_grade_signature` hashes the key and `dataset`, the columns `REPEAT_GRADE_FACT_FIELDS` lists in order. The descriptive disease label and
 the provenance fields `source`, `status` and `fetched_at` sit outside that signature.
 The manifest's `RepeatGrades` block records the signature, sources, datasets and row count.
 
