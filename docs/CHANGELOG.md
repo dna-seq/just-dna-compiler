@@ -41,6 +41,13 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md). The `0.8` branch merged into `main` at the 0.8.0 cut (2026-11-05).
 
+## 2026-11-28 — 0.10 review round 1: new public Python names are documented in each tier (a minor, for 0.10)
+
+The tier references now name the public definitions added since `v0.9.0` (C6). A caller can
+look up what an unanswered HLA check returns, which repeat keys contribute to the grade report,
+and what a missing release means for a stored answer. A test reads the tag and compares it with
+the working tree across all three packages, checking both the source docstrings and the tier references.
+
 ## 2026-11-28 — 0.10 review round 1: draft-panel keeps authored panel provenance (a minor, for 0.10)
 
 ClinVar `draft-panel` now includes genes from both `panel_provenance:` and the deprecated `panel:`

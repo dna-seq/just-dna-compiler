@@ -139,6 +139,8 @@ def _read_table(data: bytes, name: str) -> tuple[str, dict[str, str]]:
 
 @dataclass
 class IpdHlaClient:
+    """Read the curators' verbatim files at a pinned IPD-IMGT/HLA release."""
+
     transport: httpx.BaseTransport | None = None
 
     @retry(
@@ -156,6 +158,7 @@ class IpdHlaClient:
             return response.content
 
     def fetch(self, pin: str, name: str) -> bytes:
+        """Return one tagged file's bytes after checking the allele-list header when applicable."""
         url = _url(pin, name)
         try:
             data = self._get(url)
@@ -175,6 +178,8 @@ class IpdHlaClient:
 
 @dataclass
 class AlleleLists:
+    """Assigned names, deletion descriptions and attribution from the same IPD-IMGT/HLA release."""
+
     release: str
     assigned: set[str]
     deleted: dict[str, str]
@@ -255,6 +260,7 @@ def build_snapshot(
 
 
 def load_lists(directory: Path) -> AlleleLists:
+    """Read both lists and the licence after verifying their digests and the lists' release against the snapshot."""
     release = read_release(directory)
     if release is None:
         raise IpdHlaUnavailable(f"No readable IPD-IMGT/HLA release in {directory}")

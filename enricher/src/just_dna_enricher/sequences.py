@@ -99,10 +99,12 @@ class SequenceProxy:
 
     @property
     def local_fasta(self) -> bool:
+        """Whether the configured URI selects an indexed local FASTA."""
         return self.uri.startswith(FASTA_SCHEME)
 
     @property
     def source(self) -> str:
+        """The sequence source named in reports for this URI, either fasta or seqrepo."""
         return "fasta" if self.local_fasta else "seqrepo"
 
     def contig_identity(self, chroms: Iterable[str] | None = None) -> dict[str, FastaContigIdentity] | None:

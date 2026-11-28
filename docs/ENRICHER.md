@@ -751,7 +751,9 @@ Since 0.10 (RM385), pass `SequenceProxy(uri="fasta+file:///abs/path.fa")`
 to `enrich(sequences=…)`. If the host also supplies its own Ensembl resolver, construct it with
 `EnsemblResolver(sequences=proxy)` and pass the same proxy to `enrich`. CIViC drafting accepts
 `draft_panel_from_civic(..., sequences=proxy)` for both the anchor and the left-alignment window.
-The host provisions the FASTA and its index.
+The host provisions the FASTA and its index. The CLI's `sequence_source` opens an explicit
+local reference before starting the command. `SequenceProxy.local_fasta` identifies that URI
+scheme, and `SequenceProxy.source` gives the source label used in reports.
 
 On the CLI, `--sequence-uri` selects this reference for `enrich`, `vrs mint`, CPIC `draft` and
 `draft-panel --source civic`. Other panel sources do not read sequence. On `civic reproduce`, the
@@ -773,8 +775,8 @@ and invalidates them when the size or modification time of the FASTA or index ch
 volume it logs once and shares the digests in memory across readers in the process.
 
 To plan an offline run, ask about the chromosomes its indels use. With a local FASTA, the mapping
-is keyed by canonical chromosome (`MT` for `chrM`). Each frozen record gives `chrom`, `fasta_name`
-(the name in the index), `expected_accession`, `found_digest` and `status`.
+is keyed by canonical chromosome (`MT` for `chrM`). Each frozen `FastaContigIdentity` gives `chrom`,
+`fasta_name` (the name in the index), `expected_accession`, `found_digest` and `status`.
 
 ```python
 from just_dna_enricher.sequences import SequenceProxy
@@ -787,9 +789,16 @@ if identities is not None:
 
 A `bound` contig can supply bases. A `digest_mismatch` record carries both the computed and
 expected digests. An `absent` record has `None` for the FASTA name and computed digest.
-`contig_identity()` checks all 25 primaries. A cold full pass reads every indexed primary
-sequence in full. The registry measured about 155 seconds at nice 19 on its Ensembl FASTA.
+`FastaContigIdentity.identity_problem` gives the reason a contig cannot supply bases, or `None`
+when bound. `SequenceProxy.local_read_problem` explains a withheld interval on the requested build.
+Calling `SequenceProxy.contig_identity` without arguments checks all 25 local primaries. A cold pass reads
+every indexed primary sequence in full. The registry measured about 155 seconds at nice 19 on its Ensembl FASTA.
 Later calls reuse the cached digests. Other sequence sources return `None`.
+
+The local reader, `FastaReference`, exposes the same records through `FastaReference.contig_identity`.
+`FastaReference.current` checks the FASTA and index against their opening file stamps.
+`FastaReference.get_metadata` gives the length of a verified primary, and
+`FastaReference.get_sequence` reads its bases over a zero-based, half-open interval.
 
 **A FASTA that binds all 25** (measured by the lead, 2026-11-27): NCBI's RefSeq GRCh38 sequence set,
 `GCF_000001405.40_GRCh38.p14_genomic.fna.gz` from
@@ -1818,9 +1827,9 @@ outside the recorded history. A backwards span raises `ValueError`.
 | `False` | Every release in the span was examined and none declared a change reaching this table. A consumer can keep its derived copy across that upgrade. |
 | `None` | No matching change is known and some of the span is uncovered. Keeping the table on the strength of this answer would treat missing evidence as a measurement. |
 
-`rederive_reasons` returns two tuples in release order. Each pair in `.changes` gives the enricher
-release and a frozen change with its table, cause and roadmap items. For `lane_moved`, it also gives
-the cache lane and its old and new release labels. In 0.8.0 the old Ensembl snapshot stated no
+`rederive_reasons` returns a `RederiveReasons` record with two tuples in release order. Each pair
+in `.changes` gives the enricher release and a frozen `DerivationChange` with its table, cause
+and roadmap items. For `lane_moved`, it also gives the cache lane and its old and new release labels. In 0.8.0 the old Ensembl snapshot stated no
 label, so `old_release` is `None` even though the move is known. For `derivation_corrected`, the
 items identify the corrected calculation. The licence table is keyed as `sources.csv` and can
 also be queried as `licensing.csv`. The reach is table-wide. For RM438, for example, the reader
@@ -1947,6 +1956,12 @@ headers. Their original bytes live under `data/`. The root carries the tagged li
 `release.json`, including each list's digest. For a local build, pass `--source` to
 `ipd-imgt-hla build` with the path to `Allelelist.txt` beside `Deleted_alleles.txt` and `LICENCE.md`.
 
+For Python callers, `locations.default_ipd_imgt_hla_cache_dir` gives the default lane directory.
+`resolve_ipd_imgt_hla_reference` returns the selected directory if both lists, the licence and the
+release record exist, or `None` if any file is missing. `IpdHlaClient.fetch` reads a file from the
+pinned tag. `load_lists` verifies the installed files against the snapshot before returning
+`AlleleLists`, which carries the assigned names, deletion descriptions and attribution.
+
 For a module naming HLA alleles, `enrich` reads `allele_function.csv`, compares the gene symbol
 case-insensitively and preserves the allele fields and expression suffix. The verification detail
 names the table that supplied the roster. A load error, including a scaffold placeholder, skips
@@ -1958,8 +1973,13 @@ A name absent from both lists gets a warning naming the release, since a newer r
 Both findings warn under `--strict`. With no usable list, the record says why the check could not ask.
 `--offline` reads a provisioned copy. A module without HLA names makes no request and emits no HLA record.
 
-An answered check credits IPD-IMGT/HLA at the PGx checks' `annotation` layer. Its notice carries
-the curators' three citations and their two conditions, cut from the tagged licence, whose whole text
+In Python, `ipd_imgt_hla.authored_names` reads the roster and `check_names` checks it against
+the release. An empty roster returns `None`. With names to check, `HlaAssignmentCheck.findings`
+is zero when all are assigned, positive for deleted or unassigned names, and `None` when the
+reference could not answer. `check_module_names` also records the tables read or an input error.
+
+After an answered check, `record_attribution` credits IPD-IMGT/HLA at the PGx checks' `annotation` layer.
+Its notice carries the curators' three citations and their two conditions, cut from the tagged licence, whose whole text
 `license_sha256` binds. A licence row the module already has is merged, never rewritten, so it keeps its
 own notice and declaration. The licence allows commercial use and
 redistribution of unchanged material with attribution. The curators oppose mirroring and require
@@ -2872,7 +2892,8 @@ resolver and a roster row since RM176.
 
 ### The live answer store
 
-Since 0.10 an online run can reuse answers across modules. The SQLite file defaults to
+Since 0.10 an online run can reuse answers across modules. `locations.answer_store_path` resolves
+the SQLite file location. It defaults to
 `live-answers.sqlite3` under `$JUST_DNA_PIPELINES_CACHE_DIR` or the usual platform cache base.
 Set `JUST_DNA_ANSWER_STORE` to a filename or an existing directory to choose its location.
 A path that does not yet exist names a file. The setting is read from the environment, then the
@@ -2890,6 +2911,11 @@ goes live on a warm run. A changed build makes only that source's old rows ineli
 release bypasses the store for that source for the run. An Ensembl batch sends only its missing rsIDs,
 and an E-utilities batch sends only its missing UIDs.
 
+`AnswerStore.read` returns the stored answers by key for the requested source and release. `AnswerStore.write`
+persists a batch of answers together, including any explicit absences. `SourceAnswers` scopes these
+operations to a source in the active run. `SourceAnswers.read` counts stored hits, `SourceAnswers.asked`
+counts subjects sent live, and `SourceAnswers.write` saves answers when the release is known.
+
 The scope of a lookup determines its release-probe cost.
 
 * With the defaults, each direct client call or `lookup_*` call probes each release it needs once,
@@ -2901,6 +2927,11 @@ The scope of a lookup determines its release-probe cost.
 * Open `answer_run` around a batch to share one observation per queried source or NCBI database
   across all its lookups. The outer block selects the store and owns the counters. The next batch
   checks the releases again. Remote seqrepo needs zero release probes in every case.
+
+`AnswerRun.current` returns the active run or a fresh one for a standalone call. `AnswerRun.release`
+holds the first probe result for that source, including an unknown release. `AnswerRun.count` adds
+subject counts, and `AnswerRun.report` returns one `AnswerUsage` record per source and release.
+`enrichment_answer_run` starts a fresh report even inside an existing run.
 
 For example, these three hints share one GRCh37 release probe.
 
@@ -2927,7 +2958,8 @@ and WAL protect simultaneous users on the host. Source terms still apply and the
 
 In Python, `enrich(spec_dir, answer_store=...)` accepts a path, an
 `answer_store.AnswerStore` instance, or `False` to bypass the store. Omit the parameter to use the
-configured location. The `enrich` command accepts `--no-answer-store` directly. For any CLI invocation
+configured location. The CLI callback `answer_store_option` scopes the store to one invocation.
+The `enrich` command accepts `--no-answer-store` directly. For any CLI invocation
 you can also put `--no-answer-store` before the command, for example
 `just-dna-enricher --no-answer-store enrich --rederive ./my_module`. The usual resolver chain and
 `--offline` still decide whether a live client is consulted.
@@ -2938,8 +2970,9 @@ served from SQLite and subjects asked live. Release probes, HTTP retries and in-
 increment either count. Each seqrepo accession used has its own release line. The `ld-pairs` command
 also reports this split, and its `requests` count excludes pairs served from SQLite.
 
-A caller asking `esummary("clinvar", ...)` uses the ClinVar database's own build. The enrichment
-chain's ClinVar placements and clinical calls come from the local snapshot. Its currency probe reads
+`EutilsClient.db_build` reads the requested database's build and returns `None` if it cannot
+establish one. A caller asking `esummary("clinvar", ...)` uses the ClinVar database's own build.
+The enrichment chain's ClinVar placements and clinical calls come from the local snapshot. Its currency probe reads
 the live VCF header, and ClinVar-GKM reads its own distribution. Neither goes through E-utilities.
 
 ### When something is wrong with a cache
@@ -5638,6 +5671,9 @@ and no `--use` (MIT grants the fetch, so the gate would answer the same on every
 
 ### Recording STRchive’s association grades (`repeat_grades.py`, 0.10)
 
+The Python pass `enrich_repeat_grades` returns a `RepeatGradeResult`.
+`RepeatGradeResult.subjects` counts each covered, missing or unanswerable repeat key once.
+
 `just-dna-enricher enrich spec/` consults STRchive once for the distinct `(gene, repeat_unit)`
 keys in `repeat_alleles.csv`. It uses the local STRchive cache lane and may provision it when
 online. `--offline` reads a local snapshot, including a bare `STRchive-loci.json`.
@@ -6015,6 +6051,10 @@ So the provider writes a **partial row**: everything ClinVar publishes, with `ge
 and loudly incomplete until someone decides. A re-draft after those decisions adds nothing, because a
 partial row matches on the identity columns rather than on the natural key — that key runs straight
 through the column still holding the stub.
+
+ClinVar `draft-panel` uses `read_draft_spec` to read the build and panel settings even when
+unrelated scaffold cells are unfinished. `build_mismatch` returns a warning if the declared build
+differs from the source assembly, or `None` when they agree.
 
 ClinVar `draft-panel` prints a `panel_provenance:` YAML snippet to paste into
 `module_spec.yaml`. Paste the first block before the next run so that a request that yielded
@@ -6982,6 +7022,8 @@ directly to compose passes, inject clients, or run in-process.
 | `pubmind build` / `publish` | `pubmind_build.download_pubmind_table` + `build_snapshot` / **refuses**, `cli.PUBMIND_PUBLISH_REFUSAL` |
 | `mane build` | `mane_build.discover_current_release` + `download_mane_file` + `build_snapshot` (no publish — see *The caches*) |
 | `opentargets build` / `enrich` | `opentargets_build.download_release` + `build_snapshot` (published through `cache rebuild --publish`, RM408) / `opentargets.enrich_opentargets` |
+| `fasta index` | `fasta_commands.fasta_index` calls `fasta.write_fasta_index` |
+| `ipd-imgt-hla build` | `cache_commands.ipd_imgt_hla_build_` calls `ipd_imgt_hla_build.build_snapshot` |
 | `acmg build` | `acmg_build.build_acmg_snapshot` → `acmg.load_acmg_snapshot` |
 | `draft` | `pgx_draft.draft_gene` |
 | `draft-clinpgx` | `clinpgx_draft.draft_pharm_variants` |

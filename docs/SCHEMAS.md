@@ -536,7 +536,8 @@ Only the load-bearing fields are listed; read the model for the full set and val
 
 On variants, diplotypes, pharmacogenomic variants and every measure bin, `conclusion` is the required
 detailed wording of the report's claim. An author may write the same claim for a lay reader in
-`conclusion_lay` or for a table cell in `conclusion_concise`. Each wording is independently optional.
+`conclusion_lay` or for a table cell in `conclusion_concise`. Both optional fields come from `base.ConclusionRegisters`
+and can be set independently.
 Blank cells leave it unstated, and tools never supply the prose. Both registers are authored text
 inside `content_signature` and neither participates in a key. A module that omits both keeps its
 existing content signature and artifact digest. A study's `conclusion` records the study's own finding.
@@ -1498,14 +1499,16 @@ parquets. All are standalone `BaseModel`s with `extra="forbid"`, for the same re
 is.
 
 **STRchive association grades (0.10, RM294).** `repeat_grades.csv` compiles to
-`repeat_grades.parquet`. The key is `(gene, repeat_unit, locus_id, grade)`. The first two fields
-join to the authored repeat and `locus_id` identifies STRchive’s disease record. Each member of
+`repeat_grades.parquet`. The key is `(gene, repeat_unit, locus_id, grade)`. `repeat_key` returns the
+gene comparison key and repeat unit used to join to the authored repeat. `locus_id` identifies
+STRchive’s disease record. Each member of
 the record’s evidence list occupies its own row. Genes compare through `gene_key`, and the row
 retains the first authored gene spelling. `grade` is open and preserves the word after trimming cell padding. Known words are
 `Definitive`, `Strong`, `Moderate`, `Limited`, `Disputed`, `Refuted` and `Provisional`
 (STRchive’s *not yet curated*). An empty grade means the matched record supplied no word.
 `repeat_grade_signature` hashes the key and `dataset`. The descriptive disease label and
 the provenance fields `source`, `status` and `fetched_at` sit outside that signature.
+The manifest's `RepeatGrades` block records the signature, sources, datasets and row count.
 
 **An article read and not used belongs in `literature.csv`, uncited (RM147).** A row no study, bin
 or pharm row cites is kept in the CSV and dropped from the artifact with `literature_row_uncited` —

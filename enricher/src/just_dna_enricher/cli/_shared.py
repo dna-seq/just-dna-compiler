@@ -35,6 +35,7 @@ SequenceURI = Annotated[
 
 
 def sequence_source(uri: str | None, offline: bool) -> SequenceProxy | None:
+    """Build the proxy for an explicit URI, checking a local FASTA up front. An omitted URI returns None."""
     if uri is None:
         return None
     sequences = SequenceProxy(uri=uri, offline=offline)
