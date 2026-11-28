@@ -1,6 +1,10 @@
 # Lead notes
 
-The lead's working state, rewritten to the present before each reset. Last rewritten 2026-11-16; In flight updated 2026-11-27.
+The lead's working state, rewritten to the present before each reset. Last rewritten 2026-11-16; In flight updated 2026-11-28. Diary: LEAD_DIARY.md
+
+## Retro items
+
+- Retro of 2026-11-27, desk #486: #487 (a committed Codex launch script with the brief preamble), #488 (a committed land-a-build script with the keep-both CHANGELOG/ROADMAP resolver) and #490 (no reply turn for a build-still-running notice) go ahead after their 3-day term (2026-12-01) unless refused; then each is `unattended`, built while the person is away. #489 (shorter merge reports, one daily removal line) is a habit item and waits for the person's yes.
 
 ## First seating (2026-11-03): the handout's first work
 
