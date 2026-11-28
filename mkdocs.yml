@@ -247,7 +247,7 @@ nav:
   # navigated and excluded. It caught exactly that on the first attempt, where this comment had claimed
   # otherwise.
   - Upgrading:
-      - "0.9 → 0.10 (in development)": INTEGRATION_0_10.md
+      - "0.9 → 0.10": INTEGRATION_0_10.md
       - "0.8 → 0.9": INTEGRATION_0_9.md
       - "0.7 → 0.8 (archived)": history/INTEGRATION_0_8.md
       - "0.6.6 → 0.7 (archived)": history/INTEGRATION_0_7.md
@@ -262,7 +262,7 @@ nav:
       - Changelog: CHANGELOG.md
       - Shipped items, with their rationale: ROADMAP_HISTORY.md
       - Open items: ROADMAP.md
-      - Deferred to 0.10: ROADMAP_0_10.md
+      - Deferred to 0.11: ROADMAP_0_11.md
       - Deferred to 1.0: ROADMAP_1_0.md
       - Index of every item: RM_TOC.md
       - Items 1–99: RM_TOC_000_099.md

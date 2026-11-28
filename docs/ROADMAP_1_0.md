@@ -2,7 +2,7 @@
 
 **What this file is.** Items that need a **major**, plus the one item that is release-blocking for it.
 Split out of [ROADMAP.md](ROADMAP.md) on 2026-08-13, alongside the minor-deferral file — then
-`ROADMAP_0_7.md`, now [ROADMAP_0_10.md](ROADMAP_0_10.md), with the closed rounds in
+`ROADMAP_0_7.md`, now [ROADMAP_0_11.md](ROADMAP_0_11.md), with the closed rounds in
 [history/](history/ROADMAP_0_9.md) — so the
 active roadmap describes the line being built.
 
@@ -382,7 +382,7 @@ Closing was the live alternative when the misfiling was found, and the case for 
 low, no incident behind it, and a mechanism reproduced once in sixteen modules is normally grounds to
 close rather than to carry. **It stays open because the fix arrives on its own** — RM15 un-gates the
 fill and the signature becomes an invariant with no work filed against this entry, so filing it as a
-"documented divergence" the way [RM67](ROADMAP_0_10.md#rm67--polyploid-and-partially-phased-genotypes)
+"documented divergence" the way [RM67](ROADMAP_0_11.md#rm67--polyploid-and-partially-phased-genotypes)
 is filed would say the wrong thing — RM67 is **not work**, a limit nobody intends to lift, and this one
 is scheduled. (Neither is *closed*: RM_TOC's ✖ section holds two items and neither of these is one.)
 The other half of the argument is the candidate-repair list above, which is the record of five refusals.

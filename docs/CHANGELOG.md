@@ -278,7 +278,7 @@ upgrade note is [INTEGRATION_0_9.md](INTEGRATION_0_9.md). Publishing to PyPI is 
   Face off, gene lookups on clinpgx, cpic, drug_labels and civic answer could-not-ask until the registry reads
   `KEY_COMPARES`). The first cut's RM458, RM462 and RM454 were built by the rescope; RM460 is in 0.10's scope.
 - **Residuals:** RM459, RM460 and RM469 (RM461's: the pinned-text walk over every module) for 0.10, in
-  [ROADMAP_0_10.md](ROADMAP_0_10.md), opened at this cut with 0.10's scope and RM468; RM441 takes RM467's
+  [ROADMAP_0_10.md](history/ROADMAP_0_10.md), opened at this cut with 0.10's scope and RM468; RM441 takes RM467's
   reason-driven selection. `ROADMAP_0_9.md` closed into [history/](history/ROADMAP_0_9.md), the rescope included, and
   the fifteen items' records are in [ROADMAP_HISTORY § The 0.9 minor](ROADMAP_HISTORY.md#the-09-minor).
   INTEGRATION_0_8 moved to [history/](history/INTEGRATION_0_8.md).
@@ -4244,7 +4244,7 @@ corpus was written — so they were authored that way and nothing could say so.
 
 The corpus is now **13 files and 228 scenarios**, 118 registry-tagged and 110 structural, with 182
 quoted phrases checked against real string literals. **RM149 stays open**: still a draft nobody has
-read, and the second addendum in [ROADMAP_0_8.md](ROADMAP_0_10.md#rm149--expected-behaviour-lives-in-prose-and-the-prose-is-where-two-readers-split)
+read, and the second addendum in [ROADMAP_0_8.md](ROADMAP_0_11.md#rm149--expected-behaviour-lives-in-prose-and-the-prose-is-where-two-readers-split)
 carries the two scoping questions it answered with a measurement — why refusals without a code have no
 registry to walk, and why the phrase check's file scope is right.
 

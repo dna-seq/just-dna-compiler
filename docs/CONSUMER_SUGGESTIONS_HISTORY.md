@@ -5343,7 +5343,7 @@ got this result, and fell back to pasting the DOI into a free-text literature se
 
 ## S114 — the `panel_block_deprecated` replaced-branch warns whether or not you need the three fields it says to keep the block for, so there is no way to signal "accepted"
 
-**Status — accepted, filed as [RM265](ROADMAP_0_10.md#rm265--the-panel-deprecation-has-no-accepted-signal-on-the-replaced-branch-the-warning-fires-whether-or-not-you-need-the-three-fields-it-tells-you-to-keep-the-block-for) (open, a minor), plus a doc fix shipped this pass.** Reproduced against the code: on the `replaced=True` branch (`compiler.py:4231`) `panel_block_deprecated` fires for a fully-migrated module, and its `unreplaced` clause tells the author to keep the block for `genes`/`significance`/`reference_sha256` — so keeping it *is* the permanent warning, with no key to say "accepted". Your reading is exactly right, and it is the state P3 forbids: a deprecation is legal in a minor only where the audience can act, and for these three fields on the replaced branch no replacement exists.
+**Status — accepted, filed as [RM265](ROADMAP_HISTORY.md#rm265--the-panel-deprecation-has-no-accepted-signal-on-the-replaced-branch-the-warning-fires-whether-or-not-you-need-the-three-fields-it-tells-you-to-keep-the-block-for) (open, a minor), plus a doc fix shipped this pass.** Reproduced against the code: on the `replaced=True` branch (`compiler.py:4231`) `panel_block_deprecated` fires for a fully-migrated module, and its `unreplaced` clause tells the author to keep the block for `genes`/`significance`/`reference_sha256` — so keeping it *is* the permanent warning, with no key to say "accepted". Your reading is exactly right, and it is the state P3 forbids: a deprecation is legal in a minor only where the audience can act, and for these three fields on the replaced branch no replacement exists.
 
 The design question RM265 records is whether `panel:` is deprecated *as a whole* or only its reader. Your candidate (1) — a home for the three fields, a `panel_provenance:` sub-block or keys beside `dataset` — is the P3-clean answer and is minor (additive); it is a schema-shape decision for the version interview (where the gene *denominator* lives, and that it is your one lossy field). Your candidate (2) — fire only on `replaced=False` — we are **not** taking on its own: it silences a *true* statement on the modules that keep the block, so they would compile clean until 1.0 removes the block under `extra="forbid"` and the data with it, and P3 makes a major ship its upgrade procedure rather than a silent loss. So (2) is a noise stopgap, not the fix.
 
@@ -7418,7 +7418,7 @@ disagrees. Against it: two fields that can contradict each other; a warning on d
 safe. A narrower alternative is to let `effect_size` carry a sign alone, which the format does not have a way to
 state without inventing a magnitude, so we would not ask for that.
 
-**Status — filed as [RM435](ROADMAP_0_10.md#rm435--a-study-row-has-no-direction-of-its-own-so-a-study-that-prints-its-allele-and-direction-but-no-size-puts-the-direction-in-free-text): a minor; the pm sizes.** Confirmed: a study row has no direction except the sign
+**Status — filed as [RM435](ROADMAP_HISTORY.md#rm435--a-study-row-has-no-direction-of-its-own-so-a-study-that-prints-its-allele-and-direction-but-no-size-puts-the-direction-in-free-text): a minor; the pm sizes.** Confirmed: a study row has no direction except the sign
 of its `effect_size`. The schema already has this field, one table over. `GwasEffectRow.effect_direction` holds
 `increase|decrease`, relative to the row's effect allele, and its description says it is **not** the clinical
 direction, so the two axes stay apart (our Principle 5). RM435 proposes that field on `StudyRow`: same name, same
@@ -7637,7 +7637,7 @@ What we do meanwhile: the registry's lead re-derives the five pre-0.8 modules on
 it. On our side, acting on a declared derived-table correction means a re-derive (`enrich(rederive=True)`), not a
 recompile, which is our change to make once the axis exists.
 
-**Status — filed as [RM441](ROADMAP_0_10.md#rm441--a-release-record-has-no-axis-for-a-correction-to-a-derived-table-so-085s-reads-as-nothing-moved-although-rm438-corrected-resolutioncsv): a minor; the pm sizes.** Confirmed: every axis
+**Status — filed as [RM441](ROADMAP_HISTORY.md#rm441--a-release-record-has-no-axis-for-a-correction-to-a-derived-table-so-085s-reads-as-nothing-moved-although-rm438-corrected-resolutioncsv): a minor; the pm sizes.** Confirmed: every axis
 is compiled output, and the sweep measures by compiling with the committed sidecars, so a correction to enricher
 output cannot show up. Two points from the code, both now in the entry. First, ask 1 cannot be a plain new member.
 `RECOMPILE_DRIVING_AXES` is the vocabulary minus `warnings`, so a new axis would tell you to recompile, when the
@@ -7781,7 +7781,7 @@ constant beside `CACHE_LANES` would do). The first is the more general, since `d
 records and a missing record has to read as *cannot say*; the second is cheaper and is all the convergence check
 needs. Either way it should be readable from the installed package, offline.
 
-**Status — taken into [RM441](ROADMAP_0_10.md#rm441--a-release-record-has-no-axis-for-a-correction-to-a-derived-table-so-085s-reads-as-nothing-moved-although-rm438-corrected-resolutioncsv) as a fourth ask: a minor, 0.9, one design with RM399.**
+**Status — taken into [RM441](ROADMAP_HISTORY.md#rm441--a-release-record-has-no-axis-for-a-correction-to-a-derived-table-so-085s-reads-as-nothing-moved-although-rm438-corrected-resolutioncsv) as a fourth ask: a minor, 0.9, one design with RM399.**
 Confirmed as you describe: `RELEASE_RECORDS` holds compiled-output axes only, and INTEGRATION_0_8 says 0.8.1 and
 0.8.7 "left the compiler alone and have no record". One fact weighs on your two candidates: the records live in
 `just_dna_format.release_records`, and an enricher-only patch does not release the format (0.8.7 left it at 0.8.6).
@@ -7823,7 +7823,7 @@ with the three stages a lane owes, which is RM385's open question 2; a passed UR
 us. Not urgent: our upgrade runs either way, slower.
 
 **Status — the online case is answered by [RM404](ROADMAP_HISTORY.md#rm404--enrich-builds-its-own-ncbi-client-and-sequence-proxy-so-a-host-cannot-pace-them-with-the-rest) in 0.9, the offline case and the lane by
-[RM385](ROADMAP_0_10.md#rm385--offline-enrich-cannot-left-align-an-indel-because---offline-turns-off-the-reference-as-well-as-the-network) in 0.10; folded into both, nothing new filed.**
+[RM385](ROADMAP_HISTORY.md#rm385--offline-enrich-cannot-left-align-an-indel-because---offline-turns-off-the-reference-as-well-as-the-network) in 0.10; folded into both, nothing new filed.**
 Confirmed as you describe: `enrich()` builds `SequenceProxy(offline=offline)` (`enrich/orchestration.py:790`) and hands
 that same proxy to its `VrsMinter` (`:794`), so no caller reaches the URI. RM404, decided for 0.9 by the pm on
 2026-11-16, adds `enrich(..., sequences: SequenceProxy | None = None)` in place of that line, so `verify_ref`, indel
@@ -8068,7 +8068,7 @@ per release, whether it changes what a derivation writes into `resolution.csv` (
 record). Then a consumer keeps a re-derived table across an interval that declares no derivation change, and
 re-derives only on one that does. A release with no record stays *cannot say*, as with `needs_recompile`.
 
-**Status — taken into [RM441](ROADMAP_0_10.md#rm441--a-release-record-has-no-axis-for-a-correction-to-a-derived-table-so-085s-reads-as-nothing-moved-although-rm438-corrected-resolutioncsv), already in 0.10's scope (a minor, built with RM399), as a motivating case.**
+**Status — taken into [RM441](ROADMAP_HISTORY.md#rm441--a-release-record-has-no-axis-for-a-correction-to-a-derived-table-so-085s-reads-as-nothing-moved-although-rm438-corrected-resolutioncsv), already in 0.10's scope (a minor, built with RM399), as a motivating case.**
 
 RM441 gives the release record one route for "re-derive", with the cause named, beside the compiled-output axes.
 Your ask is that route read from the other side, and it holds only if every release states its derive answer,
@@ -8094,7 +8094,7 @@ no egress, and a moved release invalidates exactly its own answers. Where a sour
 answer, not caching it is the right default. A location setting like the snapshot lanes' (so a server puts it on
 the disk it chooses) and a way to say "this answer came from the cache" in the report would be enough for us.
 
-**Status — filed as [RM468](ROADMAP_0_10.md#rm468--the-live-clients-keep-no-answers-between-runs-so-a-re-run-under-unchanged-source-releases-spends-the-same-egress-again), a minor, release undecided, medium, for the pm to size.**
+**Status — filed as [RM468](ROADMAP_HISTORY.md#rm468--the-live-clients-keep-no-answers-between-runs-so-a-re-run-under-unchanged-source-releases-spends-the-same-egress-again), a minor, release undecided, medium, for the pm to size.**
 
 Confirmed as a known gap: ENRICHER.md lists "no response cache for the live clients" among its open questions. Two
 things exist today. A run killed mid-way resumes from its staged answers (`enrich --keep-staging` describes it), and a
@@ -8150,7 +8150,7 @@ around each request, or an internal of `enrich()`.
 label re-probed per run rather than per client; or a documented statement that a host opens
 `answer_run(setting)` around each request, and that `answer_run` is public.
 
-**Status — confirmed, a defect in [RM468](ROADMAP_0_10.md#rm468--the-live-clients-keep-no-answers-between-runs-so-a-re-run-under-unchanged-source-releases-spends-the-same-egress-again) as built on `0.10` (`992e85b1`); taken into RM468 as a preview
+**Status — confirmed, a defect in [RM468](ROADMAP_HISTORY.md#rm468--the-live-clients-keep-no-answers-between-runs-so-a-re-run-under-unchanged-source-releases-spends-the-same-egress-again) as built on `0.10` (`992e85b1`); taken into RM468 as a preview
 finding, so it is built on the branch before 0.10's first review round.**
 
 Confirmed by reading the branch, not by running your stub: a client's own `AnswerRun` is created with the client
@@ -8199,7 +8199,7 @@ Smaller: a span that crosses `0.8.3` or `0.8.8` with no declared change stays `N
 `newest_rederive_release("resolution.csv")` is `0.8.9`. We read both as intended.
 
 **Status — (1) written at the cut by design, and the cut cannot ship without it; (2) confirmed, neither `producer`
-survives a gap-fill, taken into [RM441](ROADMAP_0_10.md#rm441--a-release-record-has-no-axis-for-a-correction-to-a-derived-table-so-085s-reads-as-nothing-moved-although-rm438-corrected-resolutioncsv) as a preview finding.**
+survives a gap-fill, taken into [RM441](ROADMAP_HISTORY.md#rm441--a-release-record-has-no-axis-for-a-correction-to-a-derived-table-so-085s-reads-as-nothing-moved-although-rm438-corrected-resolutioncsv) as a preview finding.**
 
 (1) `DERIVATION_RECORDS` gets its `0.10.0` entry at the cut (RELEASE_CYCLE's cut step, ENRICHER.md "At each cut that
 ships the enricher"), and `test_derivation_records` asserts the installed version has one, so a cut without it fails
@@ -8244,7 +8244,7 @@ binds is to read it, or `local_read_problem(chrom, build)`, which reads the meta
 If the Ensembl primary assembly is the only one you expect hosts to have, say so, and we will hold
 per contig.
 
-**Status — both asks taken into [RM385](ROADMAP_0_10.md#rm385--offline-enrich-cannot-left-align-an-indel-because---offline-turns-off-the-reference-as-well-as-the-network) as preview findings; the structured answer is 0.10 work, and the name
+**Status — both asks taken into [RM385](ROADMAP_HISTORY.md#rm385--offline-enrich-cannot-left-align-an-indel-because---offline-turns-off-the-reference-as-well-as-the-network) as preview findings; the structured answer is 0.10 work, and the name
 of a FASTA that binds all 25 is not known yet.**
 
 Your 10 of 25 matches what the lead measured when building RM385 on the Ensembl primary assembly; we do not know a
@@ -8291,7 +8291,7 @@ Read at `0.10` `d23fd638`:
 **Done would look like**: with a local source passed everywhere a host can pass one, a re-derivation and a draft
 make no `ga4gh.vrs.dataproxy` `Fetching https://` request (a socket-tripwire test on the host's side).
 
-**Status — taken into [RM385](ROADMAP_0_10.md#rm385--offline-enrich-cannot-left-align-an-indel-because---offline-turns-off-the-reference-as-well-as-the-network) as a preview finding: items 2 and 3 built on `0.10` at `135eed6d` (the lead), item 1
+**Status — taken into [RM385](ROADMAP_HISTORY.md#rm385--offline-enrich-cannot-left-align-an-indel-because---offline-turns-off-the-reference-as-well-as-the-network) as a preview finding: items 2 and 3 built on `0.10` at `135eed6d` (the lead), item 1
 host-provisioned in 0.10 with no lane (the pm, `8a117ed7`).**
 
 1. The GRCh38 FASTA stays the host's to place in 0.10, and no `CACHE_LANES` lane is added; the pm recorded it under
@@ -8334,7 +8334,7 @@ and the reader's checks cannot disagree.
 **Not blocking.** The registry builds its setting, download, checksum and gunzip now, and takes whichever arrives;
 until then it would carry `pyfaidx` as a server dependency for this one file.
 
-**Status — taken into [RM385](ROADMAP_0_10.md#rm385--offline-enrich-cannot-left-align-an-indel-because---offline-turns-off-the-reference-as-well-as-the-network) as a preview finding; option 1 built on `0.10` at `af180c27`, merged at
+**Status — taken into [RM385](ROADMAP_HISTORY.md#rm385--offline-enrich-cannot-left-align-an-indel-because---offline-turns-off-the-reference-as-well-as-the-network) as a preview finding; option 1 built on `0.10` at `af180c27`, merged at
 `f3939b83` (the lead). Option 2 is not built; ask again if you still want it after using option 1.**
 
 `just_dna_enricher.fasta.write_fasta_index(path)` writes `<path>.fai` beside an uncompressed FASTA and returns the

@@ -30,6 +30,698 @@ up.
 
 
 
+# The 0.10 minor
+
+Built on the `0.10` branch from 2026-11-27 and cut as `v0.10.0` on 2026-11-28: an even minor, the re-derive signals
+(RM399, RM441), four optional additions (RM435, RM265, RM302, RM294), offline left-alignment against a local FASTA
+(RM385), the live-answer store (RM468), the IPD-IMGT/HLA lane (RM350) and RM460's warning code. RM471, a patch built
+on `main` for a 0.9.1 that was never cut, ships inside 0.10.0 on the pm's word. The scope, the consumers' preview and
+both review rounds' placements are the closed [history/ROADMAP_0_10.md](history/ROADMAP_0_10.md); the known issues
+0.10 ships with are in [INTEGRATION_0_10.md § 4](INTEGRATION_0_10.md#4-known-issues), each an `RMn` in
+[ROADMAP_0_11.md](ROADMAP_0_11.md).
+
+## RM399 — a release cannot declare that a reference snapshot it reads moved, so `needs_recompile` says nothing about re-deriving
+
+**SHIPPED 2026-11-27 on `0.10` (d019f0b9, merged 87ed1229), cut 2026-11-28 as `v0.10.0` — a minor.**
+
+**Residuals** RM478
+
+**In 0.10's scope, the pm (2026-11-16)**: [desk #326](https://github.com/winternewt/desk/issues/326), item 2, applied on its default. 0.10 is a small minor right after 0.9. The status line below predates this.
+
+**0.9, the pm (2026-11-07).** A real consumer's sweep (S132) read the 0.7 → 0.8 record and heard nothing of a corrected derivation that moved about 38% of insertions on the two chromosomes it measured. Principle 3 asks each release to declare its corrections readable offline, and 0.8 did so in prose only. Near free (P9: format tier, no authored column). Whether the 0.8.0 entry can carry the new field as well is the build's to check; if it can, the registry's sweep across 0.7 → 0.8 says re-derive. Shape, by the fewer-entities rule: a field beside the five axes before a record of its own; a new change kind breaks old readers (INTEGRATION_0_8 § 1.11), so it comes last.
+
+**Severity** medium · **Status** open — **a minor, 0.9** · **Owner** format
+(`release_records.py`, `vocab.VALID_RELEASE_CHANGE_KINDS`) with the enricher's default lanes as its subject ·
+**Motivating case** S132 in CONSUMER_SUGGESTIONS_HISTORY.md (just-dna-registry's lead, 2026-11-07) · *related*
+RM372, RM267, RM126, RM181, RM398
+
+**The gap.** `needs_recompile("0.7.0", "0.8.0")` declares 35 changes and none names RM372's snapshot switch,
+`resolution.csv` or a placement. That is the record doing its job: its five axes describe what the compiler
+does with a given spec, and a re-derivation changes the spec's derived input, for which the record has no axis.
+But 0.8 corrected a derivation there: RM267's insertions now land on dbSNP's event, and the registry measured
+roughly 38% of insertions on chr22 and chr9 as naming a different event across the switch. Principle 3 says a
+corrected derivation ships in any release but never silently, declared readable offline. 0.8 declares it in
+prose (INTEGRATION_0_8 § 1.29, the CHANGELOG), and a consumer's sweep, which reads the record, hears nothing.
+
+**What it would be.** A release states, beside its compiled-output changes, which reference lanes its enricher
+now reads at a different release (lane, old label, new label, the items the move corrects), and a reader asking
+across a span learns "re-derive" as well as "recompile". Whether that is a member of `release_records`, a field
+beside the five axes, or its own small record is the design question, and RM181's provenance tracker is a
+different one (what an *edit* moved about a module, not what a *release* moved about its inputs). Nothing here
+changes RM372's lane or any digest.
+
+**Sizing.** A new optional field or vocabulary member in the format tier: a minor, and an old-reader break if
+it is a new change kind, as `toolchain` was (INTEGRATION_0_8 § 1.11). P9: near free; no authored column.
+
+**Built (2026-11-27, on the `0.10` branch).** The enricher's release records declare the
+0.8.0 Ensembl lane move against `resolution.csv`, with RM372, RM267 and the split snapshot's
+release label. The predecessor had no label. A reader can see the move across 0.7 to 0.8
+offline. This required no format or compiler change. **The shape question above is answered**: the route lives in the enricher (`just_dna_enricher.derivation_records`), the package that moves, by the pm's 2026-11-16 call under RM441; the format's release records stay about compiled output.
+Round 1 (2026-11-28): the enricher reference names the change record that identifies a snapshot move.
+Round 2 (2026-11-28): the 0.8.0 record includes the licence row RM383 retires when the committed resolution table or rewritten authority calls no longer name its source.
+
+## RM441 — a release record has no axis for a correction to a derived table, so 0.8.5's reads as "nothing moved" although RM438 corrected `resolution.csv`
+
+**SHIPPED 2026-11-27 on `0.10` (d019f0b9, merged 87ed1229), cut 2026-11-28 as `v0.10.0` — a minor.**
+
+**Residuals** won't fix — a derivation correction's table-wide reach keeps `requires` at `None` until a consumer shows it costing a needless re-derive (decided 2026-11-12, ask 2; RM467's subject list narrows a run meanwhile) · RM478
+
+**In 0.10's scope, the pm (2026-11-16)**: [desk #326](https://github.com/winternewt/desk/issues/326), item 2, applied on its default. 0.10 is a small minor right after 0.9. The status line below predates this.
+
+**S161 (just-dna-registry, 2026-11-19), triage:** the same route read from the other side. The registry keeps a
+re-derived `resolution.csv` when a later gate refuses the compile, and must discard it on any enricher version move,
+because nothing says a release changed no derivation: 0.8.9 → 0.8.10 moved none (RM455 is bookkeeping) and the rule
+still costs a 12.5–37 h re-run. The route answers it only if every release's record states its derive answer, a
+measured "nothing to re-derive" included, so a span with no re-derive entry reads as *keep*, and a release with no
+record stays *cannot say*. A per-row reach for a correction, which S161 and S160 both ask for, is ask 2 here and
+RM467.
+**Severity** low · **Status** open — **a minor, 0.9** (built with RM399, one design) · **Owner**
+format (`vocab.VALID_RELEASE_OUTPUT_AXES`, `release_records`) + compiler (`sweep`) · **Motivating case** S153
+(CONSUMER_SUGGESTIONS_HISTORY.md), S156, S161 · *related* RM399, RM438, RM201, RM120
+
+**The gap.** `VALID_RELEASE_OUTPUT_AXES` is `parquet_schema`, `parquet_bytes`, `content_signature`,
+`manifest_fields` and `warnings`. Every one is compiled output, and the sweep measures them by compiling the
+reference modules with their committed sidecars. A correction to what the enricher derives (`resolution.csv`, the
+fact sidecars) is invisible on that instrument. 0.8.5's record is a measured zero on every axis, and its commit
+says RM438's correction "is enricher output the record does not measure". The registry decides what a release
+changed by reading the record (`release_records.needs_recompile`), so it reads 0.8.5 as moving nothing, and so does
+every consumer that sweeps by the record. RM438 is the kind of change the record exists for: a published value was
+wrong, and only some modules can carry it.
+
+**The three asks, and the design points under each.**
+1. **An axis for derived tables.** A new member of a closed vocabulary is minor-legal (P3) and not a patch. One
+   catch is in the code: `RECOMPILE_DRIVING_AXES` is the vocabulary minus `NON_RECOMPILE_AXES` ("a new axis joins
+   the driving set unless it is explicitly excluded"). A derived-table axis added naively would tell a consumer to
+   *recompile*, when the action a derived-table correction calls for is to *re-derive* (`enrich(rederive=True)`)
+   and then recompile. It needs its own route, a third set or a field saying the action, and not membership in
+   the recompile set.
+2. **A `requires` that reaches the right modules.** Today's grammar is presence of dotted manifest paths. RM438's
+   reach, a module with a coordinate-authored row and no `rsid`, is not spellable in it, so its honest value is
+   `None` ("the reach could not be stated", which a consumer keeps). Whether the manifest should carry a path that
+   makes it spellable is a second question, priced on its own.
+3. **RM438 declared.** Records ship inside the package, so the declaration goes in the next release's record, not
+   an amended 0.8.5. Until the axis exists, the measured and declared halves of a record must agree
+   (`@a-record-written-in-two-passes-drifts-between-them`). So a `correction` on a compiled axis that the sweep
+   measured as zero is not an honest stopgap.
+
+**Meanwhile.** Nothing published needs it. On registry production no row moves, and the five modules still on
+pre-0.8 tables are being re-derived on 0.8.5 by hand. The gap is for the next derived-table correction.
+
+**Sizing (pm, 2026-11-12): 0.9, one design with RM399.** RM399 is the same gap from the other side: a release moved
+a lane the enricher reads (0.8's snapshot switch), and the record could not say "re-derive". Here the enricher's own
+derivation was corrected (RM438), and it cannot say so either. Two fields for one action would be two entities where
+one serves (fewer entities), so the record gains **one route**: a reader across a span learns "re-derive", with the
+cause named (a lane moved, or a derivation corrected) and the items behind it. Under the asks:
+
+1. **Not a recompile axis.** The route is its own set or field, never a member of `RECOMPILE_DRIVING_AXES`, as the
+   entry says; a test holds that "re-derive" is never answered as "recompile".
+2. **`requires` stays `None` for RM438**, the honest "the reach could not be stated". A manifest path to make such a
+   reach spellable is not part of this item; it comes back only when a consumer shows `None` costing it a needless
+   re-derivation.
+3. **RM438 is the route's first declaration**, in the record of the release that ships the route, beside RM399's
+   0.8 snapshot switch if the build can reach the 0.8.0 entry. Until then the CHANGELOG and INTEGRATION_0_8 carry it
+   in prose, and no compiled axis gets a correction the sweep measured as zero.
+
+**A fourth ask, S156 (the registry, 2026-11-16; triage).** The registry's convergence check needs, from the
+installed packages and offline, the newest enricher release whose output for a derived table could differ, so that
+a text-only enricher patch does not send every module with a reason through a re-derivation. Today nothing says it:
+`RELEASE_RECORDS` covers compiled output only, and an enricher-only patch has no record (0.8.1, 0.8.7). One fact
+for the design: the records live in `just_dna_format`, and an enricher-only patch does not release the format, so
+"every enricher release carries a record" needs either a format release per enricher patch or records that live in
+the enricher. A per-table "newest version whose derivation could differ", kept in the enricher beside
+`CACHE_LANES`, is readable from the package that moved. The route this item adds answers "re-derive" across a span,
+so the build answers S156 from the same place rather than with a second mechanism; which side holds it is the pm's
+call in the design. Public surface either way: a minor, as the rest of the item.
+
+**The pm's call (2026-11-16): the enricher holds it.** The fact is about enricher releases, so it ships in the
+package that moves: a per-table "newest enricher version whose derivation could differ", beside `CACHE_LANES`, read
+offline from the installed enricher. A record in `just_dna_format` would force a format release for every enricher
+patch, the opposite of the small patches the maintainer asked for. The release records in the format stay about
+compiled output. It rides with RM441 and RM399, one design, in the minor desk #326 places them in (0.10 as proposed).
+
+**Preview finding (S164, just-dna-registry, 2026-11-27, at `992e85b1`): two things for the cut and one gap.**
+(1) The `0.10.0` `DERIVATION_RECORDS` entry is written at the cut (RELEASE_CYCLE's cut step; `test_derivation_records`
+asserts the installed version has one), and **it must state RM385 and RM460 either way**: an offline run with a local
+FASTA now left-aligns indels it left undecided, and RM460 marks mirrored-site fills, so whether either reaches a
+derived table is declared, with `()` if neither does, as 0.8.10's is. (2) **No stamp names the oldest enricher that
+wrote a row still in a table.** A host reads `from_release` off `verification.json`; the document's `producer` is
+rewritten by every write, and each record's own `producer` (0.7) is replaced too, since `merge_records` is newest-wins
+per check. After a gap-fill over rows an older enricher wrote, both name the new enricher, so
+`needs_rederive(producer, installed)` can answer `False` over rows a declared correction reaches. Each `resolution.csv`
+row carries `fetched_at`, a time, never a version. Read on the branch, not measured by a gap-fill run. Whether to add a per-table "oldest writer" stamp, and where it lives (a derived-CSV
+column, a record field, or a statement that a host keeps its own), is the pm's to size; until then the registry was
+told to pass the oldest version its catalog knows wrote the table.
+
+**Built (2026-11-27, on the `0.10` branch).** RM438's correction is recorded against 0.8.5.
+The same span query reports the affected table, the cause and the items for either kind of
+change. A fully examined span can establish that a kept table is reusable (S161), and the newest
+release that could change a given table is derived from those entries (S156). Every enricher
+release since 0.8.0 has an entry. The cut test checks the tagged and installed versions.
+Round 1 (2026-11-28): the enricher reference names the result type that carries known changes and uncovered releases.
+Round 2 (2026-11-28): both queries walk consecutive enricher releases, withhold on missing records and respect the first release that produced each table, checked against every consecutive tag pair.
+
+## RM435 — a study row has no direction of its own, so a study that prints its allele and direction but no size puts the direction in free text
+
+**SHIPPED 2026-11-27 on `0.10` (457e8989, merged 520e19f6), cut 2026-11-28 as `v0.10.0` — a minor.**
+
+**Residuals** RM478
+
+**In 0.10's scope, the pm (2026-11-16)**: [desk #326](https://github.com/winternewt/desk/issues/326), item 2, applied on its default. 0.10 is a small minor right after 0.9. The status line below predates this.
+
+**Severity** low · **Status** open — **a minor, 0.9** · **Owner** format
+(`spec.StudyRow`) + compiler (the study parquet) · **Motivating case** S148 (CONSUMER_SUGGESTIONS_HISTORY.md) ·
+*related* RM91, RM148
+
+**The gap.** A replication table often prints the effect allele, the direction and the P with no effect size: a
+look-up in an independent cohort, or a meta-analysis that pools the P and gives each arm's direction without a
+pooled estimate. `StudyRow` has `effect_allele` (RM91), and the direction rides on the sign of `effect_size` read
+through `effect_measure`. With no size there is no sign. `VariantRow.direction` is the module's call over every
+study, not this study's finding. So the study's own direction goes in `conclusion`, free text, which nothing checks
+against `effect_allele` or `effect_size`.
+
+**The precedent is already in the schema.** `GwasEffectRow.effect_direction` (since 0.6) is exactly this field on
+the derived GWAS table: `increase|decrease` (`VALID_EFFECT_DIRECTIONS`), relative to the row's effect allele, and
+"**not clinical direction**". Its description says folding the two together would overload one field with two axes
+(P5). The reporter's candidate takes the variant row's vocabulary (`protective|risk|…`). The precedent says the
+study-level field should instead be `effect_direction` with the same members and the same meaning. A study reports
+which way the allele moves the measured trait. Whether that is protective is the module's call, which
+`VariantRow.direction` already makes. Same name, same vocabulary, one meaning across the two tables.
+
+**The ask, in that shape.** Optional `StudyRow.effect_direction`, meaningful only with `effect_allele`, plus a check
+when `effect_size` is also stated. The check is a sign test for a signed measure (`beta`) and a test against 1 for a
+ratio (`OR`, `HR`, `RR`), and it warns on disagreement. That warning is what the reporter names as making two fields
+that can contradict safe. A new optional column is minor-legal (P3, P8), and on the authored layer it is full cost
+(P9). The case for paying it is that today the value is written anyway, into a cell nothing can read. It reaches the
+study parquet like the other 0.3 columns, through the three touch points `@three-touch-points` names.
+
+**Sizing (pm, 2026-11-12): 0.9.** It is a leftover of longevitymap v2, the last zone the maintainer named: the
+reporter is the seat building that module, and the value is being written today into a cell nothing reads, so the
+cost is paid either way. Built in the precedent's shape only: the name `effect_direction`, `VALID_EFFECT_DIRECTIONS`,
+the warning on a stated size that disagrees, and nothing from `VariantRow.direction`'s vocabulary.
+
+**Built (2026-11-27, on the `0.10` branch).** `StudyRow.effect_direction` records the study's
+`increase` or `decrease` relative to its effect allele, including when no size was reported. It
+round-trips through the study parquet and participates in authored identity when stated. A missing
+allele and a direction that contradicts a comparable estimate warn in both modes. Measures with no
+known scale and estimates at the null withhold. Clinical interpretation stays on `VariantRow`, and
+the compiler leaves directions unstated when the author supplied none.
+Round 1 (2026-11-28): the compiler omits the parquet column when every study leaves the direction blank.
+
+## RM265 — the `panel:` deprecation has no "accepted" signal: on the replaced branch the warning fires whether or not you need the three fields it tells you to keep the block for
+
+**SHIPPED 2026-11-28 on `0.10` (ab7a6b2b, merged d257f4e4), cut 2026-11-28 as `v0.10.0` — a minor.**
+
+**Residuals** won't fix — editing `module_spec.yaml` in place waits until an author reports a lost paste
+
+**In 0.10's scope, the pm (2026-11-16)**: [desk #326](https://github.com/winternewt/desk/issues/326), item 2, applied on its default. 0.10 is a small minor right after 0.9. The status line below predates this.
+
+**Stays in 0.9, the pm (2026-11-05)**: a real run hits it: S114 found the warning on every compile of just-dna-lite's three ClinVar panel modules. The status line below predates this.
+
+**Severity** medium · **Status** open — **a minor, release undecided** · **Owner** compiler / format
+(`panel:`, the licence row) · **Motivating case** [S114](CONSUMER_SUGGESTIONS_HISTORY.md#s114--the-panel_block_deprecated-replaced-branch-warns-whether-or-not-you-need-the-three-fields-it-says-to-keep-the-block-for-so-there-is-no-way-to-signal-accepted)
+
+**What was confirmed.** Reproduced against all three just-dna-lite ClinVar panel modules and against
+the code. `panel_block_deprecated` fires on the `replaced=True` branch (`compiler.py:4231`) for a
+module that has done everything the migration asks — its `clinvar/annotation` licence row carries a
+non-empty `dataset`, so the block's one machine reader (the enricher's clin_sig cross-check) is
+migrated. The message's closing clause, correct since S69, is that `genes`, `significance` and
+`reference_sha256` "have no replacement anywhere — keep the block until 1.0 if you need them recorded."
+But keeping the block *is* the permanent warning: the block emits `panel_block_deprecated` whether or
+not those fields are wanted, and there is no key to say "accepted, I need the three, stop." A consumer
+who needs them warns forever; a consumer who wants a clean compile drops provenance the format itself
+says has no home. The two outcomes are "warn forever" and "lose data".
+
+**The design question this records.** Is `panel:` deprecated *as a whole*, or only its reader? P3
+deprecates in a minor only where the audience can **act** — the replacement exists and the deprecated
+thing is not still the only record — and for these three fields on the replaced branch no replacement
+exists, which is the state P3 forbids. Two candidate fixes, and the naive one is not free:
+
+- **Give the three fields a non-deprecated home** — a small `panel_provenance:` sub-block, or three
+  keys beside `dataset` on the licence row. This is the P3-clean answer: it completes the replacement,
+  so the deprecation becomes actionable. Cost is P9-full if authored (a `panel_provenance:` block the
+  rare author writes) or P9-half if it rides the machine-written licence row; additive either way, so
+  **minor**. It is a schema-shape decision — where the fields live, whether the gene *denominator*
+  (S114's one lossy field: `cardio` requested 327 genes, 297 matched a variant, the 30 that matched
+  none are absent from `variants.csv`) is a list or a count — and belongs in the version interview,
+  not an unattended pass.
+- **Fire `panel_block_deprecated` only on the `replaced=False` branch** (patch). Tempting and **not
+  free**: it silences a *true* statement on exactly the modules that keep the block for the three
+  fields, so they compile clean until 1.0 removes the block under `extra="forbid"` and the data with
+  it. P3 requires a major to ship its upgrade procedure; theirs would read "lose the data." So this
+  mitigates the noise at the cost of hiding the loss — a stopgap, not the resolution.
+
+**Related.** The idea-book's § D19 (this file) raised the same two candidates against the pre-S69
+message; S114 is its sharpened, corpus-backed form. The stale RM4 row in
+[ROADMAP_1_0.md](ROADMAP_1_0.md) § the upgrade tracker still tells the author "delete it, nothing
+replaces it, consumer: no action needed" — corrected there in the same triage pass as a doc fix,
+since that tracker is the procedure P3 turns on.
+
+**Shape, the pm (2026-11-28), on [desk #468](https://github.com/winternewt/desk/issues/468)'s default and the lead's
+proposal.** `panel_provenance:` holds `genes`, `genes_unmatched` (the requested genes that drafted no row),
+`significance` and `reference_sha256`; `source` and `reference` stay on the licence row, which already holds them.
+Outside `content_signature`, manifest-only as `panel:` is, written back by `reverse`. **draft-panel writes no YAML**
+(drafting appends and never mutates an authored file, and a re-dump drops the author's comments): it prints the
+block for the author to paste, and the printed block is the merged one. It reads `module_spec.yaml` when present,
+unions `genes` with the block there, recomputes `genes_unmatched` against `variants.csv` after this run's rows, and
+refuses a different `reference_sha256`, naming both. Editing the file in place is a parked item, **unparked when** an
+author reports a block lost between runs.
+
+**Built (2026-11-28, on the `0.10` branch).** The optional `panel_provenance:` block preserves
+the requested and unmatched genes, significance predicate and exact reference digest through
+compile and reverse, outside both identity hashes. Validate and compile warn about contradictory
+unmatched lists and give the migration steps for `panel:`. ClinVar `draft-panel` prints the merged
+block on real and dry runs and refuses conflicting snapshot pins before appending rows. The 0.9
+manifest reader ignores the new top-level field. It accepts a consistent panel and rejects a
+manifest carrying either new code in `compilation.warnings_summary`, whose vocabulary it validates.
+The author still pastes the snippet into the YAML. Round 1 (2026-11-28): the draft merges genes from
+both blocks, keeps an authored pin when the snapshot omits its digest, refuses conflicting pins before
+writing, and warns that `genes_unmatched` may overstate when a row leaves its gene unnamed (C2).
+Round 1 (2026-11-28): The panel cross-check collects distinct variant genes through the shared gene comparison.
+Round 1 (2026-11-28): the enricher reference names the helpers that read a draft panel’s spec and compare its build.
+
+## RM385 — offline enrich cannot left-align an indel, because `--offline` turns off the reference as well as the network
+
+**SHIPPED 2026-11-27 on `0.10` (848fbbfb, 3cb28e20, 67644a70 and ad409c26, merged f53fd4e9, d23fd638, 135eed6d and 0ded96cd), cut 2026-11-28 as `v0.10.0` — a minor.**
+
+**Residuals** won't fix — S167's option (2), a provisioning step that builds a missing index and does the first full read for `.refget.json`, is the registry's to ask for again · RM472 · RM476 · RM477 · RM479 · RM480 · RM482
+
+**In 0.10's scope, the pm (2026-11-16)**: [desk #326](https://github.com/winternewt/desk/issues/326), item 2, applied on its default. 0.10 is a small minor right after 0.9. The status line below predates this.
+
+**RM407's residual (the lead, 2026-11-07).** RM407 (0.8.1) cut an indel's VRS mint to one seqrepo read per locus; a local reference here removes those reads altogether.
+
+**S157 (the registry, 2026-11-16; triage): the online case of the same seam.** With the network up, a deployment
+holding a local GRCh38 reference still reads every base over REST; the registry measured a re-derivation at 6.9 h
+with `verify_ref=True` against 3.4 h without, the same table. RM404 (0.9) answers the online half with its
+`sequences=` parameter. What stays here: the offline run, where `offline` outranks an injected proxy (RM404's
+answer 5 to the lead's critic), and the lane with three stages the registry would prefer over a passed URI (open
+question 2). One fact for open question 1: a local seqrepo needs `biocommons.seqrepo`, which the enricher's core
+dependencies leave out on purpose, so the seqrepo route is a new dependency (or an extra) where a FASTA reader
+would not be.
+
+**0.9, by the maintainer's word (2026-11-05)**, relayed by the lead; entry written by the pm.
+
+**Severity** low · **Status** open — **a minor, 0.9** · **Owner** enricher (`sequences.py`) · **Motivating
+case** the registry's catalog sweep enriches offline by default, so on 0.8 its indels must be enriched online
+(the lead's advice for the registry's M12, 2026-11-05); and S132 (the registry's 0.8 replay, 2026-11-07), where
+an offline re-derivation left 23 subjects `undecided` that a local reference would have turned into `respelled`;
+and S157 (the registry, 2026-11-16), the online case · *related* RM273, RM270, RM381, RM382, RM404
+
+**The gap.** Every reference base the enricher reads goes through `SequenceProxy`: left-aligning an indel
+(`_left_align`, RM273), minting an indel's VRS id, and the reference-allele check. Its default is the public
+seqrepo REST service, and `offline=True` makes every read return `None`. So an offline run has no reference
+at all, and an indel's caller spelling is withheld rather than produced. Two things are joined here that need
+not be: *no network* and *no reference*. `create_dataproxy` already accepts a local seqrepo
+(`seqrepo+file:///…`), and `SequenceProxy.uri` is a setting, but `offline` short-circuits before the URI is
+looked at, so a local reference cannot serve an offline run today.
+
+**What it would be.** An offline run reads a local reference when one is configured, and only withholds when
+none is. "No reference configured" stays a named could-not-ask, never an absence (`@unreachable-not-absent`).
+
+**Open questions, for 0.9's interview.**
+
+1. **Which local reference.** A local seqrepo is what `create_dataproxy` already reads, but it is large and
+   needs its own tool to build. A GRCh38 FASTA is the form deployments already hold, and would need a small
+   reader of our own. Measure both before choosing (`@probe-the-real-file`).
+2. **Where it is configured.** A setting beside the other cache lanes, with the three stages a lane owes
+   (`CACHE_SURFACE.md`), or a URI the operator passes. The fewer-entities rule weighs toward the URI.
+
+**The trial (the pm, 2026-11-27; run on Codex against the local Ensembl GRCh38 primary-assembly FASTA and its `.fai`).**
+Replaying the committed answers of the reference modules offline, through the enricher's own `left_normalize`,
+`verify_reference_alleles` and `VrsMinter.mint` behind a small FASTA reader (`get_sequence`, `get_metadata`):
+
+- **198 of 198** distinct GRCh38 indels (199 observations, five modules) reproduced their committed left-aligned spelling
+  and VRS id; three historical spellings from module READMEs moved to their recorded leftmost coordinates; all 432
+  reference-allele subjects of the five whole tables agreed with their committed record.
+- **Cost:** 0.57 ms per input for all three operations, 27 µs mean per FASTA read; 16 ms to open; peak RSS 157 MiB.
+- **The FASTA's identity is not the refget sequence on 15 of 25 chromosomes.** Every length matches, but the
+  whole-sequence digest matches only on 4, 5, 8, 11, 14, 15, 18, 19, 20 and MT; 15 of the 198 indels sit on a
+  mismatched chromosome (and still read the right bases at their loci). A full digest pass costs 25 s.
+- No local seqrepo snapshot exists on this machine, so that half was not measured.
+
+**Decided from it (the pm; the entry's two questions were the pm's).** (1) **A FASTA, not seqrepo**: the familiar file a
+deployment already holds reproduced every committed answer, and seqrepo's size and extra dependency buy nothing the
+trial needed. (2) **A URI, not a cache lane** (the recorded preference): the lookups need no lane, and a lane's three
+stages are cost without a consumer asking for provisioning. (3) **Identity is checked per contig, never assumed**: at
+first use the reader digests each contig it is asked for and binds a `ga4gh:SQ` only where the digest matches the
+refget table (the result cached beside the FASTA, keyed by its size and mtime); a missing or mismatched contig is
+could-not-read, named with its reason (`@unreachable-not-absent`), never answered. (4) The reports name the source
+actually used: the REF attestation's hardcoded `source="seqrepo"`, the CLI's combined offline/GRCh37 skip notice and
+the minter's "rerun online" advice each say the local reference where it answered. Offline stays network-free: the
+explicit local reader is the one sequence source the offline gate admits.
+
+**Preview finding (S165, just-dna-registry, 2026-11-27, at `992e85b1`): a host needs to ask which contigs a FASTA
+binds, and a file that binds all 25.** The registry reproduced the 10 of 25 (4, 5, 8, 11, 14, 15, 18, 19, 20, MT) on
+the Ensembl primary assembly; its first digest pass took about 155 s at nice 19 beside a test suite. It decides at
+planning whether a module's indels can be left-aligned offline, and today only `local_read_problem(chrom, build)`
+answers, as a sentence. **Asked:** a structured per-contig answer (`FastaReference` naming the contigs that bound, or
+a field on the run's check), a public addition legal in 0.10; and the name of a published GRCh38 FASTA that binds all
+25, for the operator guide. Nobody has measured one. `REFGET_GRCh38` was fetched from the public seqrepo REST, whose
+GRCh38 sequences are NCBI's RefSeq ones, so that set is the candidate to measure first; the reader keys contigs as
+`1` to `22`, `X`, `Y`, `MT` (`chr` accepted) through `normalize_chrom`, so a FASTA headed `NC_000001.11` binds nothing
+until renamed, which the guide must say or the reader must map.
+
+**S166 (just-dna-registry, 2026-11-28), item 1, the pm: host-provisioned in 0.10, no lane.** The registry asked whether
+the FASTA is a `CACHE_LANES` lane or the host's to place, and named either answer as workable. Host-provisioned:
+decision (2) above stands, since the file is NCBI's own download with nothing of ours to build or publish, and a lane
+would mirror about 3 GB that the source already serves. INTEGRATION_0_10 names `GCF_000001405.40` (it binds all 25),
+the unpack and `.fai` steps, and the first full digest pass (393 s here, cached after). A lane is filed as a parked
+item, **unparked when** a host asks `prepare_caches` to place the file, or a second host provisions it by hand. Items 2
+and 3 (`sequences=` on `EnsemblResolver` and on `civic_draft`) are the lead's preview fixes on `0.10`.
+
+**Preview finding (S167, just-dna-registry, 2026-11-28, at `135eed6d`): nothing in the enricher writes the `.fai` its
+reader needs.** ENRICHER.md tells a host to index the FASTA with `samtools faidx` "or any writer of the same
+five-column `.fai`", and a host that runs only the enricher has no `samtools`, `pysam` or `pyfaidx`. `fasta.py`
+already owns the index's rules (it refuses a `.fai` whose line endings or wrap width disagree with the file), so the
+writer belongs beside the reader. **Asked**, either of: (1) `fasta.write_index(path)`, writing `<path>.fai` for an
+uncompressed FASTA and refusing one it could not then read (mixed wrap widths, a gzip); (2) a provisioning step that
+indexes when the `.fai` is missing and then does the first full read, so `.refget.json` is written at provisioning.
+A public addition, legal in 0.10; the lead builds it on `0.10`. Item 1 above leaves provisioning with the host, so
+(1) fits it as it stands; whether (2) comes as a call the host makes after (1) is the build's to settle. Not blocking:
+until it lands the registry would carry `pyfaidx` for this one file.
+
+**Built (2026-11-28, on the `0.10` branch).** For S167 the host can call
+`write_fasta_index(path)` or run `just-dna-enricher fasta index PATH` on its unpacked FASTA.
+The writer checks each contig's wrapping and line endings before replacing the index. On the MT
+fixture it reproduces the committed samtools index byte for byte. The first digest read remains a
+separate operation.
+Round 1 (2026-11-28): the index takes ordinary file permissions under the operator’s umask.
+
+**Built (2026-11-27, on the `0.10` branch).** The enricher reads an operator's indexed,
+uncompressed GRCh38 FASTA by URI online or offline. It verifies and caches identity per contig,
+shares the reference across alignment, minting and REF checks, and names the witness and unread
+contigs in reports. Seqrepo remains disabled offline. This adds neither provisioning nor a GRCh37
+reference and requires no format or compiler change.
+Round 1 (2026-11-28): the enricher reference names the local FASTA reader and the methods that verify and read a contig.
+Round 2 (2026-11-28): an incomplete FASTA interval withholds alignment, including a deletion whose anchor fits but whose REF extends past the contig, and only complete reads enter the sequence memo (R3).
+
+**Preview finding S165, built (2026-11-27).** The reader and proxy expose the indexed name,
+expected accession, computed digest and binding status per requested GRCh38 primary. The same
+verdict supplies the reason for a withheld local read. Versioned RefSeq headers use the existing
+enricher accession map and go through the same digest and duplicate-name checks. The lead will
+measure which published FASTA binds all 25 and name it in the enricher reference.
+
+**Preview finding S166, built (2026-11-28).** A shared Ensembl resolver and the CIViC drafter now
+accept the host's GRCh38 proxy for indel anchors. CIViC reads its left-alignment windows through
+the same proxy. The run passes its own sequence view to the resolver it builds, while a host's
+resolver keeps its source across runs. `draft-panel --source civic`, CPIC `draft` and the
+`civic reproduce` reference check accept `--sequence-uri`. FASTA provisioning stays with the host.
+No cache lane was added.
+
+## RM302 — one `conclusion` serves every place a report shows it; a table cell, a details card and an explanatory mode want different wordings
+
+**SHIPPED 2026-11-28 on `0.10` (ad489349, merged 393b39ec), cut 2026-11-28 as `v0.10.0` — a minor.**
+
+**Residuals** RM28 · RM474
+
+**Built (2026-11-28, on the `0.10` branch).** Variants, diplotypes, pharmacogenomic variants and
+all measure bins carry optional author-written lay and concise wordings of their detailed conclusion.
+Each stated register enters the content signature and survives compile, reverse and recompile.
+Omitting both preserves existing signatures and artifact bytes. Neither register enters a key.
+The annotation key includes genotype since RM80, and the compiler refuses duplicate variant/genotype
+pairs. `language` is reserved. Studies retain their own finding, and tools supply no register text.
+Round 1 (2026-11-28): the schema reference identifies `ConclusionRegisters` as the shared model for the two optional wordings.
+
+**In 0.10's scope, the pm (2026-11-28)**: [desk #467](https://github.com/winternewt/desk/issues/467) built on its default (all three in), the lead building; an answer before the cut still moves it.
+
+**Parked, the pm (2026-11-16)**, out of `ROADMAP_0_9.md`, under the maintainer's rule for smaller minors (2026-11-15: "lets make em smaller"), [desk #326](https://github.com/winternewt/desk/issues/326) item 3, applied on its default. **Unparks when** a consumer's report shows a conclusion in a second register (a table cell, a card, an explanation) and asks for the authored wording rather than its own, or an author writes two registers into one `conclusion`, when a scope the maintainer highlights touches it, or when the roadmap is empty. The maintainer had placed it in 0.9 by name (the next paragraph); [desk #347](https://github.com/winternewt/desk/issues/347) asks whether it stays parked, gets a 0.11 with the other two, or goes into 0.10. Parked is that question's default.
+
+**0.9, decided 2026-11-04 by the maintainer, after the final measuring run.** v2 never uses the two registers, because its `conclusion` is already lay (R-VOICE-1), so they leave 0.8. The shape decided earlier the same day (two columns on four kinds, inside `content_signature`, and `language` reserved) stands for when the item is built.
+
+**Decided 2026-11-04 by the maintainer: two optional columns, `conclusion_lay` and `conclusion_concise`.** They go on `VariantRow`, `DiplotypeRow`, `PharmVariantRow` and the bin kinds, but not `StudyRow`, because a study's finding is not the report's claim. Both are **inside `content_signature`**, as authored claim text. The name `language` is reserved now, as a separate axis from register. Tools never write a register; that was decided on 2026-09-27.
+
+**Severity** medium · **Status** open — **a minor, 0.10** (desk #467, the pm, 2026-11-28); principle decided, shape kept
+open (see *Decided*) · **Owner** format (the authored models) + compiler (the parquet columns) ·
+**Motivating case** the maintainer, 2026-09-27: a report shows a variant's conclusion in a table, in a details card and in
+an explanatory mode, and one text cannot be right for all three · *related* RM7, RM28, the "not format
+scope" note on lay-language rendering
+
+**For longevitymap v2 (2026-11-03):** v2 writes for three readers (citizen, geneticist, ageing researcher), which is the register question. See [the group](history/ROADMAP_0_8.md#longevitymap-v2--what-its-requirements-need-from-the-format-taken-into-08-as-a-priority-2026-11-03).
+
+**The ask.** Today every annotation carries one `conclusion`, the detailed wording. The report needs up
+to three **registers** of the same claim: **detailed** (today's text), **lay** (a simpler explanation for
+someone without the background), and **concise** (scientifically accurate but very brief, for a table
+cell). They are one claim written three ways, never three claims.
+
+**Where `conclusion` lives today**, all authored: `VariantRow` (required), every `MeasureBinRow` kind
+(required), `DiplotypeRow` (required), `PharmVariantRow` (required) and `StudyRow` (optional). It is
+also inside `annotations.parquet`'s key, `(variant_key, conclusion, negatives)` (USE_CASES § the S-key
+rework), which constrains every option below.
+
+**What the charter already settles.**
+
+- **Legal as a minor** (P3/P8): new optional columns or a new optional table. `conclusion` itself stays
+  what it is and stays required; it becomes the *detailed* register by declaration, not by rename (a
+  rename is a removal plus an addition, major-only).
+- **Not in any key.** A register is a rendering of the claim the key already identifies. Keying on it
+  would split one effect into several rows whenever an author adds a lay text, the dedup failure the
+  annotations key exists to prevent.
+- **Not the refused "lay-language rendering".** That note (§ Not format scope) is about *generating*
+  patient prose from a CURIE, a presentation job. This is text a curator writes and signs, which is
+  annotation data like `conclusion` is. The entry adds a line there so the two are not read as one.
+- **Priced at full** (P9): every option is authored text, the most expensive layer. The argument for
+  paying is that a consumer cannot derive a correct lay or concise wording from the detailed one
+  without an LLM in the loop, which the charter keeps out of every tier.
+
+**Decided by the maintainer, 2026-09-27.**
+
+- **Tools never write a register; authors and curators may, if they see fit.** No drafter, enricher
+  pass or compiler step fills, rewrites or derives a lay or concise wording, and none is required: a
+  module with only `conclusion` is complete. This is the line the § Not format scope note on
+  lay-language rendering draws from the other side.
+- **Shape: kept open, with two columns as the default.** Unless something below changes it, the build
+  is option 1: two optional columns on the carrying kinds.
+- **The exception is meta-conclusions.** If [RM28](ROADMAP.md#rm28--meta-conclusions-the-predicate-half)
+  lands its own table, the registers may belong there instead (a meta-conclusion is the claim a report
+  most needs in lay words), and the two items then decide the shape together.
+
+**Design options, as they stood before the decision.**
+
+1. **Two optional columns on each carrying kind** (`conclusion_lay`, `conclusion_concise`, names to be
+   audited under P5). Simplest to read and to author row by row; costs two columns on five kinds, and
+   every future register is another column on all five.
+2. **One optional side table** (`conclusions.csv`: the row's key, a closed `register` vocabulary, the
+   text). One CSV, one concern: an author who writes no registers never sees it, a new register is a
+   vocabulary member rather than a column, and the key is the carrying row's own. Costs a join for
+   every consumer and a key per carrying kind.
+3. **A register vocabulary with `detailed` implicit** either way, so `conclusion` never has to move.
+
+**Open questions.**
+
+- Which of the five kinds need registers. `StudyRow.conclusion` is a study's finding, not the report's
+  claim, and may not.
+- Does `content_signature` include the registers? They are authored claim text, so the default reading
+  is yes; the counter-argument is that a lay rewording does not change what the module asserts
+  (`@provenance-beside-a-claim-is-outside-content-identity` decides it).
+- Language is a **separate axis** from register (P5: no overloaded fields). A lay text in German is
+  register `lay`, language `de`; a design that folds the two into one vocabulary would have to be
+  unwound when a second language arrives. Reserve the language axis's name now if it is expected.
+- Does the reference consumer (just-dna-lite) need all three, or `concise` first? That orders the build.
+- Should drafting ever fill a register? The house answer so far is that a provider fills facts, never
+  prose; a register is prose.
+
+## RM350 — HLA allele names are checked for grammar only; whether the allele exists is IPD-IMGT/HLA's list, and no lane reads it
+
+**SHIPPED 2026-11-28 on `0.10` (16154b7e, merged 2ac61764), cut 2026-11-28 as `v0.10.0` — a minor.**
+
+**Residuals** RM473 · RM475
+
+**In 0.10's scope, the pm (2026-11-28)**: [desk #467](https://github.com/winternewt/desk/issues/467) built on its default (all three in), the lead building; an answer before the cut still moves it.
+
+**Parked, the pm (2026-11-16)**, out of `ROADMAP_0_9.md`, under the maintainer's rule for smaller minors (2026-11-15: "lets make em smaller"), [desk #326](https://github.com/winternewt/desk/issues/326) item 3, applied on its default. **Unparks when** an author or a consumer reports an HLA allele name in a module that IPD-IMGT/HLA never assigned; the licence probe this entry starts with needs nothing built and may run meanwhile, when a scope the maintainer highlights touches it, or when the roadmap is empty. The maintainer had placed it in 0.9 by name (the next paragraph); [desk #347](https://github.com/winternewt/desk/issues/347) asks whether it stays parked, gets a 0.11 with the other two, or goes into 0.10. Parked is that question's default.
+
+**0.9, filed 2026-11-04 by the lead**: RM334's residual, placed in 0.9 by the maintainer's RM334 decision ("grammar now, the list in 0.9").
+
+**Severity** low · **Status** open — **a minor, 0.10** (desk #467, the pm, 2026-11-28), licence probed · **Owner** enricher (a new lane) · **Motivating case** RM334 · *related* RM334
+
+RM334 refuses a malformed HLA name on `allele_function.csv`; a well-formed name that IPD-IMGT/HLA never assigned
+passes. The list is the witness. Its terms are unprobed, so the first step is the licence probe
+(`@probe-the-real-file`), then a lane through CACHE_SURFACE.md's checklist.
+
+**The licence probe (the pm, 2026-11-28; `ANHIG/IMGTHLA`, branch `Latest`, release 3.66.0 of 2026-10-14).**
+`LICENCE.md`: Creative Commons Attribution-NoDerivs on every copyrightable part; copying, distribution and
+**commercial use allowed** with the three papers cited; the curators are "strongly opposed to the mirroring of the
+data" and a **modified** version needs their permission first. The witness is `Allelelist.txt` (47,425 names,
+`AlleleID,Allele`, 970 KB, a `# version:` header) beside `Deleted_alleles.txt` (291 names with why each went:
+identical to, renamed as). The reference module `hla_alleles`' three names (`A*02:01`, `B*57:01`, `DRB1*15:01`)
+each prefix several assigned alleles at a field boundary.
+
+**Decided from it (the pm).** In 0.10, as a lane fetched **per host** from the curators' own repository at a
+release tag and **never published** (its publish stage absent, with the curators' mirroring request as the
+reason; `@gated-source-caches`): no derived copy leaves the host, and the commercial use the terms allow needs
+only the citation, which its `SourceRow` carries. The answer has three arms and a fourth state: **assigned** (the
+name prefixes a listed allele at a field boundary, an expression suffix read as the grammar reads it),
+**deleted** (on `Deleted_alleles.txt`, its description quoted), **not assigned in release N** (a finding that
+names the release), and **could not ask** when no list is present (`@unreachable-not-absent`), never "not
+assigned". A warning, never a `strict` refusal: a name newer than the host's list is the likely reading.
+
+**Built (2026-11-28, on the `0.10` branch).** The per-host `ipd_imgt_hla` lane fetches the
+curators' tagged lists, validates both in-band versions, and retains their original bytes and licence.
+`enrich` records assignments, exact deletions, release-specific misses, or the reason it could not
+ask. Only a comparison that ran writes the citation notice. The build adds no publisher, derived
+parquet, authored field or strict refusal. The lead runs the live build after merge.
+Round 1 (2026-11-28): The HLA check names its input table, joins mixed-case genes at the stated allele resolution, explains an unreadable input in either mode, and refuses an IPD section missing its header at EOF.
+Round 1 (2026-11-28): the enricher reference and docstrings distinguish an empty HLA roster, an answered assignment check and a check with no usable reference.
+
+## RM294 — STRchive's evidence grade has no place in the module, so a Refuted locus is doubted only in a draft note
+
+**SHIPPED 2026-11-28 on `0.10` (3a1af6e9, merged f77cb518), cut 2026-11-28 as `v0.10.0` — a minor.**
+
+**Residuals** RM482
+
+**In 0.10's scope, the pm (2026-11-28)**: [desk #467](https://github.com/winternewt/desk/issues/467) built on its default (all three in), the lead building; an answer before the cut still moves it.
+
+**Parked, the pm (2026-11-16)**, out of `ROADMAP_0_9.md`, under the maintainer's rule for smaller minors (2026-11-15: "lets make em smaller"), [desk #326](https://github.com/winternewt/desk/issues/326) item 3, applied on its default. **Unparks when** an author or a consumer asks for STRchive's own grade beside the module's tier, or a locus STRchive grades Refuted reaches a published module, when a scope the maintainer highlights touches it, or when the roadmap is empty. The maintainer had placed it in 0.9 by name (the next paragraph); [desk #347](https://github.com/winternewt/desk/issues/347) asks whether it stays parked, gets a 0.11 with the other two, or goes into 0.10. Parked is that question's default.
+
+**0.9, decided 2026-11-04.** The maintainer chose one tier column with the scale declared per module, so a source's own grade cannot sit beside the module's tier. This item waits for 0.9, where a separate home for a source's grade can be weighed (a machine-written side table, or the manifest's provenance block).
+
+**Severity** low · **Status** open — **a minor, 0.10** (desk #467, the pm, 2026-11-28) · **Owner** format / enricher ·
+**Motivating case** RM276's minor half, split off when the warning shipped on 2026-09-27 · *related*
+RM276, RM170, RM165
+
+**For longevitymap v2 (2026-11-03):** a source's evidence grade travelling into a module is the same column family as RM324's tier. See [the group](history/ROADMAP_0_8.md#longevitymap-v2--what-its-requirements-need-from-the-format-taken-into-08-as-a-priority-2026-11-03).
+
+RM276 names a drafted locus STRchive grades `Refuted` or `Disputed`, in a note the drafting run prints
+once. Nothing in the module keeps it, so the next reader of `repeat_alleles.csv` sees `DMD`'s bands
+with no trace of the source's doubt. Carrying it is a minor: an authored column costs full price (P9),
+and STRchive's vocabulary is open upstream (`combobox: true`), so a closed `frozenset` would have to be
+priced against a source that adds members. The alternatives to weigh first are a derived sidecar
+(half price) or the manifest's provenance block, and whether RM170's CIViC answer already fixed the
+shape. Decide on the `0.8` branch.
+
+**Built (2026-11-28, on the `0.10` branch).** The enricher writes each matching STRchive
+locus–disease grade to `repeat_grades.csv`, with the module’s motif spelling and the snapshot
+release. The compiler checks the repeat key and round-trips the table. The module’s tier, repeat
+bands, RM170 checks and RM276 draft note keep their own meanings. No authored column was added.
+Round 1 (2026-11-28): the upgrade note lists the closed members added since v0.9.0, including
+`repeat_grade`, and records the older compiler’s filename warning.
+Round 1 (2026-11-28): Enrich refreshes answered grades and their terms, honors `--rederive`, counts contested repeats once, strips evidence padding, and reports unreadable subjects, with the same gene comparison across repeat checks, PGx rosters and ACMG findings.
+Round 1 (2026-11-28): the tier references name the repeat-grade pass, its subject count and the manifest’s `RepeatGrades` summary.
+
+## RM460 — RM449's warning code `rsid_genotype_reads_as_two_events` was promised for 0.9 and not built, so a mirrored site still borrows two older codes
+
+**SHIPPED 2026-11-27 on `0.10` (e9dd3951, merged b37c11ac), cut 2026-11-28 as `v0.10.0` — a minor.**
+
+**Residuals** RM481 · RM482
+
+**Severity** low · **Status** open — **a minor, 0.10** · **Owner** format (`vocab.VALID_WARNING_CODES`) + compiler
+(`resolution`, the mirrored-site sentences) · **Motivating case** found by the 0.9.0 cut builder (2026-11-19):
+RM449's closure says "0.9 adds `rsid_genotype_reads_as_two_events` and moves these sentences to it", and
+`git diff main...0.9` touches no compiler file and no vocabulary · *related* RM449, RM453, RM378
+
+**Not in 0.9, placed by the pm (2026-11-19).** It was never in 0.9's scope: a new closed-vocabulary code in format
+and compiler is an old-reader break, and 0.9 was scoped to the enricher with both review rounds closed, so a code added
+at the cut would ship unreviewed. 0.9.0 keeps the borrowed codes, exactly as 0.8.10 ships them.
+
+**Which sentences the code would carry, after RM453** (read at the 0.9.0 cut, `compiler/resolution.py`). RM449 (0.8.9)
+had two borrowings: `rsid_no_hosting_locus` where its "witnessed neither" arm left a row unpositioned, and
+`rsid_expanded_to_multiple_loci` where it filled one or more loci. RM453 (0.8.10) fills both spellings where neither
+was witnessed, so the settlement of a mirrored site now leaves no row unpositioned and every one of its sentences
+borrows `rsid_expanded_to_multiple_loci`. What is left for the new code is the fill of a mirrored site: both spellings
+kept (witnessed both ways, or witnessed neither), or narrowed to the witnessed one. **One arm still borrows
+`rsid_no_hosting_locus`**, and the design must decide it: where authored coordinate rows claim every spelling of the
+site, the rsID row's expansion is dropped onto none of them, so the rsID row writes no position and its RM449 sentence
+is counted as no hosting locus. Until the code exists, `warnings_summary` counts a site narrowed to one locus as an
+expansion.
+
+**What it would be.** One new member of `VALID_WARNING_CODES`, the sentences moved to it, and a `features/`
+scenario. A new member of a closed vocabulary is minor-legal (P3) and an **old-reader break**: a format reader older
+than the release refuses a `warnings_summary` key it does not know (measured on `hboc_palb2` at 0.8.9), so the
+INTEGRATION file of the minor that ships it tells consumers to raise their format floor first, as INTEGRATION_0_8 § 1
+did. The release record declares the `warnings` move. Whether the site witnessed both ways is then refused under
+`--strict` is RM449's open question and stays separate.
+
+**Built (2026-11-27, on the `0.10` branch).** The mirrored-site fill sentences now carry
+`rsid_genotype_reads_as_two_events`, including a partial fill beside an authored coordinate. A real
+multi-row expansion still has its own finding. Desk #469 received no answer, so its default (option 1)
+applies: when authored coordinates claim every spelling, the sentence stays under `rsid_no_hosting_locus`
+because the rsID row has no position. The one-line switch is `ALL_SPELLINGS_CLAIMED_CODE` in
+`compiler/src/just_dna_compiler/resolution.py`. This changes the summary keys only. Escalating a site
+witnessed both ways under `--strict` remains RM449's separate question. The integration note and the
+release record's `warnings` axis belong to the cut.
+Round 2 (2026-11-28): Every mirrored-site fill finding is actionable because a coordinate row identifies
+the event, and the tests pin what an empty placement verdict and a recorded `undecided` each mean.
+
+## RM468 — the live clients keep no answers between runs, so a re-run under unchanged source releases spends the same egress again
+
+**SHIPPED 2026-11-27 on `0.10` (85189b83 and a6438487, merged 992e85b1 and 6e14e21c), cut 2026-11-28 as `v0.10.0` — a minor.**
+
+**Residuals** won't fix — direct VRS metadata and out-of-window reads bypass `SequenceProxy.subsequence` and stay live, and ClinVar's bulk release and the ClinVar-GKM probes stay outside E-utilities by design · RM472 · RM476 · RM482
+
+**Severity** medium · **Status** open — **a minor, 0.10** (the pm, 2026-11-26, beside RM399 and RM441: a design of its own, not a leftover of 0.9's build) · **Owner** enricher (the live clients:
+Ensembl REST, E-utilities, ClinVar, the sequence proxy) · **Motivating case** S162 in CONSUMER_SUGGESTIONS_HISTORY.md
+(just-dna-registry, 2026-11-19) · *related* RM467, RM441, RM38
+
+**What was seen.** ENRICHER.md states it as an open question: the live clients are paced only, and persistence is the
+sidecars and the published snapshots. A held module re-run after a fix, a second module sharing rsIDs, or a sweep
+resumed in a new run asks the same questions again. A run killed mid-way does resume from its staged answers
+(`--keep-staging` says so); that covers one table, not a second run or a second module.
+
+**What it would be.** A persistent store of online answers, keyed by the source and the release that answered (the
+Ensembl release, the ClinVar release, the dbSNP build), so a moved release invalidates exactly its own answers; an
+answer whose source states no release is not stored. A location setting like the snapshot lanes' (`JUST_DNA_*_CACHE`),
+and a report saying which answers came from the store.
+
+**Design points.** A stored negative must keep the house's distinctions: answered-absent is storable, could-not-ask
+never is (`@unreachable-not-absent`). A licence-gated source's answers inherit its terms, so the store is per host
+and never published (`@gated-source-caches`). Ensembl REST's release lags the snapshot's (RM447), so the key is the
+release REST states, never the snapshot's. A new setting and a new lane-like location: a minor.
+
+**Preview finding (S163, just-dna-registry, 2026-11-27, at `992e85b1`): outside `enrich()` a client keeps its first
+release label for life, and a host cannot hand its clients a store.** Confirmed by reading the branch: each live client
+creates its own `AnswerRun` (`ensembl.py:215`, `eutils.py:133`, `grch37.py:113`, `ld_pairs.py:145`, `sequences.py:121`),
+`AnswerRun.release` probes once per run, and `current()` falls back to the client's run when no `answer_run()` is
+active. `lookup.py`, `hints.py` and `clients.py` open none, so on a long-lived host (one `LookupClients` per process
+behind `/hint`) the label never moves after the first probe, new answers are stored under it, and `AnswerRun._usage`
+grows for the life of the process. 0.9.0 asked per call. The store is found only through `answer_store_path(None)`,
+the environment or `.env`; `enrich(answer_store=)` takes one, `LookupClients` does not. **The fix must reach, in 0.10
+before the first review round:** a release observed per run or per call, never per client lifetime; a store a host
+passes to the bundle (S163's three settlements: `lookup.*` opening a run per call, `LookupClients(answer_store=...)`,
+or `answer_run` documented as public for a host to open per request); and bounded counters. Which shape is the
+lead's to build and the pm's to size; a public `LookupClients` field is minor-legal here.
+
+**Built (2026-11-27, on the `0.10` branch).** The enricher keeps per-subject Ensembl REST and
+E-utilities answers in a per-host SQLite file under the release the endpoint states. GRCh37 probes
+its own server and remote seqrepo intervals use their refget accession. Shared clients take a fresh
+release observation and report for each enrichment run. Empty settings, the Python off switch and
+the CLI flag bypass persistence. The store has no snapshot or publish stage. The ClinVar currency
+probe still reads the live VCF header, and ClinVar-GKM reads its own distribution.
+Round 1 (2026-11-28): the answer-store docstrings and enricher reference describe how a run counts subjects and handles an unknown release.
+
+**Preview finding S163, built (2026-11-27).** Direct client calls and lookups now scope release
+observations and counters to the call. `LookupClients(answer_store=...)` selects the host's store
+or disables persistence. A host-opened `answer_run` takes precedence and shares one probe per
+queried source across the batch. Remote seqrepo still uses the refget accession without a probe.
+
+## RM471 — a `provenance_regex` timeout counted the matching process's start-up, and the AVI interrupt test timed a stop the machine's load decides
+
+**SHIPPED 2026-11-27 on `main` (ce5745ed, documented b967ca77), cut 2026-11-28 as `v0.10.0` — a patch, folded into the minor's cut by the pm (no 0.9.1).**
+
+**Residuals** won't fix — each regex check still pays a fresh interpreter importing the enricher, which costs time and never a wrong answer
+
+**Severity** low · **Status** open — **a patch, built on `main` 2026-11-27, uncut, for 0.9.1** · **Owner** enricher
+(`literature.regex_matches`) and the enricher suite · **Motivating case** the lead's 0.10 suite run, 2026-11-27, at a
+load average of 40 to 57 on 16 threads: `test_literature.py::test_a_regex_locator_matches_the_fulltext` (`assert None
+is True`) and `test_an_interrupt_stops_a_bulk_build.py::test_an_interrupt_stops_the_alphagenome_build_mid_contig`
+("the build took 5.17s to stop"), each green alone and both on `main` too · *related* RM409, RM421
+
+**What was seen.** The regex half was parked here without a number ("the regex timeout counts the worker's start-up";
+unparks when that bound guards a real regex), and a real run met it. `regex_matches` timed the match with a `join` on
+its child, so the child's start-up was charged to the 5 s: under `forkserver` (Python 3.14's default here) that child
+imports `just_dna_enricher.literature`, measured at 2 to 4 s per call at a load of 69. A trivial pattern then reads
+as **not checked** on a loaded machine, in an enrich run as much as in the test, and the catastrophic-pattern test's
+0.25 s could run out before the pattern started, so it passed whether the bound worked or not. The AVI test held the
+stop to `BOUND` (4.0 s, widened from 1.0 at 0.8.7), which load decides; the stand-ins it stops sleep in wall-clock
+time.
+
+**The fix.** The child sends a ready signal over a pipe once its imports are done, and the match's timeout starts
+there. Its start-up has its own allowance (60 s) and its own warning ("the matching process did not start"); the
+"exceeded" warning now means the pattern ran. Measured at a load of about 52 with a 1 s timeout on a trivial pattern:
+the old code answered `None` once in five calls, the new one `True` five times, one of them after 1.7 s of start-up. The AVI
+test asks the stand-in `tabix` processes instead of the clock: an in-flight stand-in that exits 0 was read to its
+end, which is the old behaviour, and a stopped one exits nonzero on its closed pipe. With `_stopped` disabled the test
+fails on that check ("streamed to the end"). Tests: `test_a_regex_timeout_counts_the_match_not_the_start.py`, three;
+the touched files green three times running under `-n 4` with 40 extra busy loops (load 50 to 88).
+
 # The 0.9 minor
 
 Built on the `0.9` branch from 2026-11-16 and cut as `v0.9.0` on 2026-11-26: the enricher reads its reference data wherever it lives. A first cut on 2026-11-19 was never published; the rescope of 2026-11-26 built that cut's known issues and residuals in 0.9 instead (RM454, RM458, RM461 to RM467), and the cut was redone; RM470, found by the redone cut's network gate, was folded in last. The scope, the two trial rules and both review rounds' sortings are the closed
