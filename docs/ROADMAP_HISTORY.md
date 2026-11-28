@@ -231,7 +231,7 @@ Round 1 (2026-11-28): the compiler omits the parquet column when every study lea
 
 **SHIPPED 2026-11-28 on `0.10` (ab7a6b2b, merged d257f4e4), cut 2026-11-28 as `v0.10.0` — a minor.**
 
-**Residuals** won't fix — editing `module_spec.yaml` in place waits until an author reports a lost paste
+**Residuals** RM484
 
 **In 0.10's scope, the pm (2026-11-16)**: [desk #326](https://github.com/winternewt/desk/issues/326), item 2, applied on its default. 0.10 is a small minor right after 0.9. The status line below predates this.
 
@@ -303,7 +303,7 @@ Round 1 (2026-11-28): the enricher reference names the helpers that read a draft
 
 **SHIPPED 2026-11-27 on `0.10` (848fbbfb, 3cb28e20, 67644a70 and ad409c26, merged f53fd4e9, d23fd638, 135eed6d and 0ded96cd), cut 2026-11-28 as `v0.10.0` — a minor.**
 
-**Residuals** won't fix — S167's option (2), a provisioning step that builds a missing index and does the first full read for `.refget.json`, is the registry's to ask for again · RM472 · RM476 · RM477 · RM479 · RM480 · RM482
+**Residuals** RM483 · RM472 · RM476 · RM477 · RM479 · RM480 · RM482
 
 **In 0.10's scope, the pm (2026-11-16)**: [desk #326](https://github.com/winternewt/desk/issues/326), item 2, applied on its default. 0.10 is a small minor right after 0.9. The status line below predates this.
 

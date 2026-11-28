@@ -2312,6 +2312,48 @@ the maintainer highlights touches it, or the roadmap is empty.
 
 **Residuals** none yet.
 
+## RM483 — no provisioning lane places the reference GRCh38 FASTA, so every host fetches, unpacks and indexes it by hand
+
+**Severity** low · **Status** open — **a minor, parked** (the pm, 2026-11-28) · **Owner** enricher (`prepare_caches`,
+a lane that places the FASTA and its `.fai`) · **Motivating case** S166 item 1 and S167 option 2 (the registry,
+2026-11-27/28), recorded under RM385 in [history/ROADMAP_0_10.md](history/ROADMAP_0_10.md) · *related* RM385
+
+**What 0.10 ships.** RM385 reads an operator's own indexed GRCh38 FASTA (`--sequence-uri fasta+file:///…`), checks
+each contig against its refget digest and caches the digests beside it; S167 added `just-dna-enricher fasta index`.
+The FASTA itself stays host-provisioned, the pm's decision for 0.10: NCBI's `GCF_000001405.40` binds all 25 primaries,
+the first digest pass takes about 393 s, and a published lane would mirror about 3 GB the source already serves. So
+each host downloads, unpacks and indexes it by hand.
+
+**What it would be.** `prepare_caches` (or a lane of its own) fetches the NCBI file, unpacks it, writes the `.fai` and
+does the first full digest pass into `.refget.json`: S167's option (2), which RM385 left as a won't fix for the
+registry to ask for again.
+
+**Parked, the pm (2026-11-28).** **Unparks when** a host asks for it, or a second host provisions a FASTA by hand; either
+can happen while this is parked, so the gate is honest (the gate audit has its row).
+
+**Residuals** none yet.
+
+## RM484 — `draft-panel` prints the merged `panel_provenance:` block for the author to paste; nothing edits `module_spec.yaml` in place
+
+**Severity** low · **Status** open — **a minor, parked** (the pm, 2026-11-28) · **Owner** enricher (`clinvar_draft`,
+`draft-panel`) + format (a YAML round trip that keeps the author's comments) · **Motivating case** RM265's shape
+paragraph (the pm, 2026-11-28) · *related* RM265
+
+**What 0.10 ships.** RM265 moved `genes`, `significance` and `reference_sha256` into `panel_provenance:` and has
+ClinVar `draft-panel` print the merged block (dry run included), which the author pastes into `module_spec.yaml`.
+Writing it in place was left out: the drafters append rows to CSVs and never rewrite the spec, and a YAML rewrite
+must keep the author's comments and key order.
+
+**What it would be.** `draft-panel --write-spec` (or the default) merges the block into `module_spec.yaml` itself,
+keeping comments and order, and refuses where the authored block and the snapshot disagree, as the printed block
+already does.
+
+**Parked, the pm (2026-11-28).** **Unparks when** an author asks to edit the block in place rather than paste
+`draft-panel`'s output, or reports a lost paste; either can happen while this is parked, so the gate is honest (the
+gate audit has its row).
+
+**Residuals** none yet.
+
 # Not format scope
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.
@@ -2846,6 +2888,8 @@ possibly already satisfied, and the rest sound** — the sweep's value is mostly
 | **RM450** — a snapshot pull takes no lock (parked 2026-11-18) | a pull seen to leave a wrong file or record, or a host that runs two pulls into one cache | **Sound.** Either can happen while it is parked; nothing needs the lock to exist first. |
 | **RM15** / **RM69** / **RM52** and the 1.0 queue | a major-version bump | **Sound, and not this kind of gate.** A release boundary is a schedule, not a satisfier. |
 | **RM457** — a public read of a lead parquet's row grain | a second consumer maps the grain by hand, or asks for the read | **Sound.** A consumer can meet the gap with the read unbuilt; just-dna-lite did (S159). Parked 2026-11-26. |
+| **RM483** — no lane places the GRCh38 FASTA (parked 2026-11-28) | a host asks for it, or a second host provisions one by hand | **Sound.** Both happen with the lane unbuilt; the registry already provisions its own. |
+| **RM484** — `draft-panel` cannot write the merged block in place (parked 2026-11-28) | an author asks to edit it in place, or reports a lost paste | **Sound.** An author meets the paste today. |
 
 **What the sweep did not find, stated so it is not re-run for a while.** No gate anywhere is parked on
 a *consumer report that would have to describe the unbuilt thing* — the `Sn` inbox is a channel
