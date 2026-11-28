@@ -24,9 +24,9 @@ import importlib
 import inspect
 import pkgutil
 import re
-import subprocess
 import tomllib
 import typing
+from collections.abc import Callable
 from pathlib import Path
 
 import just_dna_format
@@ -214,37 +214,17 @@ def test_the_registry_really_covers_the_authored_surface() -> None:
 # ── the measurement: each declaration against the release tags (RM365) ──────────────────────────
 
 
-def _git(*args: str) -> str | None:
-    """`git <args>` at the repository root, or `None` where git cannot answer (or is not installed)."""
-    try:
-        done = subprocess.run(["git", *args], cwd=_ROOT, capture_output=True, text=True)
-    except FileNotFoundError:
-        return None
-    return done.stdout if done.returncode == 0 else None
-
-
-def _release_tags() -> list[str]:
-    """`vX.Y.Z` tags in SemVer order — empty where this checkout cannot be measured: no git, no tags,
-    or a shallow clone (CI's default), whose tags, if any, are a partial history that would measure an
-    old field as new."""
-    if (_git("rev-parse", "--is-shallow-repository") or "").strip() != "false":
-        return []
-    listing = _git("tag", "--list", "v*") or ""
-    tags = [tag for tag in listing.split() if _SEMVER.match(tag[1:])]
-    return sorted(tags, key=lambda tag: tuple(int(part) for part in tag[1:].split(".")))
-
-
-def _fields_by_class_at(tag: str) -> dict[str, set[str]]:
+def _fields_by_class_at(tag: str, git_output: Callable[..., str | None]) -> dict[str, set[str]]:
     """`{class name: field names}` for every class in the format package as `tag` has it, read from
     the tag's own sources. A field is an annotated class attribute that is not private, not
     `model_config` and not a `ClassVar`; inherited fields come from bases defined at the same tag,
     which is how `CitationPair` gives `doi` to every model carrying `pmid`."""
-    listing = _git("ls-tree", "-r", "--name-only", tag, "--", "schema/src/just_dna_format/") or ""
+    listing = git_output("ls-tree", "-r", "--name-only", tag, "--", "schema/src/just_dna_format/") or ""
     classes: dict[str, tuple[list[str], set[str]]] = {}
     for path in listing.split():
         if not path.endswith(".py"):
             continue
-        for node in ast.walk(ast.parse(_git("show", f"{tag}:{path}") or "")):
+        for node in ast.walk(ast.parse(git_output("show", f"{tag}:{path}") or "")):
             if not isinstance(node, ast.ClassDef):
                 continue
             own = {
@@ -268,16 +248,18 @@ def _fields_by_class_at(tag: str) -> dict[str, set[str]]:
     return {name: fields(name, frozenset()) for name in classes}
 
 
-def test_the_release_list_is_the_tags_and_the_uncut_one() -> None:
+def test_the_release_list_is_the_tags_and_the_uncut_one(release_tags: list[str]) -> None:
     """`_RELEASES` is a list, so it is held equal to what it lists: it was three patch tags short. The
     open minor is known before its package bump. Include workspace versions for enricher-only cuts."""
-    tags = _release_tags()
+    tags = release_tags
     if not tags:
         pytest.skip("no full history with release tags here (shallow clone or no git); nothing to measure")
     assert _RELEASES == {tag[1:] for tag in tags} | _WORKSPACE_VERSIONS | {_UNCUT}
 
 
-def test_every_field_declares_the_first_release_whose_model_carries_it() -> None:
+def test_every_field_declares_the_first_release_whose_model_carries_it(
+    release_tags: list[str], git_output: Callable[..., str | None]
+) -> None:
     """**The measurement the module docstring says the backfill was, as a test (RM365).** Each
     `since()` must equal the first release tag whose model has that field, and a field no tag has
     must declare the uncut release. Nothing else checked a declaration's *value* — a typo'd version
@@ -290,12 +272,12 @@ def test_every_field_declares_the_first_release_whose_model_carries_it() -> None
     major-only. A model removed or renamed outright is outside this walk — the tags hold no registry to
     say which of their classes were authored ones.
     """
-    tags = _release_tags()
+    tags = release_tags
     if not tags:
         pytest.skip("no full history with release tags here (shallow clone or no git); nothing to measure")
     first: dict[tuple[str, str], str] = {}
     for tag in tags:
-        at_tag = _fields_by_class_at(tag)
+        at_tag = _fields_by_class_at(tag, git_output)
         for model in _ALL_MODELS.values():
             for field in at_tag.get(model.__name__, set()):
                 first.setdefault((model.__name__, field), tag[1:])

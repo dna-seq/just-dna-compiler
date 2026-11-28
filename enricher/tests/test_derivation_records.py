@@ -4,7 +4,6 @@ import tomllib
 from collections.abc import Callable
 from importlib.metadata import version
 from pathlib import Path
-from runpy import run_path
 
 import pytest
 from just_dna_compiler.hints import DERIVED_TABLE_MODELS
@@ -25,18 +24,17 @@ from pydantic import ValidationError
 from enricher.tests.test_ensembl_split_release import _cache_with, _manifest, _new_release, _old_release
 
 
-def test_coverage_matches_tagged_enricher_versions_and_the_installed_version() -> None:
+def test_coverage_matches_tagged_enricher_versions_and_the_installed_version(
+    release_tags: list[str], git_output: Callable[..., str | None]
+) -> None:
     installed = version("just-dna-enricher")
     assert installed in DERIVATION_RECORDS
-    # importlib-mode pytest also runs this tier alone, with schema/tests off its import path.
-    history = run_path(str(Path(__file__).resolve().parents[2] / "schema/tests/test_first_seen.py"))
-    tags = history["_release_tags"]()
-    if not tags:
+    if not release_tags:
         pytest.skip("the complete release tags are unavailable")
     expected = {installed}
     earlier = set()
-    for tag in tags:
-        project = history["_git"]("show", f"{tag}:enricher/pyproject.toml")
+    for tag in release_tags:
+        project = git_output("show", f"{tag}:enricher/pyproject.toml")
         if parse_version(tag[1:]) >= parse_version("0.8.0"):
             assert project is not None, tag
             expected.add(tomllib.loads(project)["project"]["version"])

@@ -1,7 +1,9 @@
 """RM435 on a copy of HFE, which has both study rows and the GWAS parquet precedent."""
 
+import ast
 import csv
 import shutil
+from collections.abc import Callable
 from pathlib import Path
 
 import polars as pl
@@ -59,16 +61,39 @@ def test_absent_and_empty_direction_keep_the_reference_signature(spec: Path) -> 
     assert content_signature(spec) != baseline
 
 
-def test_parquet_type_matches_gwas_even_when_direction_is_absent(spec: Path, tmp_path: Path) -> None:
+@pytest.mark.parametrize("blank_column", [False, True])
+def test_omit_unstated_study_direction(
+    spec: Path,
+    tmp_path: Path,
+    blank_column: bool,
+    release_tags: list[str],
+    git_output: Callable[..., str | None],
+) -> None:
+    if blank_column:
+        rows = _read(spec / "studies.csv")
+        for row in rows:
+            row["effect_direction"] = ""
+        _write(spec, rows)
     out = tmp_path / "compiled"
     result = compile_module(spec, out)
     assert result.success, result.errors
-    study = pl.read_parquet(out / "studies.parquet")
-    assert (
-        study.schema["effect_direction"]
-        == pl.read_parquet_schema(out / "gwas_effects.parquet")["effect_direction"]
-    )
-    assert study["effect_direction"].null_count() == study.height
+    columns = pl.read_parquet_schema(out / "studies.parquet").names()
+    assert "effect_direction" not in columns
+
+    # Compare the ordered schema against the published builder whenever the tag is available.
+    if "v0.9.0" in release_tags:
+        source = git_output("show", "v0.9.0:compiler/src/just_dna_compiler/compiler/parquets.py")
+        assert source is not None
+        [builder] = [
+            n for n in ast.parse(source).body if isinstance(n, ast.FunctionDef) and n.name == "_build_studies"
+        ]
+        [schema] = [
+            n.value
+            for n in builder.body
+            if isinstance(n, ast.Assign) and ast.unparse(n.targets[0]) == "schema"
+        ]
+        assert isinstance(schema, ast.Dict)
+        assert columns == [ast.literal_eval(key) for key in schema.keys]
 
 
 def test_round_trip_with_and_without_a_size(spec: Path, tmp_path: Path) -> None:
@@ -86,7 +111,12 @@ def test_round_trip_with_and_without_a_size(spec: Path, tmp_path: Path) -> None:
     out, rev = tmp_path / "first", tmp_path / "rev"
     first = compile_module(spec, out)
     assert first.success and first.manifest, first.errors
-    assert pl.read_parquet(out / "studies.parquet")["effect_direction"].to_list() == expected
+    study = pl.read_parquet(out / "studies.parquet")
+    assert (
+        study.schema["effect_direction"]
+        == pl.read_parquet_schema(out / "gwas_effects.parquet")["effect_direction"]
+    )
+    assert study["effect_direction"].to_list() == expected
     reverse_module(out, rev)
     assert [r["effect_direction"] or None for r in _read(rev / "studies.csv")] == expected
     second = compile_module(rev, tmp_path / "second")

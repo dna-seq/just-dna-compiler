@@ -10,9 +10,9 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
-from tempfile import NamedTemporaryFile
 from typing import BinaryIO
 from urllib.parse import unquote, urlsplit
+from uuid import uuid4
 
 from ga4gh.core import digests
 from just_dna_format.layout import atomic_writer
@@ -227,16 +227,10 @@ def write_fasta_index(path: Path) -> Path:
                     f"before first contig, line 1: compressed FASTA is unsupported: {path}"
                 )
             entries = _scan_index(stream)
-        part = NamedTemporaryFile(  # noqa: SIM115 — closed by "with part" before the rename
-            mode="w",
-            encoding="utf-8",
-            newline="\n",
-            dir=index.parent,
-            prefix=f".{index.name}.",
-            suffix=".part",
-            delete=False,
-        )
-        part_path = Path(part.name)
+        # A shared reference index takes ordinary creation permissions under the operator's umask.
+        # Only clean up after exclusive creation succeeds: a colliding name belongs to another writer.
+        part_path = index.with_name(f".{index.name}.{uuid4().hex}.part")
+        part = part_path.open("x", encoding="utf-8", newline="\n")  # noqa: SIM115 — closed before replace
         try:
             with part:
                 for entry in entries:

@@ -479,6 +479,8 @@ set: 'FAMILIAL_LONGEVITY' (2 rows), … — the set is open, so the rows stand; 
 its stated direction, size and measure. Validate and compile both report
 `stats["study_effect_direction_withheld"]`, the number of complete direction/size/measure
 triples whose measure has no known scale or whose estimate is exactly at the null.
+The compiler writes `effect_direction` to `studies.parquet` only when at least one row states it.
+Other rows in that parquet have a null direction, and reverse preserves each stated value.
 
 **A column stated without its advisory companion warns once per table and column (RM366, RM435).**
 `paired_field_half_stated` reports the `refuse=False` entries of a model's `_PAIRED_FIELDS` — today

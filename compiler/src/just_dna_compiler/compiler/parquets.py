@@ -13,7 +13,7 @@ from just_dna_format.vrs import join_vrs_ids
 
 from just_dna_compiler.compiler.subjects import ResolutionTable, row_positions
 from just_dna_compiler.compiler.tables import (
-    _omit_unstated_registers,
+    _omit_unstated_columns,
     _polars_type,
     _split_genotype,
     study_coordinate_key,
@@ -387,7 +387,7 @@ def _build_annotations(variants: list[VariantRow], module_name: str) -> pl.DataF
         "category": pl.Utf8,
         **dict.fromkeys(ConclusionRegisters.model_fields, pl.Utf8),
     }
-    return _omit_unstated_registers(pl.DataFrame(records, schema=schema))
+    return _omit_unstated_columns(pl.DataFrame(records, schema=schema), ConclusionRegisters.model_fields)
 
 
 #: The `ResolutionRow` columns a carried locus leaves out, each with the reason (RM380). Every other
@@ -729,4 +729,4 @@ def _build_studies(
         "proxy_loci": pl.List(RESOLUTION_LOCUS_DTYPE),
         "effect_direction": pl.Utf8,
     }
-    return pl.DataFrame(records, schema=schema)
+    return _omit_unstated_columns(pl.DataFrame(records, schema=schema), ("effect_direction",))

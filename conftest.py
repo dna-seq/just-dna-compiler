@@ -74,7 +74,10 @@ which is how the reaching tests were enumerated.
 
 import ipaddress
 import os
+import re
 import socket
+import subprocess
+from collections.abc import Callable
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -319,3 +322,32 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
         for test, reach in late:
             reporter.write_line(f"{test}: {reach}")
     session.exitstatus = pytest.ExitCode.TESTS_FAILED
+
+
+def _git(*args: str) -> str | None:
+    """`git <args>` at the repository root, or `None` where git cannot answer (or is not installed)."""
+    try:
+        done = subprocess.run(
+            ["git", *args], cwd=Path(__file__).resolve().parent, capture_output=True, text=True
+        )
+    except FileNotFoundError:
+        return None
+    return done.stdout if done.returncode == 0 else None
+
+
+@pytest.fixture(scope="session")
+def git_output() -> Callable[..., str | None]:
+    """Read the same tagged source across schema and compiler compatibility tests."""
+    return _git
+
+
+@pytest.fixture(scope="session")
+def release_tags(git_output: Callable[..., str | None]) -> list[str]:
+    """`vX.Y.Z` tags in SemVer order — empty where this checkout cannot be measured: no git, no tags,
+    or a shallow clone (CI's default), whose tags, if any, are a partial history that would measure an
+    old field as new."""
+    if (git_output("rev-parse", "--is-shallow-repository") or "").strip() != "false":
+        return []
+    listing = git_output("tag", "--list", "v*") or ""
+    tags = [tag for tag in listing.split() if re.fullmatch(r"v\d+\.\d+\.\d+", tag)]
+    return sorted(tags, key=lambda tag: tuple(int(part) for part in tag[1:].split(".")))

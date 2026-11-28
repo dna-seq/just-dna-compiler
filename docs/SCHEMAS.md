@@ -259,6 +259,8 @@ reason its `source` column is inside its fact set while everywhere else `source`
   they are `authoring_reference()` and the constants themselves (`@fieldnames-from-model`); what a
   hand-kept table can carry without rotting is the count, the openness and what the set is *for*.
   Walked by `test_schemas_vocabulary_roster.py`, so a new vocabulary joins by existing.
+  For the members added since v0.9.0 and the records an older reader rejects, see the
+  [0.10 upgrade note](INTEGRATION_0_10.md).
 
   | constant | members | what it constrains |
   |---|---|---|
