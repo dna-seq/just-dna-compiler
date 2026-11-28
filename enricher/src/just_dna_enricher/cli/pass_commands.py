@@ -155,6 +155,8 @@ def enrich_(  # `enrich` command; function name avoids shadowing the imported en
     typer.echo(
         f"rows: {len(result.rows)}  fully_resolved: {result.fully_resolved}  sources: {result.sources}"
     )
+    if result.hla_assignment and result.hla_assignment.assigned_summary:
+        typer.echo(result.hla_assignment.assigned_summary)
     for usage in result.answer_usage:
         typer.echo(str(usage))
     if result.unresolved:

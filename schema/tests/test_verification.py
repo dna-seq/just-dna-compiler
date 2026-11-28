@@ -453,6 +453,7 @@ def test_every_check_name_is_a_verification_question() -> None:
         "rsid_currency",
         "rsid_coordinate_agreement",
         "placement_agreement",
+        "hla_allele_assignment",  # Does the pinned IPD release assign the authored HLA name?
         "clinical_significance",
         "acmg_secondary_findings",
         "gene_symbol_currency",

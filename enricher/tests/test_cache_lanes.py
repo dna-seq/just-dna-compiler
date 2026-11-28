@@ -134,7 +134,7 @@ def test_an_absent_stage_states_its_reason_and_a_present_one_does_not() -> None:
     people to build their own, which is worse than never having said it.
     """
     for lane in CACHE_LANES:
-        assert (lane.unpublished is None) == (lane.ensure is not None), lane.name
+        assert (lane.unpublished is None) == (lane.ensure is not None and not lane.per_host), lane.name
         assert (lane.unbuilt is None) == (lane.rebuild is not None), lane.name
         if lane.name in _BUILT_ELSEWHERE:
             # Ensembl is pullable and has no `publish_repo`, and that is not the same defect: the
@@ -143,10 +143,9 @@ def test_an_absent_stage_states_its_reason_and_a_present_one_does_not() -> None:
             # have one — which is why the biconditional below is scoped to the lanes it builds.
             assert lane.publish_repo is None, lane.name
             continue
-        # For every lane this tier does build, publishable is exactly pullable. The two halves are
-        # the upload target and the download that follows it, and one without the other is a lane
-        # that sends bytes nobody can fetch, or fetches bytes nobody sends.
-        assert (lane.publish_repo is None) == (lane.ensure is None), lane.name
+        # A pull through the Hub needs a matching upload target. Direct curator acquisition
+        # is the per-host route, recorded separately from a publishable snapshot.
+        assert (lane.publish_repo is None) == (lane.ensure is None or lane.per_host), lane.name
 
 
 def test_every_lanes_pull_is_a_public_function_of_download() -> None:
@@ -274,6 +273,7 @@ def test_the_licence_gated_lanes_are_the_ones_carrying_terms() -> None:
         "cpic": "cpic",
         "drug_labels": "clinpgx",
         "pharmvar": "pharmvar",
+        "ipd_imgt_hla": "ipd_imgt_hla",
         "pubmind": "pubmind",
     }
 
@@ -975,6 +975,10 @@ def test_every_lane_names_the_variable_its_own_resolver_reads(
     (probe / "data").mkdir(parents=True)
     (probe / "data" / "probe.parquet").touch()
     (probe / locations.ACMG_SNAPSHOT_FILENAME).touch()
+    for name in locations.IPD_ALLELE_FILES:
+        (probe / locations.SNAPSHOT_DATA_DIRNAME / name).touch()
+    (probe / locations.SNAPSHOT_LICENSE_FILENAME).touch()
+    (probe / locations.RELEASE_FILENAME).touch()
     (probe / locations.STRCHIVE_CATALOGUE_FILENAME).touch()
     for lane in CACHE_LANES:
         monkeypatch.delenv(lane.env_var, raising=False)

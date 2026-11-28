@@ -73,10 +73,12 @@ HAPLOTYPE_NAME_PATTERN: re.Pattern[str] = re.compile(r"^\S+$")
 # resolution and is refused; the pre-2010 colon-less spelling (`*1501`) is refused because it reads as
 # one field. No quantifier here nests, so the pattern is linear-time (Principle 1's ReDoS clause).
 # The gene decides, never the shape of the name: a non-HLA allele keeps the rule above whatever it
-# looks like. Whether an allele EXISTS in IPD-IMGT/HLA's list is a separate question, an enricher lane
-# the maintainer put in 0.9.
+# looks like. Whether an allele EXISTS in IPD-IMGT/HLA's list is a separate question, answered by the
+# per-host IPD-IMGT/HLA enricher lane (RM350).
 HLA_GENE_PREFIX: str = "HLA-"
-HLA_ALLELE_PATTERN: re.Pattern[str] = re.compile(r"\*[0-9]{2,}(?::[0-9]{2,}){1,3}[NLSCAQ]?")
+HLA_ALLELE_PATTERN: re.Pattern[str] = re.compile(
+    r"\*(?P<fields>[0-9]{2,}(?::[0-9]{2,}){1,3})(?P<suffix>[NLSCAQ]?)"
+)
 
 
 def is_hla_gene(gene: str) -> bool:

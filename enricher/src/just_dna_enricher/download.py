@@ -30,6 +30,7 @@ from just_dna_format.layout import atomic_write_text
 from just_dna_format.normalize import now_utc_iso
 from just_dna_format.vocab import VALID_DECLARED_USE, check_vocab
 
+from just_dna_enricher import ipd_imgt_hla_build
 from just_dna_enricher.clinvar import ClinVarReferenceError
 from just_dna_enricher.licensing import check_declared_use, snapshot_group_terms
 from just_dna_enricher.locations import (
@@ -37,6 +38,7 @@ from just_dna_enricher.locations import (
     CORE_IS_NOT_A_GROUP,
     ENSEMBL_CORE_GROUP,
     ENSEMBL_GROUPS_DIRNAME,
+    IPD_IMGT_HLA_CACHE_VAR,
     PULL_RECORD_FILENAME,
     PULL_RECORD_GROUPS_KEY,
     PULL_RECORD_REPLACING_KEY,
@@ -62,6 +64,7 @@ from just_dna_enricher.locations import (
     default_cpic_cache_dir,
     default_drug_labels_cache_dir,
     default_ensembl_cache_dir,
+    default_ipd_imgt_hla_cache_dir,
     default_mitomap_cache_dir,
     default_opentargets_cache_dir,
     default_strchive_cache_dir,
@@ -73,6 +76,7 @@ from just_dna_enricher.locations import (
     pulled_from,
     pulled_groups,
     read_snapshot_manifest,
+    resolve_ipd_imgt_hla_reference,
     snapshot_record_missing,
 )
 from just_dna_enricher.resolver import EnsemblReferenceError
@@ -1750,6 +1754,29 @@ def _provision_groups(
             _follow_hub.groups[group] = outcome
     if first_failure is not None:
         raise first_failure
+
+
+def ensure_ipd_imgt_hla_snapshot(
+    ipd_imgt_hla_cache: Path | None = None,
+    *,
+    declared_use: str = "unstated",
+    pin: str | None = None,
+    source: Path | None = None,
+) -> Path:
+    """Reuse the host's release, fetching a missing pair directly from the curators."""
+    held = resolve_ipd_imgt_hla_reference(ipd_imgt_hla_cache)
+    if held is not None:
+        return held
+    directory = Path(
+        ipd_imgt_hla_cache or env_value(IPD_IMGT_HLA_CACHE_VAR) or default_ipd_imgt_hla_cache_dir()
+    )
+    ipd_imgt_hla_build.build_snapshot(
+        directory,
+        pin=pin or ipd_imgt_hla_build.DEFAULT_PIN,
+        declared_use=declared_use,
+        source=source,
+    )
+    return directory
 
 
 def ensure_clinvar_snapshot(

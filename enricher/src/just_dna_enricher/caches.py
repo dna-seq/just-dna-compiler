@@ -60,6 +60,7 @@ from just_dna_enricher import (
     cpic_build,
     drug_labels_build,
     ensembl_rsid_index_build,
+    ipd_imgt_hla_build,
     mane_build,
     mitomap,
     mitomap_build,
@@ -83,6 +84,7 @@ from just_dna_enricher.download import (
     ensure_constraint_snapshot,
     ensure_cpic_snapshot,
     ensure_drug_labels_snapshot,
+    ensure_ipd_imgt_hla_snapshot,
     ensure_mitomap_snapshot,
     ensure_opentargets_snapshot,
     ensure_snapshot,
@@ -93,6 +95,7 @@ from just_dna_enricher.licensing import (
     ALPHAGENOME_AVI_TERMS,
     CLINPGX_TERMS,
     CPIC_TERMS,
+    IPD_IMGT_HLA_TERMS,
     PHARMVAR_TERMS,
     PUBMIND_TERMS,
     LicenseRefusal,
@@ -123,6 +126,8 @@ from just_dna_enricher.locations import (
     ENSEMBL_RSID_INDEX_CACHE_VAR,
     ENSEMBL_RSID_INDEX_SUBDIR,
     ENSEMBL_SUBDIR,
+    IPD_IMGT_HLA_CACHE_VAR,
+    IPD_IMGT_HLA_SUBDIR,
     MANE_CACHE_VAR,
     MANE_SUBDIR,
     MITOMAP_CACHE_VAR,
@@ -151,6 +156,7 @@ from just_dna_enricher.locations import (
     default_drug_labels_cache_dir,
     default_ensembl_cache_dir,
     default_ensembl_rsid_index_cache_dir,
+    default_ipd_imgt_hla_cache_dir,
     default_mane_cache_dir,
     default_mitomap_cache_dir,
     default_mitomap_miss_cache_dir,
@@ -172,6 +178,7 @@ from just_dna_enricher.locations import (
     resolve_drug_labels_reference,
     resolve_ensembl_reference,
     resolve_ensembl_rsid_index_reference,
+    resolve_ipd_imgt_hla_reference,
     resolve_mane_reference,
     resolve_mitomap_miss_reference,
     resolve_mitomap_reference,
@@ -292,8 +299,7 @@ class CacheLane:
     #: The repo **this tier** publishes to. Ensembl's snapshot is on HuggingFace and this field is
     #: still `None` for it, which is not the omission it looks like: prepare-annotations cuts and
     #: uploads that slice, so a publish command here would be this repository claiming another's
-    #: artifact. Pullable-without-publishable is therefore a real state, and only for a lane whose
-    #: `rebuild` is also `None`.
+    #: artifact. A per-host lane can also acquire directly from its curators without a publisher.
     publish_repo: str | None
     terms: SourceTerms | None
     #: Why there is no `ensure`/`publish_repo`. Stated iff there is none — the guard asserts the
@@ -315,8 +321,8 @@ class CacheLane:
     #: its build takes about 42 minutes and 6 GB from the Ensembl core, which no host should pay unasked.
     named_only: str | None = None
     #: Whether this lane's `ensure` takes the run's declared use (`declared_use=`), which the provisioners
-    #: then pass it (0.9, review round 1, item 4): `ensembl` alone, whose recorded groups are re-pulled under
-    #: the run's `--use` when it states one (RM437). A field rather than a name compare in the provisioner,
+    #: then pass it. Ensembl's groups and IPD's per-host fetch use the run's declaration. A field
+    #: rather than a name compare in the provisioner,
     #: and a test holds it equal, lane by lane, to whether `ensure` has that parameter.
     ensure_takes_declared_use: bool = False
     #: For a derived lane, why the snapshot at a path no longer matches its parents (each parent's path as
@@ -380,6 +386,8 @@ class CacheLane:
     #: and its rehearsal read it from here; until RM455 `cache rebuild --publish` chose it by comparing
     #: `lane.name` with `"strchive"`, a rule a new root-file lane would have missed.
     payload_filename: str | None = None
+    #: A per-host acquire stage reads the curators' release directly and never follows a Hub mirror.
+    per_host: bool = False
 
 
 # ── the adapters ────────────────────────────────────────────────────────────────────────────────
@@ -393,8 +401,7 @@ class CacheLane:
 def _ensure_declaration(lane: CacheLane, declared_use: str) -> dict[str, str]:
     """The declaration a lane's `ensure` takes beyond the hub intent, for a lane whose field says it takes one.
 
-    Only the Ensembl lane does (`CacheLane.ensure_takes_declared_use`, RM437): its recorded groups are
-    re-pulled under the run's `--use` when that states one, else under the one each was admitted with.
+    Ensembl's recorded groups and the direct IPD-IMGT/HLA fetch take it.
     """
     return {"declared_use": declared_use} if lane.ensure_takes_declared_use else {}
 
@@ -742,6 +749,20 @@ def _rebuild_mane(request: RebuildRequest) -> RebuildOutcome:
         f"dataset {result.dataset}, " + ", ".join(f"{n} {c}" for n, c in result.rows.items()),
         result.out_dir,
     )
+
+
+def _rebuild_ipd_imgt_hla(request: RebuildRequest) -> RebuildOutcome:
+    name = IPD_IMGT_HLA_TERMS.source
+    try:
+        label = ipd_imgt_hla_build.build_snapshot(
+            request.out_dir,
+            pin=request.pin or ipd_imgt_hla_build.DEFAULT_PIN,
+            source=request.source,
+            declared_use=request.declared_use,
+        )
+    except (ipd_imgt_hla_build.IpdHlaUnavailable, LicenseRefusal, OSError) as exc:
+        return RebuildOutcome(name, False, str(exc))
+    return RebuildOutcome(name, True, label, request.out_dir)
 
 
 def _rebuild_strchive(request: RebuildRequest) -> RebuildOutcome:
@@ -1393,6 +1414,23 @@ CACHE_LANES: list[CacheLane] = [
         # declared-use gate, and CC0 over public-domain ClinVar refuses no declaration.
         terms=None,
     ),
+    CacheLane(
+        name=IPD_IMGT_HLA_TERMS.source,
+        subdir=IPD_IMGT_HLA_SUBDIR,
+        serves="HLA allele name assignments and deletions",
+        build_command="ipd-imgt-hla build",
+        resolve=resolve_ipd_imgt_hla_reference,
+        default_dir=default_ipd_imgt_hla_cache_dir,
+        env_var=IPD_IMGT_HLA_CACHE_VAR,
+        rebuild=_rebuild_ipd_imgt_hla,
+        ensure=ensure_ipd_imgt_hla_snapshot,
+        ensure_takes_declared_use=True,
+        publish_repo=None,
+        terms=IPD_IMGT_HLA_TERMS,
+        per_host=True,
+        unpublished="refused: the curators ask hosts not to mirror the lists and apply CC BY-ND.",
+        approx_mb=1,
+    ),
 ]
 
 #: Keyed access for the CLI's `--only`/`--pin`/`--source` flags, derived rather than restated.
@@ -1508,7 +1546,7 @@ def rebuild_lane(lane: CacheLane, request: RebuildRequest) -> RebuildOutcome:
 #: `clinvar_gkm` reads it as a check: ClinVar-GKM serves only its current set, and a pin naming another
 #: refuses the build.
 _PINNABLE: frozenset[str] = frozenset(
-    {"acmg", "civic", "clinvar_gkm", "constraint", "mane", "opentargets", "strchive"}
+    {"acmg", "civic", "clinvar_gkm", "constraint", "ipd_imgt_hla", "mane", "opentargets", "strchive"}
 )
 
 
@@ -1833,7 +1871,7 @@ def _present_or_completed(lane: CacheLane, existing: Path, request: RebuildReque
     `--use unstated` stays present rather than turning into skipped.
     """
     present = PrepareOutcome(lane.name, True, "present", f"already provisioned at {existing}", existing)
-    if lane.ensure is None or existing.resolve() != lane.default_dir().resolve():
+    if lane.per_host or lane.ensure is None or existing.resolve() != lane.default_dir().resolve():
         return present
     if lane.terms is not None:
         try:
@@ -1938,8 +1976,11 @@ def prepare_lane(lane: CacheLane, request: RebuildRequest) -> PrepareOutcome:
                 return PrepareOutcome(lane.name, None, "none", f"skipped: {reason}")
         try:
             # The provisioning command's intent (RM420); an absent cache is pulled whole either way.
-            path = lane.ensure(
-                _follow_hub=_FollowHub(lane.release_label), **_ensure_declaration(lane, request.declared_use)
+            declaration = _ensure_declaration(lane, request.declared_use)
+            path = (
+                lane.ensure(pin=request.pin, source=request.source, **declaration)
+                if lane.per_host
+                else lane.ensure(_follow_hub=_FollowHub(lane.release_label), **declaration)
             )
         except Exception as exc:
             # Not an error here either, and for a sharper reason than in `cache pull`: this command's

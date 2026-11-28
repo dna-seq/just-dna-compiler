@@ -41,6 +41,15 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md). The `0.8` branch merged into `main` at the 0.8.0 cut (2026-11-05).
 
+## 2026-11-28 — RM350: HLA allele names are checked against a pinned IPD-IMGT/HLA release (a minor, for 0.10)
+
+`enrich` checks authored HLA names at their stated resolution. A deleted name carries the
+curators' explanation. An unassigned name carries the release searched. Both are warnings in
+strict mode. An unavailable list produces a skipped verification record. The per-host
+`ipd_imgt_hla` cache keeps the curators' release files verbatim and the check credits their
+citations in `sources.csv`. It has no publisher. A reader of the new verification check needs
+`just-dna-format` 0.10.
+
 ## 2026-11-27 — RM460: mirrored-site fills have their own warning code (a minor, for 0.10)
 
 The compiler now counts a genotype that reads as an insertion and a deletion at the same site under

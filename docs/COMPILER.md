@@ -2112,6 +2112,8 @@ each is on this side:
 **Every published code**, by the surface it comes from. Everything not in the table above is
 actionable, which is `vocab.ACTIONABLE_WARNING_CODES`, derived by subtraction:
 
+- **HLA release witness** (enricher) — `hla_allele_deleted` quotes the deletion description.
+  `hla_allele_not_assigned` names the release in which the authored name has no assignment.
 - **spec directory / `module_spec.yaml`** — `table_file_misplaced`, `table_file_near_miss`,
   `sidecar_spelling_deprecated`, `module_version_coerced`, `panel_block_deprecated`,
   `log_file_not_shipped`

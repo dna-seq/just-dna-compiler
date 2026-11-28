@@ -135,6 +135,11 @@ _SEQUENCE_WITNESSES = ("fasta", "seqrepo")
 #: `self_consistent` — the currency checks below are that by construction.
 CHECK_WITNESSES: dict[str, CheckWitness] = {
     # ── `enrich` ──
+    "hla_allele_assignment": CheckWitness(
+        AUTHORED_SOURCE,
+        ("ipd_imgt_hla",),
+        "the allele name at its authored resolution against IPD-IMGT/HLA",
+    ),
     "reference_allele": CheckWitness(
         AUTHORED_SOURCE,
         _SEQUENCE_WITNESSES,

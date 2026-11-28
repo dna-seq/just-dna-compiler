@@ -495,7 +495,13 @@ name prefixes a listed allele at a field boundary, an expression suffix read as 
 names the release), and **could not ask** when no list is present (`@unreachable-not-absent`), never "not
 assigned". A warning, never a `strict` refusal: a name newer than the host's list is the likely reading.
 
-**Residuals** none yet.
+**Built (2026-11-28, on the `0.10` branch).** The per-host `ipd_imgt_hla` lane fetches the
+curators' tagged lists, validates both in-band versions, and retains their original bytes and licence.
+`enrich` records assignments, exact deletions, release-specific misses, or the reason it could not
+ask. Only a comparison that ran writes the citation notice. The build adds no publisher, derived
+parquet, authored field or strict refusal. The lead runs the live build after merge.
+
+**Residuals** none.
 
 ## RM294 — STRchive's evidence grade has no place in the module, so a Refuted locus is doubted only in a draft note
 

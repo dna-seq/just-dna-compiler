@@ -64,7 +64,9 @@ def test_a_published_lane_can_be_pulled_and_a_pulled_lane_is_published_by_someon
             assert lane.ensure is not None, (
                 f"{lane.name} publishes to {lane.publish_repo} and cannot be pulled"
             )
-        if lane.ensure is not None and lane.publish_repo is None:
+        if lane.per_host:
+            assert lane.ensure is not None and lane.publish_repo is None and lane.unpublished
+        elif lane.ensure is not None and lane.publish_repo is None:
             assert lane.rebuild is None and lane.build_command is None, (
                 f"{lane.name} can be pulled and is built here, but this tier publishes it nowhere"
             )

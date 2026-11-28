@@ -19,11 +19,14 @@ The hub is a fake over one repo's tree that models the real transport's failed f
 creates the destination file and then raises (`@a-failed-fetch-is-not-a-no-op`).
 """
 
+import ast
 import dataclasses
 import hashlib
+import inspect
 import io
 import json
 from pathlib import Path
+from types import ModuleType
 
 import huggingface_hub
 import polars as pl
@@ -32,6 +35,7 @@ from just_dna_enricher import caches
 from just_dna_enricher import download as dl
 from just_dna_enricher.caches import LANES_BY_NAME, RebuildRequest
 from just_dna_enricher.cli import app as enricher_app
+from just_dna_enricher.cli import cache_commands
 from just_dna_enricher.locations import (
     CACHE_BASE_VAR,
     PULL_RECORD_FILENAME,
@@ -711,26 +715,33 @@ def test_the_three_provisioning_call_sites_pass_the_intent() -> None:
     Read off the source rather than trusted: a keyword a call site forgets is a pull that silently
     returns to the RM420 behaviour, and nothing else would notice.
     """
-    import ast
-    import inspect
 
-    from just_dna_enricher.cli import cache_commands
-
-    def ensure_calls(module) -> list[ast.Call]:
+    def hub_calls(module: ModuleType) -> set[str]:
         tree = ast.parse(inspect.getsource(module))
-        return [
-            node
+        # A fetch from the curators has no Hub to follow. Exempt only that conditional arm.
+        direct = {
+            node.body
             for node in ast.walk(tree)
-            if isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Attribute)
-            and node.func.attr == "ensure"
-        ]
+            if isinstance(node, ast.IfExp) and ast.unparse(node.test) == "lane.per_host"
+        }
+        callers = set()
+        for function in (node for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)):
+            for call in ast.walk(function):
+                if (
+                    not isinstance(call, ast.Call)
+                    or getattr(call.func, "attr", None) != "ensure"
+                    or call in direct
+                ):
+                    continue
+                assert "_follow_hub" in {key.arg for key in call.keywords}, ast.unparse(call)
+                callers.add(function.name)
+        return callers
 
-    calls = ensure_calls(caches) + ensure_calls(cache_commands)
-    assert len(calls) == 3, [ast.unparse(c) for c in calls]
-    assert all(any(k.arg == "_follow_hub" for k in c.keywords) for c in calls), [
-        ast.unparse(c) for c in calls
-    ]
+    assert hub_calls(caches) | hub_calls(cache_commands) == {
+        "_present_or_completed",
+        "prepare_lane",
+        "cache_pull_",
+    }
 
 
 def test_a_stub_lane_keeps_working(tmp_path: Path) -> None:

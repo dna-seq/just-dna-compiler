@@ -20,6 +20,8 @@ from just_dna_enricher.clinvar import clinvar_dataset_label
 from just_dna_enricher.currency import CurrencyCheck, summarize_currency
 from just_dna_enricher.grch37 import BuildDiagnosisResult
 from just_dna_enricher.identifiers import RsidStatus
+from just_dna_enricher.ipd_imgt_hla import HlaAssignmentCheck
+from just_dna_enricher.licensing import IPD_IMGT_HLA_TERMS
 from just_dna_enricher.placement import PlacementCheck
 from just_dna_enricher.resolver import PairCheck
 from just_dna_enricher.sequences import RefCheck, summarize_ref_mismatches
@@ -111,6 +113,7 @@ def _verification_records(
     placement: PlacementCheck,
     currency: CurrencyCheck | None,
     rsid_unanswered: tuple[str, str] | None = None,
+    hla: HlaAssignmentCheck | None = None,
     written_only: bool = False,
 ) -> list[VerificationRecord]:
     """The checks this pass puts, as records `verification.json` can carry (RM45).
@@ -558,6 +561,28 @@ def _verification_records(
                 record.detail = " ".join(
                     filter(None, ("Verification scoped to fresh resolution rows.", record.detail))
                 )
+    if hla is not None:
+        if hla.skipped is not None:
+            records.append(
+                skipped(
+                    "hla_allele_assignment",
+                    hla.skipped,
+                    detail=hla.detail,
+                    source=IPD_IMGT_HLA_TERMS.source,
+                )
+            )
+        else:
+            assert hla.findings is not None
+            records.append(
+                ran(
+                    "hla_allele_assignment",
+                    subjects=hla.subjects,
+                    findings=hla.findings,
+                    release=hla.release,
+                    detail=hla.detail,
+                    source=IPD_IMGT_HLA_TERMS.source,
+                )
+            )
     return records
 
 

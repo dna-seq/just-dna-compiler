@@ -112,6 +112,7 @@ DERIVED_PRODUCERS: dict[str, tuple[DerivedProducer, ...]] = {
                 "placement_agreement",
                 "genome_build_agreement",
                 "dataset_currency",
+                "hla_allele_assignment",
                 "published_refutation",
                 "evidence_status_currency",
             ),

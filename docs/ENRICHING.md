@@ -234,7 +234,11 @@ just-dna-enricher cache prune       # asks before deleting
 `cache status` reads only, so it cannot see whether a lane's repository has anything published; a lane
 that can be pulled or built names both routes.
 
-Each pulled lane's HuggingFace repository is written in one place, `locations.SNAPSHOT_REPO_IDS`, so
+For the HLA check, run `just-dna-enricher cache pull --only ipd_imgt_hla` on each host.
+It fetches the curators' tagged release directly. Subsequent offline runs can check HLA names against
+that release. The curators ask operators to avoid mirrors.
+
+Each Hub-backed lane's HuggingFace repository is written in one place, `locations.SNAPSHOT_REPO_IDS`, so
 pin a snapshot by reading it there rather than spelling the repo:
 
 ```python

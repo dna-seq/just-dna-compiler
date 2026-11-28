@@ -22,7 +22,7 @@ absent, and **an absent stage must state its reason in a field** — never in a 
 
 | stage | present when | absent reason lives in |
 | --- | --- | --- |
-| acquire (pull) | `ensure` is set | `unpublished` |
+| acquire (pull) | `ensure` is set, including a per-host fetch directly from the source | `unpublished` |
 | build (unattended) | `rebuild` is set | `unbuilt` |
 | publish | `publish_repo` is set | `unpublished` |
 
@@ -49,8 +49,9 @@ having said it.
 | `publish_command` | — | needed **only** when the lane has a `publish_repo` and no `rebuild` (RM202) |
 | `unpublished` / `unbuilt` | — | stated iff the stage is absent |
 | `release_label` | — | override only if `release.json`'s `dataset` is not the label. **No lane overrides it** since RM303: write `dataset` through `SnapshotRelease` instead |
+| `per_host` | — | A direct curator fetch. The lane has an `ensure` and a reason in `unpublished`. It has no Hub repository (`test_pull_from_curators_once_per_host`). |
 | `named_only` | — | the reason a lane is built **only when named** (`cache rebuild --only <lane>`): `cache prepare` never builds it and a bare `cache rebuild` reports it *not run*. Such a lane has a `rebuild`, no `ensure`, and that `--only` as its `build_command` (`test_ensembl_rsid_index.py::test_a_lane_built_only_when_named_is_rebuild_only_and_states_why`) |
-| `ensure_takes_declared_use` | — | `True` when the lane's `ensure` takes `declared_use=`, which `cache prepare` and `cache pull` then pass it (0.9; `ensembl` alone). Never a name compare in a provisioner (`test_cache_lanes.py::test_a_lane_whose_ensure_takes_the_declared_use_says_so_in_a_field`) |
+| `ensure_takes_declared_use` | — | `True` when the lane's `ensure` takes `declared_use=`, which `cache prepare` and `cache pull` then pass it (Ensembl group terms and the per-host IPD fetch). Never a name compare in a provisioner (`test_cache_lanes.py::test_a_lane_whose_ensure_takes_the_declared_use_says_so_in_a_field`) |
 | `stale_reason` | — | for a derived lane, why its snapshot no longer matches its parents (`None` when it does or cannot be compared): `cache status` then says `stale` and `cache prepare` leaves it unready, never `present` (0.9; every lane with `parents` states one: `ensembl_rsid_index`, the reader's own verdict, and `mitomap_miss`, `stale_parents`; `test_ensembl_rsid_index.py::test_lane_status_calls_a_stale_index_stale_as_the_reader_refuses_it`, `test_mitomap_miss.py::test_every_derived_lane_says_when_its_parents_moved`) |
 | `parents` | — | for a derived lane; an absent parent is *could not run*, never an empty result. Also a **cost** fact: `provisioning_closure` prices the lane by its parents |
 | `approx_mb` | ✅ | the provisioned size as an order of magnitude in whole MB, rounded up (`1` = at most a megabyte). Measured, never guessed; a test re-measures it against every snapshot the box holds (RM229) |
@@ -92,9 +93,7 @@ can rank.
 
 ## Checklist: adding a lane
 
-Nothing here is advice — **every line is asserted by a test in `test_cache_lanes.py` (42 of them) or
-`test_locations.py`**, and the parenthesis names the guard. If you skip a step the suite tells you;
-the point of the list is to not need the suite to find out.
+The tests below check each part of the lane. The last two steps also exercise the installed CLI.
 
 **Naming and resolution**
 - [ ] `<name>_build.py` exists, named for the lane, not for the source
@@ -106,7 +105,7 @@ the point of the list is to not need the suite to find out.
 - [ ] the subdir and the env var are distinct from every other lane's
       (`test_every_lane_names_a_distinct_cache_subdirectory`,
       `test_the_variables_the_module_reads_are_exactly_the_ones_the_lanes_claim`)
-- [ ] a line in `.env.template` for the override
+- [ ] a line in `.env.template` for the override (IPD: `test_the_lane_is_documented_with_its_override`)
 
 **Commands**
 - [ ] `build_command` is a command the CLI actually answers
@@ -119,12 +118,14 @@ the point of the list is to not need the suite to find out.
       one (`test_an_absent_stage_states_its_reason_and_a_present_one_does_not`)
 - [ ] if the lane has a `publish_repo`: it is reachable by a `rebuild` adapter **or** a
       `publish_command`, exactly one (`test_every_publishable_lane_can_actually_be_published`)
-- [ ] **run the publish command's `--dry-run` and read the file list.** A field being set is not a
-      capability — that is the whole of RM202
-- [ ] if the lane has an `ensure`: its HF repository is an entry of `locations.SNAPSHOT_REPO_IDS`, the one
+- [ ] **For a publishable lane, run the publish command's `--dry-run` and read the file list.** A field being set is not a
+      capability — that is the whole of RM202. `test_a_dry_run_rebuild_of_every_lane_changes_nothing`
+      covers the rebuild rehearsal. For IPD, the dry run reports the reason publication is absent.
+- [ ] if the lane has a Hub-backed `ensure`: its HF repository is an entry of `locations.SNAPSHOT_REPO_IDS`, the one
       place a repo id is written, and its prefix, `DEFAULT_*_REPO_ID` alias and `publish_repo` read that
       entry (`test_snapshot_repo_ids.py::test_the_map_holds_every_pulled_lane`,
-      `…::test_no_repository_is_spelled_outside_its_definition`, RM384)
+      `…::test_no_repository_is_spelled_outside_its_definition`, RM384). For a per-host lane,
+      `test_pull_from_curators_once_per_host` asserts all fetches target the tagged curator repository.
 
 **Data and terms**
 - [ ] any root-level file the snapshot needs is in `SNAPSHOT_ROOT_FILENAMES` (in `just_dna_format.snapshot`
@@ -139,18 +140,20 @@ the point of the list is to not need the suite to find out.
       (`test_release_json_through_the_model.py::test_no_reader_acts_on_an_untyped_release_key`, RM369)
 - [ ] `terms` is a `SourceTerms` whose permission axes are each either **documented** or recorded as
       a **reading**, and the difference is written down somewhere — `sources.csv` shows only booleans
-      (`test_the_three_permission_axes_each_rest_on_a_different_kind_of_ground`)
+      (`test_the_three_permission_axes_each_rest_on_a_different_kind_of_ground`, IPD: `test_enrich_outcomes_and_attribution`)
 - [ ] `release.json` records the source digest and the label a currency check will compare
+      (IPD: `test_operator_build_status_and_terms` and `test_both_headers_must_agree_with_the_pin`)
 - [ ] **if a drafting provider reads this lane**: it is in `drafting.DRAFT_PROVIDERS`, and its
       licence row and stale-label withdrawal go through `record_draft_provenance` rather than being
       written by hand — `clinpgx_draft` and `pgx_draft` each recorded a `dataset` and never withdrew a
       stale one for two releases, so a module widened from a newer snapshot kept a licence row naming
       the older release (`test_drafting_scaffold.py::test_no_drafter_writes_its_licence_row_directly`)
-- [ ] the lane appears in ENRICHER.md's cache table with its legend marks
+- [ ] the lane appears in ENRICHER.md's cache table with its legend marks (IPD: `test_the_lane_is_documented_with_its_override`)
 
 **Before calling it shipped**
 - [ ] `just-dna-enricher cache status` shows the lane, and shows it **present** against a real
-      snapshot — not just listed
+      snapshot — not just listed (IPD: `test_operator_build_status_and_terms`)
 - [ ] every command you added has been **run**, not only unit-tested. RM202's tests all passed
       against a lane no operator could publish, because they asserted the registry rather than
-      invoking the CLI
+      invoking the CLI. IPD exercises the entry points in `test_builder_command_accepts_a_pin_and_rejects_latest`,
+      `test_operator_build_status_and_terms` and `test_pull_from_curators_once_per_host`.
