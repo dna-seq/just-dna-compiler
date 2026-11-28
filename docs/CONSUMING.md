@@ -290,13 +290,55 @@ print(loci.select("variant_key", "chrom", "start", "source_release").unique(main
 (Shapes and dtypes trimmed from polars' output.) [INTEGRATION_0_8.md](history/INTEGRATION_0_8.md) § 2 lists
 every change by surface, and [SCHEMAS.md](SCHEMAS.md) holds the columns.
 
+## 6. What 0.10 added, and what to re-derive
+
+A recompile under 0.10 moves no `artifact.digest` and no `content_signature`: every manifest gains two
+keys, `panel_provenance` and `repeat_grades`, null where the module states neither. 0.10 does have
+old-reader breaks ([INTEGRATION_0_10.md](INTEGRATION_0_10.md) § 1.0): a 0.9 `just-dna-format` refuses a
+manifest counting one of the new warning codes, so raise the format tier first again. What a module
+can now carry:
+
+- **`conclusion_lay` and `conclusion_concise`** beside `conclusion` (for a variant module, in
+  `annotations.parquet`): the same claim for a lay reader and for a table cell. Either may be null; fall
+  back to `conclusion`.
+- **`effect_direction`** in `studies.parquet` (`increase` or `decrease`), where a study states one. The
+  column is absent when no row does.
+- **`repeat_grades.parquet`** and the manifest's `repeat_grades` summary: STRchive's evidence grade for
+  each repeat the module carries, verbatim (`Definitive`, `Refuted`, …).
+- **`manifest.panel_provenance`**: the genes a panel was drafted from, including the ones that yielded
+  no row.
+
+If you hold derived tables an enricher wrote, `just_dna_enricher.derivation_records` says, offline,
+whether an enricher upgrade changes how one is derived. It is the enricher-side partner of
+`just_dna_format.release_records.needs_recompile`, which answers for compiled output; ask both:
+
+```python
+from just_dna_enricher.derivation_records import needs_rederive, rederive_reasons
+
+for table in ("sources.csv", "literature.csv", "resolution.csv"):
+    print(table, needs_rederive("0.9.0", "0.10.0", table))
+print(rederive_reasons("0.9.0", "0.10.0", "sources.csv").changes[0][1].items)
+```
+
+```text
+sources.csv True
+literature.csv True
+resolution.csv False
+('RM294', 'RM350')
+```
+
+The answer is three-valued: `None` means a release in the interval has no record, so keep whatever
+rule you used before for that case.
+
 ## Where to go next
 
 - **[SCHEMAS.md](SCHEMAS.md)** — every model, every column, the vocabularies and the hash family.
 - **[MODULE_LIFECYCLE.md](MODULE_LIFECYCLE.md)** — where a module comes from and what a second version
   moves.
 - **[FAQ.md](FAQ.md)** — settled questions, keyed by the question you would actually ask.
-- **[Upgrading to 0.9](INTEGRATION_0_9.md)** — the 0.8.10 → 0.9 surface delta, the upgrade order, and
+- **[Upgrading to 0.10](INTEGRATION_0_10.md)** — the 0.9.0 → 0.10 surface delta, the old-reader breaks,
+  the upgrade order and the known issues 0.10.0 ships with.
+- **[Upgrading to 0.9](history/INTEGRATION_0_9.md)** — the 0.8.10 → 0.9 surface delta, the upgrade order, and
   the known issues. Nothing a compiled module carries moved.
 - **[Upgrading to 0.8](history/INTEGRATION_0_8.md)** (archived) — the 0.7 → 0.8 surface delta, the upgrade
   order, and the old-reader breaks.

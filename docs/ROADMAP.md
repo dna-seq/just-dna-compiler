@@ -28,9 +28,10 @@ deferral is filed against the release that will decide it:
   at the time; PT2 re-asked which release each belonged to now that 0.6 is uncut, and took five back:
   RM55's fix, RM72, RM82, RM84 and RM87. It is authoritative for those five, and for three of them the
   probe overturned what the roadmap entry says.
-- **[ROADMAP_0_10.md](ROADMAP_0_10.md)** — items legal in a minor, each waiting on a design question, a
-  corpus or a caller: 0.10's scope and the methylation minor after it. Its predecessor `ROADMAP_0_9.md`, 0.9's
-  scope, closed at the 0.9.0 cut on 2026-11-26 into [history/](history/ROADMAP_0_9.md), as `ROADMAP_0_8.md` had
+- **[ROADMAP_0_11.md](ROADMAP_0_11.md)** — items legal in a minor, each waiting on a design question, a
+  corpus or a caller: 0.11's scope and the methylation minor. Its predecessor `ROADMAP_0_10.md`, 0.10's scope,
+  closed at the 0.10.0 cut on 2026-11-28 into [history/](history/ROADMAP_0_10.md), as `ROADMAP_0_9.md` had at the
+  0.9.0 cut on 2026-11-26 ([history/](history/ROADMAP_0_9.md)) and `ROADMAP_0_8.md`
   at the 0.8.0 cut on 2026-11-05 ([history/](history/ROADMAP_0_8.md)), whose one waiting item, RM28's predicate
   half, moved on then. What follows describes the 0.8 file as it was. **0.8 is a stabilization and competitor-parity release, decided 2026-09-11 with
   the maintainer**; the theme is stated in that file's header and does not itself admit an item. RM10 closed there, folded into RM28. **It succeeded `ROADMAP_0_7.md` at the 0.7
@@ -48,7 +49,7 @@ to [CHANGELOG.md](CHANGELOG.md) / [COMPILER.md](COMPILER.md).
 
 **Status:** **0.9.0 is cut, and not yet tagged or published** — all three packages at `0.9.0`, cut on
 2026-11-19 from the `0.9` branch; publishing is the maintainer's, and the tag `v0.9.0` follows the publish. What a
-consumer checks and changes is [INTEGRATION_0_9.md](INTEGRATION_0_9.md), and the cut's own entry is in
+consumer checks and changes is [INTEGRATION_0_9.md](history/INTEGRATION_0_9.md), and the cut's own entry is in
 [CHANGELOG.md](CHANGELOG.md). The previous cut was **`v0.8.10`** (2026-11-19, all three packages at `0.8.10`),
 the last of ten patches on the 0.8 line, which is published and tagged before 0.9.0 is; PyPI's latest at the
 0.9.0 cut was 0.8.9.
@@ -317,7 +318,7 @@ with their rationale and with the five places the eight filings turned out to un
 there. **An empty list here is not an all-clear** — it means nothing is *filed*, and this file has read
 empty twice before while carrying real work one heading down. The live consumer inbox
 ([CONSUMER_SUGGESTIONS.md](CONSUMER_SUGGESTIONS.md)) is the other half of that question, and
-[ROADMAP_0_10.md](ROADMAP_0_10.md) / [ROADMAP_1_0.md](ROADMAP_1_0.md) hold the deferred items.
+[ROADMAP_0_11.md](ROADMAP_0_11.md) / [ROADMAP_1_0.md](ROADMAP_1_0.md) hold the deferred items.
 Every one of them broke a rule this repo had already written down — which is the finding worth keeping
 out of the item entries and stating once: **the gotcha book is not the thing that catches a
 regression.** In four of the eight the file carrying the violation also carried the rule, sometimes in
@@ -1228,7 +1229,7 @@ unanswered, and a transcribed table shows the columns without showing the semant
 is the shape, never the demand, so what this instance does is **move the entry from parked-on-demand to
 parked-on-shape** — a smaller and much more answerable place to be parked.
 
-**Register cross-reference (2026-09-27).** [RM302](ROADMAP_0_10.md#rm302--one-conclusion-serves-every-place-a-report-shows-it-a-table-cell-a-details-card-and-an-explanatory-mode-want-different-wordings)
+**Register cross-reference (2026-09-27).** [RM302](ROADMAP_HISTORY.md#rm302--one-conclusion-serves-every-place-a-report-shows-it-a-table-cell-a-details-card-and-an-explanatory-mode-want-different-wordings)
 gives `conclusion` optional lay and concise wordings, two columns by default. If this item lands a
 separate meta-conclusion table, the maintainer's steer is that the registers may live there instead,
 so the two are decided together.
@@ -1627,6 +1628,8 @@ has a warning code, which is dropped on the error path today, so part of this is
 **Parked, the pm (2026-11-05)**, out of `ROADMAP_0_9.md`, under the maintainer's rule that a minor takes the zones they name and nothing by default ("'Auto-next minor' was a policy when we didn't have a dedicated decision maker for this"). It reached 0.9 by the move of the items parked on a corpus. **Unparks when** its own gate below is met: the corpus count, when a scope the maintainer highlights touches it, or when the roadmap is empty.
 
 **Moved here from `ROADMAP_0_8.md` at the 0.8.0 cut (2026-11-05)**, unchanged but for the file it sits in: its combination half (the meta-table) shipped in 0.8 ([ROADMAP_HISTORY § RM28](ROADMAP_HISTORY.md#rm28--the-combination-half-the-meta-table)), and the decisions it was built to are in [history/ROADMAP_0_8.md](history/ROADMAP_0_8.md#rm28--meta-conclusions-the-combination-halfs-decisions-shipped-in-08). What waits is the predicate half's remainder (open-world negation, OR, *trans* phase), parked on the corpus below.
+
+**RM302's residual (the lead, 2026-11-28).** RM302 gave variants, diplotypes, pharmacogenomic variants and bins optional lay and concise wordings of their conclusion in 0.10; registers for a `meta.csv` row wait for this item, since a meta-conclusion's predicate half decides what such a row concludes.
 
 **Severity** medium (after the corpus) · **Status** open — **a minor, parked** · *before parking:* parked on a corpus — **and halved on 2026-08-13**:
 the injected-cofactor half closed, the predicate half stays here · **Owner** format (schema + compiler)
@@ -2308,35 +2311,6 @@ hand-kept table.
 the maintainer highlights touches it, or the roadmap is empty.
 
 **Residuals** none yet.
-
-## RM471 — a `provenance_regex` timeout counted the matching process's start-up, and the AVI interrupt test timed a stop the machine's load decides
-
-**Severity** low · **Status** open — **a patch, built on `main` 2026-11-27, uncut, for 0.9.1** · **Owner** enricher
-(`literature.regex_matches`) and the enricher suite · **Motivating case** the lead's 0.10 suite run, 2026-11-27, at a
-load average of 40 to 57 on 16 threads: `test_literature.py::test_a_regex_locator_matches_the_fulltext` (`assert None
-is True`) and `test_an_interrupt_stops_a_bulk_build.py::test_an_interrupt_stops_the_alphagenome_build_mid_contig`
-("the build took 5.17s to stop"), each green alone and both on `main` too · *related* RM409, RM421
-
-**What was seen.** The regex half was parked here without a number ("the regex timeout counts the worker's start-up";
-unparks when that bound guards a real regex), and a real run met it. `regex_matches` timed the match with a `join` on
-its child, so the child's start-up was charged to the 5 s: under `forkserver` (Python 3.14's default here) that child
-imports `just_dna_enricher.literature`, measured at 2 to 4 s per call at a load of 69. A trivial pattern then reads
-as **not checked** on a loaded machine, in an enrich run as much as in the test, and the catastrophic-pattern test's
-0.25 s could run out before the pattern started, so it passed whether the bound worked or not. The AVI test held the
-stop to `BOUND` (4.0 s, widened from 1.0 at 0.8.7), which load decides; the stand-ins it stops sleep in wall-clock
-time.
-
-**The fix.** The child sends a ready signal over a pipe once its imports are done, and the match's timeout starts
-there. Its start-up has its own allowance (60 s) and its own warning ("the matching process did not start"); the
-"exceeded" warning now means the pattern ran. Measured at a load of about 52 with a 1 s timeout on a trivial pattern:
-the old code answered `None` once in five calls, the new one `True` five times, one of them after 1.7 s of start-up. The AVI
-test asks the stand-in `tabix` processes instead of the clock: an in-flight stand-in that exits 0 was read to its
-end, which is the old behaviour, and a stopped one exits nonzero on its closed pipe. With `_stopped` disabled the test
-fails on that check ("streamed to the end"). Tests: `test_a_regex_timeout_counts_the_match_not_the_start.py`, three;
-the touched files green three times running under `-n 4` with 40 extra busy loops (load 50 to 88).
-
-**Residuals** each regex check still pays a fresh interpreter importing the enricher (2 to 4 s under load). Not filed:
-it is time, not a wrong answer, and regex rows are few.
 
 # Not format scope
 
@@ -3485,7 +3459,7 @@ likely to be working on interactively. `_vrs_coverage`'s grouping already exists
   from, and `refresh_sidecar` will not backfill a sidecar that is already present. A conditional
   warning, or carrying `panel` into `manifest.json` the way `weighting` is, would settle it.
   **Update:** S69 shipped the message half (the warning stopped claiming nothing else is lost); the
-  home-for-the-three-fields half is [RM265](ROADMAP_0_10.md#rm265--the-panel-deprecation-has-no-accepted-signal-on-the-replaced-branch-the-warning-fires-whether-or-not-you-need-the-three-fields-it-tells-you-to-keep-the-block-for)
+  home-for-the-three-fields half is [RM265](ROADMAP_HISTORY.md#rm265--the-panel-deprecation-has-no-accepted-signal-on-the-replaced-branch-the-warning-fires-whether-or-not-you-need-the-three-fields-it-tells-you-to-keep-the-block-for)
   (S114), which showed the replaced-branch warning is unclearable for a module that needs them.
 
 ### Absences that pass in silence (compiler)

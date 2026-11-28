@@ -254,6 +254,7 @@ the warning names the key. Since 0.10 the mirrored-site fill sentences carry
 a witness narrows the fill to one spelling. Replacing the rsID-only row with the intended event’s
 coordinate clears the ambiguity. Where authored rows claim every spelling,
 the sentence naming the claimed keys carries `rsid_no_hosting_locus` because the rsID row has no position.
+`resolution.ALL_SPELLINGS_CLAIMED_CODE` holds that code (desk #469 chose it); it decides that one sentence only.
 A positional row was already left unplaced where two loci host it. It is a corrected derivation:
 an artifact compiled before 0.8.9 may hold the claim on both spellings. S158 is the report.
 

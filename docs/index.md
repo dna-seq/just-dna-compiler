@@ -52,8 +52,9 @@ offline.
 
 </div>
 
-Coming from 0.8? [Integrating 0.9](INTEGRATION_0_9.md) lists what changed, surface by surface, and
-the order to upgrade in. Still on 0.7? Read [Integrating 0.8](history/INTEGRATION_0_8.md) first.
+Coming from 0.9? [Integrating 0.10](INTEGRATION_0_10.md) lists what changed, surface by surface, and
+the order to upgrade in. Still on 0.8? Read [Integrating 0.9](history/INTEGRATION_0_9.md) first, and on 0.7
+[Integrating 0.8](history/INTEGRATION_0_8.md) before that.
 
 ## Authoring a module
 

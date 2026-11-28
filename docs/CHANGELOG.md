@@ -41,7 +41,51 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md). The `0.8` branch merged into `main` at the 0.8.0 cut (2026-11-05).
 
-## 2026-11-28 — 0.10 review round 2: re-derive records account for missing releases and each table’s history (a minor, for 0.10)
+## 2026-11-28 — `v0.10.0`: format, compiler and enricher 0.10.0 (a minor, the `0.10` branch)
+
+**Cut on 2026-11-28 from the `0.10` branch**, built from 2026-11-27 to 2026-11-28: an even minor. A release says
+which derived tables an enricher upgrade asks you to re-derive (RM399, RM441); four optional authored additions
+(RM435's `effect_direction`, RM265's `panel_provenance:`, RM302's lay and concise conclusions, RM294's
+`repeat_grades.csv`); offline left-alignment against an operator's own GRCh38 FASTA (RM385); a host-wide store of
+live answers keyed by the release that answered (RM468); HLA names checked against a pinned IPD-IMGT/HLA release
+(RM350); and RM460's warning code. **RM471**, the enricher patch built on `main` for a 0.9.1 that was never cut,
+ships inside 0.10.0 on the pm's word. The upgrade note is [INTEGRATION_0_10.md](INTEGRATION_0_10.md). Publishing to
+PyPI is the maintainer's, and the tag `v0.10.0` follows it; `0.10` merges into `main` after the publish.
+
+- **Versions and floors (one number per cut):** all three packages are `0.10.0`, every intra-workspace floor (and the
+  enricher's `compat` extra's) is `>=0.10.0`, since the compiler and the enricher import
+  `just_dna_format.repeat_grades`. No third-party floor moved; `uv lock` moved the three workspace versions only.
+  PyPI's latest at the cut is 0.9.0 for all three.
+- **Old-reader breaks: raise the format floor first.** Eight new closed-vocabulary members (six warning codes, the
+  `repeat_grade` source layer, the `hla_allele_assignment` verification check), listed by a test against `v0.9.0`;
+  new fields on `extra="forbid"` authored models, which a 0.9 compiler refuses in a reversed 0.10 module; and a 0.9
+  compiler's `table_file_near_miss` on `repeat_grades.csv`. The manifest's two new keys are not breaks.
+  [INTEGRATION_0_10 § 1.0](INTEGRATION_0_10.md#10-what-a-09-reader-refuses) has the table.
+- **The release record** (`RELEASE_RECORDS["0.10.0"]`, measured from 0.9.0, both sides on polars 2.1.0 and Python
+  3.14.8): 22 of 22 reference modules move `manifest_fields` only (the keys `panel_provenance` and `repeat_grades`,
+  null where unstated, declared as additions); every other axis 0/22. A first BEFORE tree resolved polars 2.2.0
+  unpinned and moved every digest under `toolchain_differs`; rebuilt with the toolchain held, no digest moved.
+- **The derivation record** (`DERIVATION_RECORDS["0.10.0"]`, S164): `needs_rederive("0.9.0", "0.10.0", table)` is
+  `True` for `sources.csv` (RM294, RM350) and `literature.csv` (RM471), `False` elsewhere; RM385 and RM460 are named as
+  reaching no derived table, with why.
+- **Gates at the cut:** the network gates (`test_prerelease_gates.py`, 28) and every `-m network` test (46) green on
+  the cut tree; the live `ipd_imgt_hla` rebuild at 3.66.0 byte-identical to the build before round 1's parser fix and
+  read back through `load_lists`; an offline enrich of `pathogenic_clinvar` (339 rows, 17 indels) against NCBI's
+  `GCF_000001405.40` FASTA writes the same files at round 1's merge (`12975c1d`) and at the cut, clock fields aside,
+  so round 2's R3 change to the window reader moved nothing on real data.
+- **The consumers' preview ran** on the first batch (`992e85b1`), before round 1; its findings S163, S165 and S166
+  were built on `0.10`. Two review rounds ran (the last on `12975c1d`), neither found a blocker; the fixes the pm placed
+  in 0.10 are the round 1 and round 2 headings below.
+- **Known issues** ([INTEGRATION_0_10 § 4](INTEGRATION_0_10.md#4-known-issues)), each filed for 0.11 with the kit's
+  allocator: RM472 to RM477 and RM479 to RM481 from the two rounds, RM478 (R4's skip-to-failure flag) and RM482 (single
+  4's wider walk). None returns a wrong answer. RM459 is carried from 0.9.
+- **Residuals:** `ROADMAP_0_10.md` closed into [history/](history/ROADMAP_0_10.md); the ten items' records and RM471's
+  are in [ROADMAP_HISTORY § The 0.10 minor](ROADMAP_HISTORY.md#the-010-minor), each with its `**Residuals**`.
+  [ROADMAP_0_11.md](ROADMAP_0_11.md) opens with RM469, RM459, RM472 to RM482 and the methylation minor.
+  INTEGRATION_0_9 moved to [history/](history/INTEGRATION_0_9.md).
+- **Suite at the cut:** 8693 passed, 152 skipped, none red, so no test is red by design: the tag tests take each package's version beside the tags, so 0.10.0 in code with no `v0.10.0` tag yet passes, and the cross-tier floor guard red on `0.10` cleared when the floors moved. Strict docs build green.
+
+## 2026-11-28 — 0.10 review round 2: re-derive records account for missing releases and each table’s history (a minor, cut as `v0.10.0`)
 
 The registry can now ask whether a licence table needs re-deriving across 0.7.3 to 0.8.0 and get
 `True`. RM383 retires a source that the committed resolution rows or rewritten concordance calls
@@ -51,7 +95,7 @@ queries walk the published enricher versions (single 3, RM399 and RM441). A miss
 withholds an all-clear. The newest-release query returns `None` for `repeat_grades.csv` across
 the history through 0.9.0. Its first writer ships in 0.10.0.
 
-## 2026-11-28 — 0.10 review round 2: mirrored rsID fill warnings are actionable (a minor, for 0.10)
+## 2026-11-28 — 0.10 review round 2: mirrored rsID fill warnings are actionable (a minor, cut as `v0.10.0`)
 
 A catalog can now subtract `compilation.carried` from `compilation.warnings` and still show the
 author every `rsid_genotype_reads_as_two_events` finding (RM460, single 1). Replacing the rsID row
@@ -59,7 +103,7 @@ with the intended event’s coordinate clears each one, including a fill narrowe
 The tests also pin the words that tell an empty placement verdict from a second source that was
 asked and could not decide (single 6).
 
-## 2026-11-28 — 0.10 review round 2: a short FASTA window withholds the placement (a minor, for 0.10)
+## 2026-11-28 — 0.10 review round 2: a short FASTA window withholds the placement (a minor, cut as `v0.10.0`)
 
 A local FASTA read past the end of a contig now reports the chromosome and its length (R3, RM385).
 Previously, GRCh38’s final MT bases could move `MT:16599 A>AA` to the nonexistent position 16598.
@@ -67,14 +111,14 @@ Alignment now requires bases through the end of REF, so CIViC also withholds a d
 on the last base if the deleted sequence would extend beyond it. Reads ending exactly at the last
 base still work. The shared sequence memo stores only answers that cover the interval requested.
 
-## 2026-11-28 — 0.10 review round 1: new public Python names are documented in each tier (a minor, for 0.10)
+## 2026-11-28 — 0.10 review round 1: new public Python names are documented in each tier (a minor, cut as `v0.10.0`)
 
 The tier references now name the public definitions added since `v0.9.0` (C6). A caller can
 look up what an unanswered HLA check returns, which repeat keys contribute to the grade report,
 and what a missing release means for a stored answer. A test reads the tag and compares it with
 the working tree across all three packages, checking both the source docstrings and the tier references.
 
-## 2026-11-28 — 0.10 review round 1: draft-panel keeps authored panel provenance (a minor, for 0.10)
+## 2026-11-28 — 0.10 review round 1: draft-panel keeps authored panel provenance (a minor, cut as `v0.10.0`)
 
 ClinVar `draft-panel` now includes genes from both `panel_provenance:` and the deprecated `panel:`
 in the block it prints (C2, RM265). It keeps an authored reference pin when the snapshot omits its
@@ -82,7 +126,7 @@ digest, and names both pins before writing any rows if they disagree. A blank ge
 `variants.csv` decides nothing, so the listed genes stay listed and the run warns that
 `genes_unmatched` may overstate, on both real and dry runs.
 
-## 2026-11-28 — 0.10 review round 1: old-reader breaks are listed, FASTA indexes respect umask and unstated study directions preserve the digest (a minor, for 0.10)
+## 2026-11-28 — 0.10 review round 1: old-reader breaks are listed, FASTA indexes respect umask and unstated study directions preserve the digest (a minor, cut as `v0.10.0`)
 
 The [upgrade note](INTEGRATION_0_10.md) lists the closed vocabulary members a 0.9 reader refuses,
 including the `repeat_grade` source layer (C1). A test compares the list with the tagged v0.9.0
@@ -93,7 +137,7 @@ so another account can read a shared index when permissions allow (C7). The comp
 `effect_direction` from `studies.parquet` when every study leaves it blank, preserving the
 previous study columns and avoiding a digest change from that column alone (single 2).
 
-## 2026-11-28 — 0.10 review round 1: repeat regrades replace old answers and HLA checks name their input (a minor, for 0.10)
+## 2026-11-28 — 0.10 review round 1: repeat regrades replace old answers and HLA checks name their input (a minor, cut as `v0.10.0`)
 
 **C3 (RM294).** When STRchive revises a locus, the next enrich run replaces its grades, disease label and
 release. A full re-answer refreshes the licence row. A repeat with several catalogue records keeps them
@@ -107,7 +151,7 @@ compare gene symbols through `gene_key`. Authored spellings survive the join.
 `allele_function.csv`. An unreadable allele-function or repeat-allele table skips its own pass and
 gives the load error in either mode. The IPD reader refuses a final section title with no CSV header.
 
-## 2026-11-28 — RM302: a conclusion can carry lay and table-cell wordings (a minor, for 0.10)
+## 2026-11-28 — RM302: a conclusion can carry lay and table-cell wordings (a minor, cut as `v0.10.0`)
 
 Authors can add `conclusion_lay` and `conclusion_concise` to variants, diplotypes, drug-response
 variants and measure bins. The existing `conclusion` is the detailed wording. Either optional text
@@ -119,7 +163,7 @@ reserved for the separate question of which language the author used.
 does. A mixed-case genotype such as `a/G` used to be written back as `G/a`, missed its annotation, and
 came back with an empty conclusion. It now round-trips.
 
-## 2026-11-28 — S167: the enricher writes a FASTA's .fai itself (a minor, for 0.10)
+## 2026-11-28 — S167: the enricher writes a FASTA's .fai itself (a minor, cut as `v0.10.0`)
 
 A host with only the enricher installed can now run `just-dna-enricher fasta index PATH` after
 unpacking its GRCh38 FASTA. The command writes the five-column index beside the reference and
@@ -128,7 +172,7 @@ It checks the file in one pass and replaces the index only after every contig pa
 fixture produces the same bytes as `samtools faidx`, and so does NCBI's full `GCF_000001405.40`
 FASTA (705 contigs, 3.3 GB), measured by the lead on 2026-11-28.
 
-## 2026-11-28 — RM265: drafted panels retain their requested genes and reference pin (a minor, for 0.10)
+## 2026-11-28 — RM265: drafted panels retain their requested genes and reference pin (a minor, cut as `v0.10.0`)
 
 Move `genes`, `significance` and `reference_sha256` from `panel:` into the optional
 `panel_provenance:` block. It also records `genes_unmatched`, so a reader can distinguish a
@@ -140,7 +184,7 @@ row’s `dataset` and when the old block can go.
 ClinVar `draft-panel` prints the merged block for the author to paste, including on a dry run.
 A different snapshot digest stops the draft before it writes rows.
 
-## 2026-11-28 — RM294: STRchive’s association grades travel with repeat loci (a minor, for 0.10)
+## 2026-11-28 — RM294: STRchive’s association grades travel with repeat loci (a minor, cut as `v0.10.0`)
 
 `just-dna-enricher enrich` now fills `repeat_grades.csv` for the repeats a module carries.
 Both ARX disease records survive a join on either published motif spelling. Each row keeps
@@ -148,7 +192,7 @@ STRchive’s wording, including `Refuted` and `Provisional`, and names the catal
 and its release when known. The compiler carries these facts into `repeat_grades.parquet`
 and warns if a grade’s repeat key has disappeared from the module.
 
-## 2026-11-28 — RM350: HLA allele names are checked against a pinned IPD-IMGT/HLA release (a minor, for 0.10)
+## 2026-11-28 — RM350: HLA allele names are checked against a pinned IPD-IMGT/HLA release (a minor, cut as `v0.10.0`)
 
 `enrich` checks authored HLA names at their stated resolution. A deleted name carries the
 curators' explanation. An unassigned name carries the release searched. Both are warnings in
@@ -157,7 +201,7 @@ strict mode. An unavailable list produces a skipped verification record. The per
 citations in `sources.csv`. It has no publisher. A reader of the new verification check needs
 `just-dna-format` 0.10.
 
-## 2026-11-27 — RM460: mirrored-site fills have their own warning code (a minor, for 0.10)
+## 2026-11-27 — RM460: mirrored-site fills have their own warning code (a minor, cut as `v0.10.0`)
 
 The compiler now counts a genotype that reads as an insertion and a deletion at the same site under
 `rsid_genotype_reads_as_two_events` in `compilation.warnings_summary`. Narrowing the fill to one spelling
@@ -170,7 +214,7 @@ the filled rows and the treatment under `--strict` are the same as in 0.9.
 the new key. This was measured on `hboc_palb2` during the 0.8.9 build. Consumers should raise their
 `just-dna-format` floor to 0.10 before reading such manifests.
 
-## 2026-11-27 — RM399, RM441: an enricher upgrade says which tables to re-derive (a minor, for 0.10)
+## 2026-11-27 — RM399, RM441: an enricher upgrade says which tables to re-derive (a minor, cut as `v0.10.0`)
 
 RM399 and RM441 give readers one offline route for a reference lane move and a corrected
 derivation. `just_dna_enricher.derivation_records.needs_rederive` reports both the 0.8.0
@@ -180,7 +224,7 @@ releases, causes and items behind the answer. S161's kept table can be used acro
 that could change a table is computed from the same records. The format's release records
 continue to answer the compiled-output question.
 
-## 2026-11-27 — RM435: a study can state its effect direction without a size (a minor, for 0.10)
+## 2026-11-27 — RM435: a study can state its effect direction without a size (a minor, cut as `v0.10.0`)
 
 `studies.csv` accepts the optional `effect_direction` column. A replication study can now say
 that its effect allele increases or decreases the measured trait even when the paper prints
@@ -193,7 +237,7 @@ scale, including in strict mode. The new warning code `study_effect_direction_di
 is an **old-reader break**. A format reader older than 0.10 refuses a manifest whose
 `warnings_summary` contains that key.
 
-## 2026-11-27 — RM385: an offline run can use a verified local GRCh38 FASTA (a minor, for 0.10)
+## 2026-11-27 — RM385: an offline run can use a verified local GRCh38 FASTA (a minor, cut as `v0.10.0`)
 
 An operator can now give `enrich` or `vrs mint` a local reference with `--sequence-uri`, or pass a
 `SequenceProxy` with a `fasta+file:///…` URI to `enrich()`. The enricher checks each requested
@@ -215,7 +259,7 @@ indels and the windows CIViC reads for left-alignment. The CLI accepts `--sequen
 `draft-panel --source civic`, CPIC `draft` and the `civic reproduce` reference cross-check.
 The host supplies the indexed FASTA.
 
-## 2026-11-27 — RM468: repeat online lookups reuse answers from the same release (a minor, for 0.10)
+## 2026-11-27 — RM468: repeat online lookups reuse answers from the same release (a minor, cut as `v0.10.0`)
 
 Two modules that ask about the same rsID can now share its answer. Ensembl states its REST release
 and NCBI states its build per database before the client reads the host's SQLite store. A moved
@@ -229,7 +273,7 @@ Preview finding S163. Reusing a live client or a `LookupClients` bundle now chec
 release on each call. A host can pass its store as `LookupClients(answer_store=...)`, or wrap several
 lookups in `answer_run(...)` to share one probe per source and one set of usage counts for the batch.
 
-## 2026-11-27 — RM471: a `provenance_regex` timeout counts the match, not the matching process's start-up (patch, enricher only, for 0.9.1)
+## 2026-11-27 — RM471: a `provenance_regex` timeout counts the match, not the matching process's start-up (patch, enricher only, no 0.9.1: shipped in `v0.10.0`)
 
 - **`literature.regex_matches`**: the child process sends a ready signal before it matches, and the timeout
   (`regex_timeout`, 5 s by default) starts there. Under `forkserver` the child's start-up imports the enricher, 2 to
@@ -248,7 +292,7 @@ second half with its `--rehearse-download` flag; RM412's half 1 (the per-lane re
 first cut on 2026-11-19 was never published: **the rescope** (the pm on the maintainer's word, 2026-11-26) built nine
 of its known issues and residuals in 0.9 instead, RM454, RM458 and RM461 to RM467, and the cut was redone. RM470,
 found by the redone cut's network gate, was folded in on the maintainer's word ("merge gkm into 0.9.0 if built"). The
-upgrade note is [INTEGRATION_0_9.md](INTEGRATION_0_9.md). Publishing to PyPI is the maintainer's, and the tag
+upgrade note is [INTEGRATION_0_9.md](history/INTEGRATION_0_9.md). Publishing to PyPI is the maintainer's, and the tag
 `v0.9.0` follows it; 0.8.10 was published and tagged first, and `0.9` merges into `main` after the consumers' trial.
 
 - **Versions and floors (one number per cut):** format changed (`parse_release`, `is_whole_build`), so all three packages are `0.9.0`,
@@ -274,11 +318,11 @@ upgrade note is [INTEGRATION_0_9.md](INTEGRATION_0_9.md). Publishing to PyPI is 
   S36), so it stays stable through the 0.9 line. From the rescope: `lane_status` refuses a URL in `locations`
   (`ValueError`); a `publish --dry-run` the gate would refuse exits 0 with `WOULD BE REFUSED:`; Open Targets' reader
   refuses a `parts_read` above `parts_total`; a constraint or gene-metrics lookup finds a gene asked in another case.
-- **Known issue** ([INTEGRATION_0_9 § 4](INTEGRATION_0_9.md#4-known-issues)): RM459 (with the proxy set and Hugging
+- **Known issue** ([INTEGRATION_0_9 § 4](history/INTEGRATION_0_9.md#4-known-issues)): RM459 (with the proxy set and Hugging
   Face off, gene lookups on clinpgx, cpic, drug_labels and civic answer could-not-ask until the registry reads
   `KEY_COMPARES`). The first cut's RM458, RM462 and RM454 were built by the rescope; RM460 is in 0.10's scope.
 - **Residuals:** RM459, RM460 and RM469 (RM461's: the pinned-text walk over every module) for 0.10, in
-  [ROADMAP_0_10.md](ROADMAP_0_10.md), opened at this cut with 0.10's scope and RM468; RM441 takes RM467's
+  [ROADMAP_0_10.md](history/ROADMAP_0_10.md), opened at this cut with 0.10's scope and RM468; RM441 takes RM467's
   reason-driven selection. `ROADMAP_0_9.md` closed into [history/](history/ROADMAP_0_9.md), the rescope included, and
   the fifteen items' records are in [ROADMAP_HISTORY § The 0.9 minor](ROADMAP_HISTORY.md#the-09-minor).
   INTEGRATION_0_8 moved to [history/](history/INTEGRATION_0_8.md).
@@ -4244,7 +4288,7 @@ corpus was written — so they were authored that way and nothing could say so.
 
 The corpus is now **13 files and 228 scenarios**, 118 registry-tagged and 110 structural, with 182
 quoted phrases checked against real string literals. **RM149 stays open**: still a draft nobody has
-read, and the second addendum in [ROADMAP_0_8.md](ROADMAP_0_10.md#rm149--expected-behaviour-lives-in-prose-and-the-prose-is-where-two-readers-split)
+read, and the second addendum in [ROADMAP_0_8.md](ROADMAP_0_11.md#rm149--expected-behaviour-lives-in-prose-and-the-prose-is-where-two-readers-split)
 carries the two scoping questions it answered with a measurement — why refusals without a code have no
 registry to walk, and why the phrase check's file scope is right.
 

@@ -147,13 +147,20 @@ DERIVATION_RECORDS: dict[str, tuple[DerivationChange, ...] | None] = {
     "0.8.10": (),
     # RM454 restores mixed-case constraint rows. RM404/412/430/431/437/443/458/461–467/470 add routes, gates or parity checks.
     "0.9.0": (_correction("gene_metrics.csv", "RM454"), _correction(SOURCES_CSV, "RM454")),
+    # RM294's grade pass and RM350's HLA check each write a licence row a 0.9 run never wrote; repeat_grades.csv itself
+    # is first produced here, so it answers from 0.10.0 on. RM471 answers a provenance_regex that a loaded machine
+    # left null in quotes_found. RM385 lets an offline run given a FASTA answer placements 0.9 could not ask, which a
+    # plain run fills without a re-derive, and an online run reads the same bases as before (S164 asked it be stated).
+    # RM460 changes compiled output (the format's record). RM399/435/441/265/302/468 add records, authored fields and
+    # a store of answers already given.
+    "0.10.0": (_correction(SOURCES_CSV, "RM294", "RM350"), _correction("literature.csv", "RM471")),
 }
 
 # Published enricher versions, independent of whether anyone examined their effects. The tag
 # test checks this inventory against each tag's enricher/pyproject.toml; wheels need no checkout.
 _RELEASES = tuple(
     Version(0, minor, patch)
-    for minor, last_patch in ((5, 4), (6, 6), (7, 3), (8, 10), (9, 0))
+    for minor, last_patch in ((5, 4), (6, 6), (7, 3), (8, 10), (9, 0), (10, 0))
     for patch in range(last_patch + 1)
 )
 

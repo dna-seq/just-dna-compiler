@@ -116,7 +116,9 @@ def test_uncovered_ends_and_empty_span() -> None:
     assert needs_rederive("0.7.3", "0.8.0", "ld_pairs.csv") is False
     future = "99.0.0"
     assert needs_rederive(future, future) is False
-    assert needs_rederive("0.9.0", future) is None
+    # From the newest recorded release, every release up to an unpublished one is unexamined.
+    newest = max(DERIVATION_RECORDS, key=parse_version)
+    assert needs_rederive(newest, future) is None
     assert future in rederive_reasons("0.8.4", future).unknown_releases
     assert needs_rederive("0.8.4", future, "resolution.csv") is True
 

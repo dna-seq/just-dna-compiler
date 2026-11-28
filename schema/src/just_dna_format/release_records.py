@@ -1915,4 +1915,51 @@ RELEASE_RECORDS: dict[str, ReleaseRecord] = {
             "again at the redone cut (2026-11-26, after the rescope), with the same result."
         ),
     ),
+    "0.10.0": ReleaseRecord(
+        version="0.10.0",
+        previous="0.9.0",
+        axes={
+            "parquet_schema": False,
+            "parquet_bytes": False,
+            "content_signature": False,
+            "manifest_fields": True,
+            "warnings": False,
+        },
+        manifest_fields=["panel_provenance", "repeat_grades"],
+        declared=[
+            DeclaredChange(
+                axis="manifest_fields",
+                target="panel_provenance",
+                kind="addition",
+                detail=(
+                    "RM265: the manifest carries a module's `panel_provenance:` block (the requested genes, the "
+                    "unmatched ones, the significance filter and the reference pin). Every 0.10 manifest has the "
+                    "key, null where the module states no block, so the field path appears on every recompile; "
+                    "nothing an earlier artifact published changes. A 0.9 reader ignores the key."
+                ),
+                item="RM265",
+            ),
+            DeclaredChange(
+                axis="manifest_fields",
+                target="repeat_grades",
+                kind="addition",
+                detail=(
+                    "RM294: the manifest summarises `repeat_grades.parquet` (its signature, sources, datasets and "
+                    "row count). Null where the module carries no `repeat_grades.csv`, which is every module "
+                    "compiled from an earlier enricher's output; a 0.9 reader ignores the key."
+                ),
+                item="RM294",
+            ),
+        ],
+        evidence=(
+            "22 reference module(s) compiled under 0.9.0 and 0.10.0 from one spec root, so the compiler is the "
+            "only variable; modules moved per axis: content_signature 0/22, manifest_fields 22/22, parquet_bytes "
+            "0/22, parquet_schema 0/22, warnings 0/22. Both sides ran polars 2.1.0 (the lock's): a first BEFORE "
+            "tree resolved polars 2.2.0 unpinned and moved every artifact digest under `toolchain_differs`, so it "
+            "was rebuilt with the toolchain held, and no digest moved. The two manifest fields are the new keys, "
+            "present as null. No reference module states one of 0.10's new authored fields (`effect_direction`, "
+            "the two conclusion registers, `panel_provenance:`), so a module that does moves `content_signature` "
+            "by its own edit, never by a recompile; the new warning codes fire on none of them either."
+        ),
+    ),
 }

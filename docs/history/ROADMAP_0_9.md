@@ -5,10 +5,10 @@ trial rules, both review rounds' sortings, the pm's placements at the first cut 
 rescope of 2026-11-26 that built that cut's leftovers in 0.9, and before that the deferral file of the minors after
 0.8. It is kept here for the record of what 0.9 took in and why. Every item 0.9 scoped shipped, the rescoped nine
 included, and each record is in [ROADMAP_HISTORY.md § The 0.9 minor](../ROADMAP_HISTORY.md#the-09-minor) with its
-`**Residuals**`; the known issue 0.9 ships with is in [INTEGRATION_0_9.md § 4](../INTEGRATION_0_9.md#4-known-issues).
+`**Residuals**`; the known issue 0.9 ships with is in [INTEGRATION_0_9.md § 4](INTEGRATION_0_9.md#4-known-issues).
 
 **Where its contents went.** 0.10's scope and everything after it (the methylation minor, the VCF 4.4 items, RM149,
-RM84 and RM67), with RM459 and RM460 from the first cut, moved to [ROADMAP_0_10.md](../ROADMAP_0_10.md) unchanged but
+RM84 and RM67), with RM459 and RM460 from the first cut, moved to [ROADMAP_0_10.md](ROADMAP_0_10.md) unchanged but
 for the file they sit in; RM468 joined them from ROADMAP.md, and RM469 (RM461's residual) was filed there. RM412's
 half 1, the per-lane release probe, stays open and parked in [ROADMAP.md](../ROADMAP.md#active-items).
 [RM_TOC.md](../RM_TOC.md) indexes every item and is where to look one up. Nothing here is edited as routine work, the
