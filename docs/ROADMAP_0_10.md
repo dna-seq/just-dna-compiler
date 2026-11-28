@@ -319,6 +319,17 @@ the unpack and `.fai` steps, and the first full digest pass (393 s here, cached 
 item, **unparked when** a host asks `prepare_caches` to place the file, or a second host provisions it by hand. Items 2
 and 3 (`sequences=` on `EnsemblResolver` and on `civic_draft`) are the lead's preview fixes on `0.10`.
 
+**Preview finding (S167, just-dna-registry, 2026-11-28, at `135eed6d`): nothing in the enricher writes the `.fai` its
+reader needs.** ENRICHER.md tells a host to index the FASTA with `samtools faidx` "or any writer of the same
+five-column `.fai`", and a host that runs only the enricher has no `samtools`, `pysam` or `pyfaidx`. `fasta.py`
+already owns the index's rules (it refuses a `.fai` whose line endings or wrap width disagree with the file), so the
+writer belongs beside the reader. **Asked**, either of: (1) `fasta.write_index(path)`, writing `<path>.fai` for an
+uncompressed FASTA and refusing one it could not then read (mixed wrap widths, a gzip); (2) a provisioning step that
+indexes when the `.fai` is missing and then does the first full read, so `.refget.json` is written at provisioning.
+A public addition, legal in 0.10; the lead builds it on `0.10`. Item 1 above leaves provisioning with the host, so
+(1) fits it as it stands; whether (2) comes as a call the host makes after (1) is the build's to settle. Not blocking:
+until it lands the registry would carry `pyfaidx` for this one file.
+
 **Residuals** none yet.
 
 ## RM459 — with the registry's proxy set and Hugging Face off, a gene lookup on clinpgx, cpic, drug_labels or civic answers could-not-ask
