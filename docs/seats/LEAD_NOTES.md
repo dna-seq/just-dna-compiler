@@ -43,7 +43,7 @@ The lead's working state, rewritten to the present before each reset. Last rewri
 
 ## In flight
 
-- mitomap behind source (liaison 643088167, 2026-11-24): the dump moved 2026-11-18 (mmutation edited 2026-11-17, 603 rows, +6 citation links). Built as mitomap_2026-11-17+2026-11-03 into `data/caches/rebuild-2026-11-24/mitomap`, upload rehearsed (5 files). `blocked: the person` (the classifier refuses a seat's publish, kit #529): `uv run just-dna-enricher mitomap publish data/caches/rebuild-2026-11-24/mitomap`. After it: `cache pull --only mitomap`, then `mitomap miss` (mitomap_miss follows its parents).
+- mitomap behind source again (found 2026-11-28 by a HEAD on the dump: Last-Modified 2026-11-25, mmutation edited 2026-11-24). Rebuilt as mitomap_2026-11-24+2026-11-03 into `data/caches/rebuild-2026-11-28/mitomap` (603 + 497 rows, 6284 citation links), upload rehearsed by dry run (5 files). The 2026-11-24 build in `data/caches/rebuild-2026-11-24/` is superseded, never to be published (the person's to delete). `blocked: the person` (the classifier refuses a seat's publish, kit #529): `uv run just-dna-enricher mitomap publish data/caches/rebuild-2026-11-28/mitomap`. After it: `cache pull --only mitomap`, then `mitomap miss` (mitomap_miss follows its parents). Before handing it over, HEAD the dump again: it is regenerated about weekly.
 - **0.10 batch, 2026-11-27: all five decided items built and on `0.10` (992e85b1, pushed).** RM460 (b37c11ac),
   RM399+RM441 (d019f0b9; the pm confirmed the enricher-only reading and the old label None, 644030607), RM435
   (457e8989), RM385 (848fbbfb), RM468 (85189b83; merged over RM385 by hand, 992e85b1). Merged tree: 8452 passed, the
