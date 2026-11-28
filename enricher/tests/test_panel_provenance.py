@@ -126,3 +126,90 @@ def test_panel_provenance_no_matches_migrates_legacy_and_reports_unknown_digest(
     }
     assert any("snapshot does not state a source_sha256" in w for w in result.warnings)
     assert path.read_bytes() == before[Path("module_spec.yaml")]
+
+
+def test_both_blocks_contribute_genes_in_first_seen_order(spec: Path, snapshot: Path) -> None:
+    current = ["samd11", "PALB2"]
+    legacy = ["SAMD11", "Brca2", "Or4f5"]
+    request = ["brca2", "HBB", "BRCA1"]
+    blocks = {
+        "panel_provenance": {"genes": current, "genes_unmatched": ["HBB"], "significance": ["benign"]},
+        "panel": {"source": "clinvar", "genes": legacy, "significance": ["likely_benign"]},
+    }
+    with (spec / "module_spec.yaml").open("a") as handle:
+        handle.write(yaml.safe_dump(blocks))
+    result = draft_gene_panel(spec, request, snapshot=snapshot)
+    panel = result.panel_provenance
+    assert panel is not None
+    assert panel.significance == sorted(DEFAULT_CLIN_SIG)
+    for block in blocks.values():
+        assert any("significance differs" in w and str(block["significance"]) in w for w in result.warnings)
+    expected = [*current, *legacy[1:], *request[1:]]
+    assert panel.genes == expected
+    with (spec / "variants.csv").open() as handle:
+        matched = {row["gene"].casefold() for row in csv.DictReader(handle)}
+    assert panel.genes_unmatched == [g for g in expected if g.casefold() not in matched]
+
+    blocks["panel_provenance"] = panel.model_dump()
+    (spec / "module_spec.yaml").write_bytes(_YAML.read_bytes() + yaml.safe_dump(blocks).encode())
+    again = draft_gene_panel(spec, request, snapshot=snapshot)
+    assert again.panel_provenance == panel
+
+
+@pytest.mark.parametrize("pins", [("panel",), ("panel_provenance",), ("panel_provenance", "panel")])
+def test_snapshot_without_digest_keeps_authored_pin(
+    spec: Path, snapshot: Path, pins: tuple[str, ...]
+) -> None:
+    (snapshot / "release.json").unlink()
+    pin = sha256_file(_VCF)
+    blocks = {"panel_provenance": {}, "panel": {"source": "clinvar"}}
+    for name in pins:
+        blocks[name]["reference_sha256"] = pin
+    if len(pins) == 2:
+        blocks["panel"]["reference_sha256"] = pin.removeprefix("sha256:").upper()
+    with (spec / "module_spec.yaml").open("a") as handle:
+        handle.write(yaml.safe_dump(blocks))
+    result = draft_gene_panel(spec, ["HBB"], snapshot=snapshot)
+    assert result.panel_provenance is not None
+    assert result.panel_provenance.reference_sha256 == pin
+    assert any("snapshot does not state a source_sha256" in w and "authored" in w for w in result.warnings)
+
+
+def test_snapshot_without_digest_refuses_conflicting_authored_pins(spec: Path, snapshot: Path) -> None:
+    (snapshot / "release.json").unlink()
+    current, legacy = sha256_file(_VCF), sha256_file(_YAML)
+    blocks = {
+        "panel_provenance": {"reference_sha256": current},
+        "panel": {"source": "clinvar", "reference_sha256": legacy},
+    }
+    with (spec / "module_spec.yaml").open("a") as handle:
+        handle.write(yaml.safe_dump(blocks))
+    before = _tree(spec)
+    run = CliRunner().invoke(app, ["draft-panel", str(spec), "--gene", "HBB", "--snapshot", str(snapshot)])
+    assert run.exit_code == 1, run.output
+    assert current in run.output and legacy in run.output
+    assert _tree(spec) == before
+
+
+@pytest.mark.parametrize("extra_genes", [(), ("HBB",)])
+@pytest.mark.parametrize("dry_run", [True, False])
+def test_an_unnamed_row_keeps_the_list_and_warns(
+    spec: Path, snapshot: Path, dry_run: bool, extra_genes: tuple[str, ...]
+) -> None:
+    with (_ROOT / "reference_examples" / "hboc_palb2" / "variants.csv").open() as handle:
+        row = next(csv.DictReader(handle))
+    gene = row["gene"]
+    row["gene"] = ""
+    with (spec / "variants.csv").open("w", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=list(row))
+        writer.writeheader()
+        writer.writerow(row)
+    request = [gene, *extra_genes]
+    result = draft_gene_panel(spec, request, snapshot=snapshot, dry_run=dry_run)
+    assert result.panel_provenance is not None
+    assert result.panel_provenance.genes == request
+    # The unnamed row decides nothing: every requested gene stays listed, and the run says why it may overstate.
+    # PALB2's only row names no gene, so it stays listed; HBB, when requested, drafts named rows of its own.
+    assert result.panel_provenance.genes_unmatched == [gene]
+    (warning,) = [w for w in result.warnings if "name no gene" in w]
+    assert warning.startswith("1 variants.csv row(s)") and "1 listed gene(s)" in warning

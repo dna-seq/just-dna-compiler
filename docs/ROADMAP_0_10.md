@@ -303,7 +303,9 @@ unmatched lists and give the migration steps for `panel:`. ClinVar `draft-panel`
 block on real and dry runs and refuses conflicting snapshot pins before appending rows. The 0.9
 manifest reader ignores the new top-level field. It accepts a consistent panel and rejects a
 manifest carrying either new code in `compilation.warnings_summary`, whose vocabulary it validates.
-The author still pastes the snippet into the YAML.
+The author still pastes the snippet into the YAML. Round 1 (2026-11-28): the draft merges genes from
+both blocks, keeps an authored pin when the snapshot omits its digest, refuses conflicting pins before
+writing, and warns that `genes_unmatched` may overstate when a row leaves its gene unnamed (C2).
 
 **Residuals** Editing `module_spec.yaml` in place is parked until an author reports a lost paste.
 
