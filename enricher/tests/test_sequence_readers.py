@@ -3,7 +3,8 @@
 Walk the installed source tree, including reads inside a returned closure. A function that
 only forwards its argument leaves the choice of view to the reader. Rebinding the argument
 itself is safe when the wrap is unconditional. A dataclass also takes its annotated fields as
-constructor arguments, so its readers inherit the bindings left by __post_init__.
+constructor arguments, so its readers inherit the bindings left by __post_init__. A host-shared
+Ensembl resolver reads its anchor source directly so it can retry across runs (RM404, S166).
 """
 
 import ast
@@ -71,7 +72,7 @@ class _Reads(ast.NodeVisitor):
         return self.findings
 
 
-def _field_reads(cls: ast.ClassDef, names: set[str]) -> list[str]:
+def _field_reads(cls: ast.ClassDef, names: set[str], filename: str) -> list[str]:
     """Check readers of injected fields, including the minter's generated constructor."""
     raw = {
         f"self.{field.target.id}"
@@ -89,7 +90,12 @@ def _field_reads(cls: ast.ClassDef, names: set[str]) -> list[str]:
             findings.extend(_Reads(method, raw).scan())
     for method in methods:
         if method.name != "__post_init__":
-            findings.extend(_Reads(method, raw.copy()).scan())
+            fields = raw.copy()
+            if (filename, cls.name, method.name) == ("ensembl.py", "EnsemblResolver", "_base_reader"):
+                # A host supplies this field for the resolver's lifetime. A run that builds its
+                # own resolver passes an already-wrapped view.
+                fields.discard("self.sequences")
+            findings.extend(_Reads(method, fields).scan())
     return findings
 
 
@@ -106,7 +112,7 @@ def _check_readers(source: str, filename: str) -> None:
     findings = []
     for node in ast.walk(tree):
         if isinstance(node, ast.ClassDef):
-            findings.extend(_field_reads(node, names))
+            findings.extend(_field_reads(node, names, filename))
         if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             continue
         args = node.args
@@ -160,3 +166,22 @@ class Reader:
     _check_readers(sample, "sample.py")
     with pytest.raises(AssertionError, match=r"read selects self\.shared\.proxy"):
         _check_readers(sample.replace("held_by_one_run(self.shared)", "self.shared"), "sample.py")
+
+
+def test_only_the_shared_resolvers_anchor_source_can_outlive_a_run() -> None:
+    source = """class EnsemblResolver:
+    sequences: SequenceProxy
+    other: SequenceProxy
+
+    def _base_reader(self):
+        return self.sequences.subsequence
+"""
+    _check_readers(source, "ensembl.py")
+    for other, filename in (
+        (source, "other.py"),
+        (source.replace("EnsemblResolver", "RunReader"), "ensembl.py"),
+        (source.replace("_base_reader", "read"), "ensembl.py"),
+        (source.replace("return self.sequences", "return self.other"), "ensembl.py"),
+    ):
+        with pytest.raises(AssertionError, match="before held_by_one_run"):
+            _check_readers(other, filename)

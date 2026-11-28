@@ -7,7 +7,7 @@ from pathlib import Path
 import typer
 
 from just_dna_enricher.civic_draft import draft_panel_from_civic
-from just_dna_enricher.cli._shared import _DRAFT_PRECONDITION_ERRORS, _use, app
+from just_dna_enricher.cli._shared import _DRAFT_PRECONDITION_ERRORS, SequenceURI, _use, app, sequence_source
 from just_dna_enricher.clinvar_draft import ClinVarDraftError, draft_gene_panel
 from just_dna_enricher.mitomap_draft import SOURCE_LABEL as MITOMAP_MISS_SOURCE
 from just_dna_enricher.mitomap_draft import MitomapDraftError, draft_panel_from_mitomap_miss
@@ -114,9 +114,7 @@ def draft_panel_(
     download: bool = typer.Option(
         True,
         "--download/--no-download",
-        help="Provision the published snapshot when no local one is found. Fetching it is this "
-        "command's only network use, so --no-download coincides with --offline today; it is a "
-        "separate switch because it says 'do not go and get one', not 'make no request'.",
+        help="Provision the published snapshot when no local one is found.",
     ),
     clin_sig: str | None = typer.Option(
         None,
@@ -147,8 +145,11 @@ def draft_panel_(
     ),
     use: str = typer.Option("unstated", "--use", help="Declared use (ClinVar is public domain)."),
     dry_run: bool = typer.Option(False, "--dry-run", help="Report what would be added; write nothing."),
+    sequence_uri: SequenceURI = None,
 ) -> None:
     """Draft a gene panel's variants.csv rows from an authority — appends, never overwrites a row.
+
+    Only --source civic reads --sequence-uri, to anchor and left-align registry indels.
 
     The drafted rows carry a **genotype placeholder**, so the module will not compile until you decide
     what each finding is about. That is deliberate: ClinVar publishes alleles, and whether carrying one
@@ -228,6 +229,7 @@ def draft_panel_(
                 spec_dir,
                 gene,
                 snapshot=civic_cache,
+                sequences=sequence_source(sequence_uri, offline),
                 declared_use=_use(use),
                 offline=offline,
                 dry_run=dry_run,

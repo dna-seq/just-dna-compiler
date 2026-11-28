@@ -596,12 +596,17 @@ def draft_panel_from_civic(
     offline: bool = False,
     registry: ClingenAlleleClient | None = None,
     dry_run: bool = False,
+    sequences: SequenceProxy | None = None,
 ) -> CivicDraftResult:
     """Append `direction`-axis rows from the CIViC snapshot, with everything withheld accounted for.
 
     `genes` filters; empty drafts every variant in the snapshot. The gene filter is applied first and
     counted separately from the withholding, because "CIViC has nothing for this gene" and "CIViC has
     something and we would not write it" are different answers an author needs told apart.
+
+    `sequences` reads the GRCh38 bases used to anchor and left-align a one-sided registry indel.
+    The draft shares one proxy across rows and reads bases only when an indel needs them.
+    Under `offline`, only a local FASTA can supply those bases.
 
     **The counts land on the result, never only in a log line.** The snapshot already recorded the
     somatic majority it dropped; this records what it withheld on top, and
@@ -663,10 +668,7 @@ def draft_panel_from_civic(
     registry = registry if registry is not None else ClingenAlleleClient(offline=offline)
     consulted_registry = False
 
-    # The anchor reader, built once per run so its cache is shared. `SequenceProxy` degrades to
-    # `None` offline and on an unreachable service, which is what makes `anchor_base_unreadable` a
-    # real outcome rather than a crash.
-    sequences = held_by_one_run(SequenceProxy(offline=offline))
+    sequences = held_by_one_run(sequences or SequenceProxy(offline=offline), offline=offline)
 
     def read_base(chrom: str, pos: int) -> str | None:
         """One GRCh38 reference base at a 1-based position, or `None`."""

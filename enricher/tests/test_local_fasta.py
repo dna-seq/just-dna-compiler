@@ -1,6 +1,7 @@
 """A local reference must earn the GRCh38 accession before any caller can read it (RM385)."""
 
 import gzip
+import hashlib
 import os
 import shutil
 from concurrent.futures import ThreadPoolExecutor
@@ -12,10 +13,13 @@ import polars as pl
 import pytest
 from ga4gh.core import digests
 from just_dna_compiler.compiler import load_csv_rows
+from just_dna_enricher.civic_build import CivicDownload
+from just_dna_enricher.civic_draft import CivicDraftResult
 from just_dna_enricher.cli import app
 from just_dna_enricher.clinvar_gkm_build import GRCH38_ACCESSIONS
 from just_dna_enricher.enrich.orchestration import _grch38_window
 from just_dna_enricher.fasta import FastaConfigurationError, FastaReference
+from just_dna_enricher.pgx_draft import PgxDraftResult, _reference_reader
 from just_dna_enricher.sequences import (
     SequenceProxy,
     held_by_one_run,
@@ -317,6 +321,88 @@ def test_enrich_cli_attests_to_the_answering_source(fasta: Path, no_ambient_cach
     )
     assert "FASTA" in run.output and "wrong-build diagnosis" in run.output
     assert "both need a live" not in run.output
+
+
+def test_civic_panel_cli_passes_the_selected_sequence_source(
+    fasta: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    draft = Mock(return_value=CivicDraftResult())
+    monkeypatch.setattr("just_dna_enricher.cli.panel_commands.draft_panel_from_civic", draft)
+    uri = _proxy(fasta).uri
+    run = CliRunner().invoke(
+        app,
+        [
+            "draft-panel",
+            str(fasta.parent),
+            "--source",
+            "civic",
+            "--gene",
+            "BRCA1",
+            "--sequence-uri",
+            uri,
+            "--offline",
+        ],
+    )
+    assert run.exit_code == 0, (run.output, run.exception)
+    source = draft.call_args.kwargs["sequences"]
+    assert (source.uri, source.offline) == (uri, True)
+
+
+def test_cpic_draft_cli_shares_the_selected_sequence_source(
+    fasta: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    draft = Mock(return_value=PgxDraftResult())
+    monkeypatch.setattr("just_dna_enricher.cli.authoring_commands.draft_gene", draft)
+    uri = _proxy(fasta).uri
+    run = CliRunner().invoke(
+        app,
+        [
+            "draft",
+            str(fasta.parent),
+            "--gene",
+            "CYP2C9",
+            "--gene",
+            "CYP2C19",
+            "--sequence-uri",
+            uri,
+            "--offline",
+        ],
+    )
+    assert run.exit_code == 0, (run.output, run.exception)
+    first, second = (call.kwargs["sequences"] for call in draft.call_args_list)
+    assert first is second and (first.uri, first.offline) == (uri, True)
+
+
+def test_cpic_reads_notation_bases_from_the_local_fasta_offline(fasta: Path) -> None:
+    read = _reference_reader(_proxy(fasta), offline=True)
+    assert read("MT", 1, 10) == _bases(fasta)[:10].decode()
+
+
+def test_civic_reproduce_checks_placed_refs_through_the_selected_source(
+    fasta: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def download(dest: Path, url: str) -> CivicDownload:
+        shutil.copyfile(_ROOT / "assets/civic_slice" / dest.name, dest)
+        return CivicDownload(dest, hashlib.sha256(dest.read_bytes()).hexdigest(), url)
+
+    monkeypatch.setattr("just_dna_enricher.civic_build.download_civic_file", download)
+    verify = Mock(wraps=verify_reference_alleles)
+    monkeypatch.setattr("just_dna_enricher.cli.civic_commands.verify_reference_alleles", verify)
+    uri = _proxy(fasta).uri
+    run = CliRunner().invoke(
+        app,
+        [
+            "civic",
+            "reproduce",
+            "--out",
+            str(fasta.parent / "reproduce"),
+            "--sequence-uri",
+            uri,
+        ],
+    )
+    assert run.exit_code == 0, (run.output, run.exception)
+    verify.assert_called_once()
+    assert verify.call_args.args[0] and verify.call_args.kwargs["sequences"].uri == uri
 
 
 def test_unreachable_seqrepo_advice_differs_from_offline(monkeypatch: pytest.MonkeyPatch) -> None:

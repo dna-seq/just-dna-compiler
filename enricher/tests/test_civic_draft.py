@@ -8,6 +8,7 @@ would be a second thing to update.
 import csv
 import json
 from pathlib import Path
+from unittest.mock import Mock
 
 import pytest
 from just_dna_enricher.civic_build import build_snapshot
@@ -17,7 +18,9 @@ from just_dna_enricher.civic_draft import (
     identity_refused_by_model,
 )
 from just_dna_enricher.clingen_allele import AlleleIdentity
+from just_dna_enricher.sequences import SequenceProxy
 from just_dna_format.vocab import validate_trait_ids
+from just_dna_format.vrs import refget_accession
 
 SLICE = Path(__file__).resolve().parents[2] / "assets" / "civic_slice"
 
@@ -365,7 +368,10 @@ def test_the_caid_pass_leaves_the_accounting_closed(spec, snapshot):
     assert result.accounts_for_every_candidate()
 
 
-def test_a_one_sided_indel_is_anchored_into_a_vcf_row(spec, snapshot, monkeypatch):
+@pytest.mark.parametrize("injected", [True, False], ids=["supplied", "default"])
+def test_a_one_sided_indel_is_anchored_into_a_vcf_row(
+    spec: Path, snapshot: Path, monkeypatch: pytest.MonkeyPatch, injected: bool
+) -> None:
     """The Picard-style recovery: one reference base turns a stated indel into a drafted row.
 
     Then left-aligned (RM273): the fake reference is `A`s up to the anchor `G` at 10142013, so the
@@ -378,13 +384,24 @@ def test_a_one_sided_indel_is_anchored_into_a_vcf_row(spec, snapshot, monkeypatc
             caid: AlleleIdentity(caid=caid, outcome="needs_anchor", unanchored=("3", 10142013, "", "G")),
         }
     )
-    monkeypatch.setattr(
-        "just_dna_enricher.civic_draft.SequenceProxy",
-        lambda **kw: type(
-            "_S", (), {"subsequence": lambda self, a, s, e: "G" if e - s == 1 else "A" * (e - s)}
-        )(),
+
+    def subsequence(accession: str, start: int, end: int) -> str:
+        assert accession == refget_accession("3")
+        return "G" if end - start == 1 else "A" * (end - start)
+
+    proxy = SequenceProxy()
+    reads = Mock(side_effect=subsequence)
+    monkeypatch.setattr(proxy, "subsequence", reads)
+    default = Mock(side_effect=AssertionError) if injected else Mock(return_value=proxy)
+    monkeypatch.setattr("just_dna_enricher.civic_draft.SequenceProxy", default)
+    result = draft_panel_from_civic(
+        spec, snapshot=snapshot, registry=registry, sequences=proxy if injected else None
     )
-    result = draft_panel_from_civic(spec, snapshot=snapshot, registry=registry)
+    if injected:
+        default.assert_not_called()
+    else:
+        default.assert_called_once_with(offline=False)
+    reads.assert_any_call(refget_accession("3"), 10142012, 10142013)
     assert result.caid_anchored_indels >= 1
     rows = _rows(spec / "variants.csv")
     assert not [r for r in rows if r["start"] == "10142013"]
@@ -393,7 +410,10 @@ def test_a_one_sided_indel_is_anchored_into_a_vcf_row(spec, snapshot, monkeypatc
     assert result.accounts_for_every_candidate()
 
 
-def test_an_unreadable_anchor_withholds_the_row_and_names_the_reason(spec, snapshot, monkeypatch):
+@pytest.mark.parametrize("offline_with_remote", [False, True], ids=["unreadable", "remote-offline"])
+def test_an_unreadable_anchor_withholds_the_row_and_names_the_reason(
+    spec: Path, snapshot: Path, monkeypatch: pytest.MonkeyPatch, offline_with_remote: bool
+) -> None:
     """The allele is known and the anchor is not — a fourth outcome, not an absence."""
     caid = _caid_rows(snapshot)["allele_registry_id"][0]
     registry = _StubRegistry(
@@ -401,11 +421,16 @@ def test_an_unreadable_anchor_withholds_the_row_and_names_the_reason(spec, snaps
             caid: AlleleIdentity(caid=caid, outcome="needs_anchor", unanchored=("3", 10142013, "A", "")),
         }
     )
-    monkeypatch.setattr(
-        "just_dna_enricher.civic_draft.SequenceProxy",
-        lambda **kw: type("_S", (), {"subsequence": lambda self, a, s, e: None})(),
+    proxy = SequenceProxy()
+    read = Mock(side_effect=AssertionError) if offline_with_remote else Mock(return_value=None)
+    monkeypatch.setattr(proxy, "subsequence", read)
+    result = draft_panel_from_civic(
+        spec, snapshot=snapshot, registry=registry, offline=offline_with_remote, sequences=proxy
     )
-    result = draft_panel_from_civic(spec, snapshot=snapshot, registry=registry)
+    if offline_with_remote:
+        read.assert_not_called()
+    else:
+        read.assert_called()
     assert result.withheld["anchor_base_unreadable"] >= 1
     assert result.withheld["caid_no_identity"] == 0, "the registry answered; only the anchor failed"
     assert any("withheld rather than guessed" in w for w in result.warnings)

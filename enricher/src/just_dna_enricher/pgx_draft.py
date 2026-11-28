@@ -141,16 +141,12 @@ def _no_reference(chrom: str, start: int, end: int) -> str | None:
 
 
 def _reference_reader(sequences: SequenceProxy, *, offline: bool) -> ReadWindow:
-    """GRCh38 bases over 1-based `[start, end]` through `sequences`, or `None` (offline, no accession).
-
-    `offline` outranks an injected proxy, as it outranks an injected client: a run documented as
-    making no requests makes none, whoever built the reader.
-    """
+    """GRCh38 bases over 1-based `[start, end]`, or `None` when unreadable. Only FASTA serves offline."""
 
     sequences = held_by_one_run(sequences)
 
     def read_window(chrom: str, start: int, end: int) -> str | None:
-        if offline:
+        if offline and not sequences.local_fasta:
             return None
         try:
             accession = refget_accession(chrom, CPIC_GENOME_BUILD)
@@ -512,7 +508,7 @@ def draft_gene(
 
     `sequences` (RM253) reads the GRCh38 bases a `DEL`/`INS`/repeat notation is spelled with; one proxy
     per run, so its cache is shared, and built lazily, so a gene with no notation reads nothing. Under
-    `offline` nothing is read and those rows are withheld with the reason.
+    `offline` only a local FASTA can supply those bases. Unreadable notation rows are withheld with the reason.
     """
     declared_use, declared_from = effective_declared_use(spec_dir, CPIC_TERMS, declared_use)  # S105
     skip_reason = check_declared_use(CPIC_TERMS, declared_use)

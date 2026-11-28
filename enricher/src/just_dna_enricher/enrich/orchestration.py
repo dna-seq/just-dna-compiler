@@ -104,7 +104,6 @@ from just_dna_enricher.ensembl import (
     BatchResolver,
     EnsemblResolver,
     RsidResolver,
-    _grch38_base_reader,
 )
 from just_dna_enricher.eutils import EutilsClient, EutilsError
 from just_dna_enricher.events import authored_event
@@ -405,8 +404,8 @@ def enrich(
     resolver the caller gives (`resolver=` or `clients.ensembl`) is not altered: `enrich` never reaches
     into a caller's resolver, which reads an indel's anchor base through whatever it holds. So a caller
     passing both its own resolver and a proxy, who wants the resolver's reads to go through that proxy,
-    gives the resolver the proxy itself; a stock `EnsemblResolver` builds a default proxy for that read,
-    and 0.9 has no public parameter to point it elsewhere. A `SequenceProxy` reading a
+    constructs `EnsemblResolver(sequences=proxy)` and calls `enrich(..., resolver=resolver, sequences=proxy)`.
+    With the field unset, the resolver builds its default proxy on first use. A `SequenceProxy` reading a
     local seqrepo (`uri="seqrepo+file://…"`, which needs `biocommons.seqrepo` installed beside the
     enricher) is how a host reads locally with the network up.
     One proxy may be shared by parallel runs; its memo is locked, and holds answers only: the run reads
@@ -1148,7 +1147,7 @@ def _run_enrichment(
             if resolver is not None:
                 client = resolver
             elif caller_sequences:
-                client = EnsemblResolver(_read_base=_grch38_base_reader(sequences.subsequence))
+                client = EnsemblResolver(sequences=sequences)
             else:
                 client = EnsemblResolver()
             ensembl_link = client

@@ -190,12 +190,17 @@ class _RestBatchWitness(Protocol):
 
 @dataclass
 class EnsemblResolver(Withholding):
-    """Resolve a bare rsID to its GRCh38 loci via live Ensembl REST."""
+    """Resolve a bare rsID to its GRCh38 loci via live Ensembl REST.
+
+    Pass `sequences` to read one-sided indel anchors through the host's GRCh38 proxy.
+    With the field unset, the resolver builds the default proxy on first use.
+    """
 
     settings: EnsemblSettings = field(default_factory=EnsemblSettings)
+    sequences: SequenceProxy | None = field(default=None, kw_only=True)
     _client: httpx.Client | None = None
     # One GRCh38 base at a 1-based position, or `None` — what anchors a one-sided REST indel (RM268).
-    # Private like `_client`, so a patch adds no constructor surface; a test sets it the same way.
+    # A test can supply the reader directly. Otherwise _base_reader builds it on first use.
     _read_base: Callable[[str, int], str | None] | None = None
     # rsIDs this resolver answered with no placeable locus because every mapping carried no nucleotide
     # allele (RM271), collected so a caller can name them (RM272). Accumulates across calls.
@@ -222,9 +227,10 @@ class EnsemblResolver(Withholding):
             return reader
         with self._reader_lock:
             if self._read_base is None:
-                # The resolver's own proxy, read directly: a resolver is not a run and a host may share
-                # one across runs, so it holds answers only and a failed read is asked again (RM404).
-                self._read_base = _grch38_base_reader(SequenceProxy().subsequence)
+                # A host may share this resolver across runs. Read its source directly so a
+                # transient failure can be retried. A run-owned resolver can take the run's view.
+                source = self.sequences if self.sequences is not None else SequenceProxy()
+                self._read_base = _grch38_base_reader(source.subsequence)
             return self._read_base
 
     def _http(self) -> httpx.Client:
