@@ -1,13 +1,16 @@
-"""Random access to a local GRCh38 FASTA, by verified refget accession (RM385)."""
+"""Index a local FASTA and read GRCh38 sequence by verified refget accession (RM385)."""
 
+import codecs
 import json
 import logging
 import os
+import re
 import threading
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 from typing import BinaryIO
 from urllib.parse import unquote, urlsplit
 
@@ -96,6 +99,160 @@ class _Entry:
         return "SQ." + digests.sha512t24u(sequence)
 
 
+# Bound each sequence read even for a chromosome written on one unwrapped line.
+_READ_SIZE = 1024 * 1024
+_SEQUENCE_WHITESPACE = re.compile(rb"\s")
+
+
+def _index_path(path: Path) -> Path:
+    return Path(f"{path}.fai")
+
+
+def _compressed(path: Path, magic: bytes) -> bool:
+    return magic == b"\x1f\x8b" or path.suffix.lower() in {".gz", ".bgz", ".bgzf"}
+
+
+def _primary_accession(name: str) -> str | None:
+    return refget_accession(GRCH38_ACCESSIONS.get(name, name))
+
+
+def _header_name(stream: BinaryIO, header: bytes, line: int) -> str:
+    """Keep the first token and consume even a long description in bounded reads."""
+    # Decode across buffers; an undecodable byte in the discarded description is harmless.
+    decoder = codecs.getincrementaldecoder("utf-8")("surrogateescape")
+    token: list[str] = []
+    complete = False
+    chunk = header[1:]
+    while chunk:
+        if not complete:
+            fragment = decoder.decode(chunk)
+            if not token:
+                fragment = fragment.lstrip()
+            separator = re.search(r"\s", fragment)
+            if separator is not None:
+                fragment = fragment[: separator.start()]
+                complete = True
+            if fragment:
+                token.append(fragment)
+        if chunk.endswith(b"\n"):
+            break
+        chunk = stream.readline(_READ_SIZE)
+    name = "".join(token)
+    if not name:
+        raise FastaConfigurationError(f"line {line}: missing contig name")
+    if not name.isprintable():
+        raise FastaConfigurationError(f"line {line}: invalid contig name {name!r}, expected printable UTF-8")
+    return name
+
+
+def _sequence_line(stream: BinaryIO, chunk: bytes, name: str, line: int) -> tuple[int, int]:
+    """Measure one physical line, including a CRLF split at the read boundary."""
+    width = 0
+    while chunk:
+        if len(chunk) == _READ_SIZE and chunk.endswith(b"\r"):
+            chunk += stream.read(1)
+        width += len(chunk)
+        ending = 2 if chunk.endswith(b"\r\n") else int(chunk.endswith(b"\n"))
+        if _SEQUENCE_WHITESPACE.search(chunk, 0, len(chunk) - ending):
+            raise FastaConfigurationError(
+                f"contig {name}, line {line}: whitespace in sequence or invalid line ending"
+            )
+        if not chunk.isascii():
+            raise FastaConfigurationError(f"contig {name}, line {line}: non-ASCII sequence")
+        if ending or len(chunk) < _READ_SIZE:
+            return width - ending, width
+        chunk = stream.readline(_READ_SIZE)
+    return width, width
+
+
+def _scan_index(stream: BinaryIO) -> list[_Entry]:
+    entries: list[_Entry] = []
+    names: set[str] = set()
+    primaries: set[str] = set()
+    line = 1
+    header = stream.readline(_READ_SIZE)
+    if not header.startswith(b">"):
+        raise FastaConfigurationError("before first contig, line 1: expected FASTA header")
+
+    while header:
+        name = _header_name(stream, header, line)
+        if name in names:
+            raise FastaConfigurationError(f"contig {name}, line {line}: duplicate name")
+        names.add(name)
+        accession = _primary_accession(name)
+        if accession is not None:
+            if accession in primaries:
+                raise FastaConfigurationError(
+                    f"contig {name}, line {line}: ambiguous entries for {_CHROM[accession]}"
+                )
+            primaries.add(accession)
+
+        header_line = line
+        offset = stream.tell()
+        length = bases = width = previous_bases = 0
+        while True:
+            line += 1
+            chunk = stream.readline(_READ_SIZE)
+            if not chunk or chunk.startswith(b">"):
+                header = chunk
+                break
+            size, byte_width = _sequence_line(stream, chunk, name, line)
+            if not size:
+                raise FastaConfigurationError(f"contig {name}, line {line}: empty sequence line")
+            if not length:
+                bases, width = size, byte_width
+            elif previous_bases != bases:
+                raise FastaConfigurationError(
+                    f"contig {name}, line {line - 1}: short line before end of contig (wrap width {bases})"
+                )
+            elif size > bases:
+                raise FastaConfigurationError(f"contig {name}, line {line}: exceeds wrap width {bases}")
+            elif byte_width != size and byte_width - size != width - bases:
+                raise FastaConfigurationError(f"contig {name}, line {line}: mixed line endings")
+            length += size
+            previous_bases = size
+        if not length:
+            raise FastaConfigurationError(f"contig {name}, line {header_line}: no sequence")
+        entries.append(_Entry(name, length, offset, bases, width))
+    return entries
+
+
+def write_fasta_index(path: Path) -> Path:
+    """Index an uncompressed FASTA in one pass and atomically replace its five-column .fai."""
+    index = _index_path(path)
+    try:
+        with path.open("rb") as stream:
+            if _compressed(path, stream.peek(2)[:2]):
+                raise FastaConfigurationError(
+                    f"before first contig, line 1: compressed FASTA is unsupported: {path}"
+                )
+            entries = _scan_index(stream)
+        part = NamedTemporaryFile(  # noqa: SIM115 — closed by "with part" before the rename
+            mode="w",
+            encoding="utf-8",
+            newline="\n",
+            dir=index.parent,
+            prefix=f".{index.name}.",
+            suffix=".part",
+            delete=False,
+        )
+        part_path = Path(part.name)
+        try:
+            with part:
+                for entry in entries:
+                    part.write(
+                        f"{entry.name}\t{entry.length}\t{entry.offset}\t{entry.bases}\t{entry.width}\n"
+                    )
+                part.flush()
+                os.fsync(part.fileno())
+            part_path.replace(index)
+        finally:
+            part_path.unlink(missing_ok=True)
+    except OSError as exc:
+        raise FastaConfigurationError(f"cannot index FASTA {path}: {exc}") from exc
+    return index
+
+
 def _stamp(stat: os.stat_result) -> tuple[int, int]:
     return stat.st_size, stat.st_mtime_ns
 
@@ -127,12 +284,12 @@ class FastaReference:
             or parsed.fragment
         ):
             raise FastaConfigurationError("expected a local absolute path: fasta+file:///abs/path.fa")
-        self.index = Path(f"{self.path}.fai")
+        self.index = _index_path(self.path)
         self.cache = Path(f"{self.path}.refget.json")
         self._entries: dict[str, _Entry] = {}
         try:
             with self.path.open("rb") as stream:
-                if stream.read(2) == b"\x1f\x8b" or self.path.suffix.lower() in {".gz", ".bgz", ".bgzf"}:
+                if _compressed(self.path, stream.read(2)):
                     raise FastaConfigurationError(f"compressed FASTA is unsupported: {self.path}")
             self.stamp = _stamp(self.path.stat())
             self.index_stamp = _stamp(self.index.stat())
@@ -146,7 +303,7 @@ class FastaReference:
                     or entry.width - entry.bases not in (0, 1, 2)
                 ):
                     raise ValueError(f"invalid .fai coordinates for {name}")
-                accession = refget_accession(GRCH38_ACCESSIONS.get(name, name))
+                accession = _primary_accession(name)
                 if accession:
                     if accession in self._entries:
                         raise ValueError(f"ambiguous .fai entries for {_CHROM[accession]}")

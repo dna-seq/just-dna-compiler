@@ -362,6 +362,12 @@ A public addition, legal in 0.10; the lead builds it on `0.10`. Item 1 above lea
 (1) fits it as it stands; whether (2) comes as a call the host makes after (1) is the build's to settle. Not blocking:
 until it lands the registry would carry `pyfaidx` for this one file.
 
+**Built (2026-11-28, on the `0.10` branch).** For S167 the host can call
+`write_fasta_index(path)` or run `just-dna-enricher fasta index PATH` on its unpacked FASTA.
+The writer checks each contig's wrapping and line endings before replacing the index. On the MT
+fixture it reproduces the committed samtools index byte for byte. The first digest read remains a
+separate operation.
+
 **Built (2026-11-27, on the `0.10` branch).** The enricher reads an operator's indexed,
 uncompressed GRCh38 FASTA by URI online or offline. It verifies and caches identity per contig,
 shares the reference across alignment, minting and REF checks, and names the witness and unread
@@ -381,7 +387,8 @@ resolver keeps its source across runs. `draft-panel --source civic`, CPIC `draft
 `civic reproduce` reference check accept `--sequence-uri`. FASTA provisioning stays with the host.
 No cache lane was added.
 
-**Residuals** none.
+**Residuals** S167 option (2) is the registry's to ask for again: a provisioning step that builds a
+missing index and performs the first full read to populate `.refget.json`.
 
 ## RM302 — one `conclusion` serves every place a report shows it; a table cell, a details card and an explanatory mode want different wordings
 
