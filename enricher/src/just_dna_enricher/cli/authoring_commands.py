@@ -62,12 +62,13 @@ def draft_(
         False,
         "--offline",
         help=(
-            "Draft from a built CPIC snapshot only; never reach CPIC live, and read no reference bases, "
-            "so CPIC's DEL/INS/repeat-count alleles are withheld with the reason (RM253)."
+            "Draft from a built CPIC snapshot only. To spell DEL/INS/repeat-count alleles offline, "
+            "supply the indexed GRCh38 FASTA with --sequence-uri."
         ),
     ),
     cpic_cache: Path | None = typer.Option(None, "--cpic-cache", help="Explicit CPIC snapshot dir."),
     dry_run: bool = typer.Option(False, "--dry-run", help="Report what would be added; write nothing."),
+    sequence_uri: SequenceURI = None,
 ) -> None:
     """Draft PGx tables for one or more genes from CPIC — appends rows, never overwrites one.
 
@@ -90,7 +91,7 @@ def draft_(
     total_added = 0
     # One reference reader for the whole run, so a locus read for one gene is not read again for the next
     # and an unreachable service is found once (RM253).
-    sequences = held_by_one_run(SequenceProxy(offline=offline))
+    sequences = held_by_one_run(sequence_source(sequence_uri, offline) or SequenceProxy(offline=offline))
     for name in gene:
         try:
             result = draft_gene(

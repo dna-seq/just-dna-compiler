@@ -291,7 +291,8 @@ def test_the_live_link_enrich_builds_anchors_through_the_passed_proxy(
     class _Anchoring(EnsemblResolver):
         def resolve_rsids_batched(self, rsids: Sequence[str]) -> Iterator[tuple[str, RsidAnswer]]:
             for rsid in rsids:
-                self._base_reader()("1", 11796321)
+                assert self.sequences is not None
+                assert self._base_reader()("1", 11796321) == passed.base
                 yield rsid, (None, None)
 
     monkeypatch.setattr("just_dna_enricher.ensembl.SequenceProxy", no_second_proxy)
@@ -299,6 +300,22 @@ def test_the_live_link_enrich_builds_anchors_through_the_passed_proxy(
     passed = _Bases("G")
     _online(_spec(tmp_path), tmp_path, sequences=passed)
     assert passed.reads == 1
+
+
+@pytest.mark.usefixtures("no_ambient_caches")
+@pytest.mark.parametrize("configured", [True, False], ids=["host-proxy", "default-proxy"])
+def test_enrich_preserves_the_callers_resolver_source(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, configured: bool
+) -> None:
+    host_source, default_source, run_source = _Bases("G"), _Bases("T"), _Bases("A")
+    monkeypatch.setattr("just_dna_enricher.ensembl.SequenceProxy", lambda: default_source)
+    resolver = EnsemblResolver(sequences=host_source) if configured else EnsemblResolver()
+    # The live link has no placement. The host first asks for an anchor after the run.
+    resolver._client = httpx.Client(transport=httpx.MockTransport(lambda _: httpx.Response(400)))
+    _online(_spec(tmp_path), tmp_path, sequences=run_source, resolver=resolver)
+    assert resolver.sequences is (host_source if configured else None)
+    assert resolver._base_reader()("1", 11796321) == (host_source if configured else default_source).base
+    assert run_source.reads == 0
 
 
 @pytest.mark.usefixtures("no_ambient_caches")

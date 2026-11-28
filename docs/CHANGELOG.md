@@ -92,6 +92,13 @@ local FASTA can serve. Pass the chromosomes used by a module to hash only those 
 record gives the indexed name, expected accession, computed digest and binding status. The reader
 also recognizes NCBI's versioned RefSeq names, using the enricher's existing chromosome map.
 
+For preview finding S166, a host can share one GRCh38 proxy across runs by passing it to
+`EnsemblResolver(sequences=proxy)`, `enrich(..., sequences=proxy)` and
+`draft_panel_from_civic(..., sequences=proxy)`. This covers the anchor bases used for one-sided
+indels and the windows CIViC reads for left-alignment. The CLI accepts `--sequence-uri` on
+`draft-panel --source civic`, CPIC `draft` and the `civic reproduce` reference cross-check.
+The host supplies the indexed FASTA.
+
 ## 2026-11-27 — RM468: repeat online lookups reuse answers from the same release (a minor, for 0.10)
 
 Two modules that ask about the same rsID can now share its answer. Ensembl states its REST release

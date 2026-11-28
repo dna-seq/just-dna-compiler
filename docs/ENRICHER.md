@@ -744,10 +744,19 @@ That is the documented "inject what you already hold" escape.
 ### Local GRCh38 reference
 
 Since 0.10 (RM385), pass `SequenceProxy(uri="fasta+file:///abs/path.fa")`
-to `enrich(sequences=…)`, or give the URI to `enrich --sequence-uri` or `vrs mint --sequence-uri`.
-The file must be uncompressed and have a FASTA index beside it at `<path.fa>.fai`. The reader seeks
-directly to the requested bases and works with or without `--offline`. The FASTA supplies the entire
-sequence service for that run. The wrong-build diagnosis still needs the GRCh37 service online.
+to `enrich(sequences=…)`. If the host also supplies its own Ensembl resolver, construct it with
+`EnsemblResolver(sequences=proxy)` and pass the same proxy to `enrich`. CIViC drafting accepts
+`draft_panel_from_civic(..., sequences=proxy)` for both the anchor and the left-alignment window.
+The host provisions the FASTA and its index.
+
+On the CLI, `--sequence-uri` selects this reference for `enrich`, `vrs mint`, CPIC `draft` and
+`draft-panel --source civic`. Other panel sources do not read sequence. On `civic reproduce`, the
+option selects the reference for the coordinate cross-check. That command still downloads its
+dated release, and its `--offline` flag skips the cross-check.
+
+The FASTA must be uncompressed and have a FASTA index beside it at `<path.fa>.fai`. The reader seeks
+directly to the requested bases and works with or without `--offline`. The wrong-build diagnosis
+still needs the GRCh37 service online.
 
 The first request for a contig hashes its uppercased bases with GA4GH `sha512t24u`. Its digest must
 match the format's GRCh38 refget accession before either bases or metadata are returned. The format's
@@ -819,11 +828,11 @@ with no bundle, and never stored on the bundle (the run does not call `clients.e
 wrong-build diagnosis reads GRCh37 through `grch37`): the
 reference-allele check, left-alignment, the hosting and placement reads, the VRS minter and the anchor
 base read by the `EnsemblResolver` the run builds all take it. A resolver the caller gives is not altered
-and reads its anchor base through what it holds, so a caller who passes both a resolver and a proxy, and
-wants the resolver's reads to go through that proxy, gives the proxy to the resolver itself; a stock
-`EnsemblResolver` builds a default proxy for that read, and 0.9 has no public parameter to point it
-elsewhere. The run reads the proxy through a view of its own, so a failure it sees is held for the run and
-never stored on the caller's proxy. A local seqrepo (`uri="seqrepo+file://…"`,
+and reads its anchor through the source it holds. To share one source, construct
+`resolver = EnsemblResolver(sequences=proxy)` and pass both `resolver=resolver` and `sequences=proxy`
+to `enrich`. With the field unset, the resolver uses its default seqrepo proxy. A host-built resolver
+can retry a failed read on its next request. The run-built resolver uses the run's view of the proxy,
+which remembers failed reads until that run ends. A local seqrepo (`uri="seqrepo+file://…"`,
 with `biocommons.seqrepo` installed by the host) is how a host reads locally with the network up. Offline runs skip both REST and file-backed seqrepo.
 
 **`genome_build=None` means "read the module's declaration"** (`spec_genome_build`), not "assume
@@ -6315,8 +6324,8 @@ separate step.
     (no bases; kept skipped by the RM253 decision — on the snapshot it is always the reference allele's
     row at an insertion site), alternatives (`GAGTCG(3) OR GAGTCG(4)`, MT-RNR1's `;` list — an
     uncertainty, like an IUPAC code), a reference that does not bear the notation out, and a reference
-    that could not be read. **`--offline` reads nothing**, so every notation row is withheld with that
-    last reason, and `*28` is undefined again until a run with sequence access.
+    that could not be read. Offline, `--sequence-uri` can supply those bases from a local GRCh38 FASTA.
+    Without it the notation rows are withheld and `*28` stays undefined.
 
   RM5 was *not* this gap: 0.6 widened the grammar to hold VCF's five **symbolic** alleles
   (`<DEL:1500>`), a deliberately unspelled length, while CPIC's notation names the bases.

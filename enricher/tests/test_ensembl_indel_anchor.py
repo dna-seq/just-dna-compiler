@@ -6,10 +6,14 @@ and the anchor bases are GRCh38 reference bases read from Ensembl's sequence end
 not counts: the expected anchored rows follow from them by the VCF left-anchor rule.
 """
 
+from unittest.mock import Mock
+
 import httpx
+import pytest
 from just_dna_enricher.ensembl import EnsemblResolver, _loci_from_rest
-from just_dna_enricher.sequences import _left_align
+from just_dna_enricher.sequences import SequenceProxy, _left_align
 from just_dna_format.vocab import ALLELE_PATTERN
+from just_dna_format.vrs import refget_accession
 
 _GRCH38_BASES = {("9", 133257521): "T", ("2", 201232808): "T", ("7", 94431047): "A"}
 
@@ -112,6 +116,24 @@ def test_resolve_rsid_answers_the_anchored_locus() -> None:
         [{"chrom": "9", "start": 133257521, "ref": "T", "alts": "TC"}],
         "ensembl-rest",
     )
+
+
+def test_shared_resolver_retries_an_anchor_through_its_sequence_source(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    chrom, pos = _INSERTION["seq_region_name"], _INSERTION["end"]
+    proxy = Mock(spec=SequenceProxy)
+    proxy.subsequence.return_value = None
+    monkeypatch.setattr("just_dna_enricher.ensembl.SequenceProxy", Mock(side_effect=AssertionError))
+    resolver = EnsemblResolver(sequences=proxy)
+    resolver._client = httpx.Client(transport=_rest_only({"mappings": [_INSERTION]}))
+
+    assert resolver.resolve_rsid("rs8176719") == (None, "ensembl-rest")
+    proxy.subsequence.return_value = _read_base(chrom, pos)
+    loci, *_ = _loci_from_rest({"mappings": [_INSERTION]}, _read_base)
+    assert resolver.resolve_rsid("rs8176719") == (loci, "ensembl-rest")
+    interval = (refget_accession(chrom), pos - 1, pos)
+    assert {call.args for call in proxy.subsequence.call_args_list} == {interval}
 
 
 def test_an_answer_with_every_locus_withheld_is_unchecked_not_empty() -> None:

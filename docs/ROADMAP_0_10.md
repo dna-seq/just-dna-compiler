@@ -320,6 +320,13 @@ verdict supplies the reason for a withheld local read. Versioned RefSeq headers 
 enricher accession map and go through the same digest and duplicate-name checks. The lead will
 measure which published FASTA binds all 25 and name it in the enricher reference.
 
+**Preview finding S166, built (2026-11-28).** A shared Ensembl resolver and the CIViC drafter now
+accept the host's GRCh38 proxy for indel anchors. CIViC reads its left-alignment windows through
+the same proxy. The run passes its own sequence view to the resolver it builds, while a host's
+resolver keeps its source across runs. `draft-panel --source civic`, CPIC `draft` and the
+`civic reproduce` reference check accept `--sequence-uri`. FASTA provisioning stays with the host.
+No cache lane was added.
+
 **Residuals** none.
 
 ## RM459 — with the registry's proxy set and Hugging Face off, a gene lookup on clinpgx, cpic, drug_labels or civic answers could-not-ask

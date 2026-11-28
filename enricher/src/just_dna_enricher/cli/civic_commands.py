@@ -7,8 +7,9 @@ from pathlib import Path
 import typer
 from just_dna_format.base import coordinate_key
 
-from just_dna_enricher.cli._shared import _DRAFT_PRECONDITION_ERRORS
+from just_dna_enricher.cli._shared import _DRAFT_PRECONDITION_ERRORS, SequenceURI, sequence_source
 from just_dna_enricher.locations import repro_out
+from just_dna_enricher.sequences import verify_reference_alleles
 from just_dna_enricher.upload import DEFAULT_CIVIC_REPO_ID
 
 # ── the PubMind snapshot (build only; publish exists in order to refuse) — RM134 § A ────────────
@@ -366,11 +367,13 @@ def civic_reproduce_(
             "coordinates go through every check below rather than only the accepted ones."
         ),
     ),
+    sequence_uri: SequenceURI = None,
 ) -> None:
     """Build the CIViC snapshot from a dated release and check it, end to end.
 
-    **Five checks, and the third is the one worth the network.** The first two are about us; the third
-    is about whether the coordinates we produced are real.
+    --sequence-uri selects the reference for the cross-check. --offline skips that check.
+
+    The checks cover the release files, the builds and the coordinates they produce.
 
     1. **The release downloads and its bytes are recorded** — a sha256 per file, so a rerun that
        disagrees is a finding about the source rather than a mystery.
@@ -378,8 +381,8 @@ def civic_reproduce_(
        order, so this is the check that the sort is doing its job.
     3. **Every placed coordinate is cross-checked against the GRCh38 reference sequence.** This is the
        external validation: the snapshot's positions come from RefSeq accessions inside ClinVar HGVS,
-       and this asks an unrelated service (refget/seqrepo) whether the reference base at each of those
-       positions is what we wrote. A wrong-build or off-by-one placement fails here and nowhere else.
+       and this reads the selected reference to check the bases we wrote at those positions.
+       A wrong-build or off-by-one placement fails here and nowhere else.
     4. **The drop registry closes** — every input row kept or counted, an equality over a walked set.
     5. **The published file list is exactly what the publisher would upload.**
 
@@ -398,9 +401,9 @@ def civic_reproduce_(
     )
     from just_dna_enricher.civic_vcf import CIVIC_VCF_FILE
     from just_dna_enricher.locations import RELEASE_FILENAME, SNAPSHOT_LICENSE_FILENAME
-    from just_dna_enricher.sequences import SequenceProxy, verify_reference_alleles
     from just_dna_enricher.upload import DEFAULT_CIVIC_REPO_ID, plan_reference_snapshot
 
+    sequences = None if offline else sequence_source(sequence_uri, offline)
     failures: list[str] = []
 
     def check(ok: bool, label: str, detail: str = "") -> None:
@@ -474,7 +477,7 @@ def civic_reproduce_(
     if frame is not None:
         check(list(frame.columns) == list(CIVIC_COLUMNS), "the emitted column order is the fixed one")
 
-    # 3 ── the external check, and the reason this command needs a network
+    # 3 ── check the placed alleles against the selected reference
     typer.echo("\n3. Cross-checking placed coordinates against the GRCh38 reference")
     if offline or frame is None:
         typer.secho(
@@ -493,7 +496,7 @@ def civic_reproduce_(
             )
             for r in placed.iter_rows(named=True)
         ]
-        result = verify_reference_alleles(rows, sequences=SequenceProxy())
+        result = verify_reference_alleles(rows, sequences=sequences)
         if result.not_checked:
             typer.secho(
                 f"     SKIPPED — {result.not_checked}. A check that could not run is not a check "
