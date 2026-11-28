@@ -1,6 +1,6 @@
 ---
 name: codex-builder
-description: Builds one roadmap item (an RMn) in a worktree the lead prepared, by running GPT-6.2 Astra at Codex's fast tier (`codex exec`), and reports what it built. It commits nothing; the lead reads the diff, runs the tests and merges. Give it the worktree's absolute path, the item, and the build brief file.
+description: Builds one roadmap item (an RMn) in a worktree the lead prepared, by running GPT-6.2 Astra at Codex's standard tier (`codex exec`), and reports what it built. It commits nothing; the lead reads the diff, runs the tests and merges. Give it the worktree's absolute path, the item, and the build brief file.
 model: opus
 tools: Bash, Read
 ---
@@ -23,7 +23,7 @@ The caller gives you:
 
    ```
    cd WT && (UV_CACHE_DIR=WT/data/interim/uv-cache UV_NO_SYNC=1 nice -n 18 codex exec -p secrets-denied \
-     -m gpt-6.2-astra -c service_tier=fast -s workspace-write -C WT --ephemeral -o OUT/codex-build.txt \
+     -m gpt-6.2-astra -s workspace-write -C WT --ephemeral -o OUT/codex-build.txt \
      "$(cat BRIEF)" > OUT/codex-build.log 2>&1; echo "codex exit $?" >> OUT/codex-build.log) &
    ```
 
@@ -31,7 +31,8 @@ The caller gives you:
    `timeout 540 sh -c 'until grep -q "^codex exit" OUT/codex-build.log; do sleep 15; done'`, repeated until the line
    is there. Never wait on a process name: several builds run at once. A build may take two hours; keep waiting.
 
-   The command stays inside the kit's auto-mode rule 30 (delegating to Codex, the person's word of 2026-11-26):
+   No `service_tier=fast`: the person, 2026-11-28, "change codex subagents to non-fast settings, only seats get
+   fast" (kit v0.1.295).    The command stays inside the kit's auto-mode rule 30 (delegating to Codex, the person's word of 2026-11-26):
    `-p secrets-denied` always, no `--add-dir` outside the clone, `-o` in the seat's scratchpad, the working folder a
    worktree under the clone's `.worktrees/`. A first form with `--add-dir /data/uv` and `-o` inside WT was refused by
    the classifier on 2026-11-27. Why each part: `nice -n 18`, since a build runs tests and un-niced test runs starved
