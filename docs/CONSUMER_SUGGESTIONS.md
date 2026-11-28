@@ -54,25 +54,3 @@ Prose is left byte-for-byte when it is answered and when it is moved, so it stay
 observed rather than of what was decided.
 
 ---
-
-## S167 — just-dna-registry (liaison), 2026-11-28: a `.fai` writer beside the FASTA reader
-
-**Context.** RM385's `fasta+file://` reader needs an uncompressed GRCh38 FASTA with `<path.fa>.fai` beside it, and
-ENRICHER.md says to index it with `samtools faidx` "or any writer of the same five-column `.fai`". Nothing in the
-enricher writes one, and a host that runs only the enricher has no `samtools`, `pysam` or `pyfaidx` (ours has none,
-in its lock or on its production box). So a host's provisioning step (download, md5 check, gunzip) must take a new
-dependency only to write a five-column file.
-
-**Why it belongs beside the reader.** `fasta.py` already owns the `.fai`'s rules: it refuses an index whose line
-endings or wrap width disagree with the file ("FASTA line endings do not match the .fai", "FASTA length or line
-wrapping does not match the .fai"). A writer in the same module keeps one owner of that format, so a host's index
-and the reader's checks cannot disagree.
-
-**Asked**, either of:
-1. `fasta.write_index(path)` (or `FastaReference.index_fasta(path)`): writes `<path>.fai` for an uncompressed FASTA,
-   refusing a file it could not then read (mixed wrap widths, a gzip).
-2. A provisioning step that indexes when the `.fai` is missing and then does the first full read, so the
-   `.refget.json` sidecar is written once at provisioning rather than inside a host's first request.
-
-**Not blocking.** The registry builds its setting, download, checksum and gunzip now, and takes whichever arrives;
-until then it would carry `pyfaidx` as a server dependency for this one file.
