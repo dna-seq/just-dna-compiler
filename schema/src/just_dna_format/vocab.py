@@ -664,6 +664,7 @@ VALID_SOURCE_LAYERS: frozenset[str] = frozenset(
         # 0.8 (RM331) — the computed LD pair behind a proxy-measured study, same fact class: an r² from
         # a public reference panel is a value the reference computes identically for everyone. Written by
         # `ld-pairs`, from Ensembl's pairwise LD.
+        "repeat_grade",
         "ld_pair",
         # 0.8 (RM379) — the clinical-significance calls `clin_sig_authority_calls.csv` records per
         # authority, same fact class: a ClinVar or PubMind call is a value the source publishes

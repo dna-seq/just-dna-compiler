@@ -3082,5 +3082,61 @@
    "pmid:7690213",
    "pmid:7685318"
   ]
+ },
+ {
+  "id": "DMD_DMD",
+  "gene": "DMD",
+  "disease": "Duchenne muscular dystrophy",
+  "pathogenic_motif_reference_orientation": [
+   "CTT"
+  ],
+  "pathogenic_motif_gene_orientation": [
+   "AAG"
+  ],
+  "mondo": [
+   "0010679"
+  ],
+  "ref_copies": 16.7,
+  "benign_min": 16,
+  "benign_max": 33,
+  "pathogenic_min": 59,
+  "pathogenic_max": 82,
+  "evidence": [
+   "Refuted"
+  ],
+  "chrom": "chrX",
+  "start_hg38": 31284557,
+  "stop_hg38": 31284605,
+  "locus_structure": [
+   {
+    "motif": "TTC",
+    "count": null,
+    "type": "pathogenic_repeat"
+   }
+  ]
+ },
+ {
+  "id": "SCA_EP400",
+  "gene": "EP400",
+  "disease": "Spinocerebellar ataxia",
+  "pathogenic_motif_reference_orientation": [
+   "CAG"
+  ],
+  "pathogenic_motif_gene_orientation": [
+   "CAG"
+  ],
+  "mondo": [],
+  "ref_copies": 29.0,
+  "benign_min": 19,
+  "benign_max": 39,
+  "pathogenic_min": 71,
+  "pathogenic_max": 77,
+  "evidence": [
+   "Provisional"
+  ],
+  "chrom": "chr12",
+  "start_hg38": 132062524,
+  "stop_hg38": 132062611,
+  "locus_structure": []
  }
 ]

@@ -155,6 +155,18 @@ def enrich_(  # `enrich` command; function name avoids shadowing the imported en
     typer.echo(
         f"rows: {len(result.rows)}  fully_resolved: {result.fully_resolved}  sources: {result.sources}"
     )
+    grades = result.repeat_grades
+    if grades is not None and grades.subjects:
+        if grades.could_not_ask:
+            typer.echo(
+                f"  repeat grades: could not ask STRchive about {grades.subjects} repeat key(s) "
+                f"({grades.reason})"
+            )
+        else:
+            typer.echo(
+                f"  repeat grades: {len(grades.covered)} matched, {len(grades.missing)} without a STRchive record, "
+                f"{grades.added} row(s) added"
+            )
     for usage in result.answer_usage:
         typer.echo(str(usage))
     if result.unresolved:

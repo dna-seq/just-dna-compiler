@@ -29,11 +29,13 @@ from just_dna_format.gwas import GwasEffectRow
 from just_dna_format.ld_pairs import LdPairRow
 from just_dna_format.literature import LiteratureRow
 from just_dna_format.locus_genes import ColocalisationRow, LocusToGeneRow
+from just_dna_format.repeat_grades import RepeatGradeRow
 from just_dna_format.resolution import ResolutionRow
 from just_dna_format.vocab import VALID_RESOLUTION_STATUS
 
 #: A minimal valid row per model — the required fields and nothing else.
 _MINIMAL: dict[type, dict] = {
+    RepeatGradeRow: {"gene": "HTT", "repeat_unit": "CAG", "locus_id": "HD_HTT"},
     ResolutionRow: {"variant_key": "rs1800562"},
     FrequencyRow: {"variant_key": "rs1800562", "population": "global", "dataset": "gnomad_v4.1"},
     GeneMetricsRow: {"gene": "HFE", "dataset": "gnomad_v4.1_constraint"},

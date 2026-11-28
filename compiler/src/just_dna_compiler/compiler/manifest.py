@@ -33,6 +33,7 @@ from just_dna_format.integrity import (
     file_entry,
     ld_pair_signature,
     locus_to_gene_signature,
+    repeat_grade_signature,
     sha256_file,
 )
 from just_dna_format.integrity import clinical_assertion_signature as _clinical_assertion_signature
@@ -67,11 +68,13 @@ from just_dna_format.manifest import (
     OpenTargetsTable,
     Provenance,
     ProvenanceDoc,
+    RepeatGrades,
     Sources,
     Stats,
     Verification,
 )
 from just_dna_format.normalize import now_utc_iso
+from just_dna_format.repeat_grades import RepeatGradeRow
 from just_dna_format.resolution import ResolutionRow
 from just_dna_format.sources import SourceRow, taints_commercial_use, taints_redistribution
 from just_dna_format.spec import ModuleSpecConfig, VariantRow
@@ -717,6 +720,17 @@ def _colocalisations_block(rows: list) -> OpenTargetsTable | None:
 
 def _consequences_block(rows: list) -> OpenTargetsTable | None:
     return _open_targets_block(rows, consequence_signature)
+
+
+def _repeat_grades_block(rows: list[RepeatGradeRow]) -> RepeatGrades | None:
+    if not rows:
+        return None
+    return RepeatGrades(
+        signature=repeat_grade_signature(rows),
+        sources=sorted({row.source for row in rows if row.source}),
+        datasets=sorted({row.dataset for row in rows if row.dataset}),
+        row_count=len(rows),
+    )
 
 
 def _ld_pairs_block(rows: list) -> LdPairs | None:
@@ -1406,6 +1420,7 @@ def _build_manifest(
     locus_to_gene: OpenTargetsTable | None = None,
     colocalisations: OpenTargetsTable | None = None,
     consequences: OpenTargetsTable | None = None,
+    repeat_grades: RepeatGrades | None = None,
     ld_pairs: LdPairs | None = None,
     clin_sig_concordance: ClinSigConcordance | None = None,
     literature: Literature | None = None,
@@ -1492,6 +1507,7 @@ def _build_manifest(
         locus_to_gene=locus_to_gene,
         colocalisations=colocalisations,
         consequences=consequences,
+        repeat_grades=repeat_grades,
         ld_pairs=ld_pairs,
         clin_sig_concordance=clin_sig_concordance,
         literature=literature,

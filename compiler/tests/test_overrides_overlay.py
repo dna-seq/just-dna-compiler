@@ -327,6 +327,7 @@ def test_the_covered_set_is_every_derived_sidecar_but_three_named_decisions() ->
         "sources.csv",
         "clin_sig_authority_calls.csv",
         "ld_pairs.csv",
+        "repeat_grades.csv",  # STRchive owns the wording of its association grade.
     }
 
 

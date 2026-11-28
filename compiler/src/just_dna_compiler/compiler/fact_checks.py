@@ -7,6 +7,7 @@ from typing import Any
 
 from just_dna_format.assertions import CLINICAL_ASSERTION_FACT_FIELDS, ClinicalAssertionRow
 from just_dna_format.base import DEFAULT_GENOME_BUILD, coordinate_key, derive_variant_key, merge_key
+from just_dna_format.binning import RepeatAlleleRow
 from just_dna_format.consequences import CONSEQUENCE_FACT_FIELDS, ConsequenceRow
 from just_dna_format.expression import EXPRESSION_FACT_FIELDS, ExpressionEffectRow
 from just_dna_format.findings import CodedWarning
@@ -32,6 +33,7 @@ from just_dna_format.overrides import (
     classify_update_targets,
     classify_vindicated_answers,
 )
+from just_dna_format.repeat_grades import REPEAT_GRADE_FACT_FIELDS, RepeatGradeRow, repeat_key
 from just_dna_format.resolution import ResolutionRow
 from just_dna_format.spec import StudyRow, VariantRow, extract_pmids
 from just_dna_format.spelling import distinct_spellings
@@ -64,6 +66,7 @@ FACT_CONTRADICTION_FIELDS: dict[type, tuple[str, ...]] = {
     ColocalisationRow: COLOCALISATION_FACT_FIELDS,
     ConsequenceRow: CONSEQUENCE_FACT_FIELDS,
     LdPairRow: LD_PAIR_FACT_FIELDS,
+    RepeatGradeRow: REPEAT_GRADE_FACT_FIELDS,
 }
 
 
@@ -720,6 +723,20 @@ def _currency_group_names(groups: list[tuple]) -> str:
     shown = ", ".join("/".join(str(part) for part in group if part) for group in groups[:5])
     more = "" if len(groups) <= 5 else f" (+{len(groups) - 5} more)"
     return f"{shown}{more}"
+
+
+def _cross_check_repeat_grades(rows: list[RepeatGradeRow], repeats: list[RepeatAlleleRow]) -> list[str]:
+    """Warn once for each set of stale repeat keys, irrespective of the source's grade."""
+    keys = {repeat_key(row) for row in repeats}
+    orphans = sorted({repeat_key(row) for row in rows} - keys)
+    if not orphans:
+        return []
+    return [
+        CodedWarning(
+            "derived_row_orphan",
+            f"repeat_grades.csv names {len(orphans)} repeat key(s) absent from repeat_alleles.csv: {orphans}",
+        )
+    ]
 
 
 def _cross_check_gene_validity(rows: list[GeneValidityRow], subjects: ModuleSubjects) -> list[str]:

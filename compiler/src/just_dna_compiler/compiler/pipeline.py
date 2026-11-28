@@ -30,6 +30,7 @@ from just_dna_format.overrides import (
     apply_overrides,
     update_targets,
 )
+from just_dna_format.repeat_grades import RepeatGradeRow
 from just_dna_format.resolution import ResolutionRow
 from just_dna_format.sources import SourceRow
 from just_dna_format.spec import StudyRow, VariantRow
@@ -67,6 +68,7 @@ from just_dna_compiler.compiler.fact_checks import (
     _cross_check_gene_validity,
     _cross_check_gwas_effects,
     _cross_check_literature,
+    _cross_check_repeat_grades,
     split_cited_literature,
 )
 from just_dna_compiler.compiler.load import _load_csv_rows, _load_yaml, content_signature, load_authored_table
@@ -93,6 +95,7 @@ from just_dna_compiler.compiler.manifest import (
     _literature_block,
     _locus_to_gene_block,
     _module_binding,
+    _repeat_grades_block,
     _source_checks,
     _sources_block,
     _verification_block,
@@ -721,6 +724,10 @@ def compile_module(
         ColocalisationRow: (_no_checks, lambda rows: _build_table(rows, ColocalisationRow, module_name)),
         ConsequenceRow: (_no_checks, lambda rows: _build_table(rows, ConsequenceRow, module_name)),
         # RM331, the same reason: every row is the `ld-pairs` pass's answer about a study row's pair.
+        RepeatGradeRow: (
+            lambda rows: ([], _cross_check_repeat_grades(rows, kind_rows.get("repeat_alleles.csv", []))),
+            lambda rows: _build_table(rows, RepeatGradeRow, module_name),
+        ),
         LdPairRow: (_no_checks, lambda rows: _build_table(rows, LdPairRow, module_name)),
         ClinSigConcordanceRow: (
             _concordance_checks,
@@ -1013,6 +1020,7 @@ def compile_module(
         locus_to_gene=_locus_to_gene_block(locus_to_gene_rows),
         colocalisations=_colocalisations_block(colocalisation_rows),
         consequences=_consequences_block(consequence_rows),
+        repeat_grades=_repeat_grades_block(fact_rows.get(RepeatGradeRow, [])),
         ld_pairs=_ld_pairs_block(ld_pair_rows),
         clin_sig_concordance=_clin_sig_concordance_block(concordance_rows, authority_call_rows),
         literature=_literature_block(literature_rows),

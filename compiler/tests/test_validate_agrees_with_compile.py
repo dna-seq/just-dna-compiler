@@ -186,6 +186,7 @@ _INJECTED_ROW_CASES: tuple[tuple[str, str, str], ...] = (
         ),
         "impact",
     ),
+    ("repeat_grades.csv", "gene,repeat_unit,grade\nHTT,CAG,Strong\n", "locus_id"),
     # RM331: an r² outside [0, 1].
     (
         "ld_pairs.csv",

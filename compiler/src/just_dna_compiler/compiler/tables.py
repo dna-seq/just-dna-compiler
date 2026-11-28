@@ -42,6 +42,7 @@ from just_dna_format.model_organisms import ModelOrganismRow
 from just_dna_format.overrides import OverrideRow, overlay_coherence_errors
 from just_dna_format.pgs import PgsRow
 from just_dna_format.pgx import AlleleFunctionRow, DiplotypeRow, HaplotypeRow, PharmVariantRow
+from just_dna_format.repeat_grades import RepeatGradeRow
 from just_dna_format.sources import SourceRow
 from just_dna_format.spelling import comparison_key
 from pydantic import BaseModel
@@ -372,68 +373,6 @@ SNP_CORE_PARQUETS: dict[str, tuple[str, ...]] = {
 }
 
 
-ARTIFACT_PARQUETS: tuple[str, ...] = (
-    *(pq for parquets in SNP_CORE_PARQUETS.values() for pq in parquets),
-    *(parquet for _, parquet, _ in _TABLE_KINDS),
-    # The 0.5 derived-fact tables. In `ARTIFACT_PARQUETS` (so a module that carries them has a different
-    # content identity — correct: different content, different artifact) but deliberately NOT in
-    # `_INPUT_FILES`: like `resolution.csv`, their authored CSVs are multi-producer and are hashed by
-    # FACTS (`integrity.frequency_signature` / `gene_metrics_signature`) rather than raw bytes, so a
-    # reverse→recompile cycle does not "change the hash" over column order and timestamps.
-    "frequencies.parquet",
-    "gene_metrics.parquet",
-    "literature.parquet",
-    # The 0.6 pair (RM24/RM25), on the same terms as the four above. This tuple is hand-listed where
-    # `_DERIVED_FILES` is derived, so a new fact table has to be added here and only here.
-    "gene_validity.parquet",
-    "clinical_assertions.parquet",
-    # RM90 (0.6), on the same terms as the six above. Append rather than insert mid-tuple — but the
-    # reason is the `artifact.files` listing a consumer iterates, NOT the digest, which name-sorts and
-    # cannot see this position at all. What keeps an already-published module's digest still is that it
-    # carries no such file. `test_overrides_overlay.py` proves the sort by construction.
-    "gwas_effects.parquet",
-    # RM130 (0.7), on the same terms as the seven above and in the same place for the same reason —
-    # beside its siblings, so `manifest.artifact.files` reads in family order. The pair is two
-    # parquets because it is two tables: the agreement state belongs to the subject and each
-    # authority's own words belong to the authority, and one of them keys on `authority` while the
-    # other must not.
-    "clin_sig_concordance.parquet",
-    "clin_sig_authority_calls.parquet",
-    # RM194/RM200 (0.7), on the same terms as the eight above and in the same place for the same
-    # reason — beside its siblings, so `manifest.artifact.files` reads in family order.
-    "expression_effects.parquet",
-    # The Open Targets lane's three (0.8, RM333/RM236), beside their siblings for the reason above. A
-    # module carrying none of them carries no such file and keeps its digest.
-    "locus_to_gene.parquet",
-    "colocalisations.parquet",
-    "consequences.parquet",
-    # The computed LD pair (0.8, RM331), beside its siblings for the same reason.
-    "ld_pairs.parquet",
-    "sources.parquet",
-    # The authored tables that are not table kinds (RM357), last, in the registry's order: the overlay
-    # (RM124, 0.7), the meta-table's pair (0.8) and the model-organism table (0.8, RM335). Last is where
-    # a new member belongs, and **not for the digest reason the fact-table entries above give**, which
-    # does not reach these: `integrity.artifact_digest` sorts the listing by name before hashing, so a
-    # member's position here is invisible to the digest. What protects every already-published module
-    # is that it carries none of these files, so each is absent and contributes nothing. The overlay is
-    # also the only member here not derived from a source; `OVERRIDES_CSV` says why it needs a parquet.
-    *(parquet for table in AUTHORED_NON_KIND_TABLES for parquet in table.parquets),
-)
-
-
-# The **lead** parquets: the ones that carry a module's own annotation rows, `weights` plus one per
-# table kind. Everything else in `ARTIFACT_PARQUETS` is a side table — `annotations`/`studies`, every
-# `_FACT_TABLES` parquet, the authored non-kind tables — which describes or cites the rows rather than
-# being them. The distinction is
-# not ours: it is what the reference consumer's discovery probes to decide "is this directory a
-# module" (S35), and RM2 made it the honest publish gate too, since a module carries only the kinds it
-# uses and `weights.parquet` has been optional for four releases.
-LEAD_PARQUETS: tuple[str, ...] = (
-    "weights.parquet",
-    *(parquet for _, parquet, _ in _TABLE_KINDS),
-)
-
-
 # The 0.5 derived-fact sidecars: (authored CSV, compiled parquet, row model). Deliberately NOT
 # registered in `_TABLE_KINDS`: those are authored DSL tables with `AuthoredModel` semantics, the
 # reserved-namespace guard, duplicate-key checks and raw-byte input hashing. A machine-produced
@@ -459,7 +398,30 @@ _FACT_TABLES: tuple[tuple[str, str, type[BaseModel]], ...] = (
     ("colocalisations.csv", "colocalisations.parquet", ColocalisationRow),
     ("consequences.csv", "consequences.parquet", ConsequenceRow),
     ("ld_pairs.csv", "ld_pairs.parquet", LdPairRow),
+    ("repeat_grades.csv", "repeat_grades.parquet", RepeatGradeRow),
     ("sources.csv", "sources.parquet", SourceRow),
+)
+
+
+ARTIFACT_PARQUETS: tuple[str, ...] = (
+    *(pq for parquets in SNP_CORE_PARQUETS.values() for pq in parquets),
+    *(parquet for _, parquet, _ in _TABLE_KINDS),
+    *(parquet for _, parquet, _ in _FACT_TABLES),
+    # Authored non-kind tables come last in the manifest listing (RM357).
+    *(parquet for table in AUTHORED_NON_KIND_TABLES for parquet in table.parquets),
+)
+
+
+# The **lead** parquets: the ones that carry a module's own annotation rows, `weights` plus one per
+# table kind. Everything else in `ARTIFACT_PARQUETS` is a side table — `annotations`/`studies`, every
+# `_FACT_TABLES` parquet, the authored non-kind tables — which describes or cites the rows rather than
+# being them. The distinction is
+# not ours: it is what the reference consumer's discovery probes to decide "is this directory a
+# module" (S35), and RM2 made it the honest publish gate too, since a module carries only the kinds it
+# uses and `weights.parquet` has been optional for four releases.
+LEAD_PARQUETS: tuple[str, ...] = (
+    "weights.parquet",
+    *(parquet for _, parquet, _ in _TABLE_KINDS),
 )
 
 

@@ -40,6 +40,7 @@ from just_dna_enricher.licensing import (
     GWAS_CATALOG_TERMS,
     OPENTARGETS_TERMS,
     PUBMIND_TERMS,
+    STRCHIVE_TERMS,
 )
 
 
@@ -146,6 +147,15 @@ DERIVED_PRODUCERS: dict[str, tuple[DerivedProducer, ...]] = {
                 "ClinGen's haploinsufficiency and triplosensitivity calls are gene metrics like gnomAD's "
                 "constraint, and are CC0, which is what keeps a module carrying them sellable"
             ),
+        ),
+    ),
+    "repeat_grades.csv": (
+        DerivedProducer(
+            table="repeat_grades.csv",
+            command="enrich",
+            module="repeat_grades",
+            sources=(STRCHIVE_TERMS.source,),
+            release_lanes=((STRCHIVE_TERMS.source, "strchive"),),
         ),
     ),
     "gene_validity.csv": (

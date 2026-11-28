@@ -59,6 +59,7 @@ from just_dna_format.pgx import (
     HaplotypeRow,
     PharmVariantRow,
 )
+from just_dna_format.repeat_grades import RepeatGradeRow
 from just_dna_format.resolution import ResolutionRow
 from just_dna_format.sources import SourceRow
 from just_dna_format.spec import (
@@ -173,6 +174,7 @@ _FACT_MODELS: dict[str, type[BaseModel]] = {
     "ConsequenceRow": ConsequenceRow,
     # RM331 (0.8): nobody hand-writes one either, and `status` binds a closed vocabulary only this walk
     # can find undeclared.
+    "RepeatGradeRow": RepeatGradeRow,
     "LdPairRow": LdPairRow,
     "VerificationRecord": VerificationRecord,
 }

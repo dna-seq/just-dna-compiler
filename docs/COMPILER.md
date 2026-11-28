@@ -1970,6 +1970,7 @@ frequencies  gene_metrics  literature  gene_validity
 clinical_assertions  gwas_effects
 clin_sig_concordance  clin_sig_authority_calls  expression_effects
 locus_to_gene  colocalisations  consequences  ld_pairs             ← the derived-fact sidecars (the Open Targets three and ld_pairs: 0.8)
+repeat_grades                                                     ← STRchive’s association grades (0.10)
 sources                                                           ← the licence table
 overrides                                                         ← the authored overlay (0.7)
 meta  meta_resolved                                               ← the meta-table (0.8); not lead tables
@@ -1984,7 +1985,7 @@ late it sits in the tuple. What the position does govern is the order a consumer
 listing, not the hash; what keeps an already-published digest still is that the module has no such
 file at all.
 
-Thirty names. `LEAD_PARQUETS` is the ones carrying a module's own annotation rows — `weights` plus one
+Thirty-one names. `LEAD_PARQUETS` is the ones carrying a module's own annotation rows — `weights` plus one
 per table kind — which is the publisher's *is this a module* rule and what discovery probes.
 
 **The per-parquet column lists are deliberately not reproduced here.** They are derivable from the
@@ -2883,6 +2884,7 @@ modules silently vanishing from a catalogue.
 | **`frequencies.csv` path (0.5)** | ✅ `FrequencyRow`; coordinate cross-check → warning; **provisional shape** | ✅ `frequencies.parquet` (in `artifact.digest`); `frequency_signature`/`sources`/`datasets`/`populations` → **manifest** (out of digest) | ✅ `allele_frequency` = AC/AN materialized as `Float64` (never stored in the CSV) | complete (injected; enricher produces it) |
 | **`gene_metrics.csv` path (0.5)** | ✅ `GeneMetricsRow`; gene cross-check → warning; **provisional shape** | ✅ `gene_metrics.parquet` (in digest); `gene_metrics_signature`/`genes`/`datasets` → **manifest** | — | complete (injected; offline-capable upstream) |
 | **`literature.csv` path (0.5)** | ✅ `LiteratureRow`; citation cross-check + nonexistent-PMID warning; **provisional shape** | ✅ `literature.parquet` (in digest); `literature_signature`/`sources`/coverage counters → **manifest** | — | complete (injected; enricher produces it) |
+| **`repeat_grades.csv` (0.10, RM294)** | A `(gene, repeat_unit)` absent from `repeat_alleles.csv` warns under `derived_row_orphan` in both modes | `repeat_grades.parquet` in the digest, fact signature in `manifest.repeat_grades` | — | complete (injected STRchive association grades) |
 | **`gene_validity.csv` path (0.6, RM24)** | ✅ `GeneValidityRow`; gene cross-check → warning; **provisional shape** | ✅ `gene_validity.parquet` (in digest); `gene_validity_signature`/`genes`/`diseases`/`classifications`/`submitters`/`datasets` → **manifest** | — | complete (injected; ClinGen + GenCC routes in the enricher) |
 | **`clin_sig_concordance.csv` / `clin_sig_authority_calls.csv` (0.7, RM130)** | ✅ two derived fact tables — the per-variant three-way ClinVar concordance verdict, and every authority's call as it stood at the time (the only derived table recording a value *at the time*, which is what `answered-call currency` compares against); orphan rows warn under `derived_row_orphan`; **provisional shape** | ✅ `clin_sig_concordance.parquet` / `clin_sig_authority_calls.parquet` (in digest, fact-hashed); `_TABLE_DUPE_KEYS` registered; a cell key carries the value because two rows may state two claims | ✅ `clin_sig_concordance_contested` (see the phrases) | complete (written by `enrich`; the compiler cross-checks and never adjudicates) |
 | **`statistical_test` (`StudyRow`, 0.7, RM140)** | ✅ free text — which analysis produced this row's `p_value`/`effect_size`; in the dedup key by value | ✅ `studies.parquet`; reversed | — | complete (passthrough; nothing derives or checks it) |

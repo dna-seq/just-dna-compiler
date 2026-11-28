@@ -73,6 +73,7 @@ _MOVABLE = (
     "colocalisations.csv",
     "consequences.csv",
     "ld_pairs.csv",
+    "repeat_grades.csv",
     "sources.csv",
     LICENSING_CSV,
 )

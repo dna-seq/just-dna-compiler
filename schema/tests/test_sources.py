@@ -44,6 +44,7 @@ def test_layer_and_declared_use_are_closed_vocabularies() -> None:
         "consequence",
         # 0.8 (RM331) — the computed LD pair, written by `ld-pairs` from Ensembl's pairwise LD.
         "ld_pair",
+        "repeat_grade",
         # 0.8 (RM379) — each consulted authority of the clinical-significance concordance record.
         "clin_sig_authority_call",
         "annotation",

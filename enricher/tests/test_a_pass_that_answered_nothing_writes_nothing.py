@@ -245,6 +245,7 @@ def _ld_pairs(tmp_path: Path, _cv: Path) -> Path:
 #: `(table, command) -> the runner giving that pass nothing to answer`. Asserted EQUAL to the registry
 #: below, so a producer added to `DERIVED_PRODUCERS` without a runner here is red rather than unguarded.
 _NOTHING_TO_ANSWER: dict[tuple[str, str], Callable[[Path, Path], Path]] = {
+    ("repeat_grades.csv", "enrich"): _enrich_nothing_asked,
     ("resolution.csv", "enrich"): _enrich_nothing_asked,
     ("clin_sig_concordance.csv", "enrich"): _enrich_no_clin_sig,
     ("clin_sig_authority_calls.csv", "enrich"): _enrich_no_clin_sig,

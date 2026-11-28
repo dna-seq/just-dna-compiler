@@ -242,11 +242,8 @@ def draft_repeat_loci(
     result.candidates = len(admitted)
 
     # Over the admitted set, before any row is built.
-    claims: dict[tuple[str, str], list[str]] = {}
-    for locus in admitted:
-        for motif in locus.motifs:
-            claims.setdefault((locus.gene, motif), []).append(locus.locus_id)
-    contested = {key for key, ids in claims.items() if len(ids) > 1}
+    claims = StrchiveCatalogue(loci=tuple(admitted)).by_gene_and_motif()
+    contested = {key for key, loci in claims.items() if len(loci) > 1}
     result.contested = sorted(contested)
 
     partials: list[PartialRow] = []

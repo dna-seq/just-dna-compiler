@@ -781,6 +781,25 @@ class OpenTargetsTable(BaseModel):
     variant_count: int = Field(default=0, description="Distinct `variant_key`s the rows reach")
 
 
+class RepeatGrades(BaseModel):
+    """Summary of the STRchive associations carried in repeat_grades.parquet."""
+
+    signature: str | None = Field(
+        default=None, json_schema_extra=since("0.10.0"), description="Fact hash of the repeat grades"
+    )
+    sources: list[str] = Field(
+        default_factory=list, json_schema_extra=since("0.10.0"), description="Sources named by the rows"
+    )
+    datasets: list[str] = Field(
+        default_factory=list,
+        json_schema_extra=since("0.10.0"),
+        description="Snapshot releases named by the rows",
+    )
+    row_count: int = Field(
+        default=0, json_schema_extra=since("0.10.0"), description="Number of rows in the table"
+    )
+
+
 class LdPairs(BaseModel):
     """Summary of a module's computed LD-pair sidecar (0.8, RM331).
 
@@ -2090,6 +2109,9 @@ class ModuleManifest(BaseModel):
         default=None,
         json_schema_extra=since("0.8.0"),
         description="Summary of the per-transcript consequence sidecar (0.8, RM236), when the module carries one.",
+    )
+    repeat_grades: RepeatGrades | None = Field(
+        default=None, json_schema_extra=since("0.10.0"), description="STRchive repeat association grades"
     )
     ld_pairs: LdPairs | None = Field(
         default=None,
