@@ -204,6 +204,7 @@ One line each; the verdict in full is the `**Status —**` paragraph inside the 
 - **S163** outside `enrich()` a client keeps its first release label for life — taken into RM468 (0.10)
 - **S164** the 0.10.0 derivation record; no stamp names a table's oldest writer — taken into RM441 (0.10)
 - **S165** which contigs a local FASTA binds, and a file binding all 25 — taken into RM385 (0.10)
+- **S166** one local sequence source reaching every read (a lane, a resolver field, the CIViC drafter) — taken into RM385 (0.10)
 
 **Keep this list one line per item.** It is a contents list, not a second copy of the replies: the
 detail belongs in each section's `**Status —**` paragraph, where it cannot drift out of step with the
@@ -8260,3 +8261,50 @@ run's check) is a public addition, legal in 0.10, and is RM385's to build. Meanw
 `local_read_problem(chrom, build)` is the right reading of today's surface.
 
 <!-- triaged: taken into RM385 (0.10, preview finding) · sha dd6e3087e507 -->
+
+# From just-dna-registry's liaison, reading 0.10 at `d23fd638`, 2026-11-28
+
+## S166 — just-dna-registry (liaison), 2026-11-28: a local sequence source that reaches every read, and how it is provisioned
+
+**Context.** A host re-deriving ClinVar-scale modules (about 438k rows over three modules) spends almost all of the
+run reading reference sequence one request at a time from the default `seqrepo+https://` source, about 6 reads a
+second: 13 to 30 h per sweep, measured from `ga4gh.vrs.dataproxy` log lines. The host's plan is to hand every
+`enrich()` path one shared local `SequenceProxy` (a `fasta+file://` GRCh38 FASTA, RM385) and read nothing over HTTP.
+Read at `0.10` `d23fd638`:
+
+1. **No lane provisions it.** `CACHE_LANES` has no sequence lane, so `prepare_caches` cannot place the FASTA or its
+   `.refget.json` sidecar, and a host's provisioning command has nothing to read. Is the local reference meant to
+   stay host-provisioned (then say so in INTEGRATION_0_10, with the file that binds all 25 and its first-read
+   cost), or will 0.10 register a lane for it?
+2. **A caller's resolver cannot be handed the source.** `enrich()` threads `sequences=` into the resolver it builds
+   (`orchestration.py`, "a caller's resolver is never altered"), but a host that passes its own shared
+   `EnsemblResolver` (one per process, for the pacing gate) has only the private `_read_base`; left unset,
+   `_base_reader()` builds `SequenceProxy()`, the remote default. So on an online run the host's indel anchors are
+   still read over HTTP. Asked: a public constructor field on `EnsemblResolver` (a `SequenceProxy`, or the
+   reader), or a documented rule that `enrich()` hands a caller's resolver its `sequences` when the resolver holds
+   none.
+3. **One more reader builds the remote default whatever the host holds**: `civic_draft.py` (the drafter's anchor
+   reader, `held_by_one_run(SequenceProxy(offline=offline))`) takes no `sequences=`. `pgx_draft` already takes one.
+   Asked: the same parameter there, so a host's one source reaches the drafters too.
+
+**Done would look like**: with a local source passed everywhere a host can pass one, a re-derivation and a draft
+make no `ga4gh.vrs.dataproxy` `Fetching https://` request (a socket-tripwire test on the host's side).
+
+**Status — taken into [RM385](ROADMAP_0_10.md#rm385--offline-enrich-cannot-left-align-an-indel-because---offline-turns-off-the-reference-as-well-as-the-network) as a preview finding: items 2 and 3 built on `0.10` at `135eed6d` (the lead), item 1
+host-provisioned in 0.10 with no lane (the pm, `8a117ed7`).**
+
+1. The GRCh38 FASTA stays the host's to place in 0.10, and no `CACHE_LANES` lane is added; the pm recorded it under
+   RM385 in ROADMAP_0_10, and INTEGRATION_0_10 is to name `GCF_000001405.40` (binds all 25) and its first-read cost.
+2. `EnsemblResolver` has a public keyword field, `sequences: SequenceProxy | None`. A resolver given one reads its
+   indel anchors through it, directly, so a failed read is asked again on its next request; with it unset the
+   resolver builds the default proxy on first use, as before. `enrich()` still never alters a caller's resolver:
+   the documented call is `EnsemblResolver(sequences=proxy)` and `enrich(..., resolver=resolver, sequences=proxy)`.
+   A resolver `enrich()` builds itself takes the run's sequence view.
+3. `draft_panel_from_civic(..., sequences=proxy)` reads CIViC's anchor and left-alignment bases through the host's
+   proxy, and `--sequence-uri` reaches `draft-panel --source civic`, CPIC `draft` and `civic reproduce`.
+
+Your socket-tripwire probe at `135eed6d` (644284846) found no seqrepo request on an online `enrich(rederive=True)`
+with both set, and a withheld read, never an HTTP fallback, on an unbound contig. The CIViC drafter path is covered by
+this repo's tests only.
+
+<!-- triaged: taken into RM385 (0.10, preview finding) · sha 17f99fa53488 -->
