@@ -1069,3 +1069,23 @@ class AuthoredModel(PairedFields):
         if type(self)._KEY_INCLUDES_ALTS is not None:
             stamp_identity(self, keys_on_alts=self._KEY_INCLUDES_ALTS, freeze_authored=True)
         return self
+
+
+class ConclusionRegisters(AuthoredModel):
+    """Optional author-written wordings of the row's required detailed conclusion (RM302)."""
+
+    conclusion_lay: str | None = Field(
+        default=None,
+        json_schema_extra=since("0.10.0"),
+        description="The same claim as the detailed conclusion, written by the author for a lay reader.",
+    )
+    conclusion_concise: str | None = Field(
+        default=None,
+        json_schema_extra=since("0.10.0"),
+        description="The same claim as the detailed conclusion, written by the author for a table cell.",
+    )
+
+    @field_validator("conclusion_lay", "conclusion_concise")
+    @classmethod
+    def _empty_register(cls, value: str | None) -> str | None:
+        return value if _stated(value) else None

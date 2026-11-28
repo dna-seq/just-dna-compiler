@@ -17,6 +17,7 @@ from just_dna_format.assertions import ClinicalAssertionRow
 from just_dna_format.base import (
     IDENTITY_FIELDS,
     AuthoredModel,
+    ConclusionRegisters,
     authored_field_names,
     derive_variant_key,
     field_first_seen,
@@ -599,6 +600,13 @@ def _list_fields(model: type[BaseModel]) -> set[str]:
     }
 
 
+def _omit_unstated_registers(frame: pl.DataFrame) -> pl.DataFrame:
+    """Keep the original parquet bytes when no author has supplied a wording in this register."""
+    return frame.drop(
+        name for name in ConclusionRegisters.model_fields if frame[name].null_count() == frame.height
+    )
+
+
 def _build_table(rows: list[Any], model: type[BaseModel], module_name: str) -> pl.DataFrame:
     """A binning/PGx/PGS table → parquet. Carries a `module` column (like weights/studies) so
     `reverse_module` can recover the module name from any present parquet.
@@ -615,7 +623,8 @@ def _build_table(rows: list[Any], model: type[BaseModel], module_name: str) -> p
     records = [
         {"module": module_name, **{name: getattr(row, name) for name in model.model_fields}} for row in rows
     ]
-    return pl.DataFrame(records, schema=schema)
+    frame = pl.DataFrame(records, schema=schema)
+    return _omit_unstated_registers(frame) if issubclass(model, ConclusionRegisters) else frame
 
 
 def _scalar_cell(value: Any) -> str:

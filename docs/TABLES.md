@@ -37,8 +37,8 @@ Its audience is two-sided, which is why it has more columns than anything else h
 decides zygosity and prose, and a consumer's engine matches sample calls row by row.
 
 **The artifact splits it in two, and that asymmetry trips every consumer once.** `weights.parquet`
-gets the authored surface *except* `gene`, `phenotype` and `category`; `annotations.parquet` gets nine
-columns *including* those three. So a gene symbol exists in the artifact **only** in
+leaves `gene`, `phenotype`, `category` and the author's lay and table-cell wordings to
+`annotations.parquet`. So a gene symbol exists in the artifact **only** in
 `annotations.parquet`, and a consumer reading `weights.parquet` alone cannot see one. The two also
 disagree on how they store the call: `annotations` keeps the authored `genotype` string while
 `weights` keeps the alleles as a list plus a `phased` bool. **The list is in authored order and never
@@ -112,6 +112,7 @@ never a row that silently joins nothing.
 **One row is one haplotype pair → one phenotype**, and the pair is canonicalised (`haplotype_a <=
 haplotype_b`) so a lookup is order-independent. Several rows per pair are legal — a pleiotropic
 diplotype affecting several traits is several rows, not one row with a list.
+The author can give that pair's finding a lay explanation or a short table label.
 
 **There is deliberately no `requires_callable` column, and the absence is the decision.** A diplotype
 names a *pair*, not a locus, so the column could only mean "the variants defining these two
@@ -130,6 +131,7 @@ same word in both tables means the same group.
 **One row is (variant, drug, genotype) → response**, at a PharmGKB evidence level. It is a distinct
 table rather than columns on `variants.csv` so that a module carrying no drug annotations carries no
 drug columns — one CSV, one concern.
+A lay or concise wording describes the response to this drug for this genotype.
 
 **`genotype` is part of the identity, not decoration.** PharmGKB publishes a clinical annotation *per
 genotype*: a summary names variant and drug, and the child rows give one annotation per call, usually
@@ -163,6 +165,7 @@ nothing else.
 **One row is one activity-score band → one metabolizer phenotype, per gene** (CYP2D6 PM/IM/NM/UM).
 The score itself is the *consumer's* call — Σ activity × copies across the diplotype — and this table
 only bins it. Nothing here computes a score, and a module that looks like it does is misread.
+The author can explain the phenotype for a lay reader or give the band a brief table entry.
 
 Bounds are inclusive and a shared endpoint belongs to the **higher** bin under continuous tiling, so
 two adjacent bands may legitimately name the same number.
@@ -172,6 +175,7 @@ two adjacent bands may legitimately name the same number.
 **One row is one whole-gene dosage band → one phenotype** (SMN1 in SMA). A sharp dosage is
 `measure_min == measure_max` — zero copies is `[0, 0]`, not a null — and an open top end is
 `measure_min=3, measure_max=None` for "3 or more".
+Lay and concise wordings describe the phenotype at that dosage.
 
 **The modifier locus is named columns, never a tuple.** An SMN1 phenotype depends on SMN2's copy
 number, so `modifier_gene` plus a modifier dosage express a second locus read in context; the gene and
@@ -189,6 +193,7 @@ this table lie.
 **One row is one repeat-count band for one (gene, motif)** — and the motif is part of the identity. A
 count is only comparable within the motif definition that produced it, so a row that omits the unit is
 not a looser row, it is an unusable one.
+A lay explanation or a table label applies to that same repeat-count band.
 
 The count is the consumer's call (ExpansionHunter, adVNTR, a span genotyper) and the caller **must**
 state the motif it counted. The symptom of a mismatch is a plausible wrong answer rather than a miss:
@@ -198,6 +203,7 @@ a count against a different unit length bins cleanly into the wrong band.
 
 **One row is one mtDNA allele-fraction band, keyed on gene, reference sequence, tissue — and the
 variant.** Every part of that key earned its place by breaking something without it.
+Lay and concise wordings retain the tissue and allele-fraction context of the detailed claim.
 
 The **reference sequence** is in the key because rCRS/`NC_012920` and the legacy `NC_001807` disagree
 on position, and `genome_build` does not disambiguate them. The **variant identity** is in the key

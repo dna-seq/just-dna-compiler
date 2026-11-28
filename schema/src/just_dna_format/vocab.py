@@ -404,6 +404,7 @@ RESERVED_NAMES_0_4: frozenset[str] = frozenset(
         # module may pin it explicitly, e.g. a specific PharmVar release). Annotation-side addressing,
         # not a measurement — a real future axis.
         "reference_db",
+        "language",
         # The two element-rule columns RM54 did *not* build (0.6). `source_element` shipped on the
         # binning tables; these are its companions on `VariantRow`'s two pointers, withheld because no
         # module points either at a multi-valued field and an authored column costs full price. They
@@ -434,6 +435,10 @@ RESERVED_NAMES_0_4: frozenset[str] = frozenset(
 # Why each reserved name is withheld — surfaced verbatim in the author-time error so the author gets a
 # *diagnosis* ("here is what the name is reserved for; a release may claim it"), not a bare rejection.
 RESERVED_NAME_REASONS: dict[str, str] = {
+    "language": (
+        "names the language of the register text, a separate axis from register "
+        "(a German lay text has register lay and language de)"
+    ),
     "reference_db": (
         "names which reference database the app should join this annotation against — reserved so a "
         "module can pin its join target explicitly instead of relying on the implicit default"

@@ -370,8 +370,9 @@ reason its `source` column is inside its fact set while everywhere else `source`
   the disease id and must not invent phenotype ids from names.
 
 - **Reserved namespace (`vocab.RESERVED_NAMES_0_4`).** Only names expected to become real module
-  columns later (P5) — today `{reference_db, callable_element, quality_element}`, each with a reason
-  in `RESERVED_NAME_REASONS`. (`tradeoff` was reserved from 2026-11-03 until 0.8 computed it on
+  columns later (P5). Each has a reason in `RESERVED_NAME_REASONS`. The reserved name `language`
+  distinguishes the language of a text from its register. A German lay explanation has register
+  `lay` and language `de`. (`tradeoff` was reserved from 2026-11-03 until 0.8 computed it on
   `meta_resolved.parquet`; it moved to `MISPLACED_COLUMN_REASONS`, the map for a column real on a
   generated table and never authored.) It is *not* a catalogue of barred names (`extra="forbid"` already
   rejects any unknown column). (`callable_from` was reserved for RM6 and is now **built**, so it left
@@ -528,6 +529,14 @@ buys a diagnosis where there would otherwise be a generic rejection.
 ## Row models — key fields
 
 Only the load-bearing fields are listed; read the model for the full set and validators. `?` = optional.
+
+On variants, diplotypes, pharmacogenomic variants and every measure bin, `conclusion` is the required
+detailed wording of the report's claim. An author may write the same claim for a lay reader in
+`conclusion_lay` or for a table cell in `conclusion_concise`. Each wording is independently optional.
+Blank cells leave it unstated, and tools never supply the prose. Both registers are authored text
+inside `content_signature` and neither participates in a key. A module that omits both keeps its
+existing content signature and artifact digest. A study's `conclusion` records the study's own finding.
+Meta-conclusions have their own scope under RM28.
 
 **`VariantRow` → `variants.csv`.** Required `genotype`, `state`, `conclusion`.
 

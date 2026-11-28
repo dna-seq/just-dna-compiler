@@ -1839,7 +1839,13 @@ plus each authored table that is not a kind (`overrides.csv` since 0.7, RM124; `
 - **Preserved (round-trip-critical, Principle 7):** every authored `VariantRow`/`StudyRow`/table value;
   genotype phase (the `phased` bit re-emits `A|G` vs sorted `A/G`); tri-state bools; `priority` verbatim;
   poly-effect annotations keyed on `(variant_key, genotype, conclusion, negatives)` (`genotype` since
-  0.6, RM80 / S29).
+  0.6, RM80 / S29). Reverse uses the schema's case-insensitive ordering for unphased alleles, so
+  a mixed-case call such as `a/G` finds its authored annotation.
+- **Conclusion registers (0.10, RM302).** Read variant register text from `annotations.parquet` and
+  PGx or bin register text from the row's own parquet. Each register column appears only if a row
+  in that table states it. This preserves the parquet bytes of modules with no register text.
+  Duplicate variant/genotype rows already fail validation. When they also share the detailed claim
+  and negatives, the error report identifies a register if both rows state different wordings for it.
 - **The authored shape is restored, not guessed:** `authored_ident` says which identity columns the
   author wrote, and reverse emits exactly those — an rsid-only row comes back rsid-only, a position-only
   row comes back position-only, a pair comes back as a pair. An expanded one-to-many rsid collapses back

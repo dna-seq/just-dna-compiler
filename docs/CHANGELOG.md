@@ -41,6 +41,18 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md). The `0.8` branch merged into `main` at the 0.8.0 cut (2026-11-05).
 
+## 2026-11-28 — RM302: a conclusion can carry lay and table-cell wordings (a minor, for 0.10)
+
+Authors can add `conclusion_lay` and `conclusion_concise` to variants, diplotypes, drug-response
+variants and measure bins. The existing `conclusion` is the detailed wording. Either optional text
+changes the authored content signature and survives reverse. Leaving both blank preserves both
+the content signature and the artifact digest. The annotation key is unchanged, and `language` is
+reserved for the separate question of which language the author used.
+
+`reverse` now orders the two alleles of an unphased genotype without regard to case, as the compiler
+does. A mixed-case genotype such as `a/G` used to be written back as `G/a`, missed its annotation, and
+came back with an empty conclusion. It now round-trips.
+
 ## 2026-11-27 — RM460: mirrored-site fills have their own warning code (a minor, for 0.10)
 
 The compiler now counts a genotype that reads as an insertion and a deletion at the same site under

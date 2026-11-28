@@ -26,6 +26,7 @@ from pydantic import Field, ValidationInfo, field_validator, model_validator
 from just_dna_format.base import (
     CASE_INSENSITIVE_ALLELE,
     AuthoredModel,
+    ConclusionRegisters,
     since,
     stamped_identity_field,
     vocabulary,
@@ -349,7 +350,7 @@ class AlleleFunctionRow(AuthoredModel):
         return check_vocab(v, VALID_FUNCTION_STATUS, "function_status")
 
 
-class DiplotypeRow(AuthoredModel):
+class DiplotypeRow(ConclusionRegisters):
     """Canonical fallback: a diplotype (haplotype pair) → phenotype. The pair is canonicalized
     (`haplotype_a <= haplotype_b`) so a lookup is order-independent; multiple rows per pair are
     allowed (a pleiotropic diplotype affecting several traits).
@@ -395,7 +396,7 @@ class DiplotypeRow(AuthoredModel):
         json_schema_extra=since("0.4.0"), default=None, description="Metabolizer phenotype, e.g. PM/NM"
     )
     conclusion: str = Field(
-        json_schema_extra=since("0.4.0"), description="Human-readable interpretation for this diplotype"
+        json_schema_extra=since("0.4.0"), description="Detailed interpretation for this diplotype"
     )
 
     # ── Optional PharmGKB drug context (item 9) — a diplotype → drug response. Diplotype-keyed, so it
@@ -505,7 +506,7 @@ class DiplotypeRow(AuthoredModel):
         return self
 
 
-class PharmVariantRow(CitationPair, AuthoredModel):
+class PharmVariantRow(CitationPair, ConclusionRegisters):
     """Single-variant PharmGKB drug-response annotation (item 9) — `pharm_variants.csv`.
 
     A **distinct rowtype** rather than columns on `VariantRow`, so the SNP core stays free of the
@@ -714,7 +715,9 @@ class PharmVariantRow(CitationPair, AuthoredModel):
         default=None,
         description="Optional trait ontology id(s), for cross-module join",
     )
-    conclusion: str = Field(json_schema_extra=since("0.4.0"), description="Human-readable interpretation")
+    conclusion: str = Field(
+        json_schema_extra=since("0.4.0"), description="Detailed interpretation for this drug response"
+    )
 
     @field_validator("phenotype_category")
     @classmethod

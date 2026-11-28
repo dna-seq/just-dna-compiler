@@ -29,6 +29,7 @@ from just_dna_format.base import (
     COMPILER_MANAGED,
     AuthoredModel,
     Companion,
+    ConclusionRegisters,
     both_or_neither,
     derive_variant_key,
     since,
@@ -570,7 +571,7 @@ class ModuleSpecConfig(BaseModel):
         return v
 
 
-class VariantRow(AuthoredModel):
+class VariantRow(ConclusionRegisters):
     """One row of variants.csv. At least one identifier (rsid or chrom+start) is required.
 
     Inherits from `AuthoredModel`: `extra="forbid"` + the reserved-namespace guard, and the shared
@@ -745,7 +746,7 @@ class VariantRow(AuthoredModel):
         ),
     )
     conclusion: str = Field(
-        json_schema_extra=since("0.2.0"), description="Human-readable interpretation for this genotype"
+        json_schema_extra=since("0.2.0"), description="Detailed interpretation for this genotype"
     )
     negatives: str | None = Field(
         json_schema_extra=since("0.2.0"),
