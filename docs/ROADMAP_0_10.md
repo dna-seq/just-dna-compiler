@@ -24,6 +24,12 @@ instead of re-deriving it.
 
 Indexed in [RM_TOC.md](RM_TOC.md), which is the complete list and the place to look an item up.
 
+**Built and in review (the pm, 2026-11-28).** Every item of 0.10 is on the `0.10` branch (5e20ce89). Review round 1 of
+at most two runs on it now. The consumers' preview ran on the first batch (992e85b1); the second batch (RM265, RM302,
+RM294, RM350, S167) goes to just-module-creator **in parallel with round 1**, not before it as RELEASE_CYCLE step 6
+encourages for an even minor, because the registry holds its ClinVar-scale re-derive for 0.10's release. Its findings
+are placed with the round's classes.
+
 ---
 
 # 0.10's scope — a small schema release right after 0.9
