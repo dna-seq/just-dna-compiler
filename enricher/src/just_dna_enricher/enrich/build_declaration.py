@@ -6,6 +6,7 @@ from pathlib import Path
 
 import yaml
 from just_dna_compiler.compiler import SpecError, load_spec
+from just_dna_format.base import DEFAULT_GENOME_BUILD
 from just_dna_format.spec import ModuleSpecConfig
 from just_dna_format.vocab import TEMPLATE_PLACEHOLDER
 from pydantic import ValidationError
@@ -31,15 +32,25 @@ def spec_genome_build(spec_dir: Path) -> str:
     directory, and picking a build for a module whose declaration cannot be read is exactly the
     invention this function exists to remove.
     """
+    config = read_draft_spec(spec_dir)
+    return config.genome_build if config is not None else DEFAULT_GENOME_BUILD
+
+
+def read_draft_spec(spec_dir: Path, *, reading: tuple[str, ...] = ()) -> ModuleSpecConfig | None:
+    """Read the build and the requested top-level keys, tolerating scaffold placeholders elsewhere.
+
+    Only those keys may be used from the result: placeholders in other fields may have been filled
+    temporarily to distinguish a scaffold from an invalid spec.
+    """
     path = spec_dir / "module_spec.yaml"
     if not path.exists():
-        return "GRCh38"
+        return None
     # Through the public loader since S74 — this call site is what made the case that one was needed,
     # since the workspace's own network tier was reaching into `_load_yaml`. It already raised on the
     # `None` half of the tuple, which is `load_spec`'s contract, so the translation is the only thing
     # left here: a pass owes its caller its own exception type.
     try:
-        return load_spec(path).genome_build
+        return load_spec(path)
     except SpecError as exc:
         # **Guard at the answerer (S103).** The question is the build, and a scaffold's unfilled
         # `title:` says nothing about it — yet `load_spec` validates the whole file, so `scaffold`
@@ -48,7 +59,7 @@ def spec_genome_build(spec_dir: Path) -> str:
         # build cell: a typo'd key, a wrong type, or a placeholder *in* `genome_build` still refuses,
         # because reading the default past those would reopen the `genome_bild:` hole the model's
         # `extra="forbid"` closed.
-        declared, residual = _declared_build_behind_placeholders(path)
+        declared, residual = _spec_behind_placeholders(path, ("genome_build", *reading))
         if declared is not None:
             return declared
         # No `pass genome_build=` remedy in this sentence: that parameter belongs to `enrich()` alone,
@@ -63,16 +74,26 @@ def spec_genome_build(spec_dir: Path) -> str:
 
 
 def _declared_build_behind_placeholders(path: Path) -> tuple[str | None, str | None]:
-    """The build a scaffolded, not-yet-filled `module_spec.yaml` declares, and the residual diagnosis.
+    """Build-only projection kept for the pre-1.0 enrich facade."""
+    config, residual = _spec_behind_placeholders(path, ("genome_build",))
+    return config.genome_build if config is not None else None, residual
 
-    `(build, None)` when the file validates once its template stubs are filled. `(None, reason)`
-    when a problem *other* than unfilled cells remains — a key the model refuses, a wrong type, a
-    placeholder in `genome_build` itself — with `reason` naming it, since the placeholder guard runs
-    first and its sentence would otherwise hide the real one. `(None, None)` when the file has no
-    stubs at all (nothing to look past), is unparsable, or is not a mapping: the caller's own
-    diagnosis already says so. The test is exact rather than a reading of the error text: every
-    placeholder outside the build cell is replaced by a filler and the model is asked again, so what
-    is tolerated is precisely "this file validates once the scaffold's stubs are filled".
+
+def _spec_behind_placeholders(
+    path: Path, reading: tuple[str, ...]
+) -> tuple[ModuleSpecConfig | None, str | None]:
+    """The config a scaffolded, not-yet-filled `module_spec.yaml` declares, and the residual diagnosis.
+
+    `reading` names the top-level keys the caller will use (always `genome_build`; `draft-panel` adds
+    `panel` and `panel_provenance`, RM265). Those keep their authored values; every other template stub
+    is replaced by a filler and the model is asked again, so what is tolerated is precisely "this file
+    validates once the scaffold's stubs are filled". Only the `reading` keys of the result may be used.
+
+    `(config, None)` when the file validates that way. `(None, reason)` when a problem *other* than
+    unfilled cells remains — a key the model refuses, a wrong type, a placeholder in a key being read —
+    with `reason` naming it, since the placeholder guard runs first and its sentence would otherwise
+    hide the real one. `(None, None)` when the file has no stubs at all (nothing to look past), is
+    unparsable, or is not a mapping: the caller's own diagnosis already says so.
     """
     try:
         raw = yaml.safe_load(path.read_text(encoding="utf-8"))
@@ -80,13 +101,12 @@ def _declared_build_behind_placeholders(path: Path) -> tuple[str | None, str | N
         return None, None
     if not isinstance(raw, dict):
         return None, None
-    filled, replaced = _fill_placeholders({k: v for k, v in raw.items() if k != "genome_build"})
+    filled, replaced = _fill_placeholders({k: v for k, v in raw.items() if k not in reading})
     if not replaced:
         return None, None
-    if "genome_build" in raw:
-        filled["genome_build"] = raw["genome_build"]
+    filled.update({key: raw[key] for key in reading if key in raw})
     try:
-        return ModuleSpecConfig.model_validate(filled).genome_build, None
+        return ModuleSpecConfig.model_validate(filled), None
     except ValidationError as exc:
         residual = "; ".join(
             f"module_spec.yaml [{' → '.join(str(x) for x in err['loc'])}]: {err['msg']}"
@@ -135,7 +155,11 @@ def source_build_mismatch(spec_dir: Path, source: str, source_build: str = "GRCh
     Returns `None` for the agreeing case, which is nearly every call — the house tri-state applies to
     the *answer*, and "the builds agree" is not a finding.
     """
-    declared = spec_genome_build(spec_dir)
+    return build_mismatch(spec_genome_build(spec_dir), source, source_build)
+
+
+def build_mismatch(declared: str, source: str, source_build: str) -> str | None:
+    """Compare an already-read declaration with the source assembly."""
     if declared == source_build:
         return None
     return (

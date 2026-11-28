@@ -42,6 +42,7 @@ from just_dna_format.manifest import (
     Contribution,
     Display,
     GenePanelSpec,
+    PanelProvenance,
     VerificationRecord,
     Weighting,
 )
@@ -78,6 +79,7 @@ _MODULE_MODELS: dict[str, type[BaseModel]] = {
     "ModuleInfo": ModuleInfo,
     "Defaults": Defaults,
     "GenePanelSpec": GenePanelSpec,
+    "PanelProvenance": PanelProvenance,
     "Display": Display,
     "Contribution": Contribution,
     "Weighting": Weighting,

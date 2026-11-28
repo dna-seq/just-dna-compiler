@@ -266,6 +266,17 @@ unions `genes` with the block there, recomputes `genes_unmatched` against `varia
 refuses a different `reference_sha256`, naming both. Editing the file in place is a parked item, **unparked when** an
 author reports a block lost between runs.
 
+**Built (2026-11-28, on the `0.10` branch).** The optional `panel_provenance:` block preserves
+the requested and unmatched genes, significance predicate and exact reference digest through
+compile and reverse, outside both identity hashes. Validate and compile warn about contradictory
+unmatched lists and give the migration steps for `panel:`. ClinVar `draft-panel` prints the merged
+block on real and dry runs and refuses conflicting snapshot pins before appending rows. The 0.9
+manifest reader ignores the new top-level field. It accepts a consistent panel and rejects a
+manifest carrying either new code in `compilation.warnings_summary`, whose vocabulary it validates.
+The author still pastes the snippet into the YAML.
+
+**Residuals** Editing `module_spec.yaml` in place is parked until an author reports a lost paste.
+
 ## RM385 — offline enrich cannot left-align an indel, because `--offline` turns off the reference as well as the network
 
 **In 0.10's scope, the pm (2026-11-16)**: [desk #326](https://github.com/winternewt/desk/issues/326), item 2, applied on its default. 0.10 is a small minor right after 0.9. The status line below predates this.

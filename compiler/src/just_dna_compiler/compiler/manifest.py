@@ -1532,6 +1532,7 @@ def _build_manifest(
         logs=logs,
         provenance=provenance,
         panel=config.panel,
+        panel_provenance=config.panel_provenance,
         authorship=config.authorship,
         logo=logo,
         readme=readme,

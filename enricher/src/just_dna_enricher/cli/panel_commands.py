@@ -5,10 +5,11 @@ single-file `cli.py`).
 from pathlib import Path
 
 import typer
+import yaml
 
 from just_dna_enricher.civic_draft import draft_panel_from_civic
 from just_dna_enricher.cli._shared import _DRAFT_PRECONDITION_ERRORS, SequenceURI, _use, app, sequence_source
-from just_dna_enricher.clinvar_draft import ClinVarDraftError, draft_gene_panel
+from just_dna_enricher.clinvar_draft import ClinVarDraftError, ClinVarDraftResult, draft_gene_panel
 from just_dna_enricher.mitomap_draft import SOURCE_LABEL as MITOMAP_MISS_SOURCE
 from just_dna_enricher.mitomap_draft import MitomapDraftError, draft_panel_from_mitomap_miss
 from just_dna_enricher.pubmind_draft import (
@@ -285,3 +286,9 @@ def draft_panel_(
     # number matches neither file — `ClinVarDraftResult.added` says as much in its own docstring.
     breakdown = ", ".join(f"{r.csv_name} {len(r.added)}" for r in result.reports) or "nothing"
     typer.secho(f"{verb}: {breakdown} — in {spec_dir}", fg=typer.colors.GREEN)
+    if isinstance(result, ClinVarDraftResult) and result.panel_provenance is not None:
+        typer.echo("Paste into module_spec.yaml:")
+        typer.echo(
+            yaml.safe_dump({"panel_provenance": result.panel_provenance.model_dump()}, sort_keys=False),
+            nl=False,
+        )

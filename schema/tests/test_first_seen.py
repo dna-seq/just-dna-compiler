@@ -37,7 +37,7 @@ from just_dna_format.reference import _ALL_MODELS
 from just_dna_format.release_records import ReleaseRecord
 from just_dna_format.snapshot import SnapshotRelease
 from just_dna_format.spec import StudyRow, VariantRow
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 _ROOT = Path(__file__).resolve().parents[2]
 
@@ -383,3 +383,13 @@ def test_the_marker_is_a_plain_dict_a_consumer_can_read_offline() -> None:
     """The point of the ask: any tool rendering our findings answers *when did this column appear*
     without importing our validators or parsing `model_fields` itself."""
     assert since("0.6.5") == {"first_seen": "0.6.5"}
+
+
+def test_panel_provenance_authored_contract() -> None:
+    model = _ALL_MODELS["PanelProvenance"]
+    defaults = {"genes": [], "genes_unmatched": [], "significance": [], "reference_sha256": None}
+    assert model().model_dump() == defaults
+    assert field_first_seen(model) == dict.fromkeys(defaults, "0.10.0")
+    assert field_first_seen(_ALL_MODELS["ModuleSpecConfig"])["panel_provenance"] == "0.10.0"
+    with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
+        model.model_validate({"source": "clinvar"})

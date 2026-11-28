@@ -50,6 +50,7 @@ PREFLIGHT_ONLY: frozenset[str] = frozenset(
         "_cross_validate_phase_ambiguity",
         "_cross_validate_studies",
         "_cross_validate_variants",
+        "_panel_provenance_warnings",
         "_validate_table_kind",
         "discover_logs",
     }

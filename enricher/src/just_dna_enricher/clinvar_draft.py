@@ -37,21 +37,28 @@ silently changes which variant the row *is*.
 
 import csv
 import logging
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from just_dna_compiler.compiler import ModuleSubjects
 from just_dna_compiler.draft import DraftReport, PartialRow, append_partial_rows, append_rows
-from just_dna_format.spec import StudyRow, VariantRow
+from just_dna_format.base import DEFAULT_GENOME_BUILD
+from just_dna_format.integrity import SHA256_PREFIX
+from just_dna_format.manifest import PanelProvenance
+from just_dna_format.snapshot import read_release
+from just_dna_format.spec import ModuleSpecConfig, StudyRow, VariantRow
+from just_dna_format.spelling import gene_key
 from just_dna_format.vocab import TEMPLATE_PLACEHOLDER
 from just_dna_format.vrs import in_pseudoautosomal_region, normalize_chrom
 from pydantic import ValidationError
 
 from just_dna_enricher.clin_sig import STATE_BY_CLIN_SIG
 from just_dna_enricher.clinvar import citations_for, clinvar_dataset_label, select_by_gene
+from just_dna_enricher.clinvar_gkm import bare_digest
 from just_dna_enricher.download import ensure_clinvar_snapshot
 from just_dna_enricher.drafting import DRAFT_PROVIDERS, licence_commit, record_draft_provenance
-from just_dna_enricher.enrich import source_build_mismatch
+from just_dna_enricher.enrich.build_declaration import build_mismatch, read_draft_spec
 from just_dna_enricher.licensing import (
     CLINVAR_TERMS,
     check_declared_use,
@@ -83,6 +90,7 @@ class ClinVarDraftResult:
     reports: list[DraftReport] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     skipped: bool = False
+    panel_provenance: PanelProvenance | None = None
 
     @property
     def added(self) -> int:
@@ -631,6 +639,56 @@ def _resolve_snapshot(snapshot: Path | None, *, offline: bool, download: bool) -
     return Path(reference), warnings
 
 
+def _draft_panel_provenance(
+    config: ModuleSpecConfig | None,
+    genes: Sequence[str],
+    clin_sig: frozenset[str],
+    reference: Path,
+    warnings: list[str],
+) -> PanelProvenance:
+    """Merge the request and check every authored pin before appending any rows."""
+    release = read_release(reference)
+    stated = release.source_sha256 if release is not None else None
+    digest = bare_digest(stated) if isinstance(stated, str) else None
+    pin = SHA256_PREFIX + digest if digest else None
+    if pin is None:
+        warnings.append("The snapshot does not state a source_sha256, so reference_sha256 is unknown.")
+    existing = None
+    if config is not None:
+        for block in (config.panel_provenance, config.panel):
+            if block is None:
+                continue
+            if existing is None:
+                existing = block
+            authored = bare_digest(block.reference_sha256)
+            if authored is not None and digest is not None and authored != digest:
+                raise ClinVarDraftError(
+                    f"Authored reference_sha256 {block.reference_sha256} differs from the snapshot's {pin}."
+                )
+            if "significance" in block.model_fields_set and set(block.significance) != clin_sig:
+                warning = (
+                    f"Authored significance differs from this run: {block.significance} vs {sorted(clin_sig)}. "
+                    "The printed block uses this run's predicate."
+                )
+                if warning not in warnings:
+                    warnings.append(warning)
+    merged: dict[str, str] = {}
+    for gene in [*(existing.genes if existing is not None else []), *genes]:
+        if gene.strip():
+            merged.setdefault(gene_key(gene), gene)
+    return PanelProvenance(genes=list(merged.values()), significance=sorted(clin_sig), reference_sha256=pin)
+
+
+def _record_unmatched(panel: PanelProvenance, variants: Path, projected_genes: Iterable[str]) -> None:
+    """Compare against existing rows and any accepted rows a dry run would append."""
+    cells = set(projected_genes)
+    if variants.is_file():
+        with variants.open(encoding="utf-8", newline="") as handle:
+            cells.update(gene for row in csv.DictReader(handle) if (gene := row.get("gene")))
+    rows = ModuleSubjects(genes=tuple(sorted(cells)))
+    panel.genes_unmatched = [gene for gene in panel.genes if not rows.names_gene(gene)]
+
+
 def draft_gene_panel(
     spec_dir: Path,
     genes: Sequence[str],
@@ -667,16 +725,19 @@ def draft_gene_panel(
     if skip_reason:
         return ClinVarDraftResult(warnings=[skip_reason], skipped=True)
 
-    # **Before the snapshot, not after it** (R2-2). `source_build_mismatch` raises `EnrichmentError`
-    # on a present-but-unreadable `module_spec.yaml` — correctly, since a module whose declaration
-    # cannot be read has no build to draft against — and asking it below meant a spec carrying only
-    # `name:` failed *after* `_resolve_snapshot` had provisioned a published snapshot. It reads one
-    # file beside the spec, so it costs nothing here. The warning is still appended in its old place.
-    build_warning = source_build_mismatch(spec_dir, "the ClinVar snapshot", CLINVAR_GENOME_BUILD)
+    # **Before the snapshot, not after it** (R2-2). Reading the declaration raises `EnrichmentError` on
+    # a present-but-unreadable `module_spec.yaml` — correctly, since a module whose declaration cannot be
+    # read has no build to draft against — and asking it after `_resolve_snapshot` meant a spec carrying
+    # only `name:` failed *after* a published snapshot had been provisioned. It reads one file beside the
+    # spec, so it costs nothing here. Since RM265 the same read supplies the existing panel blocks, and
+    # scaffold placeholders elsewhere are tolerated as S103 decided.
+    config = read_draft_spec(spec_dir, reading=("panel", "panel_provenance"))
+    declared_build = config.genome_build if config is not None else DEFAULT_GENOME_BUILD
+    build_warning = build_mismatch(declared_build, "the ClinVar snapshot", CLINVAR_GENOME_BUILD)
 
-    reference, provisioning_warnings = _resolve_snapshot(snapshot, offline=offline, download=download)
+    reference, warnings = _resolve_snapshot(snapshot, offline=offline, download=download)
+    panel = _draft_panel_provenance(config, genes, clin_sig, reference, warnings)
     records = select_by_gene(reference, list(genes), clin_sig=clin_sig, min_review_stars=min_review_stars)
-    warnings: list[str] = list(provisioning_warnings)
     # The snapshot is built from NCBI's `vcf_GRCh38/clinvar.vcf.gz`, and `_row_cells` writes the full
     # coordinate for any record this pass cannot key by rsID — so a module on another build is about
     # to record GRCh38 positions under its own declaration. See `enrich.source_build_mismatch`;
@@ -755,7 +816,10 @@ def draft_gene_panel(
             f"nothing this format can key on."
         )
     if not partials:
-        return ClinVarDraftResult(warnings=warnings + ["nothing matched; no rows drafted"])
+        _record_unmatched(panel, spec_dir / "variants.csv", ())
+        return ClinVarDraftResult(
+            warnings=warnings + ["nothing matched; no rows drafted"], panel_provenance=panel
+        )
 
     # The release label is read here rather than at the tail (RM232): the licence row now lands
     # inside each table's commit, so what the row states has to be known before the first write. The
@@ -923,4 +987,10 @@ def draft_gene_panel(
                 ),
             )
         )
-    return ClinVarDraftResult(reports=reports, warnings=warnings)
+    projected_genes = (
+        partial.cells["gene"]
+        for partial, outcome in zip(partials, report.outcomes, strict=True)
+        if outcome.status == "added" and partial.cells.get("gene")
+    )
+    _record_unmatched(panel, report.path, projected_genes if dry_run else ())
+    return ClinVarDraftResult(reports=reports, warnings=warnings, panel_provenance=panel)
