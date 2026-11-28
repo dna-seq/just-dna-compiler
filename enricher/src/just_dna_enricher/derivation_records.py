@@ -1,24 +1,32 @@
 """Offline declarations of changes to the tables an enricher release writes (RM399, RM441)."""
 
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from typing import Annotated, Self
 
-from just_dna_format.base import vocabulary
-from just_dna_format.identity import parse_version
+from just_dna_compiler.hints import DERIVED_TABLE_MODELS
+from just_dna_format.base import field_first_seen, vocabulary
+from just_dna_format.identity import Version, parse_version
 from just_dna_format.layout import SOURCES_CSV, sidecar_key
 from just_dna_format.release_records import release_version
 from just_dna_format.vocab import check_vocab
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator, model_validator
 
 from just_dna_enricher.caches import LANES_BY_NAME
-from just_dna_enricher.producers import DERIVED_PRODUCERS, WRITTEN_BY_EVERY_PASS
 
 VALID_ENRICHER_DERIVATION_CAUSES: frozenset[str] = frozenset({"lane_moved", "derivation_corrected"})
+
+# The tagged writers shipped with their row models. Later optional columns and filename aliases
+# do not move a table's first release.
+_FIRST_PRODUCED = {
+    sidecar_key(name): min(map(parse_version, field_first_seen(model).values()))
+    for name, model in DERIVED_TABLE_MODELS.items()
+}
 
 
 def _table_key(table: str) -> str:
     key = sidecar_key(table)
-    if key not in DERIVED_PRODUCERS and key not in WRITTEN_BY_EVERY_PASS:
+    if key not in _FIRST_PRODUCED:
         raise ValueError(f"unknown derived table: {table!r}")
     return key
 
@@ -80,6 +88,20 @@ DERIVATION_RECORDS: dict[str, tuple[DerivationChange, ...] | None] = {
             old_release=None,
             new_release="ensembl-variation-2026_07_13-vep116.0",
         ),
+        # RM383 retires an unearned resolution source on --rederive and an unearned authority
+        # on a whole concordance rewrite. RM379 records the consulted authorities; RM373 labels them.
+        _correction(SOURCES_CSV, "RM373", "RM379", "RM383"),
+        # RM370 stopped writing header-only sidecars. RM361 withheld unanswered lookups and
+        # unstated releases; RM373 replaced run dates and fixed release labels on fact rows too.
+        _correction("frequencies.csv", "RM361", "RM370"),
+        _correction("gene_metrics.csv", "RM361", "RM370", "RM373"),
+        _correction("gene_validity.csv", "RM361", "RM370"),
+        _correction("clinical_assertions.csv", "RM370", "RM373"),
+        _correction("expression_effects.csv", "RM373"),
+        _correction("gwas_effects.csv", "RM354", "RM373"),
+        _correction("literature.csv", "RM258", "RM361", "RM370"),
+        _correction("clin_sig_concordance.csv", "RM370"),
+        _correction("clin_sig_authority_calls.csv", "RM370"),
     ),
     # RM398 changes the witness and its licence row, RM400 drops off-primary loci. RM397/401/403/407 do neither.
     "0.8.1": (_correction("resolution.csv", "RM398", "RM400"), _correction(SOURCES_CSV, "RM398")),
@@ -118,7 +140,7 @@ DERIVATION_RECORDS: dict[str, tuple[DerivationChange, ...] | None] = {
     # RM445 repairs caches serving old data under newer labels; the affected lanes and releases depend on the cache.
     "0.8.8": None,
     # RM448 restores withheld loci. RM446/447/449/451/452 affect diagnostics, drafting, compilation or failed reads.
-    "0.8.9": (_correction("resolution.csv", "RM448"),),
+    "0.8.9": (_correction("resolution.csv", "RM448"), _correction(SOURCES_CSV, "RM448")),
     # RM453 changes the compiler's reading of resolution.csv (a compiled-output change, the format's record), RM456 log
     # discovery. RM455 refuses a client built with `batch_size` 0, which answered `{}`; no default setting is 0, so
     # no derivation at the shipped settings moves ("Nothing a module resolves moves", its CHANGELOG entry).
@@ -127,10 +149,12 @@ DERIVATION_RECORDS: dict[str, tuple[DerivationChange, ...] | None] = {
     "0.9.0": (_correction("gene_metrics.csv", "RM454"), _correction(SOURCES_CSV, "RM454")),
 }
 
-# These closed lines predate the records. Their final patch numbers let a wheel name every
-# uncovered enricher release, including enricher-only patches absent from the compiler's history.
-_BEFORE_RECORDS = frozenset(
-    f"0.{minor}.{patch}" for minor, last_patch in ((5, 4), (6, 6), (7, 3)) for patch in range(last_patch + 1)
+# Published enricher versions, independent of whether anyone examined their effects. The tag
+# test checks this inventory against each tag's enricher/pyproject.toml; wheels need no checkout.
+_RELEASES = tuple(
+    Version(0, minor, patch)
+    for minor, last_patch in ((5, 4), (6, 6), (7, 3), (8, 10), (9, 0))
+    for patch in range(last_patch + 1)
 )
 
 
@@ -142,6 +166,19 @@ class RederiveReasons:
     unknown_releases: tuple[str, ...]
 
 
+def _walk(
+    releases: Iterable[Version], key: str | None
+) -> Iterator[tuple[str, tuple[DerivationChange, ...] | None]]:
+    """Yield matching changes, an examined empty tuple, or a withheld answer at each release."""
+    for version in releases:
+        release = str(version)
+        entry = DERIVATION_RECORDS.get(release)
+        if entry is None or (key is not None and version < _FIRST_PRODUCED[key]):
+            yield release, None
+        else:
+            yield release, tuple(change for change in entry if key is None or change.table == key)
+
+
 def rederive_reasons(from_release: str, to_release: str, table: str | None = None) -> RederiveReasons:
     """Explain (from_release, to_release], including a requested end beyond the installed history."""
     low = parse_version(release_version(from_release))
@@ -151,14 +188,14 @@ def rederive_reasons(from_release: str, to_release: str, table: str | None = Non
     key = None if table is None else _table_key(table)
     changes: list[tuple[str, DerivationChange]] = []
     unknown: list[str] = []
-    releases = DERIVATION_RECORDS.keys() | _BEFORE_RECORDS | {str(high)}
-    for release in sorted(releases, key=parse_version):
-        if low < parse_version(release) <= high:
-            entry = DERIVATION_RECORDS.get(release)
-            if entry is None:
-                unknown.append(release)
-            else:
-                changes.extend((release, change) for change in entry if key is None or change.table == key)
+    releases = [version for version in _RELEASES if low < version < high]
+    if low < high or (key is not None and high < _FIRST_PRODUCED[key]):
+        releases.append(high)
+    for release, entry in _walk(releases, key):
+        if entry is None:
+            unknown.append(release)
+        else:
+            changes.extend((release, change) for change in entry)
     return RederiveReasons(tuple(changes), tuple(unknown))
 
 
@@ -171,14 +208,7 @@ def needs_rederive(from_release: str, to_release: str, table: str | None = None)
 
 
 def newest_rederive_release(table: str) -> str | None:
-    """Newest recorded release that changed the table or could not say, if there is one."""
+    """Newest published release that could have changed this table, including a missing record."""
     key = _table_key(table)
-    return max(
-        (
-            release
-            for release, entry in DERIVATION_RECORDS.items()
-            if entry is None or any(change.table == key for change in entry)
-        ),
-        key=parse_version,
-        default=None,
-    )
+    eligible = (version for version in reversed(_RELEASES) if version >= _FIRST_PRODUCED[key])
+    return next((release for release, entry in _walk(eligible, key) if entry is None or entry), None)
