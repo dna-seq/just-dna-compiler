@@ -51,6 +51,12 @@ jobs:
         python-version: ["3.13", "3.14"]
     steps:
       - uses: actions/checkout@v5
+        # Full history and tags, so the tests that measure against a release tag run here instead of
+        # skipping: the old-reader table (test_old_reader_breaks), the new public names
+        # (test_new_public_names), first-seen releases and the re-derive records (0.10 review round 2, R4).
+        with:
+          fetch-depth: 0
+          fetch-tags: true
       - uses: astral-sh/setup-uv@v9.0.0   # exact release — see the lint job
         with:
           enable-cache: true
