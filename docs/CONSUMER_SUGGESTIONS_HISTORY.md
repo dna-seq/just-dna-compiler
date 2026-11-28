@@ -205,6 +205,7 @@ One line each; the verdict in full is the `**Status —**` paragraph inside the 
 - **S164** the 0.10.0 derivation record; no stamp names a table's oldest writer — taken into RM441 (0.10)
 - **S165** which contigs a local FASTA binds, and a file binding all 25 — taken into RM385 (0.10)
 - **S166** one local sequence source reaching every read (a lane, a resolver field, the CIViC drafter) — taken into RM385 (0.10)
+- **S167** a `.fai` writer beside the FASTA reader — taken into RM385 (0.10), `write_fasta_index` and `fasta index`
 
 **Keep this list one line per item.** It is a contents list, not a second copy of the replies: the
 detail belongs in each section's `**Status —**` paragraph, where it cannot drift out of step with the
@@ -8308,3 +8309,43 @@ with both set, and a withheld read, never an HTTP fallback, on an unbound contig
 this repo's tests only.
 
 <!-- triaged: taken into RM385 (0.10, preview finding) · sha 17f99fa53488 -->
+
+# From just-dna-registry's liaison, reading 0.10 at `135eed6d`, 2026-11-28
+
+## S167 — just-dna-registry (liaison), 2026-11-28: a `.fai` writer beside the FASTA reader
+
+**Context.** RM385's `fasta+file://` reader needs an uncompressed GRCh38 FASTA with `<path.fa>.fai` beside it, and
+ENRICHER.md says to index it with `samtools faidx` "or any writer of the same five-column `.fai`". Nothing in the
+enricher writes one, and a host that runs only the enricher has no `samtools`, `pysam` or `pyfaidx` (ours has none,
+in its lock or on its production box). So a host's provisioning step (download, md5 check, gunzip) must take a new
+dependency only to write a five-column file.
+
+**Why it belongs beside the reader.** `fasta.py` already owns the `.fai`'s rules: it refuses an index whose line
+endings or wrap width disagree with the file ("FASTA line endings do not match the .fai", "FASTA length or line
+wrapping does not match the .fai"). A writer in the same module keeps one owner of that format, so a host's index
+and the reader's checks cannot disagree.
+
+**Asked**, either of:
+1. `fasta.write_index(path)` (or `FastaReference.index_fasta(path)`): writes `<path>.fai` for an uncompressed FASTA,
+   refusing a file it could not then read (mixed wrap widths, a gzip).
+2. A provisioning step that indexes when the `.fai` is missing and then does the first full read, so the
+   `.refget.json` sidecar is written once at provisioning rather than inside a host's first request.
+
+**Not blocking.** The registry builds its setting, download, checksum and gunzip now, and takes whichever arrives;
+until then it would carry `pyfaidx` as a server dependency for this one file.
+
+**Status — taken into [RM385](ROADMAP_0_10.md#rm385--offline-enrich-cannot-left-align-an-indel-because---offline-turns-off-the-reference-as-well-as-the-network) as a preview finding; option 1 built on `0.10` at `af180c27`, merged at
+`f3939b83` (the lead). Option 2 is not built; ask again if you still want it after using option 1.**
+
+`just_dna_enricher.fasta.write_fasta_index(path)` writes `<path>.fai` beside an uncompressed FASTA and returns the
+index path; `just-dna-enricher fasta index PATH` does the same from the command line and prints the path and the
+contig count. It reads the file once and refuses, before writing anything, a gzip, mixed wrap widths, mixed line
+endings, an empty line, and a duplicate or ambiguous primary contig, raising `FastaConfigurationError`; an existing
+index is replaced atomically through a `.part`, and kept when the FASTA is refused. On NCBI's `GCF_000001405.40`
+(705 contigs, 3.3 GB) the index it writes is byte-identical to `samtools faidx`'s, measured by the lead.
+
+The first full read stays a separate call: `FastaReference(...).contig_identity()` after indexing writes the
+`.refget.json` sidecar (393 s on the lead's machine, cached after), which a host's provisioning step can run itself.
+ENRICHER.md's provisioning section now names the command instead of only `samtools faidx`.
+
+<!-- triaged: taken into RM385 (0.10, preview finding) · sha 48aee4131886 -->

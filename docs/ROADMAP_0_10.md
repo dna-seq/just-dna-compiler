@@ -53,6 +53,53 @@ its catch; what 0.10 did not introduce, or what only withholds, is a known issue
   count rides on C3.
 - **Round 2** reads RM399, RM441, RM460 and RM385's left-alignment core, which round 1 read lightly, with a fourth
   model in Grok's place, and gets this list so nothing here is reported again.
+- **Done (the lead, 2026-11-28):** every fix placed in 0.10 above is on 0.10 at `12975c1d` (merged suite green bar
+  the floor guard, which the cut moves); round 2 runs on that commit with Opus, Sol, Argon and Grok 4.6 high-fast.
+
+**Review round 2, placed (the pm, 2026-11-28; the last round, on 12975c1d).** Three runs answered (Opus, Sol, Grok
+4.6 high-fast); Argon timed out. The review found no blocker; the placement is the pm's, by round 1's rule: a wrong
+answer (not a withhold, a raise or latency) that 0.10 introduced, on a surface a consumer gates on, is fixed in 0.10
+with its catch and no third round. Everything else is a known issue for 0.11.
+
+- **Fixed in 0.10, no third round:**
+  - **Single 3, the re-derive records (RM399, RM441).** 0.10's headline surface, and the registry's sweep waits on it.
+    A record that answers "no re-derive" where the truth is "yes" or "unknown" is a silent stale module: `sources.csv`
+    is missing from 0.8.0's record (RM383 retires a licence row on re-derive), and an unlisted intermediate patch is
+    skipped where it should count as unknown. The fix: walk consecutive versions, an unlisted one withholds, and each
+    table gets the first release that produced it (so `repeat_grades.csv` no longer answers 0.8.8). The catch is a
+    test over every table in every pair of consecutive tags.
+  - **Single 1, RM460's code in the carried set.** `rsid_genotype_reads_as_two_events` leaves `CARRIED_WARNING_CODES`:
+    its sentences tell the author the edit that clears it (author the event's coordinate row). The rule is that a
+    code's classification follows its remediation. A sentence under the code that no authored edit clears gets a
+    carried code of its own, a split rather than a move. This costs nothing until `manifest.compilation.carried` is
+    first published, and is permanent after. The catch is the classification test flipped, plus a check that no
+    sentence emitted under a carried code proposes an authored edit. Single 6, the unpinned clauses telling the
+    unasked and undecided sentences apart, rides along because it is the same lines and a test only.
+  - **R3, a short FASTA read used as a full window (RM385).** A read past a contig's end comes back clipped, and
+    `_left_align` reads it as whole, so `MT:16599 A>AA` becomes `MT:16598 G>GA`, a variant at a position that does not
+    exist. CIViC drafting writes it into an authored row. A real input reaches it: an hg19 `chrM` coordinate (the Yoruba sequence, 16571
+    bases) read against GRCh38's MT (16569). The fix: a short window withholds, and the memo never stores a clipped
+    read under the interval asked. The catch is that test at the contig end, over every reader of the window.
+  - **R4's first half:** CI checks out with `fetch-depth: 0` and tags, so the tag tests (round 1's C1 and C6, and
+    single 3's catch above) run there. The setting that turns their skip into a failure is 0.11's.
+- **Known issues, 0.11:** R1 (a lock held across I/O: latency, and one `SQLITE_BUSY` disables the store for the
+  run); R2 (`layout.atomic_writer` writes every sidecar 0600, so a second account re-hashes a shared FASTA: fixed at
+  the writer, the class); R4's skip-to-failure flag; R5 (a FASTA removed mid-run raises `OSError` where it should
+  withhold); R6 (the FASTA identity cache is keyed on size and mtime only); single 2 (two contradictory sentences for
+  one mirrored site, older than 0.10); C6's walk widened to constants and aliases.
+- **For the cut's documents:** single 4's five names (`FASTA_SCHEME`, `VALID_FASTA_CONTIG_STATUS`,
+  `ALL_SPELLINGS_CLAIMED_CODE`, `REPEAT_GRADE_FACT_FIELDS`, `StoreSetting`) are documented in the docs pass. On single 5,
+  INTEGRATION_0_10 lists as old-reader breaks the fields new in 0.10 on `extra="forbid"` authored models (a 0.9
+  compiler refuses a reversed 0.10 module that uses one), as INTEGRATION_0_7 counted `VerificationRecord.producer`.
+  The manifest's new keys are not breaks.
+- **Round 1, corrected:** C7 holds for the `.fai` only (`.refget.json` is R2); C1 and C6 hold on a full clone only
+  (R4), and C6 misses constants (single 4).
+- **Not placed:** what the review itself marked wrong or known (`civic reproduce` offline, S163's per-call
+  `AnswerRun`, CIViC's `read_window` withholding).
+- **Blind spots, stated:** Argon's share is missing, and RM435, RM302, RM265's cross-check and seqrepo REST's
+  out-of-range reads were read lightly. They do not block, and there is no third round.
+- **Filing:** the lead files an `RMn` in 0.11's roadmap for each known issue, round 1's included (1, 5, 8, C4's
+  widening). The cut's INTEGRATION_0_10 and CHANGELOG entry cite each.
 
 ---
 
