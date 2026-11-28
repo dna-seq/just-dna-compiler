@@ -147,7 +147,7 @@ from typing import ClassVar, NamedTuple
 
 from pydantic import Field, field_validator, model_validator
 
-from just_dna_format.base import AuthoredModel, Companion, since, stamped_identity_field, vocabulary
+from just_dna_format.base import Companion, ConclusionRegisters, since, stamped_identity_field, vocabulary
 from just_dna_format.findings import CodedWarning
 from just_dna_format.spec import CitationPair, validate_pmid_cell
 from just_dna_format.spelling import ChromCell
@@ -236,7 +236,7 @@ FRACTIONAL_MEASURE_PHRASE = "is not a whole number in VCF 4.4"
 SPANNING_MEASUREMENT_PHRASE = "one measurement can span several bins"
 
 
-class MeasureBinRow(CitationPair, AuthoredModel):
+class MeasureBinRow(CitationPair, ConclusionRegisters):
     """Base row of a binning table: a measured quantity range → the same orthogonal axes a
     `VariantRow` carries. Subclasses add the explicit key columns for their quantity.
 
@@ -331,7 +331,7 @@ class MeasureBinRow(CitationPair, AuthoredModel):
         json_schema_extra=since("0.4.0"), default=None, description="EFO/MONDO/OBA/HP trait ontology id(s)"
     )
     conclusion: str = Field(
-        json_schema_extra=since("0.4.0"), description="Human-readable interpretation for this bin"
+        json_schema_extra=since("0.4.0"), description="Detailed interpretation for this bin"
     )
     unresolved: bool = Field(
         json_schema_extra=since("0.4.0"),

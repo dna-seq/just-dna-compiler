@@ -9,7 +9,7 @@ from typing import Any
 
 import polars as pl
 import yaml
-from just_dna_format.base import derive_variant_key
+from just_dna_format.base import ConclusionRegisters, derive_variant_key
 from just_dna_format.integrity import sha256_file
 from just_dna_format.layout import sidecar_relative_names, sidecar_write_path
 from just_dna_format.manifest import (
@@ -663,6 +663,7 @@ def reverse_module(
                     "gene": row.get("gene", ""),
                     "phenotype": row.get("phenotype", ""),
                     "category": row.get("category", ""),
+                    **{name: _scalar_cell(row.get(name)) for name in ConclusionRegisters.model_fields},
                 }
         _write_variants_csv(
             weights_df,
@@ -1158,6 +1159,7 @@ VARIANTS_CSV_FIELDS: tuple[str, ...] = (
     "weight",
     "state",
     "conclusion",
+    *ConclusionRegisters.model_fields,
     "negatives",
     "priority",
     "gene",
@@ -1280,7 +1282,7 @@ def _write_variants_csv(
                 if row.get("phased"):
                     genotype_str = "|".join(genotype_list)
                 else:
-                    genotype_str = "/".join(sorted(genotype_list))
+                    genotype_str = "/".join(sorted(genotype_list, key=str.casefold))
             else:
                 genotype_str = "/".join(genotype_list) if genotype_list else ""
             # Probe the annotation on the same key the table was built with, whichever generation of
@@ -1313,6 +1315,7 @@ def _write_variants_csv(
                     "gene": ann.get("gene", ""),
                     "phenotype": ann.get("phenotype", ""),
                     "category": ann.get("category", ""),
+                    **{name: ann.get(name, "") for name in ConclusionRegisters.model_fields},
                     # Tri-state (True/False/None → true/false/empty), so an authored False survives.
                     "clinvar": _scalar_cell(row.get("clinvar")),
                     "pathogenic": _scalar_cell(row.get("pathogenic")),

@@ -385,6 +385,15 @@ No cache lane was added.
 
 ## RM302 — one `conclusion` serves every place a report shows it; a table cell, a details card and an explanatory mode want different wordings
 
+**Built (2026-11-28, on the `0.10` branch).** Variants, diplotypes, pharmacogenomic variants and
+all measure bins carry optional author-written lay and concise wordings of their detailed conclusion.
+Each stated register enters the content signature and survives compile, reverse and recompile.
+Omitting both preserves existing signatures and artifact bytes. Neither register enters a key.
+The annotation key includes genotype since RM80, and the compiler refuses duplicate variant/genotype
+pairs. `language` is reserved. Studies retain their own finding, and tools supply no register text.
+
+**Residuals** Registers for `meta.csv` belong to RM28.
+
 **In 0.10's scope, the pm (2026-11-28)**: [desk #467](https://github.com/winternewt/desk/issues/467) built on its default (all three in), the lead building; an answer before the cut still moves it.
 
 **Parked, the pm (2026-11-16)**, out of `ROADMAP_0_9.md`, under the maintainer's rule for smaller minors (2026-11-15: "lets make em smaller"), [desk #326](https://github.com/winternewt/desk/issues/326) item 3, applied on its default. **Unparks when** a consumer's report shows a conclusion in a second register (a table cell, a card, an explanation) and asks for the authored wording rather than its own, or an author writes two registers into one `conclusion`, when a scope the maintainer highlights touches it, or when the roadmap is empty. The maintainer had placed it in 0.9 by name (the next paragraph); [desk #347](https://github.com/winternewt/desk/issues/347) asks whether it stays parked, gets a 0.11 with the other two, or goes into 0.10. Parked is that question's default.

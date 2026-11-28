@@ -5,7 +5,7 @@ restamp, contig ploidy, and the coordinate-on-build check every positional table
 from collections.abc import Iterable
 from typing import Any, NamedTuple
 
-from just_dna_format.base import derive_variant_key
+from just_dna_format.base import ConclusionRegisters, derive_variant_key
 from just_dna_format.findings import CodedWarning
 from just_dna_format.spec import VariantRow
 from just_dna_format.vrs import (
@@ -121,11 +121,23 @@ def _cross_validate_variants(variants: list[VariantRow]) -> tuple[list[str], lis
                 key_refs[key] = row.ref
 
     seen_keys: set[tuple[str, str]] = set()
+    # As with key_refs above, only a stated value can disagree. A repeated (variant, genotype)
+    # already refuses the compile; name the conflicting register only when the claim also matches.
+    stated_wordings: dict[tuple[str, str, str, str | None, str], str] = {}
     for row in variants:
         key = (row.variant_key, row.genotype)
         if key in seen_keys:
             errors.append(f"Duplicate (variant, genotype): ({row.variant_key}, {row.genotype})")
         seen_keys.add(key)
+        for name in ConclusionRegisters.model_fields:
+            wording = getattr(row, name)
+            if wording is None:
+                continue
+            claim_field = (*key, row.conclusion, row.negatives, name)
+            if stated_wordings.setdefault(claim_field, wording) != wording:
+                errors.append(
+                    f"{row.variant_key} {row.genotype}: different wordings for the same claim in {name}"
+                )
 
     for row in variants:
         # `state`/`weight` sign consistency (legacy), plus the same check on the new `direction`.

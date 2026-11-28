@@ -265,7 +265,7 @@ def test_reserved_set_is_the_expected_shape() -> None:
     # them by name would be arbitrary; `extra="forbid"` rejects them generically. `tradeoff` (RM327)
     # was reserved from 2026-11-03 until 0.8 computed it on `meta_resolved.parquet`; it never becomes
     # an authored column, so it moved to `MISPLACED_COLUMN_REASONS` rather than leaving for a model.
-    assert frozenset({"reference_db", "callable_element", "quality_element"}) == RESERVED_NAMES_0_4
+    assert {"reference_db", "callable_element", "quality_element", "language"} == RESERVED_NAMES_0_4
     assert "tradeoff" in MISPLACED_COLUMN_REASONS
     assert set(RESERVED_NAME_REASONS) == RESERVED_NAMES_0_4  # every reserved name has a reason
 

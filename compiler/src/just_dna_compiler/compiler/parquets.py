@@ -4,7 +4,7 @@ from collections.abc import Mapping
 from typing import Any
 
 import polars as pl
-from just_dna_format.base import DEFAULT_GENOME_BUILD
+from just_dna_format.base import DEFAULT_GENOME_BUILD, ConclusionRegisters
 from just_dna_format.frequency import FrequencyRow
 from just_dna_format.resolution import ResolutionRow
 from just_dna_format.spec import ModuleSpecConfig, StudyRow, VariantRow
@@ -12,7 +12,12 @@ from just_dna_format.vocab import OUTCOME_STRIP_CELLS
 from just_dna_format.vrs import join_vrs_ids
 
 from just_dna_compiler.compiler.subjects import ResolutionTable, row_positions
-from just_dna_compiler.compiler.tables import _polars_type, _split_genotype, study_coordinate_key
+from just_dna_compiler.compiler.tables import (
+    _omit_unstated_registers,
+    _polars_type,
+    _split_genotype,
+    study_coordinate_key,
+)
 from just_dna_compiler.compiler.vrs_columns import VrsIds, resolution_key
 
 # ── Parquet builders ───────────────────────────────────────────────────────────
@@ -366,6 +371,7 @@ def _build_annotations(variants: list[VariantRow], module_name: str) -> pl.DataF
                     "gene": v.gene or "",
                     "phenotype": v.phenotype or "",
                     "category": v.category or "",
+                    **{name: getattr(v, name) for name in ConclusionRegisters.model_fields},
                 }
             )
             seen_keys.add(key)
@@ -379,8 +385,9 @@ def _build_annotations(variants: list[VariantRow], module_name: str) -> pl.DataF
         "gene": pl.Utf8,
         "phenotype": pl.Utf8,
         "category": pl.Utf8,
+        **dict.fromkeys(ConclusionRegisters.model_fields, pl.Utf8),
     }
-    return pl.DataFrame(records, schema=schema)
+    return _omit_unstated_registers(pl.DataFrame(records, schema=schema))
 
 
 #: The `ResolutionRow` columns a carried locus leaves out, each with the reason (RM380). Every other

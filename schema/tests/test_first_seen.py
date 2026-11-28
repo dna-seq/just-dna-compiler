@@ -140,6 +140,7 @@ _WRITTEN_DOCUMENTS: tuple[type[BaseModel], ...] = (
 #: walked in its own right.
 _ABSTRACT_BASES: dict[str, str] = {
     "AuthoredModel": "the base every authored row inherits; it declares no field",
+    "ConclusionRegisters": "shared lay and concise wordings; each concrete carrying row is walked",
     "CitationPair": "the `pmid`/`doi` mixin (RM336); every model with `pmid` inherits it and is walked",
     "PairedFields": "the `_PAIRED_FIELDS` validator mixin (RM366); it declares no field, and every model "
     "inheriting it is walked",
