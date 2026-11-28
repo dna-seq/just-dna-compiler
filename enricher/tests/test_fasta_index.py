@@ -3,6 +3,7 @@
 import gzip
 import os
 import shutil
+import stat
 import tracemalloc
 from pathlib import Path
 
@@ -29,6 +30,18 @@ def test_write_index_matches_samtools_and_reads_mt(tmp_path: Path) -> None:
         assert fasta.write_fasta_index(path) == index
         assert index.read_bytes() == original
         assert fasta.FastaReference(uri).get_sequence(REFGET_GRCh38["MT"]) == expected
+
+
+@pytest.mark.parametrize("mask", [0o027, 0o077])
+def test_write_index_uses_plain_file_permissions(tmp_path: Path, mask: int) -> None:
+    path = tmp_path / _MT.name
+    previous = os.umask(mask)
+    try:
+        shutil.copyfile(_MT, path)
+        index = fasta.write_fasta_index(path)
+        assert stat.S_IMODE(index.stat().st_mode) == stat.S_IMODE(path.stat().st_mode)
+    finally:
+        os.umask(previous)
 
 
 @pytest.mark.parametrize("endings", [(b"\n", b"\r\n"), (b"\r\n", b"\n")])

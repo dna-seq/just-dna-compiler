@@ -41,6 +41,17 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md). The `0.8` branch merged into `main` at the 0.8.0 cut (2026-11-05).
 
+## 2026-11-28 — 0.10 review round 1: old-reader breaks are listed, FASTA indexes respect umask and unstated study directions preserve the digest (a minor, for 0.10)
+
+The [upgrade note](INTEGRATION_0_10.md) lists the closed vocabulary members a 0.9 reader refuses,
+including the `repeat_grade` source layer (C1). A test compares the list with the tagged v0.9.0
+models and vocabularies. A 0.9 compiler also warns about the filename `repeat_grades.csv`.
+
+The FASTA index writer now applies the operator’s umask when it creates or replaces a `.fai`,
+so another account can read a shared index when permissions allow (C7). The compiler omits
+`effect_direction` from `studies.parquet` when every study leaves it blank, preserving the
+previous study columns and avoiding a digest change from that column alone (single 2).
+
 ## 2026-11-28 — RM302: a conclusion can carry lay and table-cell wordings (a minor, for 0.10)
 
 Authors can add `conclusion_lay` and `conclusion_concise` to variants, diplotypes, drug-response

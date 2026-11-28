@@ -6,7 +6,7 @@ into CSV cells.
 import csv
 import functools
 import types
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Union, get_args, get_origin
@@ -562,11 +562,9 @@ def _list_fields(model: type[BaseModel]) -> set[str]:
     }
 
 
-def _omit_unstated_registers(frame: pl.DataFrame) -> pl.DataFrame:
-    """Keep the original parquet bytes when no author has supplied a wording in this register."""
-    return frame.drop(
-        name for name in ConclusionRegisters.model_fields if frame[name].null_count() == frame.height
-    )
+def _omit_unstated_columns(frame: pl.DataFrame, columns: Iterable[str]) -> pl.DataFrame:
+    """Omit an optional column from the parquet when every row leaves it null."""
+    return frame.drop(name for name in columns if frame[name].null_count() == frame.height)
 
 
 def _build_table(rows: list[Any], model: type[BaseModel], module_name: str) -> pl.DataFrame:
@@ -586,7 +584,11 @@ def _build_table(rows: list[Any], model: type[BaseModel], module_name: str) -> p
         {"module": module_name, **{name: getattr(row, name) for name in model.model_fields}} for row in rows
     ]
     frame = pl.DataFrame(records, schema=schema)
-    return _omit_unstated_registers(frame) if issubclass(model, ConclusionRegisters) else frame
+    return (
+        _omit_unstated_columns(frame, ConclusionRegisters.model_fields)
+        if issubclass(model, ConclusionRegisters)
+        else frame
+    )
 
 
 def _scalar_cell(value: Any) -> str:

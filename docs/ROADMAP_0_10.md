@@ -238,6 +238,7 @@ round-trips through the study parquet and participates in authored identity when
 allele and a direction that contradicts a comparable estimate warn in both modes. Measures with no
 known scale and estimates at the null withhold. Clinical interpretation stays on `VariantRow`, and
 the compiler leaves directions unstated when the author supplied none.
+Round 1 (2026-11-28): the compiler omits the parquet column when every study leaves the direction blank.
 
 **Residuals** none.
 
@@ -408,6 +409,7 @@ until it lands the registry would carry `pyfaidx` for this one file.
 The writer checks each contig's wrapping and line endings before replacing the index. On the MT
 fixture it reproduces the committed samtools index byte for byte. The first digest read remains a
 separate operation.
+Round 1 (2026-11-28): the index takes ordinary file permissions under the operator’s umask.
 
 **Built (2026-11-27, on the `0.10` branch).** The enricher reads an operator's indexed,
 uncompressed GRCh38 FASTA by URI online or offline. It verifies and caches identity per contig,
@@ -587,6 +589,8 @@ shape. Decide on the `0.8` branch.
 locus–disease grade to `repeat_grades.csv`, with the module’s motif spelling and the snapshot
 release. The compiler checks the repeat key and round-trips the table. The module’s tier, repeat
 bands, RM170 checks and RM276 draft note keep their own meanings. No authored column was added.
+Round 1 (2026-11-28): the upgrade note lists the closed members added since v0.9.0, including
+`repeat_grade`, and records the older compiler’s filename warning.
 
 **Residuals** none
 

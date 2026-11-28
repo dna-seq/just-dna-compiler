@@ -800,6 +800,8 @@ refget digest. The reader skips alt, patch and unplaced contigs. Unpack the FAST
 `<path>.fai` beside it and prints the index path and contig count. `samtools faidx PATH` writes the
 equivalent five-column index. Python hosts can call `just_dna_enricher.fasta.write_fasta_index(path)`
 to get the index path. A malformed FASTA raises `FastaConfigurationError` and preserves any existing index.
+Each successful write gives the index the permissions of an ordinary file created under the process’s
+umask, including when rebuilding an existing index.
 
 Indexing reads the FASTA once. The first full `contig_identity()` pass took 393 s here and later
 calls read the cached digests. UCSC's `hg38.fa` and
