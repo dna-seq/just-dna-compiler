@@ -58,6 +58,8 @@ import multiprocessing
 import re
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
+from multiprocessing.connection import Connection
+from multiprocessing.connection import wait as wait_for
 from pathlib import Path
 
 import httpx
@@ -121,8 +123,18 @@ DEFAULT_PMC_BIOC_URL = "https://www.ncbi.nlm.nih.gov/research/bionlp/RESTful/pmc
 #: surface here (the `SourceRow` precedent).
 _FIELDNAMES: list[str] = list(LiteratureRow.model_fields)
 
-#: Seconds a single `provenance_regex` match may run before it is recorded as unchecked.
+#: Seconds a single `provenance_regex` match may run before it is recorded as unchecked. The clock starts
+#: when the matching process reports it is ready, never when it is asked to start (RM471).
 DEFAULT_REGEX_TIMEOUT = 5.0
+
+#: Seconds the matching process may take to start before the match is recorded as unchecked, apart from
+#: the match's own timeout (RM471). Under `forkserver` the child imports this module before it can match,
+#: which measured 2 to 4 s at a load average of 69 on 16 threads: charged to the match, it made a trivial
+#: pattern "exceed" a 5 s bound. Generous on purpose: it bounds a process that never starts, nothing else.
+_REGEX_STARTUP_ALLOWANCE = 60.0
+
+#: What the matching process sends first, once its imports are done and before it matches.
+_REGEX_READY = "ready"
 
 #: The `source` a row written by this pass carries, and the only value the identifier cross-check
 #: will compare against. A merged row spelling anything else — `manual`, a curator's correction —
@@ -1211,9 +1223,10 @@ def quote_matches(quote: str, fulltext: str) -> bool:
     return _normalize(quote) in _normalize(fulltext)
 
 
-def _regex_worker(pattern: str, text: str, sink) -> None:
-    """Run one match and post the verdict. Module-level so it survives a `spawn` start method."""
-    sink.put(re.compile(pattern, re.IGNORECASE).search(text) is not None)
+def _regex_worker(pattern: str, text: str, sink: Connection) -> None:
+    """Say ready, then run one match and send the verdict. Module-level so it survives `spawn`/`forkserver`."""
+    sink.send(_REGEX_READY)
+    sink.send(re.compile(pattern, re.IGNORECASE).search(text) is not None)
 
 
 def regex_matches(pattern: str, fulltext: str, *, timeout: float = DEFAULT_REGEX_TIMEOUT) -> bool | None:
@@ -1231,6 +1244,11 @@ def regex_matches(pattern: str, fulltext: str, *, timeout: float = DEFAULT_REGEX
     test suite stop. A child process is the only bound in the standard library that can actually be
     enforced, and it is cheap here: it runs only for a row that has a `provenance_regex` *and* a
     retrievable fulltext, which is a small subset of a small subset.
+
+    **The timeout is the match's, not the process's** (RM471). The child says when it is ready, and the
+    clock starts then: its start-up (under `forkserver`, an interpreter importing this module) has its own
+    allowance and its own warning. Counted together, a loaded machine recorded a trivial pattern as having
+    exceeded its bound, and a test giving a catastrophic pattern 0.25 s passed without the pattern running.
     """
     try:
         re.compile(pattern)
@@ -1240,15 +1258,25 @@ def regex_matches(pattern: str, fulltext: str, *, timeout: float = DEFAULT_REGEX
         logger.warning("provenance_regex %r did not compile (%s); not checked", pattern, exc)
         return None
 
-    sink: multiprocessing.Queue = multiprocessing.Queue()
+    verdicts, sink = multiprocessing.Pipe(duplex=False)
     worker = multiprocessing.Process(target=_regex_worker, args=(pattern, fulltext, sink))
     worker.daemon = True
     worker.start()
+    sink.close()  # the child holds its own end; ours closed, a child that dies reads as end-of-file
     try:
-        worker.join(timeout)
-        if worker.is_alive():
-            worker.terminate()
-            worker.join(1.0)
+        # Ready, or dead, or neither within the allowance: `wait` returns on whichever comes first. A child
+        # that died has closed its end, so the `recv` below raises rather than blocks.
+        if not wait_for([verdicts, worker.sentinel], _REGEX_STARTUP_ALLOWANCE):
+            logger.warning(
+                "provenance_regex %r: the matching process did not start within %.0fs; recorded as "
+                "NOT CHECKED (never as not-found)",
+                pattern,
+                _REGEX_STARTUP_ALLOWANCE,
+            )
+            return None
+        if verdicts.recv() != _REGEX_READY:  # pragma: no cover - the worker sends ready first
+            return None
+        if not verdicts.poll(timeout):
             logger.warning(
                 "provenance_regex %r exceeded %.1fs against a %d-character fulltext; recorded as "
                 "NOT CHECKED (never as not-found)",
@@ -1257,14 +1285,15 @@ def regex_matches(pattern: str, fulltext: str, *, timeout: float = DEFAULT_REGEX
                 len(fulltext),
             )
             return None
-        return sink.get_nowait() if not sink.empty() else None
+        return verdicts.recv()
     except Exception as exc:
         logger.warning("provenance_regex %r could not be evaluated (%s); not checked", pattern, exc)
         return None
     finally:
-        sink.close()
+        verdicts.close()
         if worker.is_alive():
             worker.kill()
+        worker.join(1.0)
 
 
 # ── the pass ────────────────────────────────────────────────────────────────────────────────────

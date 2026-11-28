@@ -1714,7 +1714,10 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
 - `@regex-timeout-process` — **A thread-based regex timeout is a trap.** `re` cannot be interrupted, threads cannot be killed, and
   the interpreter joins `ThreadPoolExecutor` threads at exit — so the obvious implementation returns
   `None` on schedule and then hangs the process on the way out. `literature.regex_matches` uses a
-  killable child process. Don't "simplify" it back to a thread.
+  killable child process. Don't "simplify" it back to a thread. **And the clock starts at the child's ready
+  signal, never at `start()` (RM471):** a `join(timeout)` on the child charged its start-up to the match, which under
+  `forkserver` is an interpreter importing the enricher (2 to 4 s at load 69), so a trivial pattern read as having
+  exceeded its bound and a 0.25 s test of a catastrophic pattern passed without the pattern ever running.
 
 - `@literature-writer-derived` — **The enricher's `literature.csv` writer is derived from the model.** `_FIELDNAMES` was a hand-kept
   literal and `_write_literature_csv` a per-column dict — the `SOURCES_FIELDNAMES` shape, which lost

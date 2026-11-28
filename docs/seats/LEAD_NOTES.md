@@ -1,6 +1,10 @@
 # Lead notes
 
-The lead's working state, rewritten to the present before each reset. Last rewritten 2026-11-16.
+The lead's working state, rewritten to the present before each reset. Last rewritten 2026-11-16; In flight updated 2026-11-28. Diary: LEAD_DIARY.md
+
+## Retro items
+
+- Retro of 2026-11-27, desk #486: #487 (a committed Codex launch script with the brief preamble), #488 (a committed land-a-build script with the keep-both CHANGELOG/ROADMAP resolver) and #490 (no reply turn for a build-still-running notice) go ahead after their 3-day term (2026-12-01) unless refused; then each is `unattended`, built while the person is away. #489 (shorter merge reports, one daily removal line) is a habit item and waits for the person's yes.
 
 ## First seating (2026-11-03): the handout's first work
 
@@ -39,7 +43,15 @@ The lead's working state, rewritten to the present before each reset. Last rewri
 
 ## In flight
 
-- mitomap behind source (liaison 643088167, 2026-11-24): the dump moved 2026-11-18 (mmutation edited 2026-11-17, 603 rows, +6 citation links). Built as mitomap_2026-11-17+2026-11-03 into `data/caches/rebuild-2026-11-24/mitomap`, upload rehearsed (5 files). `blocked: the person` (the classifier refuses a seat's publish, kit #529): `uv run just-dna-enricher mitomap publish data/caches/rebuild-2026-11-24/mitomap`. After it: `cache pull --only mitomap`, then `mitomap miss` (mitomap_miss follows its parents).
+- mitomap behind source again (found 2026-11-28 by a HEAD on the dump: Last-Modified 2026-11-25, mmutation edited 2026-11-24). Rebuilt as mitomap_2026-11-24+2026-11-03 into `data/caches/rebuild-2026-11-28/mitomap` (603 + 497 rows, 6284 citation links), upload rehearsed by dry run (5 files). The 2026-11-24 build in `data/caches/rebuild-2026-11-24/` is superseded, never to be published (the person's to delete). `blocked: the person` (the classifier refuses a seat's publish, kit #529): `uv run just-dna-enricher mitomap publish data/caches/rebuild-2026-11-28/mitomap`. After it: `cache pull --only mitomap`, then `mitomap miss` (mitomap_miss follows its parents). Before handing it over, HEAD the dump again: it is regenerated about weekly.
+- **0.10 batch, 2026-11-27: all five decided items built and on `0.10` (992e85b1, pushed).** RM460 (b37c11ac),
+  RM399+RM441 (d019f0b9; the pm confirmed the enricher-only reading and the old label None, 644030607), RM435
+  (457e8989), RM385 (848fbbfb), RM468 (85189b83; merged over RM385 by hand, 992e85b1). Merged tree: 8452 passed, the
+  one failure the AlphaGenome interrupt bound at load (3/3 alone); docs strict green. Codex built all five inside
+  auto-mode rule 30 (e3978216); four were cut off by a session restart at 00:32Z and finished by the lead. 0.10 now
+  has **two new warning codes** (RM460, RM435): an old-reader break, so INTEGRATION_0_10 tells consumers to raise the
+  format floor first. Worktrees `.worktrees/010-rm*` unlocked (the person's to remove); `.worktrees/010` (branch
+  `0.10`) stays locked for merges. **The consumers' preview is closed** (registry 644052193: full suite on 992e85b1 981 passed, its one failure the git-sourced deploy probe's; module-creator clean, 644039827). Its findings S163 and S165 are on `0.10` (d23fd638, pushed; merged suite 8473 passed). The registry's later S166 (one local sequence source reaching every read) is on `0.10` at 135eed6d (pushed; enricher+schema 5981 passed): `EnsemblResolver(sequences=)`, `draft_panel_from_civic(sequences=)`, `--sequence-uri` on three more commands; the FASTA stays host-provisioned (the pm, 8a117ed7); the registry will run its socket-tripwire re-derive against it. Tests and Codex builds run at nice 18 (the person, 2026-11-27). NCBI's `GCF_000001405.40` FASTA binds all 25 contigs, UCSC hg38 10 of 25 (measured; files in `/data/just-dna-cache/reference/grch38-candidates/`, about 5 GB, the person's to keep or delete). **Next:** 0.10's remaining scope waits on the desk epic's answers (RM265, RM302, RM350, RM294); RM459 moved to 0.11 with the registry's S36. Then at most two review rounds, then the cut, which must carry: the 0.10.0 DERIVATION_RECORDS entry stating RM385 and RM460 (S164); INTEGRATION_0_10 stating the old-reader break and that with the answer store on, a run asks each source's release (/info/data, einfo) before its first answer. RM469 built and held on `build/011-rm469` (693c85c7, pushed) for 0.11; its CLI residual is won't fix (the pm).
 - **0.9.0 released and merged, 2026-11-27.** PyPI 2026-11-26 21:11Z (all three), tag `v0.9.0` on 93160691, GitHub
   release up, `0.9` merged into `main` (7f79299b, landed 28fa1719) without waiting for longevity-loci's trial: a
   published release cannot change, and main was red on the tag (the pm agreed, 643997014). Main's suite 8353 passed,

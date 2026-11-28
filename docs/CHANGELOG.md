@@ -113,6 +113,16 @@ Preview finding S163. Reusing a live client or a `LookupClients` bundle now chec
 release on each call. A host can pass its store as `LookupClients(answer_store=...)`, or wrap several
 lookups in `answer_run(...)` to share one probe per source and one set of usage counts for the batch.
 
+## 2026-11-27 — RM471: a `provenance_regex` timeout counts the match, not the matching process's start-up (patch, enricher only, for 0.9.1)
+
+- **`literature.regex_matches`**: the child process sends a ready signal before it matches, and the timeout
+  (`regex_timeout`, 5 s by default) starts there. Under `forkserver` the child's start-up imports the enricher, 2 to
+  4 s on a loaded machine, and was charged to the match, so a trivial pattern could be recorded as not checked. The
+  start-up has its own 60 s allowance and its own warning, "the matching process did not start within …"; the
+  "exceeded" warning is unchanged and now says the pattern ran. No answer changes on an idle machine.
+- **Tests**: the AVI interrupt test checks that no in-flight stand-in `tabix` ran to its end rather than timing the stop
+  (it failed at 5.17 s under load); three new tests pin the regex start-up apart from the match.
+
 ## 2026-11-26 — `v0.9.0`: format, compiler and enricher 0.9.0 (a minor, the `0.9` branch)
 
 **Cut on 2026-11-26 from the `0.9` branch**, built from 2026-11-16 to 2026-11-26: the enricher reads its reference data
