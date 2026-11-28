@@ -41,6 +41,14 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md). The `0.8` branch merged into `main` at the 0.8.0 cut (2026-11-05).
 
+## 2026-11-28 — 0.10 review round 1: draft-panel keeps authored panel provenance (a minor, for 0.10)
+
+ClinVar `draft-panel` now includes genes from both `panel_provenance:` and the deprecated `panel:`
+in the block it prints (C2, RM265). It keeps an authored reference pin when the snapshot omits its
+digest, and names both pins before writing any rows if they disagree. A blank gene cell in
+`variants.csv` decides nothing, so the listed genes stay listed and the run warns that
+`genes_unmatched` may overstate, on both real and dry runs.
+
 ## 2026-11-28 — RM302: a conclusion can carry lay and table-cell wordings (a minor, for 0.10)
 
 Authors can add `conclusion_lay` and `conclusion_concise` to variants, diplotypes, drug-response

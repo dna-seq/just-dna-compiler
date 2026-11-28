@@ -6006,14 +6006,18 @@ ClinVar `draft-panel` prints a `panel_provenance:` YAML snippet to paste into
 `module_spec.yaml`. Paste the first block before the next run so that a request that yielded
 no rows remains in the panel history. The command leaves the spec YAML byte-for-byte intact.
 
-The merged block starts with the genes from the existing `panel_provenance:` block, falling
-back to `panel:` for migration. Newly requested genes follow in request order. The draft
-recomputes `genes_unmatched` from the resulting `variants.csv`. A dry run includes the rows
-it would append and prints the same snippet. The Python result exposes it as `panel_provenance`.
-The snippet records this run’s significance predicate and warns if a previously stated predicate
-differs. It reads `reference_sha256` from the snapshot’s `release.json` source digest. An unknown
-digest is reported and printed as `null`. A known digest that disagrees with either authored
-block stops the draft before any write, with both hashes in the error.
+The merged block takes genes from `panel_provenance:`, then from the deprecated `panel:`, then
+from this run’s request. Each gene keeps its first spelling and position across all three lists.
+The snippet uses this run’s significance predicate and warns if either block states a different one.
+A snapshot that states its source digest supplies `reference_sha256`. If the snapshot omits it,
+the draft reports that and keeps the authored pin from either block. The snippet shows `null` only
+when all three omit the digest. Conflicting pins stop the draft before any write and the error names both.
+
+The draft recomputes `genes_unmatched` from the resulting `variants.csv`. An empty table leaves
+every requested gene unmatched. A row naming a gene establishes a match. A row with a blank gene
+cell decides nothing: the listed genes stay listed, and a warning counts the unnamed rows that might
+carry one of them, rather than printing an empty list that would claim every gene matched. A dry run includes the rows it would append and prints the same snippet. The
+Python result exposes it as `panel_provenance`.
 
 **The alleles the author writes that genotype *from* stay in the report, and since 0.7 the report can
 be asked again (RM71).** A drafted row is rsID-only, so `rs118203998` arrives with empty `ref`/`alts`

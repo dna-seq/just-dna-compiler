@@ -646,47 +646,70 @@ def _draft_panel_provenance(
     reference: Path,
     warnings: list[str],
 ) -> PanelProvenance:
-    """Merge the request and check every authored pin before appending any rows."""
+    """Merge both authored blocks and check their pins before appending any rows.
+
+    Significance describes this run's predicate. Warn if either block states a different one.
+    """
     release = read_release(reference)
     stated = release.source_sha256 if release is not None else None
     digest = bare_digest(stated) if isinstance(stated, str) else None
     pin = SHA256_PREFIX + digest if digest else None
-    if pin is None:
-        warnings.append("The snapshot does not state a source_sha256, so reference_sha256 is unknown.")
-    existing = None
-    if config is not None:
-        for block in (config.panel_provenance, config.panel):
-            if block is None:
-                continue
-            if existing is None:
-                existing = block
-            authored = bare_digest(block.reference_sha256)
-            if authored is not None and digest is not None and authored != digest:
+    existing_genes: list[str] = []
+    blocks = (config.panel_provenance, config.panel) if config is not None else ()
+    for block in blocks:
+        if block is None:
+            continue
+        existing_genes.extend(block.genes)
+        authored = bare_digest(block.reference_sha256)
+        if authored is not None:
+            if pin is None:
+                pin = block.reference_sha256
+            elif authored != bare_digest(pin):
+                origin = "snapshot" if digest is not None else "other panel block"
                 raise ClinVarDraftError(
-                    f"Authored reference_sha256 {block.reference_sha256} differs from the snapshot's {pin}."
+                    f"Authored reference_sha256 {block.reference_sha256} differs from the {origin}'s {pin}."
                 )
-            if "significance" in block.model_fields_set and set(block.significance) != clin_sig:
-                warning = (
-                    f"Authored significance differs from this run: {block.significance} vs {sorted(clin_sig)}. "
-                    "The printed block uses this run's predicate."
-                )
-                if warning not in warnings:
-                    warnings.append(warning)
+        if "significance" in block.model_fields_set and set(block.significance) != clin_sig:
+            warning = (
+                f"Authored significance differs from this run: {block.significance} vs {sorted(clin_sig)}. "
+                "The printed block uses this run's predicate."
+            )
+            if warning not in warnings:
+                warnings.append(warning)
+    if digest is None:
+        consequence = (
+            "the authored reference_sha256 is kept" if pin is not None else "reference_sha256 is unknown"
+        )
+        warnings.append(f"The snapshot does not state a source_sha256, so {consequence}.")
     merged: dict[str, str] = {}
-    for gene in [*(existing.genes if existing is not None else []), *genes]:
+    for gene in [*existing_genes, *genes]:
         if gene.strip():
             merged.setdefault(gene_key(gene), gene)
     return PanelProvenance(genes=list(merged.values()), significance=sorted(clin_sig), reference_sha256=pin)
 
 
-def _record_unmatched(panel: PanelProvenance, variants: Path, projected_genes: Iterable[str]) -> None:
-    """Compare against existing rows and any accepted rows a dry run would append."""
-    cells = set(projected_genes)
+def _record_unmatched(
+    panel: PanelProvenance, variants: Path, projected_genes: Iterable[str], warnings: list[str]
+) -> None:
+    """A requested gene is listed unmatched when no existing or projected row names it.
+
+    A row with an empty `gene` cell names no gene, so it decides nothing (three-valued): the listed genes
+    stay listed, and a warning says how many unnamed rows might carry one of them. Writing an empty list
+    instead would claim every gene matched, a definite answer the evidence does not give.
+    """
+    cells = list(projected_genes)
     if variants.is_file():
         with variants.open(encoding="utf-8", newline="") as handle:
-            cells.update(gene for row in csv.DictReader(handle) if (gene := row.get("gene")))
-    rows = ModuleSubjects(genes=tuple(sorted(cells)))
+            cells.extend(row.get("gene") or "" for row in csv.DictReader(handle))
+    named = tuple(sorted({cell for cell in cells if cell.strip()}))
+    unnamed = sum(1 for cell in cells if not cell.strip())
+    rows = ModuleSubjects(genes=named)
     panel.genes_unmatched = [gene for gene in panel.genes if not rows.names_gene(gene)]
+    if unnamed and panel.genes_unmatched:
+        warnings.append(
+            f"{unnamed} variants.csv row(s) name no gene, so genes_unmatched may overstate: any of "
+            f"{len(panel.genes_unmatched)} listed gene(s) could be one of them. Fill the gene cells and re-run."
+        )
 
 
 def draft_gene_panel(
@@ -816,7 +839,7 @@ def draft_gene_panel(
             f"nothing this format can key on."
         )
     if not partials:
-        _record_unmatched(panel, spec_dir / "variants.csv", ())
+        _record_unmatched(panel, spec_dir / "variants.csv", (), warnings)
         return ClinVarDraftResult(
             warnings=warnings + ["nothing matched; no rows drafted"], panel_provenance=panel
         )
@@ -988,9 +1011,9 @@ def draft_gene_panel(
             )
         )
     projected_genes = (
-        partial.cells["gene"]
+        partial.cells.get("gene") or ""
         for partial, outcome in zip(partials, report.outcomes, strict=True)
-        if outcome.status == "added" and partial.cells.get("gene")
+        if outcome.status == "added"
     )
-    _record_unmatched(panel, report.path, projected_genes if dry_run else ())
+    _record_unmatched(panel, report.path, projected_genes if dry_run else (), warnings)
     return ClinVarDraftResult(reports=reports, warnings=warnings, panel_provenance=panel)
