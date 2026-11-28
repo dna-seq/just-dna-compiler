@@ -54,3 +54,29 @@ Prose is left byte-for-byte when it is answered and when it is moved, so it stay
 observed rather than of what was decided.
 
 ---
+
+## S166 — just-dna-registry (liaison), 2026-11-28: a local sequence source that reaches every read, and how it is provisioned
+
+**Context.** A host re-deriving ClinVar-scale modules (about 438k rows over three modules) spends almost all of the
+run reading reference sequence one request at a time from the default `seqrepo+https://` source, about 6 reads a
+second: 13 to 30 h per sweep, measured from `ga4gh.vrs.dataproxy` log lines. The host's plan is to hand every
+`enrich()` path one shared local `SequenceProxy` (a `fasta+file://` GRCh38 FASTA, RM385) and read nothing over HTTP.
+Read at `0.10` `d23fd638`:
+
+1. **No lane provisions it.** `CACHE_LANES` has no sequence lane, so `prepare_caches` cannot place the FASTA or its
+   `.refget.json` sidecar, and a host's provisioning command has nothing to read. Is the local reference meant to
+   stay host-provisioned (then say so in INTEGRATION_0_10, with the file that binds all 25 and its first-read
+   cost), or will 0.10 register a lane for it?
+2. **A caller's resolver cannot be handed the source.** `enrich()` threads `sequences=` into the resolver it builds
+   (`orchestration.py`, "a caller's resolver is never altered"), but a host that passes its own shared
+   `EnsemblResolver` (one per process, for the pacing gate) has only the private `_read_base`; left unset,
+   `_base_reader()` builds `SequenceProxy()`, the remote default. So on an online run the host's indel anchors are
+   still read over HTTP. Asked: a public constructor field on `EnsemblResolver` (a `SequenceProxy`, or the
+   reader), or a documented rule that `enrich()` hands a caller's resolver its `sequences` when the resolver holds
+   none.
+3. **One more reader builds the remote default whatever the host holds**: `civic_draft.py` (the drafter's anchor
+   reader, `held_by_one_run(SequenceProxy(offline=offline))`) takes no `sequences=`. `pgx_draft` already takes one.
+   Asked: the same parameter there, so a host's one source reaches the drafters too.
+
+**Done would look like**: with a local source passed everywhere a host can pass one, a re-derivation and a draft
+make no `ga4gh.vrs.dataproxy` `Fetching https://` request (a socket-tripwire test on the host's side).
