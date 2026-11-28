@@ -477,7 +477,7 @@ core was ported, not depended on, dropping `fastmcp`/`eliot`). In the workspace:
 | `gene_metrics` | pass 3: the module's genes → `gene_metrics.csv` (snapshot first, live API second) | `duckdb`, format |
 | `constraint_build` | **`[dev]`** builder: gnomAD constraint TSV → gene-level parquet + `release.json` | `polars` (lazy), `httpx` |
 | `vrs` | GA4GH VRS allele-id minting onto `resolution.csv` (substitutions stdlib, indels normalized) | `ga4gh.vrs` |
-| `fasta` | Indexed local GRCh38 FASTA reads and the per-contig digest cache | `ga4gh.core`, format |
+| `fasta` | FASTA index writer, indexed local GRCh38 reads and the per-contig digest cache | `ga4gh.core`, format |
 | `_refseq` | Versioned GRCh38 chromosome names shared by the FASTA reader and the CIViC and ClinVar GKM builders | stdlib |
 | `sequences` | reference-sequence access (cached), the reference-allele check, and the one left-alignment every pass uses (`left_normalize`, `normalize_locus`, `spelling_verdict`; RM270 writes a fill left-aligned with it) | `ga4gh.vrs` |
 | `placement` | **0.8** (RM267): where the run's own link placed each rsID against where ClinVar and ClinVar-GKM place it, and, online, where Ensembl REST places a snapshot indel neither holds — by VRS id, else the left-aligned spelling; a disagreement withholds the rsID | `sequences`, `clinvar`, `clinvar_gkm` |
@@ -791,9 +791,14 @@ Later calls reuse the cached digests. Other sequence sources return `None`.
 `GCF_000001405.40_GRCh38.p14_genomic.fna.gz` from
 `https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/000/001/405/GCF_000001405.40_GRCh38.p14/`. Its 25 primaries are named
 by versioned RefSeq accession (`NC_000001.11` … `NC_012920.1`), which the reader maps, and every one matched its
-refget digest; its alt, patch and unplaced contigs are skipped. Unpack it (the reader refuses a compressed file)
-and index it (`samtools faidx`, or any writer of the same five-column `.fai`); the first full
-`contig_identity()` pass over it took 393 s here, later calls read the cached digests. UCSC's `hg38.fa` and
+refget digest. The reader skips alt, patch and unplaced contigs. Unpack the FASTA, then run
+`just-dna-enricher fasta index PATH`, where `PATH` is the unpacked file. The command writes
+`<path>.fai` beside it and prints the index path and contig count. `samtools faidx PATH` writes the
+equivalent five-column index. Python hosts can call `just_dna_enricher.fasta.write_fasta_index(path)`
+to get the index path. A malformed FASTA raises `FastaConfigurationError` and preserves any existing index.
+
+Indexing reads the FASTA once. The first full `contig_identity()` pass took 393 s here and later
+calls read the cached digests. UCSC's `hg38.fa` and
 Ensembl's primary assembly both bind the same 10 of 25 (4, 5, 8, 11, 14, 15, 18, 19, 20, MT): equal lengths,
 different bases elsewhere on the other 15.
 

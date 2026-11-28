@@ -152,6 +152,7 @@ from just_dna_enricher.cli.clinvar_commands import clinvar_publish_ as clinvar_p
 from just_dna_enricher.cli.clinvar_commands import pubmind_app as pubmind_app
 from just_dna_enricher.cli.clinvar_commands import pubmind_build_ as pubmind_build_
 from just_dna_enricher.cli.clinvar_commands import pubmind_publish_ as pubmind_publish_
+from just_dna_enricher.cli.fasta_commands import fasta_app
 from just_dna_enricher.cli.gene_reference_commands import constraint_app as constraint_app
 from just_dna_enricher.cli.gene_reference_commands import constraint_build_ as constraint_build_
 from just_dna_enricher.cli.gene_reference_commands import constraint_publish_ as constraint_publish_
@@ -299,3 +300,4 @@ app.add_typer(atlas_app, name="atlas")
 app.add_typer(alphagenome_app, name="alphagenome")
 app.add_typer(clinvar_gkm_app, name="clinvar-gkm")
 app.add_typer(opentargets_app, name="opentargets")
+app.add_typer(fasta_app, name="fasta")

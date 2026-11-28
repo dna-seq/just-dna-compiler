@@ -41,6 +41,15 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md). The `0.8` branch merged into `main` at the 0.8.0 cut (2026-11-05).
 
+## 2026-11-28 — S167: the enricher writes a FASTA's .fai itself (a minor, for 0.10)
+
+A host with only the enricher installed can now run `just-dna-enricher fasta index PATH` after
+unpacking its GRCh38 FASTA. The command writes the five-column index beside the reference and
+prints its path and contig count. The same writer is available as `fasta.write_fasta_index(path)`.
+It checks the file in one pass and replaces the index only after every contig passes. The MT
+fixture produces the same bytes as `samtools faidx`, and so does NCBI's full `GCF_000001405.40`
+FASTA (705 contigs, 3.3 GB), measured by the lead on 2026-11-28.
+
 ## 2026-11-27 — RM460: mirrored-site fills have their own warning code (a minor, for 0.10)
 
 The compiler now counts a genotype that reads as an insertion and a deletion at the same site under
