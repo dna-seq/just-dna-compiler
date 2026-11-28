@@ -6,21 +6,24 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from just_dna_compiler.compiler import load_csv_rows
-from just_dna_format.base import merge_key
 from just_dna_format.layout import atomic_writer, nothing_to_write
 from just_dna_format.normalize import now_utc_iso
 from just_dna_format.repeat_grades import RepeatGradeRow, repeat_key
+from just_dna_format.spelling import comparison_key
 
 from just_dna_enricher.download import ensure_strchive_snapshot
 from just_dna_enricher.licensing import (
     STRCHIVE_TERMS,
+    TERMS_BY_SOURCE,
     record_table_sources,
     require_sources_file,
     sidecar_path,
     table_datasets,
+    table_release,
 )
 from just_dna_enricher.locations import resolve_strchive_reference
 from just_dna_enricher.strchive import (
+    REPEAT_ALLELES_CSV,
     StrchiveCatalogue,
     StrchiveError,
     load_repeat_alleles,
@@ -36,14 +39,25 @@ class RepeatGradeError(RuntimeError):
     """The pass could not read or commit the module's own tables."""
 
 
+def _row_key(row: RepeatGradeRow) -> tuple:
+    """A grade row's identity: its declared key fields, each compared as its column is (`gene_key` for a gene)."""
+    return tuple(comparison_key(name, getattr(row, name)) for name in RepeatGradeRow._KEY_FIELDS)
+
+
 @dataclass
 class RepeatGradeResult:
+    """The grade table proposed for commit and the outcome for each authored repeat key."""
+
     rows: list[RepeatGradeRow] = field(default_factory=list)
     covered: list[RepeatKey] = field(default_factory=list)
     missing: list[RepeatKey] = field(default_factory=list)
     could_not_ask: list[RepeatKey] = field(default_factory=list)
     reason: str | None = None
     added: int = 0
+
+    contested: list[RepeatKey] = field(default_factory=list)
+    answered_every_row: bool = False
+    _changed: bool = False
 
     @property
     def subjects(self) -> int:
@@ -52,18 +66,34 @@ class RepeatGradeResult:
     def _commit(self, spec_dir: Path) -> None:
         """Publish the merged rows under the run's lock, after its strict checks."""
         path = sidecar_path(spec_dir, REPEAT_GRADES_CSV, error=RepeatGradeError)
-        if nothing_to_write(path, self.rows) or not self.added:
+        if nothing_to_write(path, self.rows) or not (self.covered or self.missing):
             return
-        require_sources_file(spec_dir, error=RepeatGradeError)
+        terms = require_sources_file(spec_dir, error=RepeatGradeError)
+        releases = table_datasets(self.rows, release=lambda row: row.dataset)
+        if not self._changed:
+            expected = {
+                source: table_release(labels)
+                for source, labels in releases.items()
+                if source in TERMS_BY_SOURCE
+            }
+            recorded = {
+                row.source: row.dataset
+                for row in terms
+                if row.layer == "repeat_grade"
+                and row.source in TERMS_BY_SOURCE
+                and (self.answered_every_row or row.source in expected)
+            }
+            if recorded == expected:
+                return
         with atomic_writer(
             path,
             newline="",
             before_commit=lambda: record_table_sources(
-                table_datasets(self.rows, release=lambda row: row.dataset),
+                releases,
                 "repeat_grade",
                 spec_dir,
                 error=RepeatGradeError,
-                answered_every_row=False,
+                answered_every_row=self.answered_every_row,
             ),
         ) as handle:
             writer = csv.DictWriter(handle, fieldnames=list(RepeatGradeRow.model_fields))
@@ -78,16 +108,26 @@ def enrich_repeat_grades(
     offline: bool = False,
     download: bool = True,
     write: bool = True,
+    rederive: bool = False,
     progress: Callable[[int, int], None] | None = None,
 ) -> RepeatGradeResult:
-    """Merge all matches by their full fact key. An unreachable catalogue leaves the table alone."""
+    """Refresh each answered repeat from the catalogue, preserving its first authored spelling.
+
+    A routine run retains the timestamp of an identical answer. A full re-derivation stamps the
+    new observation even when STRchive still gives the same answer.
+    """
     spec_dir = Path(spec_dir)
     with spec_lock(spec_dir, enabled=write, error=RepeatGradeError):
-        try:
-            keys = sorted({repeat_key(row) for row in load_repeat_alleles(spec_dir)})
-        except StrchiveError as exc:
-            raise RepeatGradeError(str(exc)) from exc
         result = RepeatGradeResult()
+        try:
+            repeats = load_repeat_alleles(spec_dir)
+        except (StrchiveError, OSError, UnicodeError, csv.Error) as exc:
+            result.reason = f"Could not read subjects from {REPEAT_ALLELES_CSV}: {exc}"
+            return result
+        spellings: dict[RepeatKey, RepeatKey] = {}
+        for repeat in repeats:
+            spellings.setdefault(repeat_key(repeat), (repeat.gene, repeat.repeat_unit))
+        keys = sorted(spellings)
         if progress is not None:
             progress(0, len(keys))
         if not keys:
@@ -111,25 +151,34 @@ def enrich_repeat_grades(
 
         if loaded is None:
             result.reason = result.reason or "no local STRchive snapshot"
-            result.could_not_ask = keys
+            result.could_not_ask = [spellings[key] for key in keys]
             if progress is not None:
                 progress(len(keys), len(keys))
             return result
 
-        index = loaded.by_gene_and_motif()
-        seen = {merge_key(row) for row in result.rows}
+        index = loaded.by_gene_and_motif(comparison_keys=True)
+        previous = result.rows
+        by_key = {_row_key(row): row for row in previous}
+        # The module is authoritative about its subjects. A sidecar row outside this roster
+        # belongs to the compiler's orphan check and has no fresh catalogue answer here.
+        carried = [row for row in previous if repeat_key(row) not in spellings]
+        result.answered_every_row = not carried
+        fresh: dict[tuple, RepeatGradeRow] = {}
         fetched_at = now_utc_iso()
         for done, key in enumerate(keys, 1):
             loci = index.get(key, [])
+            subject = spellings[key]
             if loci:
-                result.covered.append(key)
+                result.covered.append(subject)
+                if len({locus.locus_id for locus in loci}) > 1:
+                    result.contested.append(subject)
             else:
-                result.missing.append(key)
+                result.missing.append(subject)
             for locus in sorted(loci, key=lambda item: item.locus_id):
                 for grade in locus.evidence or (None,):
                     row = RepeatGradeRow(
-                        gene=key[0],
-                        repeat_unit=key[1],
+                        gene=subject[0],
+                        repeat_unit=subject[1],
                         locus_id=locus.locus_id,
                         grade=grade,
                         disease=locus.disease,
@@ -138,13 +187,20 @@ def enrich_repeat_grades(
                         status="resolved",
                         fetched_at=fetched_at,
                     )
-                    identity = merge_key(row)
-                    if identity not in seen:
-                        seen.add(identity)
-                        result.rows.append(row)
-                        result.added += 1
+                    identity = _row_key(row)
+                    old = by_key.get(identity)
+                    if (
+                        old is not None
+                        and not rederive
+                        and row.model_copy(update={"fetched_at": old.fetched_at}) == old
+                    ):
+                        row = old
+                    fresh.setdefault(identity, row)
             if progress is not None:
                 progress(done, len(keys))
+        result.added = len(fresh.keys() - by_key.keys())
+        result.rows = [*carried, *fresh.values()]
+        result._changed = result.rows != previous
         if write:
             result._commit(spec_dir)
         return result

@@ -13,6 +13,7 @@ locus, so the provider withholds it. Neither number is typed into an assertion.
 
 import csv
 import shutil
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -574,3 +575,13 @@ def test_an_unreadable_grade_withholds_rather_than_clearing(tmp_path: Path) -> N
     result = draft_repeat_loci(_spec(tmp_path), ["DMD"], catalogue=unread)
     assert any("evidence grades could not be read" in w for w in result.warnings)
     assert not [w for w in result.warnings if "grades as doubted" in w]
+
+
+def test_draft_withholds_contested_records_with_different_gene_case(
+    tmp_path: Path, catalogue: StrchiveCatalogue
+) -> None:
+    loci = [locus for locus in catalogue.loci if locus.gene == "ARX"]
+    loci[-1] = replace(loci[-1], gene="arx")
+    result = draft_repeat_loci(_spec(tmp_path), ["ARX"], catalogue=replace(catalogue, loci=tuple(loci)))
+    assert result.drafted == 0
+    assert result.withheld["contested_key"] == len(loci)

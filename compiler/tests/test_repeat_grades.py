@@ -31,7 +31,7 @@ def test_repeat_grade_signature_and_release() -> None:
 def test_orphan_checks_the_whole_repeat_key(tmp_path: Path, strict: bool) -> None:
     spec = shutil.copytree(_HTT, tmp_path / "spec")
     (spec / "repeat_grades.csv").write_text(
-        "gene,repeat_unit,locus_id,grade\nHTT,CAG,HD_HTT,Refuted\nHTT,CAA,HD_HTT,Provisional\n"
+        "gene,repeat_unit,locus_id,grade\nhtt,CAG,HD_HTT,Refuted\nHTT,CAA,HD_HTT,Provisional\n"
     )
     checked = validate_spec(spec, strict=strict)
     compiled = compile_module(spec, tmp_path / "out", strict=strict)
@@ -40,7 +40,7 @@ def test_orphan_checks_the_whole_repeat_key(tmp_path: Path, strict: bool) -> Non
         warnings = result.warnings
         (warning,) = [w for w in warnings if "absent from repeat_alleles.csv" in w]
         assert result.warnings_summary["derived_row_orphan"] == 1
-        assert "CAA" in warning and "CAG" not in warning
+        assert "('HTT', 'CAA')" in warning and "CAG" not in warning
 
 
 def test_repeat_grade_round_trip(tmp_path: Path) -> None:

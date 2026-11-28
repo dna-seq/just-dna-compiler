@@ -940,7 +940,9 @@ both modes. The gene decides, never the name's shape: every other gene keeps the
 haplotype-name rule. The refusal was legal under Principle 3 because the published-module scan of
 2026-11-04 found no `allele_function.csv` row with an `HLA-` gene (INTEGRATION_0_8 records it). G and P
 group designations (`*01:01:01G`, `*01:01P`) are outside the grammar PT2 decided and are refused too.
-In 0.10 the enricher also witnesses that spelling against a pinned IPD-IMGT/HLA release.
+In 0.10 the enricher recognizes the gene prefix case-insensitively and checks IPD-form names against
+a pinned IPD-IMGT/HLA release. Earlier releases accepted general haplotype names under a lowercase or
+mixed-case prefix, so those rows still validate.
 The authored grammar and the value carried through compile and reverse stay the same.
 See [the enricher reference](ENRICHER.md#hla-allele-assignments-on-this-host-rm350).
 
@@ -1496,7 +1498,8 @@ is.
 **STRchive association grades (0.10, RM294).** `repeat_grades.csv` compiles to
 `repeat_grades.parquet`. The key is `(gene, repeat_unit, locus_id, grade)`. The first two fields
 join to the authored repeat and `locus_id` identifies STRchive’s disease record. Each member of
-the record’s evidence list occupies its own row. `grade` is open and verbatim. Known words are
+the record’s evidence list occupies its own row. Genes compare through `gene_key`, and the row
+retains the first authored gene spelling. `grade` is open and preserves the word after trimming cell padding. Known words are
 `Definitive`, `Strong`, `Moderate`, `Limited`, `Disputed`, `Refuted` and `Provisional`
 (STRchive’s *not yet curated*). An empty grade means the matched record supplied no word.
 `repeat_grade_signature` hashes the key and `dataset`. The descriptive disease label and

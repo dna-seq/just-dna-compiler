@@ -14,6 +14,7 @@ from just_dna_enricher.acmg import (
     AcmgListUnavailable,
     AcmgReport,
     AcmgSfError,
+    AcmgSfList,
     AcmgVerdict,
     check_acmg_sf,
     fetch_acmg_page,
@@ -405,3 +406,19 @@ def test_the_reported_run_withholds_rather_than_reporting_a_pass(no_ambient_cach
     assert report.checked == 0
     assert not report.clean, "a run that consulted no list must not report as one that agreed"
     assert set(report.clean) == {"offline"}, "and it must say which of the two it was"
+
+
+def test_acmg_membership_joins_the_authored_gene(sf_list: AcmgSfList) -> None:
+    (verdict,) = check_acmg_sf([_variant("hFe")], sf_list).verdicts
+    assert verdict.verdict == "unstated"
+    assert all(entry.disease in verdict.message for entry in sf_list.entries_for("HFE"))
+
+
+def test_acmg_conditions_join_the_authored_gene(sf_list: AcmgSfList) -> None:
+    expected = [f for f in sf_list.findings if f.gene == "HFE"]
+    assert expected and sf_list.entries_for("hFe") == expected
+
+
+def test_acmg_report_groups_spellings_of_an_authored_gene(sf_list: AcmgSfList) -> None:
+    verdicts = check_acmg_sf([_variant("hFe"), _variant("HFE")], sf_list).verdicts
+    assert AcmgReport.by_gene(verdicts) == [("hFe", [v.row for v in verdicts], verdicts[0].message)]

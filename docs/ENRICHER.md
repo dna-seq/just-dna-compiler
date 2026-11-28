@@ -44,7 +44,7 @@ the mode** (`best_effort` warns and carries on; `strict` refuses). What exists t
 | **Published refutation** | an authored `direction` vs the refutations CIViC publishes for the same variant (0.7, RM170) | `civic_refutation.compare_refutations` → `enrich()` (**warns in both modes**; the record names its `status_basis`, because on the `accepted` basis the class is empty by construction) | `authored` | `civic` | `published_refutation` |
 | **Literature coverage** | which papers a variant-literature index holds for a module's alleles, and **at which tier** (0.7, RM167) | `litvar.check_literature_coverage` (reports only; allele-resolved, position-only and absent are three outcomes) | `authored` | `litvar` | `literature_coverage` |
 | **Evidence-status currency** | a recorded `StudyRow.confidence` — a curation status a citing source published when the row was drafted — vs what that source says about the same item **now** (0.7, RM160) | `civic_citations.check_evidence_status_currency` → `enrich()` (**warns in both modes**; a status accepted or rejected since, or a citation added since. Not `dataset_currency`: that one asks which release, this one asks whether one judgement moved) | `civic` | `civic` | `evidence_status_currency` |
-| **Allele function** | authored `function_status` vs PharmVar and CPIC | `pgx.enrich_pgx` (**warns in both modes**) | `authored` | `cpic`, `pharmvar` | `allele_function` |
+| **Allele function** | authored `function_status` vs PharmVar and CPIC, querying each distinct gene in its first authored spelling | `pgx.enrich_pgx` (**warns in both modes**) | `authored` | `cpic`, `pharmvar` | `allele_function` |
 | **Declared use** | the caller's `--use` vs a source's terms | `licensing.check_declared_use` (**refuses in both modes**) | — | — | — *(an acquisition gate, not a comparison)* |
 | **Drafted vs authored rows** | a source's current row vs the one already in the CSV | `just_dna_compiler.draft.append_rows` (reports `differs`; never rewrites) | — | — | — *(a drafting report; it runs outside `enrich()`)* |
 | **A drafted table's licence row** | does `sources.csv` record what licensed the rows this append is landing? | `drafting.licence_commit`, handed to every `append_*` as `before_commit` (RM232) | — | — | refuses the run — the table is not committed, so a module never carries drafted rows with no licence record |
@@ -1945,7 +1945,10 @@ headers. Their original bytes live under `data/`. The root carries the tagged li
 `release.json`, including each list's digest. For a local build, pass `--source` to
 `ipd-imgt-hla build` with the path to `Allelelist.txt` beside `Deleted_alleles.txt` and `LICENCE.md`.
 
-For a module naming HLA alleles, `enrich` consults this release and records
+For a module naming HLA alleles, `enrich` reads `allele_function.csv`, compares the gene symbol
+case-insensitively and preserves the allele fields and expression suffix. The verification detail
+names the table that supplied the roster. A load error, including a scaffold placeholder, skips
+the HLA check with the reason in both modes. For a readable roster, `enrich` consults this release and records
 `hla_allele_assignment` in `verification.json`. An exact assignment or a longer assignment with
 the same complete fields witnesses the name. A stated expression suffix must match. A live assignment
 wins if the deleted list also contains that name. An exact deleted name gets the curators' description.
@@ -5429,7 +5432,8 @@ endpoint to check an identifier is a read rather than an acquisition anyone has 
 
 `VariantRow.acmg_sf` has been materialized into `weights.parquet` since 0.4 and checked against
 nothing. The compiler cannot hold a gene list (that is the un-injected reference RM21 taught), and no
-pass here had one, so the column was assertable and unfalsifiable. This closes it.
+pass here had one, so the column was assertable and unfalsifiable. The check compares gene symbols
+case-insensitively for membership, condition names and grouping. Each group displays its first authored spelling.
 
 **Read this part first: the scraped list is a release behind, and the check now says so.** ACMG
 published **SF v3.3** in June 2025 — 84 genes over 100 gene-condition rows, adding `ABCD1`, `CYP27A1`
@@ -5640,13 +5644,21 @@ into every output row.
 
 * A match writes one row per catalogue record and evidence word. Two disease records sharing a
   motif both survive. A matched record stating no evidence still has a row with an empty grade.
-* A key absent from the catalogue has no new row and appears in the pass’s `missing` list.
+* A key absent from a readable catalogue appears in `missing` and loses any old grade rows.
+* The pass reports each module key that reaches multiple catalogue records once as contested.
+* A load error in `repeat_alleles.csv` skips the grade pass with its reason, including under `--strict`.
 * If the catalogue cannot be read, the report lists the keys under `could_not_ask` and gives the
   reason. Existing grade and licence rows survive.
 
-The pass merges by the full grade key, recording STRchive’s MIT terms at layer `repeat_grade`
-when it commits new rows. `dataset` comes from the snapshot’s `release.json` and stays empty
-for an unlabelled file. The grade describes the association independently of the module’s tier
+Each answered repeat takes the current records, disease labels and evidence words from STRchive.
+The join compares genes through `gene_key` and keeps the first authored spelling. It trims padding
+from each evidence word. An ordinary run preserves the timestamp of an identical answer, and
+`--rederive` records the fresh lookup time. A repeat removed from the module keeps its sidecar rows
+for the compiler’s `derived_row_orphan` warning.
+
+The grade table commits with STRchive’s MIT terms at layer `repeat_grade`. The licence row names
+the release shared by the committed rows. It stays unlabelled for mixed or unlabelled releases.
+A full re-answer retires a licence row for a source whose last grade disappeared. The grade describes the association independently of the module’s tier
 and the author’s bands.
 
 ### Drafting the identity half (`strchive_draft.py`) — `draft-repeats`
@@ -7171,7 +7183,7 @@ the checks `enrich()` puts whose findings then survived nowhere at all:
 | `placement_agreement` | `detail=` — up to `DETAIL_LIMIT` disagreements naming both placements, the one-witness count over every placed rsID, and the undecided respellings; and **per row** in `resolution.csv` as `placement_witness` / `placement_verdict` |
 | `rsid_currency` | **per row in `resolution.csv`** — `rsid_status` and `rsid_current` are columns of the written file |
 | `genome_build_agreement` | count only, but its subjects *are* `reference_allele`'s mismatches, so the candidate rows are reachable |
-| `hla_allele_assignment` | `detail=` gives counts and examples by outcome, with the release and deleted-name descriptions when available |
+| `hla_allele_assignment` | `detail=` names the roster table and gives counts and examples by outcome, with the release and deleted-name descriptions when available |
 | `clinical_significance` | `detail=` since S70, grouped on `opposed`. Before that: the logger, and nothing else |
 
 The conflicts always existed at runtime — `compare_clin_sig` returns them and every one is logged —

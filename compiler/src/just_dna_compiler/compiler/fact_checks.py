@@ -728,7 +728,12 @@ def _currency_group_names(groups: list[tuple]) -> str:
 def _cross_check_repeat_grades(rows: list[RepeatGradeRow], repeats: list[RepeatAlleleRow]) -> list[str]:
     """Warn once for each set of stale repeat keys, irrespective of the source's grade."""
     keys = {repeat_key(row) for row in repeats}
-    orphans = sorted({repeat_key(row) for row in rows} - keys)
+    absent: dict[tuple[str, str], tuple[str, str]] = {}
+    for row in rows:
+        key = repeat_key(row)
+        if key not in keys:
+            absent.setdefault(key, (row.gene, row.repeat_unit))
+    orphans = sorted(absent.values())
     if not orphans:
         return []
     return [

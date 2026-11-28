@@ -182,7 +182,7 @@ def _module_genes(spec_dir: Path) -> list[str]:
     Scope comes from the module saying which genes it covers; querying anything else would invent
     scope the author did not ask for (the same rule the gene-metrics pass follows).
     """
-    genes: list[str] = []
+    genes: dict[str, str] = {}
     for name, model, attr in _GENE_TABLES:
         path = spec_dir / name
         if not path.exists():
@@ -192,9 +192,9 @@ def _module_genes(spec_dir: Path) -> list[str]:
             raise PgxEnrichmentError(f"{name} is invalid: {errors[0]}")
         for row in rows:
             value = getattr(row, attr, None)
-            if value and value not in genes:
-                genes.append(value)
-    return genes
+            if value:
+                genes.setdefault(gene_key(value), value)
+    return list(genes.values())
 
 
 def _authored_functions(spec_dir: Path) -> list[AlleleFunctionRow]:

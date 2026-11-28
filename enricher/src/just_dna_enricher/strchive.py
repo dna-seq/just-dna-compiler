@@ -65,6 +65,7 @@ from just_dna_format.binning import (
 )
 from just_dna_format.manifest import VerificationRecord
 from just_dna_format.snapshot import read_release
+from just_dna_format.spelling import gene_key
 
 from just_dna_enricher.locations import (
     RELEASE_FILENAME,
@@ -192,17 +193,21 @@ class StrchiveCatalogue:
     source_url: str | None = None
     path: Path | None = None
 
-    def by_gene_and_motif(self) -> dict[tuple[str, str], list[StrchiveLocus]]:
+    def by_gene_and_motif(
+        self, *, comparison_keys: bool = False
+    ) -> dict[tuple[str, str], list[StrchiveLocus]]:
         """`(gene, motif)` → every locus claiming it, in file order.
 
+        Joins request comparison keys. The default exposes the published gene spellings.
         A **list**, not a locus. `ARX` carries two loci and `HOXA13` three, all keyed `(gene, 'NGC')`
         — a real fan-out in the published file. Picking one would make the comparison depend on file
         order, so the caller reports the contested key and compares nothing (`@multiplicity-is-a-finding`).
         """
         index: dict[tuple[str, str], list[StrchiveLocus]] = {}
         for locus in self.loci:
+            symbol = gene_key(locus.gene) if comparison_keys else locus.gene
             for motif in locus.motifs:
-                index.setdefault((locus.gene, motif), []).append(locus)
+                index.setdefault((symbol, motif), []).append(locus)
         return index
 
     def genes(self) -> frozenset[str]:
@@ -251,9 +256,9 @@ def _strings(raw: object) -> tuple[str, ...]:
     if raw is None:
         return ()
     if isinstance(raw, str):
-        return (raw,)
+        raw = [raw]
     if isinstance(raw, list):
-        return tuple(str(item) for item in raw if item)
+        return tuple(word for item in raw if item and (word := str(item).strip()))
     raise StrchiveError(f"expected a string or a list of strings, got {type(raw).__name__}")
 
 
@@ -292,7 +297,7 @@ def parse_locus(record: dict) -> StrchiveLocus:
         mondo=_strings(record.get("mondo")),
         ref_copies=ref_copies,
         locus_structure=structure,
-        disease=(record.get("disease") or None),
+        disease=(record.get("disease") or "").strip() or None,
         evidence=_strings(record.get("evidence")),
     )
 
@@ -665,20 +670,20 @@ def check_repeat_bands(
 
     loaded = catalogue if isinstance(catalogue, StrchiveCatalogue) else load_strchive_catalogue(catalogue)
     result.dataset = loaded.dataset
-    index = loaded.by_gene_and_motif()
-    known_genes = loaded.genes()
+    index = loaded.by_gene_and_motif(comparison_keys=True)
+    known_genes = {gene_key(symbol) for symbol in loaded.genes()}
 
     for group_key, bins in groups.items():
         gene = getattr(bins[0], "gene", None) or ""
         motif = getattr(bins[0], "repeat_unit", None) or ""
-        candidates = index.get((gene, motif), [])
+        candidates = index.get((gene_key(gene), motif), [])
         if not candidates:
             # Two different absences, two different sentences — a reader chasing "why was my locus not
             # checked" needs to know whether to look at the gene or at the motif's orientation.
             reason = (
                 f"{format_group_key(group_key)}: {SOURCE_NAME} lists {gene} but under no motif "
                 f"matching {motif!r}, so the two may not be the same locus"
-                if gene in known_genes
+                if gene_key(gene) in known_genes
                 else f"{format_group_key(group_key)}: {SOURCE_NAME} carries no locus for {gene}"
             )
             result.withheld.append((group_key, reason))

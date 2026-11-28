@@ -13,6 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from just_dna_format.base import since, vocabulary
 from just_dna_format.binning import RepeatAlleleRow
 from just_dna_format.normalize import normalize_utc_timestamp
+from just_dna_format.spelling import gene_key
 from just_dna_format.vocab import VALID_RESOLUTION_STATUS, check_vocab
 
 
@@ -80,4 +81,4 @@ REPEAT_GRADE_FACT_FIELDS: tuple[str, ...] = (*RepeatGradeRow._KEY_FIELDS, "datas
 
 def repeat_key(row: RepeatAlleleRow | RepeatGradeRow) -> tuple[str, str]:
     """The authored repeat identity shared by a grade and every band it describes."""
-    return row.gene, row.repeat_unit
+    return gene_key(row.gene), row.repeat_unit

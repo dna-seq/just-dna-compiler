@@ -700,3 +700,23 @@ def test_the_fixture_still_describes_the_published_catalogue(tmp_path: Path) -> 
         assert by_id[locus.locus_id].motifs == locus.motifs, locus.locus_id
         assert bool(by_id[locus.locus_id].bands) == bool(locus.bands), locus.locus_id
     assert built.dataset == "strchive_v2.26.0"
+
+
+@pytest.mark.parametrize("motif", ["CAG", "CAA"])
+def test_band_check_matches_a_mixed_case_gene(
+    tmp_path: Path, catalogue: StrchiveCatalogue, motif: str
+) -> None:
+    spec = _module(tmp_path, "htt_repeat_expansion")
+    table = spec / "repeat_alleles.csv"
+    table.write_text(table.read_text().replace("HTT", "htt").replace("CAG", motif))
+    result = check_repeat_bands(spec, catalogue=catalogue, write=False)
+    if motif == "CAG":
+        assert result.compared and not result.withheld
+    else:
+        assert result.withheld and all("under no motif" in why for _, why in result.withheld)
+
+
+def test_catalogue_index_keeps_its_published_spelling(catalogue: StrchiveCatalogue) -> None:
+    assert set(catalogue.by_gene_and_motif()) == {
+        (locus.gene, motif) for locus in catalogue.loci for motif in locus.motifs
+    }

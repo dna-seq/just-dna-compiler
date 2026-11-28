@@ -176,13 +176,9 @@ _COMPARED = frozenset(name for name in COMPARISON_KEYS if name != "chrom")
 #: Sites comparing a source's own records among themselves — one spelling, one source, never an authored
 #: cell against anything — each with the reason. An equality, so a site fixed or added moves it.
 _ONE_SOURCE_SITES: dict[tuple[str, str], str] = {
-    ("enricher/src/just_dna_enricher/acmg.py", "f.gene == gene"): "ACMG SF findings against their own list",
     ("enricher/src/just_dna_enricher/acmg.py", "{f.gene for f in findings}"): "the ACMG SF list's own genes",
     ("enricher/src/just_dna_enricher/acmg.py", "len({f.gene for f in findings}) < MIN_GENES"): (
         "the ACMG SF list's own genes"
-    ),
-    ("enricher/src/just_dna_enricher/strchive_draft.py", "(locus.gene, motif) in contested"): (
-        "STRchive's loci against their own contested set"
     ),
     (
         "enricher/src/just_dna_enricher/acmg_build.py",
@@ -192,9 +188,6 @@ _ONE_SOURCE_SITES: dict[tuple[str, str], str] = {
         "enricher/src/just_dna_enricher/cli/acmg_commands.py",
         "{f.gene for f in sf_list.findings if f.since_version == sf_list.version}",
     ): "the ACMG SF list's own genes",
-    ("enricher/src/just_dna_enricher/strchive.py", "index.setdefault((locus.gene, motif), [])"): (
-        "STRchive's loci indexed by their own gene"
-    ),
 }
 
 
@@ -233,6 +226,15 @@ def _comparison_sites(path: Path) -> set[str]:
                 continue
             if any(_raw(side, parents) for side in (node.left, *node.comparators)):
                 found.add(ast.unparse(node))
+        elif (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "fromkeys"
+            and node.args
+            and isinstance(node.args[0], ast.GeneratorExp)
+            and _raw(node.args[0].elt, parents)
+        ):
+            found.add(ast.unparse(node))
         elif isinstance(node, (ast.SetComp, ast.DictComp)):
             element = node.elt if isinstance(node, ast.SetComp) else node.key
             if _raw(element, parents):

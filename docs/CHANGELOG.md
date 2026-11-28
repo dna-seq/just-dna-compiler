@@ -41,6 +41,20 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md). The `0.8` branch merged into `main` at the 0.8.0 cut (2026-11-05).
 
+## 2026-11-28 — 0.10 review round 1: repeat regrades replace old answers and HLA checks name their input (a minor, for 0.10)
+
+**C3 (RM294).** When STRchive revises a locus, the next enrich run replaces its grades, disease label and
+release. A full re-answer refreshes the licence row. A repeat with several catalogue records keeps them
+all and counts once as contested. Padding around an evidence word no longer creates duplicate rows.
+An unavailable catalogue leaves recorded grades in place, including under `--rederive`.
+
+**C5.** Repeat grades and bands, HLA assignments, the PGx gene roster and ACMG secondary findings
+compare gene symbols through `gene_key`. Authored spellings survive the join.
+
+**C4 (RM350).** The HLA assignment record names the table that supplied its names, currently
+`allele_function.csv`. An unreadable allele-function or repeat-allele table skips its own pass and
+gives the load error in either mode. The IPD reader refuses a final section title with no CSV header.
+
 ## 2026-11-28 — RM302: a conclusion can carry lay and table-cell wordings (a minor, for 0.10)
 
 Authors can add `conclusion_lay` and `conclusion_concise` to variants, diplotypes, drug-response

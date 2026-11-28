@@ -72,6 +72,7 @@ from just_dna_format.manifest import VerificationRecord
 from just_dna_format.normalize import now_utc_iso
 from just_dna_format.snapshot import read_release
 from just_dna_format.spec import VariantRow
+from just_dna_format.spelling import gene_key
 
 from just_dna_enricher.locations import (
     ACMG_SNAPSHOT_FILENAME,
@@ -207,7 +208,8 @@ class AcmgSfList:
 
     def entries_for(self, gene: str) -> list[SecondaryFinding]:
         """Every condition this gene is listed for, in page order (P7: never set order)."""
-        return [f for f in self.findings if f.gene == gene]
+        key = gene_key(gene)
+        return [f for f in self.findings if gene_key(f.gene) == key]
 
     @property
     def dataset(self) -> str:
@@ -335,13 +337,12 @@ class AcmgReport:
         caller that wants them; the grouping is what a report prints. First-occurrence order, never
         set order (P7).
         """
-        grouped: dict[str, tuple[list[int], str]] = {}
+        grouped: dict[str, tuple[str, list[int], str]] = {}
         for verdict in verdicts:
             gene = verdict.gene or "(no gene)"
-            if gene not in grouped:
-                grouped[gene] = ([], verdict.message)
-            grouped[gene][0].append(verdict.row)
-        return [(gene, rows, message) for gene, (rows, message) in grouped.items()]
+            _, rows, _ = grouped.setdefault(gene_key(gene), (gene, [], verdict.message))
+            rows.append(verdict.row)
+        return list(grouped.values())
 
 
 def _strip(fragment: str) -> str:
@@ -459,14 +460,14 @@ def fetch_acmg_page(url: str = DEFAULT_ACMG_URL, *, timeout: float = 60.0) -> st
 
 def check_acmg_sf(variants: list[VariantRow], sf_list: AcmgSfList) -> AcmgReport:
     """Compare each row's authored `acmg_sf` against the fetched list. Reports, never repairs."""
-    listed = sf_list.genes
+    listed = {gene_key(gene) for gene in sf_list.genes}
     verdicts: list[AcmgVerdict] = []
     for index, variant in enumerate(variants, start=1):
         gene = (variant.gene or "").strip()
         if not gene:
             verdicts.append(AcmgVerdict(index, None, variant.acmg_sf, "unchecked", "row names no gene"))
             continue
-        on_list = gene in listed
+        on_list = gene_key(gene) in listed
         if variant.acmg_sf is None:
             if on_list:
                 verdicts.append(

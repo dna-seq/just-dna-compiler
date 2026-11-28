@@ -20,6 +20,7 @@ from just_dna_enricher.gene_metrics import GeneMetricsEnrichmentError, module_ge
 from just_dna_enricher.gene_validity import GeneValidityError
 from just_dna_enricher.gene_validity import _module_genes as validity_genes
 from just_dna_enricher.identifiers import _id_bearing_tables, authored_identifiers
+from just_dna_enricher.pgx import _module_genes as pgx_genes
 
 _YAML = (
     "schema_version: '1.0'\nmodule:\n  name: rm157\n  title: RM157\n  description: d\n  report_title: RM157\n"
@@ -155,3 +156,12 @@ def test_a_model_organism_gene_is_checked_for_currency_but_is_not_the_modules_sc
     assert "IGF1R" in authored_identifiers(spec, "gene").ids
     assert module_genes(spec) == ["MTHFR"]
     assert validity_genes(spec) == ["MTHFR"]
+
+
+def test_pgx_roster_keeps_the_first_gene_spelling_across_tables(tmp_path: Path) -> None:
+    spec = _spec(
+        tmp_path,
+        allele_function__csv=_ALLELE_FUNCTION.replace("CYP2C19", "Cyp2c19"),
+        haplotypes__csv=_HAPLOTYPES,
+    )
+    assert pgx_genes(spec) == ["Cyp2c19"]
