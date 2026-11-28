@@ -259,6 +259,12 @@ patches right after real use started, so the pm reads an audit sceptically: the 
 - **Republishing encumbered corpora** (SNPedia, CC BY-NC-SA) is a use case the maintainer envisions; the
   NC and SA terms are recorded as data, never treated as a refusal.
 - Filed 2026-11-27 as kit #677: `ask.py --epic` has no kind for a minor's scope interview (0.10's went as `dream`, #466).
-- **0.10, 2026-11-27:** RM385's trial done and decided (ec3bcb75: a FASTA by URI, identity per contig); PM.md points
-  at ROADMAP_0_10.md (4ef6d003). Next: the desk epic #466's answers (or its defaults) placed into ROADMAP_0_10.md, then
-  the lead builds; the consumers' preview before the first audit (an even minor).
+- **0.10, 2026-11-28: the cut is called** (1d896a3e). Scope whole and built; review rounds 1 and 2 placed in
+  ROADMAP_0_10.md, both sets of fixes on `0.10` (12975c1d, 0ded96cd). The lead prepares the cut: derivation record
+  0.10.0, floors, INTEGRATION_0_10 (old-reader breaks incl. forbid-model fields, GCF_000001405.40's 393 s first pass,
+  module-creator notes), the five constants documented, an RMn in 0.11 per known issue. Desk #467-#470 stay open on
+  their defaults until the cut. **Next for the pm:** the moment the person publishes 0.10, open 0.11 (odd, fixes):
+  ROADMAP_0_11.md with RM469, RM459 (waits on the registry), round 1's 1/5/8/C4 widening, round 2's R1/R2/R4b/R5/R6,
+  single 2, C6's walk; parked lanes to file: the FASTA provisioning lane, RM265's in-place editing. Reflections owed
+  (report-to-kit --behavior) on v0.1.259, v0.1.274, v0.1.287. ntfs3 zeroing on /data: check with
+  `git hash-object F` vs `git ls-files -s F`; specimens to /data/ntfs3-evidence/.

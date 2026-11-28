@@ -100,6 +100,8 @@ with its catch and no third round. Everything else is a known issue for 0.11.
   out-of-range reads were read lightly. They do not block, and there is no third round.
 - **Filing:** the lead files an `RMn` in 0.11's roadmap for each known issue, round 1's included (1, 5, 8, C4's
   widening). The cut's INTEGRATION_0_10 and CHANGELOG entry cite each.
+- **Done (the lead, 2026-11-28):** every fix placed above is on 0.10 at `0ded96cd` (merged suite green bar the floor
+  guard, which the cut moves). The review is closed and **the cut is called** (the pm, 2026-11-28).
 
 ---
 
