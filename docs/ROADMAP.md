@@ -49,7 +49,7 @@ to [CHANGELOG.md](CHANGELOG.md) / [COMPILER.md](COMPILER.md).
 
 **Status:** **0.9.0 is cut, and not yet tagged or published** — all three packages at `0.9.0`, cut on
 2026-11-19 from the `0.9` branch; publishing is the maintainer's, and the tag `v0.9.0` follows the publish. What a
-consumer checks and changes is [INTEGRATION_0_9.md](INTEGRATION_0_9.md), and the cut's own entry is in
+consumer checks and changes is [INTEGRATION_0_9.md](history/INTEGRATION_0_9.md), and the cut's own entry is in
 [CHANGELOG.md](CHANGELOG.md). The previous cut was **`v0.8.10`** (2026-11-19, all three packages at `0.8.10`),
 the last of ten patches on the 0.8 line, which is published and tagged before 0.9.0 is; PyPI's latest at the
 0.9.0 cut was 0.8.9.

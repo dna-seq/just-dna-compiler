@@ -39,6 +39,9 @@ The chain is **first-hit-wins**, in this order:
    ```text
    enriched: my_module/resolution.csv
    rows: 12  fully_resolved: True  sources: ['cache']
+   Answer store https://eutils.ncbi.nlm.nih.gov/entrez/eutils?db=snp release=Build250306-1408.1 stored=0 live=1
+   Answer store seqrepo+https://services.genomicmedlab.org/seqrepo release=SQ.0iKlIQk2oZLoeOG9P1riRU6hvL5Ux8TV stored=0 live=1
+     …
      compared recorded subjects: rs1800562
    ```
 
@@ -55,11 +58,21 @@ The chain is **first-hit-wins**, in this order:
 5. **Live Ensembl** — REST, paced under Ensembl's published budget.
 6. **gnomAD** — last.
 
-Online runs share a per-host answer store. Set `JUST_DNA_ANSWER_STORE` to a file or existing directory
-to choose its disk. An unchanged source release lets a second module reuse the subjects the first one
-asked about. The `stored` and `live` counts in the report show which route answered. To bypass the store
-for one run, use `just-dna-enricher --no-answer-store enrich --rederive ./my_module`. To disable it for
-the shell, use `export JUST_DNA_ANSWER_STORE=`. [Store settings and keys](ENRICHER.md#the-live-answer-store).
+Since 0.10 the live answers (Ensembl REST, NCBI E-utilities, remote seqrepo) are kept in a per-host
+answer store, **on by default**, at `live-answers.sqlite3` under the cache base. Set
+`JUST_DNA_ANSWER_STORE` to a file or an existing directory to put it elsewhere. Each source is asked its
+release once per run, and while that release is unchanged a later run, for this module or another, reads
+the subjects already asked from the store. The `Answer store` lines show which route answered. The run
+above, repeated on a second copy:
+
+```text
+Answer store https://eutils.ncbi.nlm.nih.gov/entrez/eutils?db=snp release=Build250306-1408.1 stored=1 live=0
+Answer store seqrepo+https://services.genomicmedlab.org/seqrepo release=SQ.0iKlIQk2oZLoeOG9P1riRU6hvL5Ux8TV stored=1 live=0
+```
+
+To bypass the store for one command, pass `--no-answer-store` (before or after `enrich`, as in
+`just-dna-enricher --no-answer-store enrich --rederive ./my_module`). To turn it off for the shell, use
+`export JUST_DNA_ANSWER_STORE=`. [Store settings and keys](ENRICHER.md#the-live-answer-store).
 
 Every row now names the release that answered it in `source_release`
 (`ensembl-variation-2026_07_13-vep116.0` for the split snapshot, `clinvar_<date>` for ClinVar,
@@ -95,7 +108,7 @@ Run against `reference_examples/hfe_hemochromatosis` as it stood at v0.7.3, the 
 each subject whose answer changed (one shown):
 
 ```text
-  re-derived: rs1800562: rs1800562|rs1800562|6|26092913|G|A|GRCh38|0 → rs1800562|rs1800562|6|26092913|G|A,T|GRCh38|0 (moved: the source names a different event)
+  re-derived: rs1800562: rs1800562|rs1800562|6|26092913|G|A|GRCh38|0 → rs1800562|rs1800562|6|26092913|G|A,T|GRCh38|0 (gained an allele: every recorded event is still answered, and the source names one more)
 ```
 
 Read that diff before you compile: resolutions move as data, so `artifact.digest` moves where a fill
@@ -120,14 +133,45 @@ just-dna-enricher enrich ./my_module --strict     # fail unless every variant re
 `--strict` refuses rather than half-writing: an enrich run is a transaction, and a refused one commits
 nothing.
 
-To check REF and left-align and mint indels offline, set `reference_uri` to the absolute URI of
-your uncompressed GRCh38 FASTA, in the form `fasta+file:///abs/path.fa`, with `path.fa.fai` beside
-it. To create the index, run `just-dna-enricher fasta index PATH` on the unpacked FASTA. Then run
-`just-dna-enricher enrich ./my_module --offline --sequence-uri "$reference_uri"`. Each contig
-must match its GRCh38 refget digest. The output reports how many rows the local FASTA checked
-and names contigs it could not read. The GRCh37 wrong-build diagnosis still requires the network.
-To see which chromosomes can supply bases before running enrichment, use
-[`SequenceProxy.contig_identity` with your local reference](ENRICHER.md#local-grch38-reference).
+### Offline indels against your own GRCh38 FASTA
+
+Since 0.10 an offline run can check REF, left-align indels and mint their VRS ids against a GRCh38 FASTA
+you provide; no lane publishes one. Unpack it and index it once: `fasta index` writes the five-column
+`.fai` beside it, the same bytes `samtools faidx` writes. Run on a copy of the repository's
+mitochondrial fixture (`assets/grch38_mt_fasta/`; a whole genome is indexed the same way):
+
+```bash
+just-dna-enricher fasta index ./ref/Homo_sapiens.GRCh38.dna.primary_assembly.MT.fa
+```
+
+```text
+ref/Homo_sapiens.GRCh38.dna.primary_assembly.MT.fa.fai (1 contig)
+```
+
+Then pass the genome as a `fasta+file://` URI with an absolute path:
+
+```bash
+just-dna-enricher enrich ./my_module --offline --sequence-uri fasta+file:///abs/path/GCF_000001405.40_GRCh38.p14_genomic.fna
+```
+
+Each contig is checked against its GRCh38 refget digest before it is read, and one that does not match
+stays unread, named in the report. NCBI's `GCF_000001405.40` binds all 25 primary contigs. The first
+digest pass over the whole file took about 393 s when measured for 0.10; the digests are then cached
+beside it, so later runs skip it. On a copy of
+`reference_examples/pathogenic_clinvar` with its `resolution.csv` deleted, the run took 18 s and
+reported:
+
+```text
+rows: 339  fully_resolved: True  sources: ['authored', 'cache', 'clinvar']
+  reference-allele check: compared 339 row(s) against local FASTA
+  wrong-build diagnosis not run: --offline (requires the GRCh37 service)
+```
+
+All 339 rows came back `left_aligned` and with a `vrs_id`. The same run without `--sequence-uri` says
+`reference-allele check not run: --offline with no local FASTA`, leaves `left_aligned` blank on 183
+rows, and reports 188 alleles with no VRS id.
+To see which chromosomes a FASTA can serve before a run, use
+[`SequenceProxy.contig_identity`](ENRICHER.md#local-grch38-reference).
 
 ### The build
 
@@ -141,11 +185,11 @@ decides this.
 ### The checks it runs while it is there
 
 Each is a flag, each defaults on, and each **reports**. On `reference_examples/longevity_studies` an
-ordinary `enrich` draws only a currency line: its licence row names a ClinVar release older than the
-one ClinVar publishes today.
+ordinary `enrich` draws, beside the answer-store counts, only currency findings: its licence row names a
+ClinVar release older than the one ClinVar publishes today.
 
 ```text
-  dataset moved on: clinvar (resolution): drafted from clinvar_2026-06-27, now clinvar_2026-11-15
+  dataset moved on: clinvar (resolution): drafted from clinvar_2026-06-27, now clinvar_2026-11-22
 ```
 
 | Flag | Asks |
@@ -162,6 +206,24 @@ The findings are recorded in `verification.json`, and a later `compile --strict`
 **A record written by an older enricher is not re-examined**, so it carries none of the diagnoses
 added since. After upgrading the enricher, re-run `enrich` on a module you mean to compile strictly, so
 the record, and the gate reading it, reflect the current checks (S78).
+
+### STRchive's grade for each repeat
+
+Since 0.10, for a module with `repeat_alleles.csv`, `enrich` also fills the derived `repeat_grades.csv`
+from the STRchive lane: the catalogue's evidence grade for each repeat, verbatim, with the disease, the
+record and its release. On a copy of `reference_examples/htt_repeat_expansion`, offline:
+
+```text
+  repeat grades: 1 matched, 0 without a STRchive record, 0 contested, 1 row(s) added
+```
+
+```text
+gene,repeat_unit,locus_id,grade,disease,dataset,source,status,fetched_at
+HTT,CAG,HD_HTT,Definitive,Huntington disease,strchive_v2.26.0,strchive,resolved,2026-11-28T10:08:49Z
+```
+
+The run adds a `strchive,repeat_grade` row to the licence table, and the compile emits
+`repeat_grades.parquet` and a `repeat_grades` summary in the manifest.
 
 ## 2. Draft — rows from a source
 
@@ -227,7 +289,7 @@ just-dna-enricher cache prune       # asks before deleting
 `cache status` prints one line per lane (three shown):
 
 ```text
-  ensembl       present  <base>/ensembl_variations  ensembl-variation-2026_07_13-vep116.0  14539.7 MB
+  ensembl       present  <base>/ensembl_variations  ensembl-variation-2026_07_13-vep116.0  14540.0 MB
   opentargets   present  <base>/opentargets  opentargets_26.09  5455.6 MB
   clinvar_gkm   absent   — ClinVar-GKM indels, the placement witness (RM292's checks, RM267); provision with `cache pull` or `clinvar-gkm build`
 ```
@@ -235,9 +297,30 @@ just-dna-enricher cache prune       # asks before deleting
 `cache status` reads only, so it cannot see whether a lane's repository has anything published; a lane
 that can be pulled or built names both routes.
 
-For the HLA check, run `just-dna-enricher cache pull --only ipd_imgt_hla` on each host.
-It fetches the curators' tagged release directly. Subsequent offline runs can check HLA names against
-that release. The curators ask operators to avoid mirrors.
+Since 0.10 `enrich` checks the HLA allele names in `allele_function.csv` against a pinned
+IPD-IMGT/HLA release, read from the `ipd_imgt_hla` lane. The lane is **per host** and has no published
+snapshot, because the curators ask that their lists not be mirrored: provision it on each machine with
+`cache pull --only ipd_imgt_hla`, which fetches the curators' tagged release, or build it with
+`cache rebuild --only ipd_imgt_hla --pin ipd_imgt_hla=3.66.0`. A copy elsewhere is named with
+`JUST_DNA_IPD_IMGT_HLA_CACHE`, and `cache status` then lists it:
+
+```text
+  ipd_imgt_hla  present  <dir>/ipd_imgt_hla  ipd_imgt_hla_3.66.0  1.0 MB — refused: the curators ask hosts not to mirror the lists and apply CC BY-ND.
+```
+
+On a copy of `reference_examples/hla_alleles` with two names added, a renamed `HLA-A*01:34N` and an
+invented `HLA-B*57:999`, an offline `enrich` against that copy reports both, in either mode:
+
+```text
+hla_allele_deleted: 1 deleted HLA allele name(s) in ipd_imgt_hla_3.66.0: A*01:34N ('Sequence shown to be expressed at low levels and renamed A*01:01:38L (March 2011)')
+hla_allele_not_assigned: 1 HLA allele name(s) not assigned in release ipd_imgt_hla_3.66.0: B*57:999
+…
+3 assigned HLA allele name(s) in ipd_imgt_hla_3.66.0: A*02:01, B*57:01, DRB1*15:01
+```
+
+The result is a `hla_allele_assignment` record in `verification.json`, and the run writes the curators'
+licence and citations into the licence table. [ENRICHER.md](ENRICHER.md#hla-allele-assignments-on-this-host-rm350)
+has the matching rules.
 
 Each Hub-backed lane's HuggingFace repository is written in one place, `locations.SNAPSHOT_REPO_IDS`, so
 pin a snapshot by reading it there rather than spelling the repo:
@@ -298,8 +381,8 @@ The split Ensembl snapshot keeps every annotation value (consequence, clinical f
 more) in `groups/<name>/` beside the core, joined to it on `(chrom, row_idx)`, which holds within one
 release only. Since 0.9 the lane pulls them, attested by the same manifest and re-pulled with the core
 whenever its release moves: `just-dna-enricher cache pull --only ensembl --groups consequence,clinical --use
-non-commercial` names two (the 0.9 docs pass did not run that pull, which writes gigabytes into the cache; the two
-refusals below were run).
+non-commercial` names two (no docs pass has run that pull, which writes gigabytes into the cache; the two
+refusals below were run for 0.9, and for 0.10 checked through the tests that pin them).
 
 Read a group's directory from `locations.ensembl_group_dir(cache, group)`, which refuses a group of
 another release than the core's, never by spelling the path. Each group is licensed by its own licensor:
@@ -351,24 +434,25 @@ print([(l["chrom"], l["start"], l["ref"], l["alts"]) for l in hint.loci])
 Run against the registry's test server on a box with no ClinVar or Ensembl cache:
 
 ```text
-1 RemoteRoute(route='proxy', release=None, served_from='local', revision=None)
-RemoteRoute(route='proxy', release=None, served_from='local', revision=None)
+1 RemoteRoute(route='proxy', release='clinvar_2026-11-15', served_from='local', revision=None, release_unreadable=False)
+RemoteRoute(route='proxy', release='clinvar_2026-11-15', served_from='local', revision=None, release_unreadable=False)
 [('19', 44908684, 'T', 'C')]
 ```
 
 Every answer says where it came from. The proxy is `proxy_url=`, else `$JUST_DNA_SNAPSHOT_PROXY_URL`, and
-unset by default; a proxy answer's `release` is what its reply states, here nothing. With no proxy, or
+unset by default; a proxy answer's `release` is what its reply states, here `clinvar_2026-11-15`, and
+`release_unreadable` is the proxy's own flag for a `release.json` it could not read. With no proxy, or
 when it paces you, Hugging Face answers at a pinned commit with the release it read, and in seconds
 rather than tenths:
 
 ```text
-1 RemoteRoute(route='hf', release='clinvar_2026-11-15', served_from=None, revision='50db2b896a42744f6d5a19c604eaf807a2dd2d31')
+1 RemoteRoute(route='hf', release='clinvar_2026-11-15', served_from=None, revision='50db2b896a42744f6d5a19c604eaf807a2dd2d31', release_unreadable=None)
 ```
 
 Ensembl is asked remotely by position only, so an rsID alone is placed by ClinVar, asked next. A route
 that could not be asked is a finding, never an empty answer (`SnapshotRouteUnavailable`); a wrong
 request, or a lookup on a holder already closed, raises. Close a holder you share only after its last
-lookup. [INTEGRATION_0_9.md § 1.2](INTEGRATION_0_9.md#12-remote-reads-just_dna_enricherremote-rm430-no-break-off-unless-a-caller-holds-one)
+lookup. [INTEGRATION_0_9.md § 1.2](history/INTEGRATION_0_9.md#12-remote-reads-just_dna_enricherremote-rm430-no-break-off-unless-a-caller-holds-one)
 has the rest.
 
 ## 4. Open Targets: genes, colocalisations and consequences

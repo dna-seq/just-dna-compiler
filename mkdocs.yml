@@ -237,7 +237,7 @@ nav:
       - Python API: api/
   # **The live guide and the archived ones, and the archived ones are here on purpose.** Each
   # superseded note moves to `docs/history/` at the next cut (`INTEGRATION_0_6.md` at 0.7.0,
-  # `INTEGRATION_0_7.md` at 0.8.0, `INTEGRATION_0_8.md` at 0.9.0), which makes it superseded *for a reader on the release it delivers*
+  # `INTEGRATION_0_7.md` at 0.8.0, `INTEGRATION_0_8.md` at 0.9.0, `INTEGRATION_0_9.md` at 0.10.0), which makes it superseded *for a reader on the release it delivers*
   # — and that reader is not the one who needs it. Somebody still on 0.5.4 upgrades through 0.6 and 0.7
   # first, and *Upgrading* is the one place they will look; a sidebar holding only the newest line
   # reads as "there is no path from here", which is false. The labels say archived so nobody mistakes
@@ -248,7 +248,7 @@ nav:
   # otherwise.
   - Upgrading:
       - "0.9 → 0.10": INTEGRATION_0_10.md
-      - "0.8 → 0.9": INTEGRATION_0_9.md
+      - "0.8 → 0.9 (archived)": history/INTEGRATION_0_9.md
       - "0.7 → 0.8 (archived)": history/INTEGRATION_0_8.md
       - "0.6.6 → 0.7 (archived)": history/INTEGRATION_0_7.md
       - "0.5.4 → 0.6 (archived)": history/INTEGRATION_0_6.md
@@ -300,6 +300,7 @@ not_in_nav: |
   !history/INTEGRATION_0_6.md
   !history/INTEGRATION_0_7.md
   !history/INTEGRATION_0_8.md
+  !history/INTEGRATION_0_9.md
   probes/
   proposals/
   seats/

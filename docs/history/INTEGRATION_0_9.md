@@ -43,9 +43,9 @@ answers that a 0.8.10 artifact needs no recompile for 0.9's sake. Its evidence a
 before it merges into `main`, and the merge waits for their trial ([desk #370](https://github.com/winternewt/desk/issues/370));
 the two that reported on the first cut are told what the rescope added and are not asked again. 0.8.10 was published
 and tagged before 0.9.0, as fixed. A defect a consumer finds is filed as an `Sn` in
-[CONSUMER_SUGGESTIONS.md](CONSUMER_SUGGESTIONS.md), and the release cycle sizes its fix.
+[CONSUMER_SUGGESTIONS.md](../CONSUMER_SUGGESTIONS.md), and the release cycle sizes its fix.
 
-[RM_TOC.md](RM_TOC.md) is the per-item record, and the [CHANGELOG](CHANGELOG.md)'s 0.9 heading carries every change
+[RM_TOC.md](../RM_TOC.md) is the per-item record, and the [CHANGELOG](../CHANGELOG.md)'s 0.9 heading carries every change
 in detail; this file says what a consumer does about them.
 
 ---
@@ -332,7 +332,7 @@ older texts included, needs a registry of them and is RM469, for 0.10.
 ### 1.13 What the rescope added (RM454, RM458, RM461–RM467; no break)
 
 Built on `0.9` after the first cut, each decided in the closed
-[ROADMAP_0_9.md § The rescope](history/ROADMAP_0_9.md). Seven of them are folded into the sections above; two are new
+[ROADMAP_0_9.md § The rescope](ROADMAP_0_9.md). Seven of them are folded into the sections above; two are new
 options:
 
 - **A re-derive scoped to named subjects** (RM467, S160): `enrich(rederive_subjects=[...])`, on the CLI
@@ -426,7 +426,7 @@ and run; without it, `import polars` dies with SIGILL. Ledger: UPSTREAM_POLARS.m
 ## 3. Per-consumer check / change lists
 
 Written from this repository's own record of each consumer (the liaison's notes, the consumers' suggestions in
-[CONSUMER_SUGGESTIONS_HISTORY.md](CONSUMER_SUGGESTIONS_HISTORY.md)); no consumer checkout was re-read for this file.
+[CONSUMER_SUGGESTIONS_HISTORY.md](../CONSUMER_SUGGESTIONS_HISTORY.md)); no consumer checkout was re-read for this file.
 
 ### just-dna-registry (spec storage, catalog, serving)
 
@@ -495,7 +495,7 @@ The consumer 0.9 was built for (S145, S150, S154, S157).
 
 ## 4. Known issues
 
-What 0.9 ships with, known and not fixed. Each line names its item; [RM_TOC.md](RM_TOC.md) has its state.
+What 0.9 ships with, known and not fixed. Each line names its item; [RM_TOC.md](../RM_TOC.md) has its state.
 
 - **With the proxy set and Hugging Face off, gene lookups on clinpgx, cpic, drug_labels and civic answer
   could-not-ask (RM459, for 0.10, waits on the registry's S36).** The registry's proxy compares a cell exactly, so the
@@ -504,7 +504,7 @@ What 0.9 ships with, known and not fixed. Each line names its item; [RM_TOC.md](
   registry reads `KEY_COMPARES`.
 - **Carried from 0.8, unchanged:** offline enrich cannot left-align an indel (RM385, now in 0.10's scope); placement
   readers that bypass `usable_loci` (RM388, parked); the enricher does not say what compile will refuse (RM390,
-  parked). [INTEGRATION_0_8 § 4](history/INTEGRATION_0_8.md#4-known-issues) has the full text of each.
+  parked). [INTEGRATION_0_8 § 4](INTEGRATION_0_8.md#4-known-issues) has the full text of each.
 
 The first cut's other known issues were built in 0.9 by the rescope: RM458 (§ 1.7), RM462 (§ 1.2) and RM454 (§ 1.3).
 RM460, `rsid_genotype_reads_as_two_events`, is a code 0.9 does not add rather than a defect (§ 1.0), in 0.10's scope.

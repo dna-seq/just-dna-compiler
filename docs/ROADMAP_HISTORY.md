@@ -726,7 +726,7 @@ the touched files green three times running under `-n 4` with 40 extra busy loop
 
 Built on the `0.9` branch from 2026-11-16 and cut as `v0.9.0` on 2026-11-26: the enricher reads its reference data wherever it lives. A first cut on 2026-11-19 was never published; the rescope of 2026-11-26 built that cut's known issues and residuals in 0.9 instead (RM454, RM458, RM461 to RM467), and the cut was redone; RM470, found by the redone cut's network gate, was folded in last. The scope, the two trial rules and both review rounds' sortings are the closed
 [history/ROADMAP_0_9.md](history/ROADMAP_0_9.md); the known issues 0.9 ships with are in
-[INTEGRATION_0_9.md § 4](INTEGRATION_0_9.md#4-known-issues).
+[INTEGRATION_0_9.md § 4](history/INTEGRATION_0_9.md#4-known-issues).
 
 ## RM430 — no snapshot reader takes a remote root: a URL collapses in `Path`, and every resolve, release read and connector checks the local disk
 

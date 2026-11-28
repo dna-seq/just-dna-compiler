@@ -30,7 +30,7 @@ Add the tier you need. Each pulls the ones beneath it, so you never install more
     polars' compatibility runtime (`polars[rtcompat]`, SSE4.2 only), which polars loads in place of its
     default one whenever it is installed. It is slower, so leave it off a machine that has AVX2:
     `grep -o -w -E 'avx2|fma|bmi2' /proc/cpuinfo | sort -u` printing all three means you do not need it. Checked
-    by installing `just-dna-compiler[compat]` into a fresh environment from the 0.9.0 tree: `import polars`
+    by installing `just-dna-compiler[compat]` into a fresh environment from the 0.10.0 tree: `import polars`
     loaded `_polars_runtime_compat`.
 
 ## 2. Compile a module

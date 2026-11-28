@@ -205,6 +205,64 @@ Its output directory holds `meta.parquet` and `meta_resolved.parquet` beside the
 `reference_examples/longevity_studies` exercises the new `studies.csv` columns.
 [Use a compiled module](CONSUMING.md) shows what to read out of them.
 
+## New authored fields in 0.10
+
+Four optional additions, none of them a new table you author. A module that states none of them
+compiles to the same bytes as under 0.9; a 0.9 compiler or validator refuses one that states any of them
+([INTEGRATION_0_10.md](INTEGRATION_0_10.md) § 1.0.1).
+
+- **`panel_provenance:`** in `module_spec.yaml` records the gene selection a panel was drafted from:
+  `genes`, `genes_unmatched`, `significance` and `reference_sha256`. It takes over the three fields of the
+  deprecated `panel:` block. You do not type it: ClinVar `draft-panel` prints it, `--dry-run` included.
+- **`effect_direction`** on `studies.csv` (`increase` or `decrease`) states which way the effect allele
+  moves the trait, for a study that gives no size or beside one that does.
+- **`conclusion_lay`** and **`conclusion_concise`**, beside `conclusion` on variants, diplotypes,
+  pharmacogenomic variants and the measure-bin tables: the same claim worded for a lay reader and for a
+  table cell. `requirements variants.csv` lists both as optional.
+- **`repeat_grades.csv`** is derived, never authored: `enrich` fills it
+  ([Resolve, draft and enrich](ENRICHING.md#strchives-grade-for-each-repeat)).
+
+On a scratch copy of `reference_examples/pathogenic_clinvar`, the dry run prints the block to paste:
+
+```bash
+just-dna-enricher draft-panel ./pc_dry --gene HBB --dry-run
+```
+
+```text
+would add: variants.csv 98, studies.csv 459 — in pc_dry
+Paste into module_spec.yaml:
+panel_provenance:
+  genes:
+  - HBB
+  genes_unmatched: []
+  significance:
+  - likely_pathogenic
+  - pathogenic
+  reference_sha256: sha256:a0984d79c24a6735c6c709142e81672d41c673e3011cafb3ce16d8d5390d6d68
+```
+
+Pasted into a fresh copy of the example, with nothing drafted, the block validates, and `compile` prints the same
+`digest` and `content_signature` as the unedited example. The block sits outside both. The manifest
+carries it as `panel_provenance`, and `reverse` writes it back into `module_spec.yaml`. When
+`genes_unmatched` disagrees with `genes` or with the rows, validate and compile warn. Here `genes_unmatched` was edited to name `HBB`,
+which has rows, and `HBG1`, which `genes` does not name:
+
+```text
+  warning: panel_provenance: 1 genes_unmatched entries are absent from the requested genes (e.g. HBG1). Correct the requested or unmatched list.
+  warning: panel_provenance: 1 genes_unmatched entries already appear in variants.csv (e.g. HBB). To refresh the block, re-run draft-panel.
+```
+
+On a scratch copy of `reference_examples/longevity_studies`, one study row got `effect_direction` =
+`increase` (its `beta` is positive) and the `rs429358` `C/T` row got both registers. It validates, and
+compiles with a new `content_signature`, since a stated value is a claim. The registers land in
+`annotations.parquet` beside `conclusion`, and `effect_direction` in `studies.parquet`. The original
+example's `studies.parquet` has no such column, because every row leaves it blank. A direction that
+contradicts the size's sign warns, here `increase` on a row whose odds ratio is 0.52:
+
+```text
+  warning: studies.csv: effect_direction disagrees with effect_size in 1 row(s): rs429358 (PMID 31413261): increase with OR 0.52
+```
+
 ## Read the manifest
 
 ```json
@@ -217,7 +275,7 @@ Its output directory holds `meta.parquet` and `meta_resolved.parquet` beside the
   "compilation": {
     "compile_success": true,
     "compiled_by": null,
-    "compiler_version": "just-dna-compiler 0.9.0",
+    "compiler_version": "just-dna-compiler 0.10.0",
     "toolchain": {"polars": "2.1.0", "python": "3.14.8"},
     "warnings": ["…"]
   }

@@ -319,6 +319,6 @@ What 0.10 ships with, known and not fixed. Each line names its item in [ROADMAP_
 - **RM482** — the public-name walk sees classes and functions only; constants and type aliases are documented by hand
   (§ 1.8).
 - **Carried, unchanged:** with the proxy set and Hugging Face off, gene lookups on clinpgx, cpic, drug_labels and civic
-  answer could-not-ask (RM459, waits on the registry's S36, [INTEGRATION_0_9 § 4](INTEGRATION_0_9.md#4-known-issues));
+  answer could-not-ask (RM459, waits on the registry's S36, [INTEGRATION_0_9 § 4](history/INTEGRATION_0_9.md#4-known-issues));
   placement readers that bypass `usable_loci` (RM388, parked); the enricher does not say what compile will refuse
   (RM390, parked).

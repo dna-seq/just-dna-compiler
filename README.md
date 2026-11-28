@@ -89,9 +89,10 @@ full map of `docs/` with a grep hint per file.
   [`docs/ENRICHER.md`](docs/ENRICHER.md) — one reference per tier.
 - [`docs/MODULE_LIFECYCLE.md`](docs/MODULE_LIFECYCLE.md) — origin → publish → a consumer's join, and
   what a second pass moves.
-- [`docs/INTEGRATION_0_9.md`](docs/INTEGRATION_0_9.md) — the surface delta a consumer upgrading from
-  0.8.10 checks against, with the upgrade order and the known issues 0.9 ships with; the current
-  release is 0.9.0. The earlier notes are archived: 0.7 → 0.8 is
+- [`docs/INTEGRATION_0_10.md`](docs/INTEGRATION_0_10.md) — the surface delta a consumer upgrading from
+  0.9.0 checks against, with the old-reader breaks, the upgrade order and the known issues 0.10 ships
+  with; the current release is 0.10.0. The earlier notes are archived: 0.8.10 → 0.9 is
+  [`INTEGRATION_0_9.md`](docs/history/INTEGRATION_0_9.md), 0.7 → 0.8 is
   [`INTEGRATION_0_8.md`](docs/history/INTEGRATION_0_8.md), 0.6.6 → 0.7 is
   [`INTEGRATION_0_7.md`](docs/history/INTEGRATION_0_7.md), 0.5.4 → 0.6 is
   [`INTEGRATION_0_6.md`](docs/history/INTEGRATION_0_6.md).
