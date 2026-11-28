@@ -242,9 +242,9 @@ def draft_repeat_loci(
     result.candidates = len(admitted)
 
     # Over the admitted set, before any row is built.
-    claims = StrchiveCatalogue(loci=tuple(admitted)).by_gene_and_motif()
+    claims = StrchiveCatalogue(loci=tuple(admitted)).by_gene_and_motif(comparison_keys=True)
     contested = {key for key, loci in claims.items() if len(loci) > 1}
-    result.contested = sorted(contested)
+    result.contested = sorted((claims[key][0].gene, key[1]) for key in contested)
 
     partials: list[PartialRow] = []
     offered: list[StrchiveLocus] = []
@@ -261,7 +261,7 @@ def draft_repeat_loci(
         if not motif:
             result.withheld["no_motif"] += 1
             continue
-        if (locus.gene, motif) in contested:
+        if (gene_key(locus.gene), motif) in contested:
             result.withheld["contested_key"] += 1
             continue
         row, missing = _partial(locus, motif)

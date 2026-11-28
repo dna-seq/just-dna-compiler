@@ -9,6 +9,7 @@ from pathlib import Path
 import httpx
 import pytest
 from just_dna_compiler.compiler import compile_module, reverse_module
+from just_dna_compiler.draft import stub_template
 from just_dna_enricher import ipd_imgt_hla
 from just_dna_enricher import ipd_imgt_hla_build as builder
 from just_dna_enricher.caches import LANES_BY_NAME
@@ -16,6 +17,7 @@ from just_dna_enricher.cli import app
 from just_dna_enricher.enrich import enrich
 from just_dna_enricher.licensing import IPD_IMGT_HLA_TERMS, read_sources_file, write_sources_csv
 from just_dna_format.snapshot import SNAPSHOT_DATA_DIRNAME, read_release
+from just_dna_format.vocab import TEMPLATE_PLACEHOLDER
 from typer.testing import CliRunner
 
 LANE = "ipd_imgt_hla"
@@ -101,6 +103,7 @@ def test_enrich_outcomes_and_attribution(
             len(deleted | absent),
             LABEL,
         )
+        assert "allele_function.csv" in rec["detail"]
         logs = [r.getMessage() for r in caplog.records]
         (missing,) = [s for s in logs if "not assigned in release" in s]
         (withdrawn,) = [s for s in logs if "deleted HLA allele" in s]
@@ -131,6 +134,7 @@ def test_offline_absence_and_empty_roster(has_names: bool, tmp_path: Path, no_am
     enrich(spec, offline=True)
     if has_names:
         (rec,) = records(spec)
+        assert "allele_function.csv" in rec["detail"]
         assert rec["skipped"] == "offline" and "could not ask" in rec["detail"]
         assert "not assigned" not in rec["detail"] and rec["release"] is None
     else:
@@ -346,3 +350,50 @@ def test_a_section_line_must_be_followed_by_the_header(ipd_files: Path) -> None:
     )
     with pytest.raises(builder.IpdHlaUnavailable, match="after a section line"):
         builder._read_table(path.read_bytes(), "Deleted_alleles.txt")
+
+
+def test_section_at_end_of_deleted_list_is_incomplete(ipd_files: Path) -> None:
+    path = ipd_files / "Deleted_alleles.txt"
+    with pytest.raises(builder.IpdHlaUnavailable, match="after a section line"):
+        builder._read_table(path.read_bytes() + b"# New section\n", path.name)
+
+
+@pytest.mark.parametrize("gene", ["HLA-a", "hla-A"])
+def test_mixed_case_gene_is_assigned(
+    gene: str, ipd_files: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    out = tmp_path / LANE
+    build(out, ipd_files)
+    monkeypatch.setenv(LANES_BY_NAME[LANE].env_var, str(out))
+    allele = next(
+        name.partition("*")[2] for name in sorted(builder.load_lists(out).assigned) if name.startswith("A*")
+    )
+    (tmp_path / "allele_function.csv").write_text(f"gene,allele\n{gene},*{allele}\n")
+    enrich(tmp_path, offline=True)
+    (record,) = records(tmp_path)
+    assert record["findings"] == 0 and f"A*{allele}" in record["detail"]
+
+
+@pytest.mark.parametrize("table", ["allele_function.csv", "repeat_alleles.csv"])
+@pytest.mark.parametrize("mode", ["best_effort", "strict"])
+def test_scaffold_withholds_only_its_pass(
+    table: str, mode: str, tmp_path: Path, no_ambient_caches: Path
+) -> None:
+    (tmp_path / table).write_text(stub_template(table))
+    if table == "allele_function.csv":
+        (tmp_path / "repeat_alleles.csv").write_text(
+            "gene,repeat_unit,conclusion,measure_min\nHTT,CAG,HD,1\n"
+        )
+    else:
+        shutil.copy(EXAMPLE / "allele_function.csv", tmp_path)
+    result = enrich(tmp_path, offline=True, mode=mode)
+    (hla,) = records(tmp_path)
+    grades = result.repeat_grades
+    if table == "allele_function.csv":
+        assert hla["skipped"] == "unsupported" and result.hla_assignment.findings is None
+        assert grades.could_not_ask == [("HTT", "CAG")]
+        why = hla["detail"]
+    else:
+        assert hla["skipped"] == "offline" and not grades.covered and not grades.missing
+        why = grades.reason
+    assert table in why and TEMPLATE_PLACEHOLDER in why

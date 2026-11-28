@@ -1,5 +1,6 @@
 """Compare the resolution of each authored HLA allele name with the curators' release."""
 
+import csv
 import logging
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -8,6 +9,7 @@ from just_dna_compiler.compiler import load_csv_rows
 from just_dna_compiler.compiler.tables import _TABLE_KINDS
 from just_dna_format.findings import CodedWarning
 from just_dna_format.pgx import HLA_ALLELE_PATTERN, HLA_GENE_PREFIX, AlleleFunctionRow, is_hla_gene
+from just_dna_format.spelling import gene_key
 
 from just_dna_enricher.download import ensure_ipd_imgt_hla_snapshot
 from just_dna_enricher.ipd_imgt_hla_build import AlleleLists, IpdHlaUnavailable, load_lists
@@ -24,16 +26,26 @@ from just_dna_enricher.verification import examples
 logger = logging.getLogger(__name__)
 
 
-def authored_names(directory: Path, *, error: type[Exception]) -> set[str]:
+def authored_names(
+    directory: Path, *, error: type[Exception], tables_read: list[str] | None = None
+) -> set[str]:
+    """Read IPD names at their authored resolution and record the tables successfully loaded."""
     names: set[str] = set()
     for filename, _, model in _TABLE_KINDS:
-        if not issubclass(model, AlleleFunctionRow) or not (directory / filename).is_file():
+        if not issubclass(model, AlleleFunctionRow) or not (directory / filename).exists():
             continue
-        rows, errors, _ = load_csv_rows(directory / filename, model, filename)
+        try:
+            rows, errors, _ = load_csv_rows(directory / filename, model, filename)
+        except (OSError, UnicodeError, csv.Error) as exc:
+            raise error(f"{filename} could not be read: {exc}") from exc
         if errors:
             raise error(f"{filename} is invalid: {errors[0]}")
+        if tables_read is not None:
+            tables_read.append(filename)
         names.update(
-            row.gene.removeprefix(HLA_GENE_PREFIX) + row.allele for row in rows if is_hla_gene(row.gene)
+            gene_key(row.gene)[len(HLA_GENE_PREFIX) :].upper() + row.allele
+            for row in rows
+            if is_hla_gene(row.gene) and HLA_ALLELE_PATTERN.fullmatch(row.allele)
         )
     return names
 
@@ -128,6 +140,21 @@ def check_names(
     )
     logger.warning("%s", detail)
     return HlaAssignmentCheck(len(names), None, detail, skipped=reason)
+
+
+def check_module_names(directory: Path, *, offline: bool, download: bool) -> HlaAssignmentCheck | None:
+    """Report the actual roster alongside its answer, including why an input could not be read."""
+    tables: list[str] = []
+    try:
+        names = authored_names(directory, error=IpdHlaUnavailable, tables_read=tables)
+    except IpdHlaUnavailable as exc:
+        detail = f"Could not check HLA assignments: {exc}"
+        logger.warning("%s", detail)
+        return HlaAssignmentCheck(0, None, detail, skipped="unsupported")
+    check = check_names(directory, names, offline=offline, download=download)
+    if check is None:
+        return None
+    return replace(check, detail=f"Names read from {', '.join(tables)}.\n{check.detail}")
 
 
 def record_attribution(

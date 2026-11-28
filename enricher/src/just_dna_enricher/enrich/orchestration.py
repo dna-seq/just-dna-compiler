@@ -722,7 +722,6 @@ def _run_enrichment(
     # The meta-table's member rsIDs (0.8), read here at the start of the run and never inside the late
     # rsID pass: an invalid meta.csv must refuse before any network pass has done work it would discard
     # (`@incidental-call-isolated`).
-    hla_names = ipd_imgt_hla.authored_names(spec_dir, error=EnrichmentError)
     member_rsids = meta_member_rsids(spec_dir)
     variants: list[VariantRow] = []
     variants_path = spec_dir / "variants.csv"
@@ -820,6 +819,7 @@ def _run_enrichment(
             download=download,
             write=False,
             progress=grade_progress,
+            rederive=rederive and rederive_subjects is None,
         )
     except RepeatGradeError as exc:
         raise EnrichmentError(str(exc)) from exc
@@ -2460,7 +2460,7 @@ def _run_enrichment(
             )
 
     sources = sorted({r.source for r in out if r.source})
-    hla = ipd_imgt_hla.check_names(spec_dir, hla_names, offline=offline, download=download)
+    hla = ipd_imgt_hla.check_module_names(spec_dir, offline=offline, download=download)
     result = EnrichmentResult(
         hla_assignment=hla,
         rows=out,

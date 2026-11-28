@@ -26,7 +26,7 @@ from just_dna_format.repeat_grades import RepeatGradeRow
 from just_dna_format.resolution import ResolutionRow
 from just_dna_format.sources import SourceRow
 from just_dna_format.spec import RESERVED_FLAGS, StudyRow, VariantRow
-from just_dna_format.spelling import gene_key
+from just_dna_format.spelling import distinct_spellings, gene_key
 
 from just_dna_compiler.compiler.allele_checks import (
     _apply_symbolic_drops,
@@ -172,7 +172,7 @@ def _panel_provenance_warnings(panel: PanelProvenance, variants: list[VariantRow
     if not panel.genes_unmatched:
         return []
     requested = {gene_key(gene) for gene in panel.genes}
-    rows = ModuleSubjects(genes=tuple(dict.fromkeys(row.gene for row in variants if row.gene)))
+    rows = ModuleSubjects(genes=tuple(distinct_spellings((row.gene for row in variants), "gene")))
     unmatched: dict[str, str] = {}
     for gene in panel.genes_unmatched:
         if gene.strip():

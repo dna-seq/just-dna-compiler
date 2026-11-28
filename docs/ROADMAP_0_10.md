@@ -307,6 +307,7 @@ manifest carrying either new code in `compilation.warnings_summary`, whose vocab
 The author still pastes the snippet into the YAML. Round 1 (2026-11-28): the draft merges genes from
 both blocks, keeps an authored pin when the snapshot omits its digest, refuses conflicting pins before
 writing, and warns that `genes_unmatched` may overstate when a row leaves its gene unnamed (C2).
+Round 1 (2026-11-28): The panel cross-check collects distinct variant genes through the shared gene comparison.
 
 **Residuals** Editing `module_spec.yaml` in place is parked until an author reports a lost paste.
 
@@ -561,6 +562,7 @@ curators' tagged lists, validates both in-band versions, and retains their origi
 `enrich` records assignments, exact deletions, release-specific misses, or the reason it could not
 ask. Only a comparison that ran writes the citation notice. The build adds no publisher, derived
 parquet, authored field or strict refusal. The lead runs the live build after merge.
+Round 1 (2026-11-28): The HLA check names its input table, joins mixed-case genes at the stated allele resolution, explains an unreadable input in either mode, and refuses an IPD section missing its header at EOF.
 
 **Residuals** none.
 
@@ -593,6 +595,7 @@ release. The compiler checks the repeat key and round-trips the table. The modul
 bands, RM170 checks and RM276 draft note keep their own meanings. No authored column was added.
 Round 1 (2026-11-28): the upgrade note lists the closed members added since v0.9.0, including
 `repeat_grade`, and records the older compiler’s filename warning.
+Round 1 (2026-11-28): Enrich refreshes answered grades and their terms, honors `--rederive`, counts contested repeats once, strips evidence padding, and reports unreadable subjects, with the same gene comparison across repeat checks, PGx rosters and ACMG findings.
 
 **Residuals** none
 

@@ -132,10 +132,11 @@ def test_the_gaps_are_grouped_per_gene() -> None:
     assert "By gene: CYP2C9 *2; CYP2D6 *36, *37." in warning
 
 
-def test_is_hla_gene_is_the_prefix_the_grammar_reads() -> None:
-    """One predicate: the compiler's exemption and the model's grammar answer the same question."""
+def test_hla_lookup_folds_the_gene_and_old_alleles_still_load() -> None:
     assert is_hla_gene("HLA-DRB1") and is_hla_gene("HLA-B")
-    assert not is_hla_gene("CYP2D6") and not is_hla_gene("hla-b")
+    assert not is_hla_gene("CYP2D6") and is_hla_gene("hla-b")
+    # The 0.9 grammar accepted this spelling under the general haplotype rule (P3).
+    assert AlleleFunctionRow(gene="hla-b", allele="*1").allele == "*1"
 
 
 def _one_variant_hap(name: str, gene: str, rsid: str, allele: str) -> HaplotypeRow:

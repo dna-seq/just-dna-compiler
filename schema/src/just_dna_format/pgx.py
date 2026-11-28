@@ -32,7 +32,7 @@ from just_dna_format.base import (
     vocabulary,
 )
 from just_dna_format.spec import CitationPair, validate_pmid_cell
-from just_dna_format.spelling import ChromCell
+from just_dna_format.spelling import ChromCell, gene_key
 from just_dna_format.vocab import (
     VALID_PHENOTYPE_CATEGORIES,
     VALID_RECOMMENDATION_STRENGTH,
@@ -84,9 +84,8 @@ HLA_ALLELE_PATTERN: re.Pattern[str] = re.compile(
 
 def is_hla_gene(gene: str) -> bool:
     """Whether `gene` is an HLA gene, whose alleles are typed by IPD-IMGT/HLA name rather than defined
-    by variants. The one statement of the prefix: the grammar below reads it, and so does the
-    compiler's used-but-not-defined check, which exempts such a gene (RM351)."""
-    return gene.startswith(HLA_GENE_PREFIX)
+    by variants. Gene lookups and the compiler's definition exemption compare through the same key."""
+    return gene_key(gene).startswith(gene_key(HLA_GENE_PREFIX))
 
 
 def hla_allele_refusal(gene: str, allele: str) -> str | None:
@@ -94,7 +93,9 @@ def hla_allele_refusal(gene: str, allele: str) -> str | None:
 
     The one statement of the rule: the model's validator raises it, and a drafter skips on it, so the
     two cannot disagree (`@drafting-scaffold`). Every gene outside `HLA-` answers `None`."""
-    if not is_hla_gene(gene) or HLA_ALLELE_PATTERN.fullmatch(allele):
+    # Up to 0.9 only this literal prefix opted into the stricter authored grammar.
+    # A spelling newly recognized by the lookup must still load its published alleles (P3).
+    if not gene.startswith(HLA_GENE_PREFIX) or HLA_ALLELE_PATTERN.fullmatch(allele):
         return None
     return (
         f"{gene} is an HLA gene, so its allele must follow IPD-IMGT/HLA nomenclature: `*`, "

@@ -156,8 +156,10 @@ def enrich_(  # `enrich` command; function name avoids shadowing the imported en
         f"rows: {len(result.rows)}  fully_resolved: {result.fully_resolved}  sources: {result.sources}"
     )
     grades = result.repeat_grades
-    if grades is not None and grades.subjects:
-        if grades.could_not_ask:
+    if grades is not None and (grades.subjects or grades.reason):
+        if grades.reason and not grades.subjects:
+            typer.echo(f"  repeat grades: skipped ({grades.reason})")
+        elif grades.could_not_ask:
             typer.echo(
                 f"  repeat grades: could not ask STRchive about {grades.subjects} repeat key(s) "
                 f"({grades.reason})"
@@ -165,7 +167,7 @@ def enrich_(  # `enrich` command; function name avoids shadowing the imported en
         else:
             typer.echo(
                 f"  repeat grades: {len(grades.covered)} matched, {len(grades.missing)} without a STRchive record, "
-                f"{grades.added} row(s) added"
+                f"{len(grades.contested)} contested, {grades.added} row(s) added"
             )
 
     if result.hla_assignment and result.hla_assignment.assigned_summary:

@@ -123,6 +123,8 @@ def _table(data: bytes, name: str) -> tuple[str, dict[str, str]]:
         if len(fields) != len(columns) or not all(fields):
             raise IpdHlaUnavailable(f"Invalid CSV row in {name}, expected {len(columns)} populated fields")
         rows[fields[1]] = fields[-1]
+    if expect_header:
+        raise IpdHlaUnavailable(f"Missing CSV header after a section line in {name}")
     if not rows:
         raise IpdHlaUnavailable(f"{name} has no allele rows")
     return versions[0], rows
