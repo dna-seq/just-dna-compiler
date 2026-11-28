@@ -67,6 +67,8 @@ class AnswerStore:
         ) WITHOUT ROWID""")
 
     def read(self, source: str, release: str, keys: Sequence[str]) -> dict[str, Any]:
+        """Return stored answers for these keys at this release. Unanswered keys are omitted."""
+
         def select(db: sqlite3.Connection) -> dict[str, Any]:
             found = {}
             for chunk in batched(keys, 500, strict=False):
@@ -82,6 +84,8 @@ class AnswerStore:
         return self._access(select, {})
 
     def write(self, source: str, release: str, rows: dict[str, tuple[Any, bool]]) -> None:
+        """Store this release's answered subjects together, including explicit absences."""
+
         def insert(db: sqlite3.Connection) -> None:
             db.executemany(
                 """INSERT OR REPLACE INTO answers (source, release, request_key, answer, absent, stored_at)
@@ -97,6 +101,8 @@ type StoreSetting = AnswerStore | Path | str | bool | None
 
 @dataclass
 class AnswerUsage:
+    """Subjects served from storage and asked live for one source in a run. An unknown release is None."""
+
     source: str
     release: str | None
     stored: int = 0
@@ -131,6 +137,7 @@ class AnswerRun:
         return _ACTIVE.get() or AnswerRun()
 
     def release(self, source: str, probe: Callable[[], str | None]) -> str | None:
+        """Probe once per source in this run. A missing release stays unknown for the run."""
         with self._lock:
             if source not in self._releases:
                 self._releases[source] = probe()
@@ -141,6 +148,7 @@ class AnswerRun:
             return self._releases[source]
 
     def count(self, source: str, release: str | None, *, stored: int = 0, live: int = 0) -> None:
+        """Add stored and live subject counts to this run's total for the source and release."""
         with self._lock:
             key = (source, release)
             if key not in self._usage:
@@ -149,17 +157,21 @@ class AnswerRun:
             self._usage[key].live += live
 
     def report(self) -> list[AnswerUsage]:
+        """Return usage by source and release, including live lookups whose release was unknown."""
         return sorted(self._usage.values(), key=lambda u: (u.source, u.release or ""))
 
 
 @dataclass
 class SourceAnswers:
+    """One source's request keys and counts within a run. An unknown release bypasses storage."""
+
     run: AnswerRun
     source: str
     release: str | None
     prefix: str = ""
 
     def read(self, keys: Sequence[str]) -> dict[str, Any]:
+        """Return and count stored answers for these keys. A missing key still needs a lookup."""
         if not keys or self.release is None or self.run.store is None:
             return {}
         found = self.run.store.read(self.source, self.release, [self.prefix + k for k in keys])
@@ -168,9 +180,11 @@ class SourceAnswers:
         return {k.removeprefix(self.prefix): v for k, v in found.items()}
 
     def asked(self, subjects: int = 1) -> None:
+        """Count the subjects sent to the live source, including those it could not answer."""
         self.run.count(self.source, self.release, live=subjects)
 
     def write(self, rows: dict[str, tuple[Any, bool]]) -> None:
+        """Save answered subjects under their prefixed keys when the store and release are known."""
         if rows and self.release is not None and self.run.store is not None:
             self.run.store.write(self.source, self.release, {self.prefix + k: v for k, v in rows.items()})
 

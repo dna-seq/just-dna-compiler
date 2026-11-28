@@ -308,6 +308,7 @@ class FastaReference:
         self._digests = self._load_cache()
 
     def current(self) -> bool:
+        """Whether the FASTA and its index still have their opening sizes and modification times."""
         return self.stamp == _stamp(self.path.stat()) and self.index_stamp == _stamp(self.index.stat())
 
     def _load_cache(self) -> dict[str, str]:
@@ -392,10 +393,12 @@ class FastaReference:
         return self._entries[accession]
 
     def get_metadata(self, identifier: str) -> dict[str, int]:
+        """Return the verified primary contig's length. An absent or mismatched contig raises ValueError."""
         with self.path.open("rb") as stream:
             return {"length": self._verified(identifier, stream).length}
 
     def get_sequence(self, identifier: str, start: int | None = None, end: int | None = None) -> str:
+        """Read uppercased bases from the verified contig over a zero-based, half-open interval."""
         with self.path.open("rb") as stream:
             entry = self._verified(identifier, stream)
             lo, hi, _ = slice(start, end).indices(entry.length)

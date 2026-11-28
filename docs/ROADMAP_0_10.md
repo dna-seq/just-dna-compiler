@@ -95,6 +95,7 @@ it is a new change kind, as `toolchain` was (INTEGRATION_0_8 § 1.11). P9: near 
 0.8.0 Ensembl lane move against `resolution.csv`, with RM372, RM267 and the split snapshot's
 release label. The predecessor had no label. A reader can see the move across 0.7 to 0.8
 offline. This required no format or compiler change. **The shape question above is answered**: the route lives in the enricher (`just_dna_enricher.derivation_records`), the package that moves, by the pm's 2026-11-16 call under RM441; the format's release records stay about compiled output.
+Round 1 (2026-11-28): the enricher reference names the change record that identifies a snapshot move.
 
 **Residuals** none.
 
@@ -192,6 +193,7 @@ The same span query reports the affected table, the cause and the items for eith
 change. A fully examined span can establish that a kept table is reusable (S161), and the newest
 release that could change a given table is derived from those entries (S156). Every enricher
 release since 0.8.0 has an entry. The cut test checks the tagged and installed versions.
+Round 1 (2026-11-28): the enricher reference names the result type that carries known changes and uncovered releases.
 
 **Residuals** table-wide reach: won't fix in 0.10, decided 2026-11-12 (ask 2): `requires` stays `None` for a
 derivation correction until a consumer shows it costing a needless re-derive; RM467's explicit subject list
@@ -308,6 +310,7 @@ The author still pastes the snippet into the YAML. Round 1 (2026-11-28): the dra
 both blocks, keeps an authored pin when the snapshot omits its digest, refuses conflicting pins before
 writing, and warns that `genes_unmatched` may overstate when a row leaves its gene unnamed (C2).
 Round 1 (2026-11-28): The panel cross-check collects distinct variant genes through the shared gene comparison.
+Round 1 (2026-11-28): the enricher reference names the helpers that read a draft panel’s spec and compare its build.
 
 **Residuals** Editing `module_spec.yaml` in place is parked until an author reports a lost paste.
 
@@ -419,6 +422,7 @@ uncompressed GRCh38 FASTA by URI online or offline. It verifies and caches ident
 shares the reference across alignment, minting and REF checks, and names the witness and unread
 contigs in reports. Seqrepo remains disabled offline. This adds neither provisioning nor a GRCh37
 reference and requires no format or compiler change.
+Round 1 (2026-11-28): the enricher reference names the local FASTA reader and the methods that verify and read a contig.
 
 **Preview finding S165, built (2026-11-27).** The reader and proxy expose the indexed name,
 expected accession, computed digest and binding status per requested GRCh38 primary. The same
@@ -444,6 +448,7 @@ Each stated register enters the content signature and survives compile, reverse 
 Omitting both preserves existing signatures and artifact bytes. Neither register enters a key.
 The annotation key includes genotype since RM80, and the compiler refuses duplicate variant/genotype
 pairs. `language` is reserved. Studies retain their own finding, and tools supply no register text.
+Round 1 (2026-11-28): the schema reference identifies `ConclusionRegisters` as the shared model for the two optional wordings.
 
 **Residuals** Registers for `meta.csv` belong to RM28.
 
@@ -563,6 +568,7 @@ curators' tagged lists, validates both in-band versions, and retains their origi
 ask. Only a comparison that ran writes the citation notice. The build adds no publisher, derived
 parquet, authored field or strict refusal. The lead runs the live build after merge.
 Round 1 (2026-11-28): The HLA check names its input table, joins mixed-case genes at the stated allele resolution, explains an unreadable input in either mode, and refuses an IPD section missing its header at EOF.
+Round 1 (2026-11-28): the enricher reference and docstrings distinguish an empty HLA roster, an answered assignment check and a check with no usable reference.
 
 **Residuals** none.
 
@@ -596,6 +602,7 @@ bands, RM170 checks and RM276 draft note keep their own meanings. No authored co
 Round 1 (2026-11-28): the upgrade note lists the closed members added since v0.9.0, including
 `repeat_grade`, and records the older compiler’s filename warning.
 Round 1 (2026-11-28): Enrich refreshes answered grades and their terms, honors `--rederive`, counts contested repeats once, strips evidence padding, and reports unreadable subjects, with the same gene comparison across repeat checks, PGx rosters and ACMG findings.
+Round 1 (2026-11-28): the tier references name the repeat-grade pass, its subject count and the manifest’s `RepeatGrades` summary.
 
 **Residuals** none
 
@@ -701,6 +708,7 @@ its own server and remote seqrepo intervals use their refget accession. Shared c
 release observation and report for each enrichment run. Empty settings, the Python off switch and
 the CLI flag bypass persistence. The store has no snapshot or publish stage. The ClinVar currency
 probe still reads the live VCF header, and ClinVar-GKM reads its own distribution.
+Round 1 (2026-11-28): the answer-store docstrings and enricher reference describe how a run counts subjects and handles an unknown release.
 
 **Preview finding S163, built (2026-11-27).** Direct client calls and lookups now scope release
 observations and counters to the call. `LookupClients(answer_store=...)` selects the host's store

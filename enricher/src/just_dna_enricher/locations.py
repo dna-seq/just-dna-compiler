@@ -1239,6 +1239,7 @@ def _resolve_named_cache(
 
 
 def default_ipd_imgt_hla_cache_dir(*, load_dotenv_file: bool = True) -> Path:
+    """The IPD-IMGT/HLA lane directory under the host's configured cache base."""
     return _cache_dir(IPD_IMGT_HLA_SUBDIR, load_dotenv_file=load_dotenv_file)
 
 

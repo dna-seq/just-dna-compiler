@@ -68,6 +68,8 @@ def _assignments(listed: set[str]) -> set[str]:
 
 @dataclass(frozen=True)
 class HlaAssignmentCheck:
+    """The assignment check's subjects and findings. Zero means all names were assigned. None withholds the count."""
+
     subjects: int
     findings: int | None
     detail: str
@@ -79,6 +81,7 @@ class HlaAssignmentCheck:
 
 
 def compare(names: set[str], lists: AlleleLists) -> HlaAssignmentCheck:
+    """Count deleted and unassigned names in this release after matching assignments at authored resolution."""
     assigned = names & _assignments(lists.assigned)
     deleted = (names - assigned) & lists.deleted.keys()
     absent = names - assigned - deleted
@@ -121,6 +124,10 @@ def compare(names: set[str], lists: AlleleLists) -> HlaAssignmentCheck:
 def check_names(
     directory: Path, names: set[str], *, offline: bool, download: bool
 ) -> HlaAssignmentCheck | None:
+    """Check names against the local or requested snapshot. An empty roster returns None.
+
+    A roster with no usable reference returns a check with findings=None and the reason it was skipped.
+    """
     if not names:
         return None
     reference = resolve_ipd_imgt_hla_reference()

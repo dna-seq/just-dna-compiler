@@ -61,6 +61,7 @@ class RepeatGradeResult:
 
     @property
     def subjects(self) -> int:
+        """Count distinct repeat keys across covered, missing and could-not-ask outcomes."""
         return len(self.covered) + len(self.missing) + len(self.could_not_ask)
 
     def _commit(self, spec_dir: Path) -> None:
