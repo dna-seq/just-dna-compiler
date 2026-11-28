@@ -1133,3 +1133,45 @@ def ensembl_split_core() -> Callable[..., Path]:
         return Path(root)
 
     return build
+
+
+@pytest.fixture
+def ipd_files(tmp_path: Path) -> Path:
+    """Invented rows in the curators' file format. No upstream data slice is redistributed."""
+    directory = tmp_path / "ipd-input"
+    directory.mkdir()
+    repo = "https://github.com/ANHIG/IMGTHLA"
+    raw = "https://raw.githubusercontent.com/ANHIG/IMGTHLA/Latest"
+    tables = {
+        "Allelelist.txt": (
+            "AlleleID,Allele\n"
+            "HLA91001,A*02:01:09:01\nHLA91002,B*57:01:08N\nHLA91003,DRB1*15:01:04\n"
+            "HLA91004,A*04:011:01\nHLA91005,A*11:03:07L\n"
+        ),
+        "Deleted_alleles.txt": (
+            "# Deleted Alleles\nAlleleID,Allele,Description\n"
+            'HLA92001,A*03:12,"Renamed, after review"\n'
+            "HLA92002,A*02:01:09:01,Previous assignment withdrawn\n"
+            "HLA92003,A*0219N,Historical spelling\n"
+            # The real file's second section (3.66.0): a title line, the header again, then rows.
+            "# Alleles With Suffix Changes\nAlleleID,Allele,Description\n"
+            "HLA92004,A*01:159,Suffix added to allele becoming A*01:159Q (October 2019)\n"
+        ),
+    }
+    for filename, rows in tables.items():
+        (directory / filename).write_text(
+            f"# file: {filename}\n# date: 2026-10-14\n# version: IPD-IMGT/HLA 3.66.0\n"
+            f"# origin: {repo}/{filename}\n# repository: {raw}/{filename}\n"
+            f"# author: IPD Team (ipdsubs@anthonynolan.org)\n{rows}",
+            encoding="utf-8",
+        )
+    (directory / "LICENCE.md").write_text(
+        # The real licence's shape (3.66.0), wrapped prose included; the papers are invented.
+        "We have chosen to apply the Creative Commons Attribution-NoDerivs License to all\n"
+        "copyrightable parts. You may make commercial use provided you give us credit by citing\n"
+        "the following;\n\n\nAuthor A\nPaper A\nJournal (2026)\n\nAuthor B\nPaper B\n\nAuthor C: Paper C\n\n"
+        "We are strongly opposed to the mirroring of the data contained on our sites.\n\n"
+        "FUNDING\nNot a term.\n",
+        encoding="utf-8",
+    )
+    return directory

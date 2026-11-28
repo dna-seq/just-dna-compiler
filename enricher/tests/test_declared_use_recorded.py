@@ -181,6 +181,8 @@ def test_every_gate_with_a_module_reads_its_recorded_declaration() -> None:
         "strchive_draft.draft_repeat_loci",
     }, gates
     assert gates["direct"] == {
+        # The per-host builder gates acquisition even when invoked without a module.
+        "ipd_imgt_hla_build.build_snapshot",
         "caches._gate",
         "caches._present_or_completed",
         "caches.prepare_lane",

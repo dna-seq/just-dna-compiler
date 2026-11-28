@@ -12,6 +12,7 @@ from just_dna_format.snapshot import holds_snapshot_payload
 from just_dna_format.snapshot import release_label as snapshot_release_label
 from just_dna_format.vocab import VALID_DECLARED_USE
 
+from just_dna_enricher import ipd_imgt_hla_build
 from just_dna_enricher.caches import (
     _PINNABLE,
     CACHE_LANES,
@@ -33,7 +34,7 @@ from just_dna_enricher.caches import (
 from just_dna_enricher.cli._shared import _use
 from just_dna_enricher.download import SnapshotNotPublished, _FollowHub, _named_groups
 from just_dna_enricher.licensing import LicenseRefusal, check_declared_use
-from just_dna_enricher.locations import CACHES_DIRNAME, RELEASE_FILENAME
+from just_dna_enricher.locations import CACHES_DIRNAME, RELEASE_FILENAME, repro_out
 
 #: Why `cache rebuild --rehearse-download` is refused without `--dry-run` and `--publish` (RM412). Pinned
 #: by a test, because a refusal's reason is what the operator acts on (`@warning-text-is-api`). The
@@ -67,6 +68,31 @@ cache_app = typer.Typer(
     help="Pre-provision, rebuild and report the snapshot caches.",
     no_args_is_help=True,
 )
+
+
+ipd_imgt_hla_app = typer.Typer(no_args_is_help=True)
+
+
+@ipd_imgt_hla_app.command("build")
+def ipd_imgt_hla_build_(
+    out: Path = typer.Option(repro_out("ipd_imgt_hla"), "--out", file_okay=False),
+    pin: str = typer.Option(ipd_imgt_hla_build.DEFAULT_PIN, "--pin", help="Numeric release, e.g. 3.66.0."),
+    source: Path | None = typer.Option(
+        None,
+        "--source",
+        exists=True,
+        dir_okay=False,
+        help="Local Allelelist.txt beside Deleted_alleles.txt and LICENCE.md.",
+    ),
+    use: str = typer.Option("unstated", "--use", help="Declared use for a fetch."),
+) -> None:
+    """Build the per-host IPD-IMGT/HLA allele-name snapshot."""
+    try:
+        label = ipd_imgt_hla_build.build_snapshot(out, pin=pin, source=source, declared_use=_use(use))
+    except (ipd_imgt_hla_build.IpdHlaUnavailable, LicenseRefusal, OSError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+    typer.echo(f"Built {label} in {out}")
 
 
 def _lane_names() -> list[str]:
@@ -136,6 +162,7 @@ def cache_status_() -> None:
     # answer over HTTP reads the same function rather than re-deriving this loop (S91, RM204).
     for status in lane_status():
         lane = status.lane
+        publish_note = f" — {lane.unpublished}" if lane.per_host else ""
         if status.state == "absent":
             # The lane's own command, taken from the registry rather than composed from its name:
             # two lanes are not `<name> build` (`clinpgx build-labels`, `gnomad constraint build`)
@@ -153,7 +180,10 @@ def cache_status_() -> None:
                 if lane.named_only is not None
                 else f"provision with {how}"
             )
-            typer.secho(f"  {lane.name:13} absent   — {lane.serves}; {provision}", fg=typer.colors.YELLOW)
+            typer.secho(
+                f"  {lane.name:13} absent   — {lane.serves}; {provision}{publish_note}",
+                fg=typer.colors.YELLOW,
+            )
             continue
         if status.state == "occupied":
             # Neither present nor absent: something is at the place the lane looks and it is not a
@@ -177,7 +207,9 @@ def cache_status_() -> None:
                 fg=typer.colors.YELLOW,
             )
             continue
-        typer.secho(f"  {lane.name:13} present  {status.path}  {label}  {size}", fg=typer.colors.GREEN)
+        typer.secho(
+            f"  {lane.name:13} present  {status.path}  {label}  {size}{publish_note}", fg=typer.colors.GREEN
+        )
 
 
 def _echo_groups(lane: str, follow: _FollowHub) -> None:
@@ -216,10 +248,11 @@ def cache_pull_(
         ),
     ),
 ) -> None:
-    """Download the published parquet snapshots from HuggingFace into the local caches.
+    """Provision local caches from their registered sources.
 
     The provisioning step a hosted deployment runs, so no pass ever reaches a source live per request.
-    A cache already here is compared with the release its repo publishes, one small read per lane
+    IPD-IMGT/HLA fetches a missing pinned release directly from the curators and reuses it thereafter.
+    A Hub cache already here is compared with the release its repo publishes, one small read per lane
     (RM420): a cache that came from a pull of that repo and holds another release is re-pulled, and one
     built on this machine is left alone and named with both labels, since it may not be uploaded yet.
     So this is re-runnable and cheap; an interrupted pull fetches only what it lacks, and a truncated
@@ -273,7 +306,7 @@ def cache_pull_(
             **({"groups": named_groups} if named_groups else {}),
         }
         try:
-            path = lane.ensure(_follow_hub=follow, **extra)
+            path = lane.ensure(**extra) if lane.per_host else lane.ensure(_follow_hub=follow, **extra)
         except LicenseRefusal as exc:
             typer.secho(f"  {lane.name}: REFUSED — {exc}", fg=typer.colors.RED, err=True)
             _echo_groups(lane.name, follow)
@@ -342,10 +375,8 @@ def cache_prepare_(
     material — so a machine that only pulled is missing four caches and the checks that read them
     skip themselves. This runs each lane by the route it has.
 
-    **The route is a property of the lane, never a flag.** A published lane pulls, because building
-    it would spend an operator's bandwidth re-deriving bytes somebody already made; an unpublished
-    one builds, because that is the only route there will ever be. Asking for the choice would be
-    asking an operator to restate the licensing story.
+    The registry selects the route. A published lane pulls its snapshot. A per-host lane acquires
+    its tagged release from the curators. Other buildable lanes use their local builder.
 
     **A cache that is already present is left alone** unless it came from a pull and its repo now
     publishes another release, exactly as `cache pull` treats one (RM420), so this is idempotent and

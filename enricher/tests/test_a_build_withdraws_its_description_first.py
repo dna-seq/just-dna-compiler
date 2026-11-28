@@ -42,6 +42,7 @@ from just_dna_enricher import (
     cpic_build,
     drug_labels_build,
     ensembl_rsid_index_build,
+    ipd_imgt_hla_build,
     mane_build,
     mitomap_build,
     mitomap_miss_build,
@@ -226,6 +227,10 @@ def _clinvar_citations(inputs: Path, out_dir: Path, request: pytest.FixtureReque
 
 #: builder module → how to run it, given an inputs directory, the snapshot directory and the request.
 _RUNS: dict[str, Callable[[Path, Path, pytest.FixtureRequest], object]] = {
+    "ipd_imgt_hla_build": lambda i, o, r: ipd_imgt_hla_build.build_snapshot(
+        o,
+        source=r.getfixturevalue("ipd_files") / "Allelelist.txt",
+    ),
     "acmg_build": lambda i, o, r: acmg_build.build_acmg_snapshot(_ASSETS / "acmg_sf_v3.3.xlsx", o),
     "alphagenome_avi_build": lambda i, o, r: alphagenome_avi_build.build_snapshot(
         _ASSETS / "alphagenome" / "avi_chr22_slice.tsv.gz",

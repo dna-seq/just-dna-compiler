@@ -299,7 +299,7 @@ reason its `source` column is inside its fact set while everywhere else `source`
   | `VALID_SIGNIFICANCE` | 4 (closed) |  |
   | `VALID_SUPERPOPULATIONS` | 5 (closed) | the 1000 Genomes superpopulation codes: what `StudyRow.ancestry` binds, and — plus `multi` — `pgs.VALID_TRAINING_ANCESTRY`, derived from it so the codes are one list (RM328) |
   | `VALID_SOURCE_LAYERS` | 15 (closed) | `repeat_grade` records STRchive’s association grades (0.10, RM294) |
-  | `VALID_VERIFICATION_CHECKS` | 27 (closed) |  |
+  | `VALID_VERIFICATION_CHECKS` | 28 (closed) |  |
   | `VALID_VERIFICATION_SKIPS` | 9 (closed) |  |
   | `VALID_VERIFICATION_INDEPENDENCE` | 2 (closed) | `VerificationRecord.independence`, derived from the record's two sources and never typed (RM292) |
   | `VALID_WARNING_CODES` | 88 (closed) | every code a compile may stamp on a finding (members in `RETIRED_WARNING_CODES` are no longer emitted); the catalogue with texts is in [COMPILER.md](COMPILER.md) |
@@ -940,8 +940,9 @@ both modes. The gene decides, never the name's shape: every other gene keeps the
 haplotype-name rule. The refusal was legal under Principle 3 because the published-module scan of
 2026-11-04 found no `allele_function.csv` row with an `HLA-` gene (INTEGRATION_0_8 records it). G and P
 group designations (`*01:01:01G`, `*01:01P`) are outside the grammar PT2 decided and are refused too.
-Whether the allele exists in IPD-IMGT/HLA's list is not checked here; the maintainer put that enricher
-lane in 0.9.
+In 0.10 the enricher also witnesses that spelling against a pinned IPD-IMGT/HLA release.
+The authored grammar and the value carried through compile and reverse stay the same.
+See [the enricher reference](ENRICHER.md#hla-allele-assignments-on-this-host-rm350).
 
 **`negatives?` and `category?` on `DiplotypeRow` (0.8, RM322)** are `VariantRow`'s columns of the same
 names, copied with their descriptions: free text, outside the key, and `category` binds no vocabulary

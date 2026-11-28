@@ -34,7 +34,7 @@ from just_dna_format.spec import VariantRow
 from just_dna_format.vocab import ALLELE_PATTERN
 from just_dna_format.vrs import normalize_chrom, par_partner, refget_accession
 
-from just_dna_enricher import clinvar
+from just_dna_enricher import clinvar, ipd_imgt_hla
 from just_dna_enricher.answer_store import StoreSetting, enrichment_answer_run
 from just_dna_enricher.civic_citations import check_evidence_status_currency, read_studies
 from just_dna_enricher.civic_refutation import RefutationFinding, compare_refutations
@@ -722,6 +722,7 @@ def _run_enrichment(
     # The meta-table's member rsIDs (0.8), read here at the start of the run and never inside the late
     # rsID pass: an invalid meta.csv must refuse before any network pass has done work it would discard
     # (`@incidental-call-isolated`).
+    hla_names = ipd_imgt_hla.authored_names(spec_dir, error=EnrichmentError)
     member_rsids = meta_member_rsids(spec_dir)
     variants: list[VariantRow] = []
     variants_path = spec_dir / "variants.csv"
@@ -2459,7 +2460,9 @@ def _run_enrichment(
             )
 
     sources = sorted({r.source for r in out if r.source})
+    hla = ipd_imgt_hla.check_names(spec_dir, hla_names, offline=offline, download=download)
     result = EnrichmentResult(
+        hla_assignment=hla,
         rows=out,
         unresolved=sorted(set(unresolved)),
         sources=sources,
@@ -2752,8 +2755,18 @@ def _run_enrichment(
         # document, so recording per check would pay it once per check for one guarantee. It goes after
         # `resolution.csv` and before the licence rows for no reason but reading order; the binding is
         # over the **authored** files, which none of these writes touch.
+        if (
+            hla is not None
+            and hla.release is not None
+            and hla.notice is not None
+            and hla.licence_text is not None
+        ):
+            ipd_imgt_hla.record_attribution(
+                spec_dir, hla.release, hla.notice, hla.licence_text, error=EnrichmentError
+            )
         record_verification(
             _verification_records(
+                hla=hla,
                 offline=offline,
                 verify_ref=verify_ref,
                 ref_check=ref_check,

@@ -37,6 +37,10 @@ _PREFLIGHT = "require_sources_file"
 _NO_TABLE_OF_ITS_OWN = {
     ("licensing.py", "record_source_terms"): "the recorder itself",
     ("licensing.py", "record_table_sources"): "the recorder every derived pass calls (RM373)",
+    (
+        "ipd_imgt_hla.py",
+        "record_attribution",
+    ): "credits the allele-name check before attestation; it writes no data table",
     ("identifiers.py", "_check_pgs"): "records the PGS Catalog's terms for a CHECK; it writes no table",
     ("clinpgx.py", "enrich_clinpgx"): (
         "records the snapshot's terms for annotation rows that land through the compiler's draft "

@@ -24,6 +24,7 @@ from just_dna_enricher import (
     cpic_build,
     drug_labels_build,
     ensembl_rsid_index_build,
+    ipd_imgt_hla_build,
     mane_build,
     mitomap,
     mitomap_build,
@@ -35,6 +36,7 @@ from just_dna_enricher import (
     strchive_build,
 )
 from just_dna_enricher.caches import CACHE_LANES, RebuildRequest
+from just_dna_enricher.licensing import LicenseRefusal
 
 #: lane → (module, the first builder call the adapter makes, the error that call is documented to raise).
 #: A lane appears once per error family its builder can raise; CPIC's two are the incident.
@@ -42,6 +44,11 @@ _FAILURES: dict[str, list[tuple[object, str, Exception]]] = {
     "clinvar": [(clinvar_build, "download_clinvar_vcf", clinvar_build.ClinVarBuildError("x"))],
     "constraint": [(constraint_build, "download_constraint_tsv", constraint_build.ConstraintBuildError("x"))],
     "clinpgx": [(clinpgx_build, "download_clinpgx_zip", clinpgx_build.ClinPgxArchiveError("x"))],
+    "ipd_imgt_hla": [
+        (ipd_imgt_hla_build, "build_snapshot", ipd_imgt_hla_build.IpdHlaUnavailable("release unavailable")),
+        (ipd_imgt_hla_build, "build_snapshot", LicenseRefusal("declared use refused")),
+        (ipd_imgt_hla_build, "build_snapshot", OSError("local write failed")),
+    ],
     "cpic": [
         (cpic_build, "build_snapshot", cpic_build.CpicBuildError("x")),
         (cpic_build, "build_snapshot", cpic.CpicError("CPIC answered 503")),

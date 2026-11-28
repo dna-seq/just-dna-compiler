@@ -167,6 +167,9 @@ def enrich_(  # `enrich` command; function name avoids shadowing the imported en
                 f"  repeat grades: {len(grades.covered)} matched, {len(grades.missing)} without a STRchive record, "
                 f"{grades.added} row(s) added"
             )
+
+    if result.hla_assignment and result.hla_assignment.assigned_summary:
+        typer.echo(result.hla_assignment.assigned_summary)
     for usage in result.answer_usage:
         typer.echo(str(usage))
     if result.unresolved:

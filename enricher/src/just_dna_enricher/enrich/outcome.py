@@ -19,6 +19,7 @@ from just_dna_enricher.enrich.rederive_words import DRIFT_CASES, DRIFT_PHRASES, 
 from just_dna_enricher.events import Mint, ReadWindow, alleles_of, covers, no_mint
 from just_dna_enricher.grch37 import BuildDiagnosis
 from just_dna_enricher.identifiers import RsidStatus
+from just_dna_enricher.ipd_imgt_hla import HlaAssignmentCheck
 from just_dna_enricher.placement import PlacementCheck
 from just_dna_enricher.repeat_grades import RepeatGradeResult
 from just_dna_enricher.resolver import AlleleMismatch, PairCheck
@@ -368,6 +369,7 @@ class EnrichmentResult:
     """Live subjects asked and stored subjects served, per endpoint and release."""
 
     repeat_grades: RepeatGradeResult | None = None
+    hla_assignment: HlaAssignmentCheck | None = None
 
     @property
     def fully_resolved(self) -> bool:

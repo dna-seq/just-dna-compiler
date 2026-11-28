@@ -156,6 +156,10 @@ ACMG_SUBDIR: str = "acmg_sf"
 #: STRchive's is a **JSON catalogue**: `STRchive-loci.json` + `release.json`, also no `data/`. It is
 #: the upstream file verbatim beside the provenance of the fetch, because a repeat catalogue is read
 #: whole rather than queried. MIT-licensed, so unlike the two beside it this one may be published.
+IPD_IMGT_HLA_SUBDIR: str = "ipd_imgt_hla"
+IPD_IMGT_HLA_CACHE_VAR: str = "JUST_DNA_IPD_IMGT_HLA_CACHE"
+IPD_ALLELE_FILES: tuple[str, str] = ("Allelelist.txt", "Deleted_alleles.txt")
+
 STRCHIVE_SUBDIR: str = "strchive"
 
 #: The regulator drug labels are a **second** ClinPGx archive with its own release cadence, so they
@@ -1232,6 +1236,23 @@ def _resolve_named_cache(
     if holds_snapshot_payload(search, payload_filename=payload):
         return search
     return None
+
+
+def default_ipd_imgt_hla_cache_dir(*, load_dotenv_file: bool = True) -> Path:
+    return _cache_dir(IPD_IMGT_HLA_SUBDIR, load_dotenv_file=load_dotenv_file)
+
+
+def resolve_ipd_imgt_hla_reference(
+    ipd_imgt_hla_cache: Path | None = None,
+    *,
+    load_dotenv_file: bool = True,
+) -> Path | None:
+    """The pair of lists, their licence and their commit record are one snapshot."""
+    default = default_ipd_imgt_hla_cache_dir(load_dotenv_file=load_dotenv_file)
+    directory = Path(ipd_imgt_hla_cache or os.getenv(IPD_IMGT_HLA_CACHE_VAR) or default)
+    files = [directory / SNAPSHOT_DATA_DIRNAME / name for name in IPD_ALLELE_FILES]
+    files.extend((directory / SNAPSHOT_LICENSE_FILENAME, directory / RELEASE_FILENAME))
+    return directory if all(path.is_file() for path in files) else None
 
 
 def default_acmg_cache_dir(*, load_dotenv_file: bool = True) -> Path:

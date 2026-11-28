@@ -1012,6 +1012,7 @@ VALID_VERIFICATION_CHECKS: frozenset[str] = frozenset(
         # `test_verification_record.py` guards the *membership* equality rather than any block's
         # arithmetic — so a number here is a claim nothing walks. The enricher asserts this block
         # against `enrich._verification_records` instead.
+        "hla_allele_assignment",  # RM350: authored HLA names against a tagged IPD release — `enrich`
         "reference_allele",  # authored `ref` vs the actual reference sequence — `enrich`
         "rsid_currency",  # authored rsID vs dbSNP (live / merged / absent) — `enrich`
         "clinical_significance",  # authored `clin_sig` vs ClinVar's own, allele-exactly — `enrich`
@@ -1749,6 +1750,8 @@ VALID_WARNING_CODES: frozenset[str] = frozenset(
         "measurement_spans_bins",  # a measurement whose interval straddles a boundary (RM56)
         "deprecated_bin_modifier",  # a bin column deprecated in 0.6 and removed at 1.0
         # ── PGx tables ──
+        "hla_allele_deleted",  # IPD records a withdrawal and its reason
+        "hla_allele_not_assigned",  # no assignment at this resolution in the pinned release
         "star_allele_undefined",  # a star allele used but never defined in haplotypes.csv
         "diplotype_definitions_identical",  # diplotype rows naming haplotypes defined identically
         "diplotype_phase_ambiguous",  # diplotype rows indistinguishable without phase

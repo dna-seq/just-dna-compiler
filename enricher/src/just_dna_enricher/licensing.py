@@ -130,6 +130,18 @@ class SourceTerms:
 # axis exists for the sources this workspace does NOT yet reach: OMIM and dbNSFP are academic-use-only,
 # which bars passing the data on at all — something `commercial_use=False` alone understates, since
 # CC BY-NC forbids sale while expressly allowing sharing.
+IPD_IMGT_HLA_TERMS = SourceTerms(
+    source="ipd_imgt_hla",
+    license="CC BY-ND",
+    license_url="https://github.com/ANHIG/IMGTHLA/blob/Latest/LICENCE.md",
+    attribution="IPD-IMGT/HLA Database, IPD Team",
+    notice="Cite the papers in the release licence. The curators oppose mirroring and require permission for modifications.",
+    commercial_use=True,
+    redistribution=True,
+    share_alike=False,
+)
+
+
 CLINPGX_TERMS = SourceTerms(
     source="clinpgx",
     license="CC-BY-SA-4.0",
@@ -995,6 +1007,7 @@ ALPHAGENOME_ATLAS_TERMS = SourceTerms(
 TERMS_BY_SOURCE: dict[str, SourceTerms] = {
     terms.source: terms
     for terms in (
+        IPD_IMGT_HLA_TERMS,
         CLINPGX_TERMS,
         CPIC_TERMS,
         PHARMVAR_TERMS,

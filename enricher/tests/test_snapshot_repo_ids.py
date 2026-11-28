@@ -30,7 +30,7 @@ _ROOT_PAYLOAD_LANES = frozenset({"strchive"})
 
 def test_the_map_holds_every_pulled_lane() -> None:
     """A lane this tier can pull has a repository, and a repository here names a lane that is pulled."""
-    pulled = {lane.name for lane in CACHE_LANES if lane.ensure is not None}
+    pulled = {lane.name for lane in CACHE_LANES if lane.ensure is not None and not lane.per_host}
     assert set(SNAPSHOT_REPO_IDS) == pulled
 
 

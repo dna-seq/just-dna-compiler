@@ -40,6 +40,7 @@ from just_dna_enricher.gnomad import GnomadClient, GnomadError, GnomadRetired, G
 from just_dna_enricher.grch37 import Grch37Client
 from just_dna_enricher.gwas import GwasCatalogClient, GwasError, GwasRetired
 from just_dna_enricher.identifiers import IdentifierRetired, IdentifierUnavailable, OntologyClient
+from just_dna_enricher.ipd_imgt_hla_build import DEFAULT_PIN, IpdHlaClient, IpdHlaRetired, IpdHlaUnavailable
 from just_dna_enricher.ld_pairs import LdClient, LdError, LdRetired
 from just_dna_enricher.literature import (
     CrossrefClient,
@@ -88,6 +89,11 @@ def _serve_html(request: httpx.Request) -> httpx.Response:
         text="<html><body>Scheduled maintenance</body></html>",
         headers={"content-type": "text/html"},
     )
+
+
+def _ipd_imgt_hla(handler: Callable[[httpx.Request], httpx.Response]) -> Callable[[], object]:
+    client = IpdHlaClient(transport=httpx.MockTransport(handler))
+    return lambda: client.fetch(DEFAULT_PIN, "Allelelist.txt")
 
 
 def _gnomad(handler: Callable[[httpx.Request], httpx.Response]) -> Callable[[], object]:
@@ -236,6 +242,7 @@ def _remote(handler: Callable[[httpx.Request], httpx.Response]) -> Callable[[], 
 
 #: `(label, builder, the error type this client's callers are told to catch)`.
 CLIENTS = [
+    ("ipd_imgt_hla_build", _ipd_imgt_hla, IpdHlaUnavailable),
     ("gnomad", _gnomad, GnomadError),
     # `LiteratureUnavailable` rather than its parent: the stronger assertion, and every failure of
     # this probe really is "the source could not be asked" (RM230).
@@ -480,6 +487,7 @@ def test_a_200_that_is_not_json_surfaces_as_the_tiers_own_error(label, builder, 
 #: four times first. Keyed on the `CLIENTS` labels and asserted equal to them below, so a new row
 #: cannot join without naming its 410.
 RETIRED_IS_NAMED = {
+    "ipd_imgt_hla_build": IpdHlaRetired,
     "gnomad": GnomadRetired,
     "europepmc": LiteratureRetired,
     "eutils": EutilsRetired,

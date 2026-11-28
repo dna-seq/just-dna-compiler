@@ -461,3 +461,11 @@ Feature: The verification checks and their three outcomes
       | a ClinVar-drafted column nobody has edited      | ClinVar  | self_consistent |
       | cells beside a licence row naming ClinVar alone | ClinVar  | withheld (null) |
       | a release CIViC published at drafting           | CIViC    | self_consistent |
+
+  # source: enricher/src/just_dna_enricher/enrich/verification_records.py
+  # anchor: _verification_records
+  @check:hla_allele_assignment
+  Scenario: A per-host release witnesses the authored resolution
+    Given a module names an HLA allele at protein resolution
+    When enrich finds that name among a tagged release's full-length alleles
+    Then the verification record names the release and counts the allele as assigned

@@ -137,6 +137,7 @@ from just_dna_enricher.cli.cache_commands import cache_prune_ as cache_prune_
 from just_dna_enricher.cli.cache_commands import cache_pull_ as cache_pull_
 from just_dna_enricher.cli.cache_commands import cache_rebuild_ as cache_rebuild_
 from just_dna_enricher.cli.cache_commands import cache_status_ as cache_status_
+from just_dna_enricher.cli.cache_commands import ipd_imgt_hla_app as ipd_imgt_hla_app
 from just_dna_enricher.cli.civic_commands import _polars as _polars
 from just_dna_enricher.cli.civic_commands import civic_app as civic_app
 from just_dna_enricher.cli.civic_commands import civic_build_ as civic_build_
@@ -284,6 +285,7 @@ from just_dna_enricher.vrs import MintResult as MintResult
 app.add_typer(clinpgx_app, name="clinpgx")
 app.add_typer(acmg_app, name="acmg")
 app.add_typer(clinvar_app, name="clinvar")
+app.add_typer(ipd_imgt_hla_app, name="ipd-imgt-hla")
 app.add_typer(cache_app, name="cache")
 app.add_typer(cpic_app, name="cpic")
 app.add_typer(pharmvar_app, name="pharmvar")

@@ -23,6 +23,7 @@ the mode** (`best_effort` warns and carries on; `strict` refuses). What exists t
 | **Authored spelling** | a subject's authored coordinate (whole, or CPIC's half) vs each locus written for it, where the two spellings differ (0.8, RM375) | `events.authored_event`, stamped as `resolution.csv` `authored_event` by `enrich()`; the compiler reads `same_event` as agreement (`resolution.recorded_verdicts`, bound to `judged_coordinate`) and judges nothing itself | — | — | — *(recorded onto the row, not attested; the run reads its selected reference)* |
 | **Placement agreement** | where the run's own link placed an rsID vs where ClinVar and ClinVar-GKM place it, and, online with the merge check on, where dbSNP's own record places a snapshot indel neither holds (0.8, RM267; dbSNP since RM398, Ensembl REST before); a disagreement **withholds** the disputed locus | `placement.compare_placements`, called by `enrich()` before the table is assembled (warns in both modes; `strict` refuses through the unresolved gate, since a withheld rsID-only row is unresolved) | `reporting_source`, or `ensembl` on a record where only REST answered before RM398 (Ensembl against itself); abstentions counted in `undecided` | `clinvar`, `clinvar_gkm`, `dbsnp`, `ensembl` | `placement_agreement` |
 | **Ambiguous back-fill** | ≥2 rsIDs for one exact allele → recorded, never guessed | `resolver._lookup_rsid_candidates` | — | — | — *(recorded onto the row, not attested)* |
+| **HLA allele assignment** | authored HLA names at their stated resolution against the assigned and deleted lists in a pinned release | `ipd_imgt_hla.compare` during `enrich`, warns in both modes | `authored` | `ipd_imgt_hla` | `hla_allele_assignment` |
 | **Clinical significance** | authored `clin_sig` vs **every annotation authority** consulted — ClinVar and, since 0.7, PubMind — allele-exactly | `clinical.verify_clin_sig` (**warns in both modes**), persisted as the N-authority concordance record by `clinical.clin_sig_concordance` (0.7, RM130 + RM134 § B) | `authored` | `clinvar` | `clinical_significance` |
 | **Answered-call currency** | an authority's call **now** vs what it said when the author's `overrides.csv` answer was written (0.7, RM151) | `clinical.answered_call_shift` → `concordance.shifted_authority_calls` (**warns in both modes**; the baseline is the previous run's `clin_sig_authority_calls.csv`, so it is read before the commit rewrites it and a move is observable exactly once) | — | — | — *(logged; the record it reads is the attestation)* |
 | **PGx evidence level** | authored `evidence_level` vs ClinPGx's own for that annotation | `clinpgx.enrich_clinpgx` (**refuses in `strict`** — the only enricher cross-check that does — on a row's own cited annotation only; RM297) | `authored` | `clinpgx` | `pgx_evidence_level` |
@@ -488,6 +489,8 @@ core was ported, not depended on, dropping `fastmcp`/`eliot`). In the workspace:
 | `pubmind_build` | **`[dev]`** builder (0.7, RM134): the ANNOVAR-distributed PubMind table → one parquet + `release.json`. Operator-built, and `pubmind publish` **refuses** | `polars` (lazy), `httpx`, `clin_sig` |
 | `mane_build` | **`[dev]`** builder (0.7, RM168): one pinned MANE release → three parquets + `release.json`. Operator-built; there is no `mane publish` because NCBI states a policy rather than a licence | `polars` (lazy), `httpx` |
 | `opentargets_build` | **`[dev]`** builder (0.8, RM333): one pinned Platform release (26.09) mirrored from EBI's FTP over https → the flattened lane snapshot + `release.json`; `subset_snapshot` cuts a regional or test slice | `polars` (lazy), `httpx` |
+| `ipd_imgt_hla` | HLA allele assignment, withdrawal and release-specific absence | format PGx grammar, compiler table registry |
+| `ipd_imgt_hla_build` | Fetch the tagged IPD lists and licence, verify the release, and install the verbatim files per host | `httpx`, format snapshot |
 | `strchive` | RM165: the STRchive repeat-locus catalogue — the `repeat_alleles.csv` band cross-check (offline, reports only) | format `binning`, compiler `load_csv_rows` |
 | `repeat_grades` | Records each STRchive association grade for an authored repeat key (RM294) | `strchive`, `licensing`, format `repeat_grades` |
 | `strchive_build` | RM165 builder: download `STRchive-loci.json` + `release.json`. Core `httpx` only, no parquet and no `[dev]` extra | `httpx` |
@@ -1906,6 +1909,7 @@ service* below). Pre-provisioning is therefore a deployment step, not an optimiz
 | **CIViC** ✅ | `civic/` | `$JUST_DNA_CIVIC_CACHE` | `ensure_civic_snapshot` | `just-dna-seq/civic` — CC0, repo not created yet | curated cancer interpretations, **`direction` axis only** (RM152); `--submitted` widens the basis from the release's own VCF (RM169) |
 | **MANE** ❓ | `mane/` | `$JUST_DNA_MANE_CACHE` | **none, by design** | **never published** | the transcript numbering frame — summary, changed Select accessions, excluded genes (RM168) |
 | **ClinPGx drug labels** 🔒 | `drug_labels/` | `$JUST_DNA_DRUG_LABELS_CACHE` | `ensure_drug_labels_snapshot` | `just-dna-seq/clinpgx_drug_labels` — repo not created yet | what five regulators say about a gene/drug pair (`clinpgx check-labels`) |
+| **IPD-IMGT/HLA** ✅ | `ipd_imgt_hla/` | `$JUST_DNA_IPD_IMGT_HLA_CACHE` | `ensure_ipd_imgt_hla_snapshot` (curators' repository) | never mirrored, at the curators' request | HLA allele assignment (`enrich`) |
 | **STRchive** ✅ | `strchive/` | `$JUST_DNA_STRCHIVE_CACHE` | `ensure_strchive_snapshot` | `just-dna-seq/strchive` — MIT, repo not created yet | repeat-locus bands (`check-repeat-bands`, `draft-repeats`) |
 | **ACMG SF** ❓ | `acmg_sf/` | `$JUST_DNA_ACMG_CACHE` | **none, by design** | **never published** | the secondary-findings list (`check-acmg`) |
 | **MITOMAP** ✅ | `mitomap/` | `$JUST_DNA_MITOMAP_CACHE` | `ensure_mitomap_snapshot` | `just-dna-seq/mitomap` — CC BY 3.0, repo not created yet | curated mtDNA variants, both `mmutation` and `rtmutation` (RM171) |
@@ -1930,6 +1934,31 @@ lane. Its snapshot is the first that is **incomplete without a root-level file**
 stored, so `avi_knots.parquet` travels beside `data/` and `locations.SNAPSHOT_ROOT_FILENAMES` is what
 makes the publisher carry it. The three PGx 🔒 rows are RM38, new in 0.5.1; the PubMind
 🔒 row is RM134, ❓ until WGLab answered on 2026-09-28 (RM320), and the MANE one is RM168; the two MITOMAP rows are RM171.
+
+### HLA allele assignments on this host (RM350)
+
+`cache pull --only ipd_imgt_hla` provisions this machine directly from ANHIG/IMGTHLA.
+`cache rebuild --only ipd_imgt_hla --pin ipd_imgt_hla=3.66.0` builds the same release
+under the rebuild output directory. The default pin is 3.66.0. The builder maps the numeric pin to
+`v3.66.0-alpha` and refuses the moving `Latest` branch. Both lists must state that version in their
+headers. Their original bytes live under `data/`. The root carries the tagged licence and
+`release.json`, including each list's digest. For a local build, pass `--source` to
+`ipd-imgt-hla build` with the path to `Allelelist.txt` beside `Deleted_alleles.txt` and `LICENCE.md`.
+
+For a module naming HLA alleles, `enrich` consults this release and records
+`hla_allele_assignment` in `verification.json`. An exact assignment or a longer assignment with
+the same complete fields witnesses the name. A stated expression suffix must match. A live assignment
+wins if the deleted list also contains that name. An exact deleted name gets the curators' description.
+A name absent from both lists gets a warning naming the release, since a newer release may assign it.
+Both findings warn under `--strict`. With no usable list, the record says why the check could not ask.
+`--offline` reads a provisioned copy. A module without HLA names makes no request and emits no HLA record.
+
+An answered check credits IPD-IMGT/HLA at the PGx checks' `annotation` layer. Its notice carries
+the curators' three citations and their two conditions, cut from the tagged licence, whose whole text
+`license_sha256` binds. A licence row the module already has is merged, never rewritten, so it keeps its
+own notice and declaration. The licence allows commercial use and
+redistribution of unchanged material with attribution. The curators oppose mirroring and require
+permission for modified copies, so the lane has no publish stage and produces no derived parquet.
 
 ### The derived lane, and the `parents` field (RM171)
 
@@ -5779,6 +5808,7 @@ absent from it has no recorded terms, which is a different state from having per
 | `clingen` | CC0-1.0 | ✅ | — | ✅ | |
 | `gencc` | CC0-1.0 | ✅ | — | ✅ | |
 | `civic` | CC0-1.0 | ✅ | — | ✅ | the only annotation snapshot that may be published |
+| `ipd_imgt_hla` | CC BY-ND | ✅ | — | ✅ | Verbatim distribution with citation is permitted. Curators oppose mirroring and require permission for modifications. |
 | `strchive` | MIT | ✅ | — | ✅ | |
 | `mitomap` | CC BY 3.0 | ✅ | — | ✅ | a **floor**: the host grants it "unless otherwise noted", so a per-record note outranks it |
 | `alphagenome_avi` | AlphaGenome Services Additional Terms | ✅ | — | ✅ | Permissive Use (RM195); the *sign-in* bars classes of holder, which no column says |
@@ -6730,6 +6760,7 @@ and `EnsemblResolver` are the latter, and are exempt from the contract suite for
 | `mitomap` | `MitomapError` | `MitomapUnavailable`, `MitomapRetired` (under the one before it; a 410, RM361) |
 | `pgx` | `PgxEnrichmentError` | — |
 | `repeat_grades` | `RepeatGradeError` | — |
+| `ipd_imgt_hla_build` | `IpdHlaUnavailable` | `IpdHlaRetired` (404/410 on the tagged file) |
 | `strchive` | `StrchiveError` | `StrchiveUnavailable`, `StrchiveRetired` (under the one before it; a 410, RM361) |
 
 **Three surfaces raise a declared family instead of one type (RM288, 0.8).** `cpic_build.ERRORS`,
@@ -7140,6 +7171,7 @@ the checks `enrich()` puts whose findings then survived nowhere at all:
 | `placement_agreement` | `detail=` — up to `DETAIL_LIMIT` disagreements naming both placements, the one-witness count over every placed rsID, and the undecided respellings; and **per row** in `resolution.csv` as `placement_witness` / `placement_verdict` |
 | `rsid_currency` | **per row in `resolution.csv`** — `rsid_status` and `rsid_current` are columns of the written file |
 | `genome_build_agreement` | count only, but its subjects *are* `reference_allele`'s mismatches, so the candidate rows are reachable |
+| `hla_allele_assignment` | `detail=` gives counts and examples by outcome, with the release and deleted-name descriptions when available |
 | `clinical_significance` | `detail=` since S70, grouped on `opposed`. Before that: the logger, and nothing else |
 
 The conflicts always existed at runtime — `compare_clin_sig` returns them and every one is logged —

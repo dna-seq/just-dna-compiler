@@ -170,3 +170,19 @@ Feature: What the enricher's resolver says, in its own words
     # not claim a version for an id it did not mint (`@currency-cannot-be-a-column`). The minter's
     # version is `ga4gh.vrs.VRS_VERSION` at its minor. The compiler emits the same code for the same
     # rows at compile, against the manifest's pin.
+
+  # source: enricher/src/just_dna_enricher/ipd_imgt_hla.py
+  # anchor: compare
+  @code:hla_allele_deleted @actionable
+  Scenario: A withdrawn HLA name has a curator's explanation
+    Given an authored HLA name appears only in the deleted list
+    When enrich checks the pinned release
+    Then its warning says "deleted HLA allele" and quotes the explanation
+
+  # source: enricher/src/just_dna_enricher/ipd_imgt_hla.py
+  # anchor: compare
+  @code:hla_allele_not_assigned @actionable
+  Scenario: A well-formed HLA name has no assignment at the requested resolution
+    Given neither release file witnesses the authored HLA name
+    When enrich checks the pinned release in strict mode
+    Then its warning says "not assigned in release" and names the release
