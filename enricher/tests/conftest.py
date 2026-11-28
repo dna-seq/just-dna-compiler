@@ -58,6 +58,7 @@ import http.server
 import json
 import os
 import re
+import shutil
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -1175,3 +1176,18 @@ def ipd_files(tmp_path: Path) -> Path:
         encoding="utf-8",
     )
     return directory
+
+
+@pytest.fixture
+def fasta(tmp_path: Path) -> Path:
+    source = next((Path(__file__).resolve().parents[2] / "assets/grch38_mt_fasta").glob("*.fa"))
+    path = tmp_path / "local MT.fa"
+    shutil.copyfile(source, path)
+    shutil.copyfile(f"{source}.fai", f"{path}.fai")
+    return path
+
+
+@pytest.fixture
+def recorded_alignment_window(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Ask for flanks the small recorded chromosome excerpts can supply in full."""
+    monkeypatch.setattr("just_dna_enricher.sequences._LEFT_ALIGN_WINDOW", 16)

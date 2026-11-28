@@ -263,6 +263,12 @@ def _cache_state(path: Path, fasta_stamp: tuple[int, int], index_stamp: tuple[in
     return _CacheState()
 
 
+def _interval_problem(chrom: str, start: int, end: int, length: int) -> str | None:
+    if 0 <= start <= end <= length:
+        return None
+    return f"local FASTA: interval [{start},{end}) is outside {chrom} (length {length})"
+
+
 class FastaReference:
     """The get_metadata/get_sequence interface used by vrs-python. Never opens a network source."""
 
@@ -401,8 +407,12 @@ class FastaReference:
         """Read uppercased bases from the verified contig over a zero-based, half-open interval."""
         with self.path.open("rb") as stream:
             entry = self._verified(identifier, stream)
-            lo, hi, _ = slice(start, end).indices(entry.length)
-            result = entry.read(stream, lo, max(lo, hi))
+            lo = 0 if start is None else start
+            hi = entry.length if end is None else end
+            problem = _interval_problem(_CHROM[identifier.removeprefix("ga4gh:")], lo, hi, entry.length)
+            if problem:
+                raise ValueError(problem)
+            result = entry.read(stream, lo, hi)
             if _stamp(os.fstat(stream.fileno())) != self.stamp:
                 raise OSError(f"local FASTA changed while reading {identifier}")
             return result.decode("ascii")

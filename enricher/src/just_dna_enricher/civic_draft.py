@@ -515,7 +515,7 @@ def _refuted_warning(refuted: Sequence[tuple[str, str, str]], basis: str | None)
     ]
 
 
-def _withheld_warnings(withheld: dict[str, int], contested: Sequence[str]) -> list[str]:
+def _withheld_warnings(withheld: dict[str, int], contested: Sequence[str], unread: set[str]) -> list[str]:
     """One line per class that actually withheld something, grouped by **reason**.
 
     A class that withheld nothing says nothing: a check that cannot fail must not report a zero, and
@@ -538,11 +538,11 @@ def _withheld_warnings(withheld: dict[str, int], contested: Sequence[str]) -> li
             f"row yourself, or record the decision once you have made it."
         )
     if withheld["anchor_base_unreadable"]:
+        detail = f" {examples(sorted(unread))}." if unread else ""
         lines.append(
             f"{withheld['anchor_base_unreadable']} CIViC row(s) name an insertion or deletion the "
-            f"ClinGen registry states, but the GRCh38 reference base needed to write it VCF-style "
-            f"could not be read. The allele is known; the anchor is not, and it is withheld rather "
-            f"than guessed — a guessed anchor is a wrong `ref` on a right position."
+            f"ClinGen registry states, but the GRCh38 reference could not supply its anchored, "
+            f"left-aligned spelling. The row is withheld rather than guessed.{detail}"
         )
     if withheld["caid_no_identity"]:
         lines.append(
@@ -670,15 +670,7 @@ def draft_panel_from_civic(
 
     sequences = held_by_one_run(sequences or SequenceProxy(offline=offline), offline=offline)
 
-    def read_base(chrom: str, pos: int) -> str | None:
-        """One GRCh38 reference base at a 1-based position, or `None`."""
-        try:
-            accession = refget_accession(chrom)
-        except UnsupportedBuildError:  # pragma: no cover - GRCh38 is this snapshot's only build
-            return None
-        if accession is None:
-            return None
-        return sequences.subsequence(accession, pos - 1, pos)
+    unread: set[str] = set()
 
     def read_window(chrom: str, start: int, end: int) -> str | None:
         """GRCh38 reference bases over 1-based `[start, end]`, or `None`."""
@@ -688,7 +680,13 @@ def draft_panel_from_civic(
             return None
         if accession is None:
             return None
-        return sequences.subsequence(accession, start - 1, end)
+        bases = sequences.subsequence(accession, start - 1, end)
+        if bases is None and sequences.local_fasta:
+            unread.add(sequences.local_read_problem(chrom, "GRCh38", (start - 1, end)))
+        return bases
+
+    def read_base(chrom: str, pos: int) -> str | None:
+        return read_window(chrom, pos, pos)
 
     variant_partials: list[PartialRow] = []
     study_partials: list[PartialRow] = []
@@ -777,7 +775,7 @@ def draft_panel_from_civic(
                 spec_dir, "studies.csv", study_partials, dry_run=dry_run, before_commit=commit_licence
             )
         )
-    result.warnings.extend(_withheld_warnings(result.withheld, contested_names))
+    result.warnings.extend(_withheld_warnings(result.withheld, contested_names, unread))
     result.warnings.extend(_refuted_warning(result.refuted_beside_claim, result.refutation_basis))
 
     # **A pass that consults a source writes its `SourceRow`; one that contributed nothing writes

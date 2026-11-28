@@ -798,7 +798,18 @@ Later calls reuse the cached digests. Other sequence sources return `None`.
 The local reader, `FastaReference`, exposes the same records through `FastaReference.contig_identity`.
 `FastaReference.current` checks the FASTA and index against their opening file stamps.
 `FastaReference.get_metadata` gives the length of a verified primary, and
-`FastaReference.get_sequence` reads its bases over a zero-based, half-open interval.
+`FastaReference.get_sequence` reads its bases over a zero-based, half-open interval. An interval ending
+at the contig length includes the final base. An interval outside those bounds raises `ValueError`
+with the chromosome and its verified length. `SequenceProxy.subsequence` returns `None` for that
+read and memoizes only complete answers. This length check also applies to replies from seqrepo.
+
+Indel alignment reads the upstream flank and the entire REF span together. On GRCh38, an input such
+as `MT:16599 A>AA` therefore has no normalized spelling. The same applies to a deletion anchored at
+the last MT base whose REF extends beyond it. The placement witness leaves a comparison that needs
+those bases undecided. CIViC withholds a row that needs them and includes the local FASTA reason in
+its draft warnings. CPIC also withholds a repeat count when its reference window is incomplete.
+A REF check can still compare the final base by reading the REF span alone when the neighbouring
+base is unavailable.
 
 **A FASTA that binds all 25** (measured by the lead, 2026-11-27): NCBI's RefSeq GRCh38 sequence set,
 `GCF_000001405.40_GRCh38.p14_genomic.fna.gz` from

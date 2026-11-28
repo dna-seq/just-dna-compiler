@@ -15,17 +15,18 @@ from just_dna_compiler.resolution import hosting_verdict
 from just_dna_enricher.enrich import _settle_by_reference, enrich
 from just_dna_enricher.sequences import SequenceProxy, _indel_payloads
 
+pytestmark = pytest.mark.usefixtures("recorded_alignment_window")
+
 _FIRST = 166204460
 _CHR2 = "CCAAGGTAAAGAAACAAACAAAAAATAAATG"
 _LOCUS = {"chrom": "2", "start": 166204477, "ref": "ACAAA", "alts": "A"}
 
 
 def _read(chrom: str, start: int, end: int) -> str | None:
-    """The window, clipped to what the test holds; a read wholly outside it is unreadable."""
-    if chrom != "2":
+    """The exact window if the recording holds it."""
+    if chrom != "2" or start < _FIRST or end >= _FIRST + len(_CHR2):
         return None
-    lo, hi = max(start, _FIRST), min(end, _FIRST + len(_CHR2) - 1)
-    return _CHR2[lo - _FIRST : hi - _FIRST + 1] if lo <= hi else None
+    return _CHR2[start - _FIRST : end - _FIRST + 1]
 
 
 def test_the_payload_set_is_every_rotation_the_repeat_allows() -> None:

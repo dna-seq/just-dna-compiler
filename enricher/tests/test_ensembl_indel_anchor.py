@@ -168,9 +168,9 @@ def _apply(first: int, seq: str, pos: int, ref: str, alt: str) -> str:
     return seq[:i] + alt + seq[i + len(ref) :]
 
 
-def test_rs72613567_is_moved_to_vcf_spelling() -> None:
-    clipped = lambda c, s, e: _window_over({"4": _CHR4})(c, max(s, _CHR4[0]), e)  # noqa: E731
-    assert _left_align("4", 87310241, "A", "AA", clipped) == ("4", 87310240, "T", "TA")
+def test_rs72613567_is_moved_to_vcf_spelling(recorded_alignment_window: None) -> None:
+    read = _window_over({"4": _CHR4})
+    assert _left_align("4", 87310241, "A", "AA", read) == ("4", 87310240, "T", "TA")
     assert _apply(*_CHR4, 87310241, "A", "AA") == _apply(*_CHR4, 87310240, "T", "TA")
 
 
@@ -178,9 +178,9 @@ def test_an_unreadable_window_withholds_rather_than_guessing() -> None:
     assert _left_align("4", 87310241, "A", "AA", lambda _c, _s, _e: None) is None
 
 
-def test_rs77944059_deletion_moves_to_the_leftmost_equivalent() -> None:
+def test_rs77944059_deletion_moves_to_the_leftmost_equivalent(recorded_alignment_window: None) -> None:
     """RM273 named 166204473 as the left-aligned spelling; the reference says 166204470."""
-    read = lambda c, s, e: _window_over({"2": _CHR2})(c, max(s, _CHR2[0]), e)  # noqa: E731
+    read = _window_over({"2": _CHR2})
     left = _left_align("2", 166204477, "ACAAA", "A", read)
     assert left == ("2", 166204470, "GAAAC", "G")
     haplotype = _apply(*_CHR2, 166204477, "ACAAA", "A")
@@ -188,6 +188,6 @@ def test_rs77944059_deletion_moves_to_the_leftmost_equivalent() -> None:
     assert _apply(*_CHR2, 166204473, "ACAAA", "A") == haplotype  # also equivalent, just not leftmost
 
 
-def test_an_already_left_aligned_row_is_unchanged() -> None:
-    read = lambda c, s, e: _window_over({"4": _CHR4})(c, max(s, _CHR4[0]), e)  # noqa: E731
+def test_an_already_left_aligned_row_is_unchanged(recorded_alignment_window: None) -> None:
+    read = _window_over({"4": _CHR4})
     assert _left_align("4", 87310240, "T", "TA", read) == ("4", 87310240, "T", "TA")
