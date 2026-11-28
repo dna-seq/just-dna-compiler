@@ -53,6 +53,8 @@ its catch; what 0.10 did not introduce, or what only withholds, is a known issue
   count rides on C3.
 - **Round 2** reads RM399, RM441, RM460 and RM385's left-alignment core, which round 1 read lightly, with a fourth
   model in Grok's place, and gets this list so nothing here is reported again.
+- **Done (the lead, 2026-11-28):** every fix placed in 0.10 above is on 0.10 at `12975c1d` (merged suite green bar
+  the floor guard, which the cut moves); round 2 runs on that commit with Opus, Sol, Argon and Grok 4.6 high-fast.
 
 ---
 
