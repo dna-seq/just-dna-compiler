@@ -3,6 +3,7 @@
 import tomllib
 from collections.abc import Callable
 from importlib.metadata import version
+from itertools import pairwise
 from pathlib import Path
 
 import pytest
@@ -25,7 +26,7 @@ from enricher.tests.test_ensembl_split_release import _cache_with, _manifest, _n
 
 
 def test_coverage_matches_tagged_enricher_versions_and_the_installed_version(
-    release_tags: list[str], git_output: Callable[..., str | None]
+    release_tags: list[str], git_output: Callable[..., str | None], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     installed = version("just-dna-enricher")
     assert installed in DERIVATION_RECORDS
@@ -42,6 +43,10 @@ def test_coverage_matches_tagged_enricher_versions_and_the_installed_version(
             earlier.add(tomllib.loads(project)["project"]["version"])
     assert set(DERIVATION_RECORDS) == expected
     assert set(rederive_reasons("0.0.0", "0.8.0").unknown_releases) == earlier
+    monkeypatch.setattr("just_dna_enricher.derivation_records.DERIVATION_RECORDS", {})
+    assert rederive_reasons("0.0.0", installed).unknown_releases == tuple(
+        sorted(expected | earlier, key=parse_version)
+    )
 
 
 def test_split_snapshot_labels_come_from_the_lanes_and_only_drive_rederivation(tmp_path: Path) -> None:
@@ -78,9 +83,10 @@ def test_rsid_correction_and_kept_table() -> None:
         "resolution.csv",
     )
     # RM432: offline over an unreadable constraint snapshot, 0.8.4 wrote `not_found` gene rows; 0.8.5 writes none.
-    assert {(change.table, change.items) for _, change in rederive_reasons("0.8.4", "0.8.5", "gene_metrics.csv").changes} == {
-        ("gene_metrics.csv", ("RM432",))
-    }
+    assert {
+        (change.table, change.items)
+        for _, change in rederive_reasons("0.8.4", "0.8.5", "gene_metrics.csv").changes
+    } == {("gene_metrics.csv", ("RM432",))}
     assert needs_rederive("0.8.9", "0.8.10") is False
     assert needs_rederive("0.8.5", "0.8.6") is False
     assert needs_rederive("0.8.5", "0.8.7", "resolution.csv") is False
@@ -106,8 +112,8 @@ def test_unknown_and_matching_changes_are_both_reported_in_release_order() -> No
 def test_uncovered_ends_and_empty_span() -> None:
     assert needs_rederive("0.7.1", "0.7.3") is None
     assert rederive_reasons("0.7.1", "0.8.0").unknown_releases == ("0.7.2", "0.7.3")
-    assert needs_rederive("0.7.1", "0.8.0", "frequencies.csv") is None
-    assert needs_rederive("0.7.3", "0.8.0", "frequencies.csv") is False
+    assert needs_rederive("0.7.1", "0.8.0", "ld_pairs.csv") is None
+    assert needs_rederive("0.7.3", "0.8.0", "ld_pairs.csv") is False
     future = "99.0.0"
     assert needs_rederive(future, future) is False
     assert needs_rederive("0.9.0", future) is None
@@ -125,19 +131,68 @@ def test_invalid_span_or_table_refuses(reader: Callable[..., object]) -> None:
         reader("0.8.9", "0.8.10", "variants.csv")
 
 
-def test_newest_is_the_last_possible_change_for_every_table(monkeypatch: pytest.MonkeyPatch) -> None:
-    for name in DERIVED_TABLE_MODELS:
-        table = sidecar_key(name)
-        possible = [
-            v
-            for v, changes in DERIVATION_RECORDS.items()
-            if changes is None or any(c.table == table for c in changes)
-        ]
-        assert newest_rederive_release(name) == max(possible, key=parse_version, default=None)
-    monkeypatch.setitem(DERIVATION_RECORDS, "0.8.10", None)
+def test_every_table_across_consecutive_tags(
+    release_tags: list[str], git_output: Callable[..., str | None]
+) -> None:
+    if not release_tags:
+        pytest.skip("the complete release tags are unavailable")
+
+    # CSV names in the tagged enricher are independent of today's row-model metadata.
+    newest: dict[str, str | None] = dict.fromkeys(DERIVED_TABLE_MODELS)
+    for previous, tag in pairwise(release_tags):
+        release = tag[1:]
+        produced: set[str] = set()
+        if git_output("show", f"{tag}:enricher/pyproject.toml") is not None:
+            names = git_output(
+                "grep", "-h", "-o", "-E", """["'][a-z_]+[.]csv["']""", tag, "--", "enricher/src/*.py"
+            )
+            assert names, tag
+            produced = {sidecar_key(name[1:-1]) for name in names.splitlines()}
+        entry = DERIVATION_RECORDS.get(release)
+        for name in newest:
+            key = sidecar_key(name)
+            assert needs_rederive(release, release, name) is (False if key in produced else None), (tag, name)
+            expected = None if key not in produced or entry is None else any(c.table == key for c in entry)
+            assert needs_rederive(previous[1:], release, name) is expected, (tag, name)
+            if key in produced and expected is not False:
+                newest[name] = release
+
+    # At a cut the installed version can be ahead of the last published tag.
+    if release_tags[-1][1:] == version("just-dna-enricher"):
+        assert {name: newest_rederive_release(name) for name in newest} == newest
+
+
+def test_missing_patch_is_withheld_by_both_readers(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delitem(DERIVATION_RECORDS, "0.8.10")
+    reasons = rederive_reasons("0.8.9", "0.9.0", "resolution.csv")
+    assert reasons.unknown_releases == ("0.8.10",)
+    assert needs_rederive("0.8.9", "0.9.0", "resolution.csv") is None
+    assert needs_rederive("0.8.9", "0.9.0", "gene_metrics.csv") is True
+    # A later cut can legitimately supersede the missing patch. Give those releases known
+    # empty records so the newest-release query must see the gap even after the next cut.
+    for release in DERIVATION_RECORDS:
+        if parse_version(release) > parse_version("0.8.10"):
+            monkeypatch.setitem(DERIVATION_RECORDS, release, ())
     assert newest_rederive_release("resolution.csv") == "0.8.10"
-    monkeypatch.setattr("just_dna_enricher.derivation_records.DERIVATION_RECORDS", {"0.8.0": ()})
-    assert newest_rederive_release("resolution.csv") is None
+
+
+def test_missing_latest_record_still_counts(monkeypatch: pytest.MonkeyPatch) -> None:
+    installed = version("just-dna-enricher")
+    monkeypatch.delitem(DERIVATION_RECORDS, installed)
+    assert newest_rederive_release("resolution.csv") == installed
+
+
+def test_newest_cannot_date_a_table_before_its_first_release() -> None:
+    newest = newest_rederive_release("repeat_grades.csv")
+    assert newest is None or parse_version(newest) >= parse_version("0.10.0")
+
+
+def test_repeat_grades_withhold_before_their_first_release() -> None:
+    table = "repeat_grades.csv"
+    assert needs_rederive("0.8.9", "0.8.10", table) is None
+    assert needs_rederive("0.8.10", "0.8.10", table) is None
+    assert rederive_reasons("0.8.9", "0.8.10", table).unknown_releases == ("0.8.10",)
+    assert needs_rederive("0.10.0", "0.10.0", table) is False
     with pytest.raises(ValueError, match="variants.csv"):
         newest_rederive_release("variants.csv")
 
@@ -178,6 +233,17 @@ def test_model_refuses_invalid_change(fields: dict[str, object]) -> None:
 @pytest.mark.parametrize(
     ("previous", "release", "table", "items"),
     [
+        ("0.7.3", "0.8.0", "sources.csv", {"RM373", "RM379", "RM383"}),
+        ("0.7.3", "0.8.0", "frequencies.csv", {"RM361", "RM370"}),
+        ("0.7.3", "0.8.0", "gene_metrics.csv", {"RM361", "RM370", "RM373"}),
+        ("0.7.3", "0.8.0", "gene_validity.csv", {"RM361", "RM370"}),
+        ("0.7.3", "0.8.0", "clinical_assertions.csv", {"RM370", "RM373"}),
+        ("0.7.3", "0.8.0", "expression_effects.csv", {"RM373"}),
+        ("0.7.3", "0.8.0", "gwas_effects.csv", {"RM354", "RM373"}),
+        ("0.7.3", "0.8.0", "literature.csv", {"RM258", "RM361", "RM370"}),
+        ("0.7.3", "0.8.0", "clin_sig_concordance.csv", {"RM370"}),
+        ("0.7.3", "0.8.0", "clin_sig_authority_calls.csv", {"RM370"}),
+        ("0.8.8", "0.8.9", "sources.csv", {"RM448"}),
         ("0.8.0", "0.8.1", "resolution.csv", {"RM398", "RM400"}),
         ("0.8.0", "0.8.1", "sources.csv", {"RM398"}),
         ("0.8.1", "0.8.2", "gene_metrics.csv", {"RM410", "RM417"}),

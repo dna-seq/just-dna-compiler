@@ -41,6 +41,16 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md). The `0.8` branch merged into `main` at the 0.8.0 cut (2026-11-05).
 
+## 2026-11-28 — 0.10 review round 2: re-derive records account for missing releases and each table’s history (a minor, for 0.10)
+
+The registry can now ask whether a licence table needs re-deriving across 0.7.3 to 0.8.0 and get
+`True`. RM383 retires a source that the committed resolution rows or rewritten concordance calls
+no longer name. The 0.8.0 record also covers corrections to fact tables and the two concordance
+files, and 0.8.9 records the licence row that RM448’s restored placement can earn. Both release
+queries walk the published enricher versions (single 3, RM399 and RM441). A missing record
+withholds an all-clear. The newest-release query returns `None` for `repeat_grades.csv` across
+the history through 0.9.0. Its first writer ships in 0.10.0.
+
 ## 2026-11-28 — 0.10 review round 1: new public Python names are documented in each tier (a minor, for 0.10)
 
 The tier references now name the public definitions added since `v0.9.0` (C6). A caller can

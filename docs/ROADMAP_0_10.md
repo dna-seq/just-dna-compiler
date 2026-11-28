@@ -143,6 +143,7 @@ it is a new change kind, as `toolchain` was (INTEGRATION_0_8 § 1.11). P9: near 
 release label. The predecessor had no label. A reader can see the move across 0.7 to 0.8
 offline. This required no format or compiler change. **The shape question above is answered**: the route lives in the enricher (`just_dna_enricher.derivation_records`), the package that moves, by the pm's 2026-11-16 call under RM441; the format's release records stay about compiled output.
 Round 1 (2026-11-28): the enricher reference names the change record that identifies a snapshot move.
+Round 2 (2026-11-28): the 0.8.0 record includes the licence row RM383 retires when the committed resolution table or rewritten authority calls no longer name its source.
 
 **Residuals** none.
 
@@ -241,6 +242,7 @@ change. A fully examined span can establish that a kept table is reusable (S161)
 release that could change a given table is derived from those entries (S156). Every enricher
 release since 0.8.0 has an entry. The cut test checks the tagged and installed versions.
 Round 1 (2026-11-28): the enricher reference names the result type that carries known changes and uncovered releases.
+Round 2 (2026-11-28): both queries walk consecutive enricher releases, withhold on missing records and respect the first release that produced each table, checked against every consecutive tag pair.
 
 **Residuals** table-wide reach: won't fix in 0.10, decided 2026-11-12 (ask 2): `requires` stays `None` for a
 derivation correction until a consumer shows it costing a needless re-derive; RM467's explicit subject list

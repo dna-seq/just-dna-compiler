@@ -1813,13 +1813,16 @@ from just_dna_enricher.derivation_records import (
 
 needs_rederive("0.8.4", "0.8.5", "resolution.csv")   # True
 needs_rederive("0.8.9", "0.8.10", "resolution.csv")  # False
+needs_rederive("0.7.3", "0.8.0", "sources.csv")      # True
+needs_rederive("0.8.9", "0.8.10", "repeat_grades.csv")  # None (first produced in 0.10.0)
 rederive_reasons("0.8.4", "0.8.5", "resolution.csv").changes[0][1].items  # ("RM438",)
 newest_rederive_release("resolution.csv")  # includes releases whose effects are unknown
 ```
 
 The span excludes the producing release and includes the target. Both arguments accept a bare
-version or a producer stamp such as `just-dna-enricher 0.8.4`. Equal versions give `False`, even
-outside the recorded history. A backwards span raises `ValueError`.
+version or a producer stamp such as `just-dna-enricher 0.8.4`. Equal versions give `False`
+unless the question names a table that did not exist yet, in which case the answer is `None`.
+A backwards span raises `ValueError`.
 
 | Answer | What a reader knows |
 | --- | --- |
@@ -1835,15 +1838,24 @@ items identify the corrected calculation. The licence table is keyed as `sources
 also be queried as `licensing.csv`. The reach is table-wide. For RM438, for example, the reader
 knows to inspect coordinate-authored rows with a back-filled rsID, but the record supplies no row selector.
 
-`.unknown_releases` names releases with unknown effects, including earlier enricher releases
-before coverage began at 0.8.0. A target beyond the installed history appears there too.
-`newest_rederive_release(table)` reads the same registry and returns the latest release with a
-matching change or unknown effects. It returns `None` when the registry places neither.
+For example, 0.8.0's RM383 retires a resolution-layer licence row when `enrich --rederive`
+commits a table that no longer names its source. Rewriting the whole concordance record can
+likewise retire the licence row for an authority the committed calls no longer name.
 
-At each cut that ships the enricher, add the version to `DERIVATION_RECORDS`. Record a tuple
-of changes, an empty tuple for an examined release that changed no derived table, or `None`
-when its effects cannot be established. The coverage test compares the keys with the enricher
-versions in the release tags and the installed version. The format tier's `needs_recompile`
+`.unknown_releases` names every published enricher release in the span with a missing or
+unexamined record, and every release in it before the queried table first shipped. A requested
+target beyond the installed history appears there too. A known change anywhere in the span
+still gives `True`. `newest_rederive_release(table)` walks the same history from the table's
+first release onwards. It returns the newest release with a matching change or unknown effects,
+or `None` when there is no such release.
+
+At each cut that ships the enricher, add the release to the version list in `derivation_records`
+and its findings to `DERIVATION_RECORDS`. Record a tuple of changes, an empty tuple for an
+examined release that changed no derived table, or `None` when its effects cannot be established.
+The first release of each table comes from the earliest field on its registered row model.
+The tests check the version list against tagged package versions and the installed version at
+the cut. They check each table's answers against the enricher source at consecutive tags.
+The format tier's `needs_recompile`
 continues to describe compiled output from the supplied inputs. Re-deriving a table first can
 change those inputs.
 
