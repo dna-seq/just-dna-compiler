@@ -1,6 +1,6 @@
 [project]
 name = "just-dna-enricher"
-version = "0.9.0"
+version = "0.10.0"
 description = "Network tier for just-dna: fills the source-independent resolution table (cache + Ensembl) that the compiler consumes"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -15,8 +15,8 @@ maintainers = [
 # the 0.5 amendment scoping the network tier + HuggingFace here). This is the only package allowed to
 # fetch; format and compiler stay strictly inject-only.
 dependencies = [
-    "just-dna-format>=0.9.0",
-    "just-dna-compiler>=0.9.0",
+    "just-dna-format>=0.10.0",
+    "just-dna-compiler>=0.10.0",
     "duckdb>=1.1.0",
     "platformdirs>=4.0.0",
     "python-dotenv>=1.0.1",
@@ -88,7 +88,7 @@ atlas = [
 # The polars runtime for a host whose CPU lacks AVX2, which polars' default runtime needs (only there:
 # the compat runtime is slower and is loaded first wherever it is installed). The enricher reaches polars through the compiler and its builders, so its extra is the
 # compiler's, and `just-dna-enricher[compat]` is the one line such a host writes.
-compat = ["just-dna-compiler[compat]>=0.9.0"]
+compat = ["just-dna-compiler[compat]>=0.10.0"]
 # Publisher / developer surface. huggingface-hub and ga4gh.vrs are already core deps (snapshot
 # download; allele identity); this extra marks the upload CLI (`just-dna-enricher upload`), the
 # ClinVar and gnomAD-constraint reference builders (`just-dna-enricher clinvar build`,
