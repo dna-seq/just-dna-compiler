@@ -1,6 +1,6 @@
 # Lead notes
 
-The lead's working state, rewritten to the present before each reset. Last rewritten 2026-11-16; In flight updated 2026-11-28. Diary: LEAD_DIARY.md
+The lead's working state, rewritten to the present before each reset. Last rewritten 2026-11-16; In flight updated 2026-11-28 (second batch). Diary: LEAD_DIARY.md
 
 ## Retro items
 
@@ -44,7 +44,7 @@ The lead's working state, rewritten to the present before each reset. Last rewri
 ## In flight
 
 - mitomap behind source again (found 2026-11-28 by a HEAD on the dump: Last-Modified 2026-11-25, mmutation edited 2026-11-24). Rebuilt as mitomap_2026-11-24+2026-11-03 into `data/caches/rebuild-2026-11-28/mitomap` (603 + 497 rows, 6284 citation links), upload rehearsed by dry run (5 files). The 2026-11-24 build in `data/caches/rebuild-2026-11-24/` is superseded, never to be published (the person's to delete). `blocked: the person` (the classifier refuses a seat's publish, kit #529): `uv run just-dna-enricher mitomap publish data/caches/rebuild-2026-11-28/mitomap`. After it: `cache pull --only mitomap`, then `mitomap miss` (mitomap_miss follows its parents). Before handing it over, HEAD the dump again: it is regenerated about weekly.
-- **0.10 second batch, 2026-11-28 (the pm's go, 644285497; desk #467, #468, #470 built on their defaults).** main merged into `0.10` (0f277899, pushed). Codex building in `.worktrees/010-{rm265,rm302,rm294,s167}` (branches `build/010-*`, locked), briefs in each worktree's `data/interim/brief-*.md`. RM350's worktree `.worktrees/010-rm350` is synced with its brief, held until a build finishes (load: DeepVariant at nice 19). RM265's shape: the pm, 644286053 (four keys; draft-panel prints the merged block and never writes YAML). After the merges: RM350's live `cache rebuild --only ipd_imgt_hla`, the INTEGRATION_0_10 lines (RM265's manifest key if `Manifest` forbids extras, the changed `panel_block_deprecated` text), and S167's answer to triage with its 0.10 commit.
+- **0.10 second batch, 2026-11-28: all five built and on `0.10`** (the pm's go, 644285497; desk #467, #468, #470 built on their defaults, an answer before the cut still moves an item). RM302 (ad489349), S167 (af180c27; triage told, 644294358), RM265 (ab7a6b2b; shape from the pm, 644286053), RM294 (3a1af6e9), RM350 (16154b7e, merged locally, push after the merged suite). Codex built all five; the lead's checks changed three: RM265 lost three reasoning comments (restored), RM294 kept cell padding on `grade` (removed: formatting is normalized), RM350 failed its live build on the real Deleted_alleles.txt (a second `#` section) and wrote the whole licence into `notice` (cut to the citations). Live: `ipd_imgt_hla_3.66.0` built in `.worktrees/010-rm350/data/caches/`. **Red by design until the cut:** `test_a_cross_tier_import_exists_in_the_version_its_floor_names` (compiler and enricher import `just_dna_format.repeat_grades`; the cut raises the floors). **For INTEGRATION_0_10 at the cut:** new warning codes panel_unmatched_not_requested, panel_unmatched_has_rows (RM265), hla_allele_deleted, hla_allele_not_assigned (RM350), and the new verification check `hla_allele_assignment` (a 0.9 reader of verification.json refuses it); `panel_block_deprecated`'s text changed (RM265, its new pinned fragments in its commit); a 0.9 reader ignores `manifest.panel_provenance`. Worktrees `.worktrees/010-{rm265,rm302,rm294,s167,rm350}` unlocked, done. **Next:** 0.10's scope is built; the pm decides the review rounds and the cut.
 - **0.10 batch, 2026-11-27: all five decided items built and on `0.10` (992e85b1, pushed).** RM460 (b37c11ac),
   RM399+RM441 (d019f0b9; the pm confirmed the enricher-only reading and the old label None, 644030607), RM435
   (457e8989), RM385 (848fbbfb), RM468 (85189b83; merged over RM385 by hand, 992e85b1). Merged tree: 8452 passed, the
@@ -105,6 +105,7 @@ seat's until it works; a granted step is taken then reported; a procedure is run
 parked on a quota figure; a seated lead starts its own team's idle seats, D219. Read as its adversary 2026-11-24, no
 concern: the two standing waits, the PyPI and mitomap publishes, are steps outside the grant (the classifier refuses
 a seat's publish), and the mitomap upload was rehearsed by dry run before it was handed over).
+reflect after 2026-12-05: classes/lead/LEAD.md as of v0.1.293 (a fresh auditor reads each build before it lands where the instance builds on a branch; notes rewritten when a run ends. Read 2026-11-28, no concern: 0.10's own two review rounds before the cut are that audit here).
 reflect after 2026-12-01: classes/base/BASE.md as of v0.1.275 (a direct message mentioning someone not in it is named
 in the first reply, relay or slip; read 2026-11-24, no concern: the lead takes direct messages rarely).
 
