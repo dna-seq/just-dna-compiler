@@ -32,7 +32,7 @@ The caller gives you:
    is there. Never wait on a process name: several builds run at once. A build may take two hours; keep waiting.
 
    No `service_tier=fast`: the person, 2026-11-28, "change codex subagents to non-fast settings, only seats get
-   fast" (kit v0.1.295).    The command stays inside the kit's auto-mode rule 30 (delegating to Codex, the person's word of 2026-11-26):
+   fast" (kit v0.1.295). The command stays inside the kit's auto-mode rule 30 (delegating to Codex, the person's word of 2026-11-26):
    `-p secrets-denied` always, no `--add-dir` outside the clone, `-o` in the seat's scratchpad, the working folder a
    worktree under the clone's `.worktrees/`. A first form with `--add-dir /data/uv` and `-o` inside WT was refused by
    the classifier on 2026-11-27. Why each part: `nice -n 18`, since a build runs tests and un-niced test runs starved
