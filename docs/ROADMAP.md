@@ -2354,6 +2354,52 @@ gate audit has its row).
 
 **Residuals** none yet.
 
+## RM486 — `--no-answer-store` still prints `Answer store … stored=0 live=1` lines, so a bypassed run reads as if the store ran
+
+**Severity** low · **Status** open — **release undecided** (the pm sizes it; the lead, filed 2026-11-28) · **Owner**
+enricher (`answer_store.AnswerUsage.__str__`, the enrichment report) · **Motivating case** the 0.10.0 cut's docs
+pass, re-running ENRICHING's answer-store example · *related* RM468
+
+**What was seen.** With `--no-answer-store`, the enrichment report still prints one `Answer store <source>
+release=unknown stored=0 live=1` line per source. The counts are true (every subject was asked live and no release
+was probed), but the line names a store that was not open, so a reader takes it for a store that missed.
+
+**What it would be.** Say the store was off in that line (or print the live counts under another label), and pin the
+phrase (`@warning-text-is-api`).
+
+**Residuals** none yet.
+
+## RM487 — `ipd-imgt-hla` shows no help text in `just-dna-enricher --help`
+
+**Severity** low · **Status** open — **release undecided** (the pm sizes it; the lead, filed 2026-11-28) · **Owner**
+enricher (`cli/cache_commands.py`, `ipd_imgt_hla_app`) · **Motivating case** the 0.10.0 cut's docs pass · *related*
+RM350
+
+**What was seen.** RM350's command group is registered as `typer.Typer(no_args_is_help=True)` with no `help=`, so the
+root `--help` lists `ipd-imgt-hla` with an empty description, where every other group says what it is.
+
+**What it would be.** A one-line help naming the lane and that it is per host, and a test that every registered group
+carries one, so the next group cannot ship blank.
+
+**Residuals** none yet.
+
+## RM488 — the wheel-contents sdist test builds the enricher in its source tree, and two xdist workers can build it at once
+
+**Severity** low · **Status** open — **release undecided** (the pm sizes it; the lead, filed 2026-11-28) · **Owner**
+the enricher suite (`enricher/tests/test_wheel_contents.py`) · **Motivating case** the 0.10.0 cut's second
+`-m network` run under `-n 2`: `test_the_sdist_carries_the_fetched_sources` failed with `uv build` exit 2, then passed
+alone, three of three
+
+**What was seen.** Two tests in the file run `uv build` on `enricher/` (each into its own `tmp_path`), and the build
+writes intermediate files inside the source tree. Under xdist, two workers can build at once and one sees the other's
+half-written tree. The first run of the same tests under `-n 2` passed, so it is an ordering flake, never a defect in
+the dists (the cut's were built and checked apart).
+
+**What it would be.** Build once per session in a fixture shared across the file's tests, or pin the file to one
+worker (`xdist_group`).
+
+**Residuals** none yet.
+
 # Not format scope
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.
