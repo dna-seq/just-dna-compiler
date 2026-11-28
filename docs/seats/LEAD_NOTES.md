@@ -48,8 +48,11 @@ The lead's working state, rewritten to the present before each reset. Last rewri
   0 red; strict docs green; prerelease gates 28 and `-m network` 46 green (a second `-n 2` run had one sdist-build
   error that passes alone: two `uv build`s of one tree at once, to file); live IPD 3.66.0 rebuild byte-identical; R3's
   real-FASTA check identical at 12975c1d and the cut. Release record measured on polars 2.1.0 both sides (the first
-  BEFORE resolved 2.2.0 unpinned: pin `--with polars==<lock>` in the sweep's BEFORE). CI dispatched on the cut
-  branch (run 46137268556, `gh workflow run CI --ref cut/v0.10.0`: CI runs only on main/PR/dispatch). **Dists** built
+  BEFORE resolved 2.2.0 unpinned: pin `--with polars==<lock>` in the sweep's BEFORE). CI on the cut branch green
+  (run 46137268556, dispatched with `gh workflow run CI --ref cut/v0.10.0`, since CI runs only on main/PR/dispatch):
+  py3.14 8662 passed, py3.13 green, and the tag tests ran there and passed (old-reader breaks, first-seen, new public
+  names, the derivation records over consecutive tags), the first CI run with tags since 5a954cf1. RM483 and RM484
+  filed parked for the pm on 0.10 (f32d7038). **Dists** built
   from `git archive f92a6eaf` in the scratchpad (`dist-0100/src/dist`), copied to `.worktrees/cut-0100/dist/` with
   `SHA256SUMS` (verified); twine 7.0.0 passes all six (twine 6.2.0 refuses metadata 2.5); every member equals git but
   build products (uv_build's pyproject rewrite, `.orig` equal to git; the enricher's generated protos; hatch puts the
