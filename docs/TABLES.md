@@ -194,6 +194,15 @@ The count is the consumer's call (ExpansionHunter, adVNTR, a span genotyper) and
 state the motif it counted. The symptom of a mismatch is a plausible wrong answer rather than a miss:
 a count against a different unit length bins cleanly into the wrong band.
 
+## repeat_grades.csv
+
+One row records STRchive’s evidence for one locus–disease association at a repeat the module
+carries. `just-dna-enricher enrich` writes it. Joining ARX on the authored motif can return both
+EIEE1 and PRTS, so keep the catalogue record ID when displaying a grade. STRchive owns the
+wording and can introduce a new grade. An empty grade on a row means the record stated none.
+If a repeat has no row, consult the enrichment report to distinguish a catalogue miss from a
+snapshot the pass could not read.
+
 ## heteroplasmy.csv
 
 **One row is one mtDNA allele-fraction band, keyed on gene, reference sequence, tissue — and the

@@ -21,6 +21,7 @@ from just_dna_format.overrides import (
     apply_overrides,
     update_targets,
 )
+from just_dna_format.repeat_grades import RepeatGradeRow
 from just_dna_format.resolution import ResolutionRow
 from just_dna_format.sources import SourceRow
 from just_dna_format.spec import RESERVED_FLAGS, StudyRow, VariantRow
@@ -53,6 +54,7 @@ from just_dna_compiler.compiler.fact_checks import (
     _cross_check_gene_validity,
     _cross_check_gwas_effects,
     _cross_check_literature,
+    _cross_check_repeat_grades,
     _cross_check_resolution,
 )
 from just_dna_compiler.compiler.load import _load_csv_rows, _load_yaml, load_authored_table
@@ -350,6 +352,7 @@ def _validate_spec(
     # Validate each present 0.4 table kind against its model.
     kind_row_counts: dict[str, int] = {}
     loaded_kinds: dict[str, list[Any]] = {}
+    unreadable_kinds: set[str] = set()
     for csv_name, _parquet, model in _TABLE_KINDS:
         kind_path = spec_dir / csv_name
         if not kind_path.exists():
@@ -357,6 +360,8 @@ def _validate_spec(
         rows, kind_errors, kind_warnings = _load_csv_rows(
             kind_path, model, csv_name, genome_build=declared_build
         )
+        if kind_errors:
+            unreadable_kinds.add(csv_name)
         all_errors.extend(kind_errors)
         all_warnings.extend(kind_warnings)
         kind_row_counts[csv_name] = len(rows)
@@ -557,6 +562,10 @@ def _validate_spec(
             all_warnings.extend(_cross_check_clin_sig_concordance(injected_rows, variants, table=csv_name))
         if model is ClinSigAuthorityCallRow and not injected_errors:
             all_warnings.extend(_cross_check_clin_sig_concordance(injected_rows, variants, table=csv_name))
+        if model is RepeatGradeRow and not injected_errors and "repeat_alleles.csv" not in unreadable_kinds:
+            all_warnings.extend(
+                _cross_check_repeat_grades(injected_rows, loaded_kinds.get("repeat_alleles.csv", []))
+            )
         if model is LiteratureRow and not injected_errors:
             # Stashed rather than checked here: the citation sites (`studies.csv`, and since 0.6 the
             # binning tables' `pmid`) are loaded further down, so the cross-check runs once both are

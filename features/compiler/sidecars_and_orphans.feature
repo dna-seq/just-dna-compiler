@@ -36,6 +36,15 @@ Feature: Derived sidecars, their arithmetic, and their orphans
       | gwas_effects.csv          | variant_key, against the AUTHORED keys            |
       | resolution.csv            | variant_key or rsid, against the AUTHORED keys and study proxies |
 
+  # source: compiler/src/just_dna_compiler/compiler/fact_checks.py
+  # anchor: _cross_check_repeat_grades
+  @code:derived_row_orphan @actionable @both_modes
+  Scenario: a grade remains after the authored repeat motif changes
+    Given a repeat_grades.csv row whose gene is still present but whose repeat_unit was removed
+    When the module is compiled
+    Then the warning includes "absent from repeat_alleles.csv"
+    And the grade remains in repeat_grades.parquet
+
   # source: compiler/src/just_dna_compiler/compiler/subjects.py
   # anchor: module_subjects
   Scenario Outline: what the module carries is one answer, read from every table that names it

@@ -154,8 +154,7 @@ class StrchiveLocus:
 
     Deliberately not the whole record. The HPO terms and the cross-references are real and are not
     parsed, because nothing here emits them — a field carried and never used is the dead weight this
-    tree refactors out rather than keeps. `evidence` is read by the drafter through `_evidence_by_locus`
-    (RM276), off the same file, rather than as a field here, which a patch may not add.
+    tree refactors out rather than keeps. The grade pass carries the evidence for this association.
     """
 
     locus_id: str
@@ -172,6 +171,7 @@ class StrchiveLocus:
     #: drafting half's report — this is the RM66 evidence, and no authored column holds it.
     locus_structure: tuple[tuple[str, int | None, str], ...]
     disease: str | None
+    evidence: tuple[str, ...] = ()
 
     @property
     def motifs(self) -> tuple[str, ...]:
@@ -293,6 +293,7 @@ def parse_locus(record: dict) -> StrchiveLocus:
         ref_copies=ref_copies,
         locus_structure=structure,
         disease=(record.get("disease") or None),
+        evidence=_strings(record.get("evidence")),
     )
 
 

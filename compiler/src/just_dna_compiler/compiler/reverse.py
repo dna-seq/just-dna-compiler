@@ -147,6 +147,7 @@ REVERSE_MANIFEST_RECONSTRUCTED: frozenset[str] = frozenset(
         "locus_to_gene",
         "colocalisations",
         "consequences",
+        "repeat_grades",
         "ld_pairs",
         "literature",
         "clin_sig_concordance",

@@ -141,6 +141,7 @@ from just_dna_enricher.placement import (
     load_witnesses,
     locus_key,
 )
+from just_dna_enricher.repeat_grades import RepeatGradeError, enrich_repeat_grades
 from just_dna_enricher.resolver import AlleleMismatch, _hosting_rsids, _lookup_loci
 from just_dna_enricher.sequences import (
     RefCheck,
@@ -802,10 +803,31 @@ def _run_enrichment(
     check_subjects = (
         [v for v in subjects if _subject_key(v) not in covered] if verify_written_only else subjects
     )
+
     # The progress unit. Constructed here because this is the first moment `total` is knowable, and it
     # reports `(0, total)` immediately so a caller rendering a bar has the denominator before any work
     # starts. Subjects that share an rsID settle together, which is why the map is built once.
-    tracker = SubjectProgress(len(subjects), progress)
+    def grade_progress(done: int, total: int) -> None:
+        if progress is not None and total:
+            progress(done, len(subjects) + total)
+
+    # Stage the catalogue's answer under this run's spec lock. A later strict refusal commits nothing.
+    try:
+        repeat_grades = enrich_repeat_grades(
+            spec_dir,
+            offline=offline,
+            download=download,
+            write=False,
+            progress=grade_progress,
+        )
+    except RepeatGradeError as exc:
+        raise EnrichmentError(str(exc)) from exc
+
+    def resolution_progress(done: int, total: int) -> None:
+        if progress is not None and (done or not repeat_grades.subjects):
+            progress(repeat_grades.subjects + done, repeat_grades.subjects + total)
+
+    tracker = SubjectProgress(len(subjects), resolution_progress)
     subjects_of_rsid: dict[str, list[str]] = {}
     for v in subjects:
         if v.rsid:
@@ -2475,6 +2497,7 @@ def _run_enrichment(
         dataset_currency=dataset_currency,
         clin_sig_record=clin_sig_record,
         answered_calls=answered_calls,
+        repeat_grades=repeat_grades,
     )
 
     if unreachable_rsids and withheld_reason(ensembl_link, since=ensembl_mark) == RETIRED:
@@ -2685,6 +2708,11 @@ def _run_enrichment(
                     checked_keys,
                     EnrichmentError,
                 )
+        if repeat_grades.covered or repeat_grades.missing:
+            try:
+                repeat_grades._commit(spec_dir)
+            except RepeatGradeError as exc:
+                raise EnrichmentError(str(exc)) from exc
         # The licence rows land inside the table's commit (S98, RM231): `enrich()` was the only pass
         # that consulted sources and recorded none — the reason `VALID_SOURCE_LAYERS` reserves a
         # `"resolution"` member nothing ever wrote. Keyed on the authority rather than the link, so

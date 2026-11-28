@@ -42,6 +42,7 @@ maintained one, and where the two disagree this one is what a consumer may rely 
 | `gene_metrics` | `GeneMetricsRow` (the 0.5 gene-constraint table) | `vocab` |
 | `literature` | `LiteratureRow` (the 0.5 citation table) | `base`, `normalize`, `spelling`, `vocab` |
 | `sources` | `SourceRow` (the 0.5 data-source licensing table) | `vocab` |
+| `repeat_grades` | `RepeatGradeRow` (STRchive locus–disease evidence, 0.10) | `base`, `binning`, `normalize`, `vocab` |
 | `gene_validity` | `GeneValidityRow` (the 0.6 gene–disease validity table, RM24) | `base`, `normalize`, `vocab` |
 | `assertions` | `ClinicalAssertionRow` (the 0.6 clinical-assertion table, RM25) | `base`, `normalize`, `spelling`, `vocab` |
 | `gwas` | `GwasEffectRow` (the 0.6 GWAS-effect table, RM90) | `base`, `normalize`, `spec`, `vocab` |
@@ -106,22 +107,23 @@ existence and identifiers exactly like a study-grounded one. `sources.csv` does 
 either: it records a *dataset's* terms and attribution, which answers where a table came from, never
 why a bound is where it is. `resolution.csv` is compiler *input*, produced by the enricher, not authored
 annotation (see [§ resolution table](#the-resolution-table-05-provisional)) — and the same is true of
-the **fourteen** derived-fact sidecars `frequencies.csv` / `gene_metrics.csv` / `literature.csv` /
+the **fifteen** derived-fact sidecars `frequencies.csv` / `gene_metrics.csv` / `literature.csv` /
 `gene_validity.csv` / `clinical_assertions.csv` / `gwas_effects.csv` / `clin_sig_concordance.csv` /
 `clin_sig_authority_calls.csv` / `expression_effects.csv` / `locus_to_gene.csv` /
-`colocalisations.csv` / `consequences.csv` / `ld_pairs.csv` / `sources.csv`, which are therefore absent
+`colocalisations.csv` / `consequences.csv` / `ld_pairs.csv` / `repeat_grades.csv` / `sources.csv`, which are therefore absent
 from the table below. **The number is `len(_FACT_TABLES)`** — stated here so a release that lands a
 sidecar moves it by one, rather than left to be recounted off a list that has gone stale twice.
 Since 0.7 an author corrects them through `overrides.csv`, which *is* authored and therefore *is* in
-the table — **except three**. `sources.csv` the overlay deliberately does not cover: it has its own
+the table — with the following exceptions. `sources.csv` the overlay deliberately does not cover: it has its own
 merge path and is the one derived table a human is told to write. `clin_sig_authority_calls.csv` is
 excluded for the opposite reason: it records what each archive published, and an author answers the
 question a conflict asks rather than rewriting the answer an archive gave. `ld_pairs.csv` (0.8, RM331)
 is out because there is nothing of the author's to correct: it is a reference panel's r², and a wrong
-`ancestry` is fixed on the study row, after which the pass asks again. `resolution.csv` *is*
+`ancestry` is fixed on the study row, after which the pass asks again. STRchive owns the association
+grade recorded in `repeat_grades.csv`. `resolution.csv` *is*
 covered — see [§ the authored overlay](#the-authored-overlay-07-rm124--overridescsv).
 
-**`sources.csv` is the one of those fourteen a human is expected to write, and 0.5.4 stopped pretending
+**`sources.csv` is the one of those fifteen a human is expected to write, and 0.5.4 stopped pretending
 otherwise (S21).** The others are produced by an enricher pass, so an author never starts one by
 hand; this one the schema tells them to write — a source read **by hand** leaves no `source` cell
 anywhere for the compiler's coverage check to find, so declaring it as a row here is the only route
@@ -296,7 +298,7 @@ reason its `source` column is inside its fact set while everywhere else `source`
   | `VALID_SAMPLE_UNITS` | 2 (closed) | what a `StudyRow.sample_size` counts — people, or lives where a study counts each participant's parents (RM325) |
   | `VALID_SIGNIFICANCE` | 4 (closed) |  |
   | `VALID_SUPERPOPULATIONS` | 5 (closed) | the 1000 Genomes superpopulation codes: what `StudyRow.ancestry` binds, and — plus `multi` — `pgs.VALID_TRAINING_ANCESTRY`, derived from it so the codes are one list (RM328) |
-  | `VALID_SOURCE_LAYERS` | 14 (closed) | `clin_sig_authority_call` since 0.8 (RM379): each consulted authority of the concordance record |
+  | `VALID_SOURCE_LAYERS` | 15 (closed) | `repeat_grade` records STRchive’s association grades (0.10, RM294) |
   | `VALID_VERIFICATION_CHECKS` | 27 (closed) |  |
   | `VALID_VERIFICATION_SKIPS` | 9 (closed) |  |
   | `VALID_VERIFICATION_INDEPENDENCE` | 2 (closed) | `VerificationRecord.independence`, derived from the record's two sources and never typed (RM292) |
@@ -1481,6 +1483,15 @@ facts rather than annotation: injected, hashed by facts, and compiled into their
 parquets. All are standalone `BaseModel`s with `extra="forbid"`, for the same reason `ResolutionRow`
 is.
 
+**STRchive association grades (0.10, RM294).** `repeat_grades.csv` compiles to
+`repeat_grades.parquet`. The key is `(gene, repeat_unit, locus_id, grade)`. The first two fields
+join to the authored repeat and `locus_id` identifies STRchive’s disease record. Each member of
+the record’s evidence list occupies its own row. `grade` is open and verbatim. Known words are
+`Definitive`, `Strong`, `Moderate`, `Limited`, `Disputed`, `Refuted` and `Provisional`
+(STRchive’s *not yet curated*). An empty grade means the matched record supplied no word.
+`repeat_grade_signature` hashes the key and `dataset`. The descriptive disease label and
+the provenance fields `source`, `status` and `fetched_at` sit outside that signature.
+
 **An article read and not used belongs in `literature.csv`, uncited (RM147).** A row no study, bin
 or pharm row cites is kept in the CSV and dropped from the artifact with `literature_row_uncited` —
 shipped for a citation the author deleted, and the same shape answers the opposite case: a paper
@@ -1491,11 +1502,11 @@ contributed nothing records no source (RM142), and the consultation is a fact ab
 than about the service the author reached it through. Nothing is owed to the licensing table for
 reading an abstract.
 
-All but three are machine-produced and human-*overridable* through `overrides.csv` (the third,
-`ld_pairs.csv`, is a reference panel's r², with nothing of the author's in it; § the LD-pair table). `sources.csv` is
+Most are machine-produced and human-*overridable* through `overrides.csv`. The exceptions include
+STRchive’s verbatim grades and the reference panel’s r² in `ld_pairs.csv`. `sources.csv` is
 machine-produced and human-**authored**, because a source a curator read by hand has no pass to write
 its row (see above) — which is why it is the only one with a `draft`/`template` route and a natural
-key. `clin_sig_authority_calls.csv` is the other exception and a different one: it records what an
+key. `clin_sig_authority_calls.csv` is another exception and a different one: it records what an
 archive published, and an author does not get to rewrite that. Its parent **is** overridable, because
 an overlay row against a contested subject is precisely how an author answers the question the record
 asks.
@@ -2000,7 +2011,8 @@ grammar was rejected. The meaning of both is the named table's own:
 | `colocalisations.csv` | `study_locus_id` | `right_study_locus_id` |
 | `consequences.csv` | `variant_key` | `transcript` |
 
-Each derived sidecar outside `OVERRIDABLE_TABLES` is out for its own reason. `sources.csv` /
+Each derived sidecar outside `OVERRIDABLE_TABLES` is out for its own reason.
+`repeat_grades.csv` preserves STRchive’s own evidence words for a named disease association. `sources.csv` /
 `licensing.csv` has its own merge path and is the one derived table the schema tells a human to
 hand-write, so an overlay over it would put a second spelling of the licence position beside the first.
 `clin_sig_authority_calls.csv` is excluded for the opposite reason: it records what each archive
@@ -2604,12 +2616,12 @@ row's own cells alone.
 
 ## The hash family — the complete roster
 
-Twenty-one functions, in three groups, and **the rule that fixes the number is stated here rather than
+Twenty-two functions, in three groups, and **the rule that fixes the number is stated here rather than
 the number being restated elsewhere**: it is one `*_signature` per derived sidecar, plus the shared
 `fact_signature` they are built on, plus the two identity halves, plus the three on the verification
 side. So a release that lands a new sidecar moves this count by one and nothing else has to be edited
 to agree. RM130 landed two at once (0.7), RM194/RM200 landed a tenth sidecar, RM333/RM236 three
-more and RM331 one (0.8), which is why the fact-signature family is now **sixteen** where older prose says nine — a reader counting to nine and
+more and RM331 one (0.8), and RM294 adds the repeat-grade sidecar (0.10). The fact-signature family is now **seventeen** where older prose says nine — a reader counting to nine and
 stopping would miss `module_binding` and `pow_digest` entirely, which is the reason this section
 exists at all.
 
@@ -2623,7 +2635,7 @@ bytes, from this compiler*.
 built on it: `frequency_signature`, `gene_metrics_signature`, `literature_signature`,
 `gene_validity_signature`, `clinical_assertion_signature`, `gwas_effect_signature`,
 `clin_sig_concordance_signature`, `clin_sig_authority_call_signature`, `expression_effect_signature`,
-`locus_to_gene_signature`, `colocalisation_signature`, `consequence_signature`, `ld_pair_signature`,
+`locus_to_gene_signature`, `colocalisation_signature`, `consequence_signature`, `ld_pair_signature`, `repeat_grade_signature`,
 `source_signature`, `resolution_signature`. Each hashes a **normalized fact tuple** rather than raw bytes, which is the
 whole point — these tables are multi-producer (enricher, human, `reverse`), so a raw-bytes hash would be
 unstable across producers writing the same facts. It is also why none of them appears in

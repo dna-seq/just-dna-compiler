@@ -41,6 +41,14 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md). The `0.8` branch merged into `main` at the 0.8.0 cut (2026-11-05).
 
+## 2026-11-28 — RM294: STRchive’s association grades travel with repeat loci (a minor, for 0.10)
+
+`just-dna-enricher enrich` now fills `repeat_grades.csv` for the repeats a module carries.
+Both ARX disease records survive a join on either published motif spelling. Each row keeps
+STRchive’s wording, including `Refuted` and `Provisional`, and names the catalogue record
+and its release when known. The compiler carries these facts into `repeat_grades.parquet`
+and warns if a grade’s repeat key has disappeared from the module.
+
 ## 2026-11-27 — RM460: mirrored-site fills have their own warning code (a minor, for 0.10)
 
 The compiler now counts a genotype that reads as an insertion and a deletion at the same site under

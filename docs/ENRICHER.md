@@ -489,6 +489,7 @@ core was ported, not depended on, dropping `fastmcp`/`eliot`). In the workspace:
 | `mane_build` | **`[dev]`** builder (0.7, RM168): one pinned MANE release → three parquets + `release.json`. Operator-built; there is no `mane publish` because NCBI states a policy rather than a licence | `polars` (lazy), `httpx` |
 | `opentargets_build` | **`[dev]`** builder (0.8, RM333): one pinned Platform release (26.09) mirrored from EBI's FTP over https → the flattened lane snapshot + `release.json`; `subset_snapshot` cuts a regional or test slice | `polars` (lazy), `httpx` |
 | `strchive` | RM165: the STRchive repeat-locus catalogue — the `repeat_alleles.csv` band cross-check (offline, reports only) | format `binning`, compiler `load_csv_rows` |
+| `repeat_grades` | Records each STRchive association grade for an authored repeat key (RM294) | `strchive`, `licensing`, format `repeat_grades` |
 | `strchive_build` | RM165 builder: download `STRchive-loci.json` + `release.json`. Core `httpx` only, no parquet and no `[dev]` extra | `httpx` |
 | `strchive_draft` | RM165: STRchive → `repeat_alleles.csv` **partial** rows — identity only, bands left to a human | `strchive`, compiler `draft` |
 | `ensembl` | live Ensembl REST (the beta GraphQL leg was retired on 2026-11-04), tenacity | `httpx`, `tenacity` |
@@ -5595,6 +5596,25 @@ records no label at all rather than inventing one out of a date — an unlabelle
 unlabelled. There is no `--offline` (the off-switch is passing `--catalogue` instead of downloading)
 and no `--use` (MIT grants the fetch, so the gate would answer the same on every run).
 
+### Recording STRchive’s association grades (`repeat_grades.py`, 0.10)
+
+`just-dna-enricher enrich spec/` consults STRchive once for the distinct `(gene, repeat_unit)`
+keys in `repeat_alleles.csv`. It uses the local STRchive cache lane and may provision it when
+online. `--offline` reads a local snapshot, including a bare `STRchive-loci.json`.
+The join accepts either the reference or the gene motif spelling and carries the module’s spelling
+into every output row.
+
+* A match writes one row per catalogue record and evidence word. Two disease records sharing a
+  motif both survive. A matched record stating no evidence still has a row with an empty grade.
+* A key absent from the catalogue has no new row and appears in the pass’s `missing` list.
+* If the catalogue cannot be read, the report lists the keys under `could_not_ask` and gives the
+  reason. Existing grade and licence rows survive.
+
+The pass merges by the full grade key, recording STRchive’s MIT terms at layer `repeat_grade`
+when it commits new rows. `dataset` comes from the snapshot’s `release.json` and stays empty
+for an unlabelled file. The grade describes the association independently of the module’s tier
+and the author’s bands.
+
 ### Drafting the identity half (`strchive_draft.py`) — `draft-repeats`
 
 ```bash
@@ -5623,7 +5643,7 @@ neither is silently discarded.
 carrying one of those two grades is now named in a note, in both modes and never as a gate; a
 `Provisional` locus (STRchive's *not yet curated*) is named apart and never called weak. The grade is
 read off the catalogue file by a private reader; with no file to read, the note says the grades were
-unread rather than implying none is doubted. Whether the grade should travel into the module is RM294.
+unread rather than implying none is doubted. A later `enrich` run records the grade in `repeat_grades.csv` (RM294).
 
 What the thin row is still worth is the part an author cannot get from anywhere else: the list of
 loci, the motif in the orientation the catalogue publishes, and the MONDO id. On HTT the provider
@@ -6691,6 +6711,7 @@ and `EnsemblResolver` are the latter, and are exempt from the contract suite for
 | `litvar` | `LitvarError` | `LitvarUnavailable`, `LitvarRetired` (under the one before it) |
 | `mitomap` | `MitomapError` | `MitomapUnavailable`, `MitomapRetired` (under the one before it; a 410, RM361) |
 | `pgx` | `PgxEnrichmentError` | — |
+| `repeat_grades` | `RepeatGradeError` | — |
 | `strchive` | `StrchiveError` | `StrchiveUnavailable`, `StrchiveRetired` (under the one before it; a 410, RM361) |
 
 **Three surfaces raise a declared family instead of one type (RM288, 0.8).** `cpic_build.ERRORS`,

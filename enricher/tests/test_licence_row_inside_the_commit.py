@@ -190,6 +190,7 @@ def test_every_pass_that_records_a_licence_row_does_so_inside_its_tables_commit(
         "clingen.py",
         "expression.py",
         "civic_citations.py",
+        "repeat_grades.py",
         "ld_pairs.py",  # RM331 (0.8): Ensembl's (ensembl, ld_pair) row commits with `ld_pairs.csv`
         "concordance.py",  # RM379 (0.8): each consulted authority's row commits with its call rows
     }

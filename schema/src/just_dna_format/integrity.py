@@ -45,6 +45,7 @@ from just_dna_format.manifest import (
     ModuleManifest,
     Signature,
 )
+from just_dna_format.repeat_grades import REPEAT_GRADE_FACT_FIELDS
 from just_dna_format.resolution import RESOLUTION_FACT_FIELDS
 from just_dna_format.sources import SOURCE_FACT_FIELDS
 
@@ -441,6 +442,11 @@ def consequence_signature(rows: Sequence[BaseModel]) -> str:
     move the hash.
     """
     return fact_signature(rows, CONSEQUENCE_FACT_FIELDS)
+
+
+def repeat_grade_signature(rows: Sequence[BaseModel]) -> str:
+    """Hash the repeat, STRchive record, verbatim grade and snapshot release."""
+    return fact_signature(rows, REPEAT_GRADE_FACT_FIELDS)
 
 
 def ld_pair_signature(rows: Sequence[BaseModel]) -> str:

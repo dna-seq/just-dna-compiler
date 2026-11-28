@@ -195,9 +195,6 @@ _ONE_SOURCE_SITES: dict[tuple[str, str], str] = {
     ("enricher/src/just_dna_enricher/strchive.py", "index.setdefault((locus.gene, motif), [])"): (
         "STRchive's loci indexed by their own gene"
     ),
-    ("enricher/src/just_dna_enricher/strchive_draft.py", "claims.setdefault((locus.gene, motif), [])"): (
-        "STRchive's loci grouped by their own gene"
-    ),
 }
 
 

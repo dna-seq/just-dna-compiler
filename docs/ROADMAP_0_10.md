@@ -520,6 +520,13 @@ priced against a source that adds members. The alternatives to weigh first are a
 (half price) or the manifest's provenance block, and whether RM170's CIViC answer already fixed the
 shape. Decide on the `0.8` branch.
 
+**Built (2026-11-28, on the `0.10` branch).** The enricher writes each matching STRchive
+locus–disease grade to `repeat_grades.csv`, with the module’s motif spelling and the snapshot
+release. The compiler checks the repeat key and round-trips the table. The module’s tier, repeat
+bands, RM170 checks and RM276 draft note keep their own meanings. No authored column was added.
+
+**Residuals** none
+
 ## RM459 — with the registry's proxy set and Hugging Face off, a gene lookup on clinpgx, cpic, drug_labels or civic answers could-not-ask
 
 **Severity** low · **Status** open — **a minor, 0.11; waits on the registry** (its S36; moved from 0.10 by the pm, 2026-11-27, under the tic/tac rule) · **Owner** enricher
