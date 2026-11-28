@@ -38,7 +38,7 @@ import re
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from just_dna_enricher.sequences import _left_align
+from just_dna_enricher.sequences import _left_align, _read_exact_window
 
 #: `read_window(chrom, start, end)` → the reference bases over 1-based inclusive `[start, end]`, or
 #: `None`. The shape `_left_align` reads, so one reader serves both.
@@ -159,8 +159,8 @@ def spell(
     insertion is then the substitution `delins_ref>bases` and the deletion is the reference state.
     """
     if delins_ref is not None and notation.kind in ("deletion", "insertion"):
-        here = read_window(chrom, start, start + len(delins_ref) - 1)
-        if here is None or len(here) != len(delins_ref):
+        here = _read_exact_window(read_window, chrom, start, start + len(delins_ref) - 1)
+        if here is None:
             return "reference_unreadable"
         if here.upper() != delins_ref:
             return "reference_disagrees"
@@ -170,8 +170,8 @@ def spell(
         return _normalized(chrom, start, delins_ref, alt, read_window)
 
     if notation.kind == "deletion":
-        here = read_window(chrom, start - 1, start + len(notation.bases) - 1)
-        if here is None or len(here) != len(notation.bases) + 1:
+        here = _read_exact_window(read_window, chrom, start - 1, start + len(notation.bases) - 1)
+        if here is None:
             return "reference_unreadable"
         here = here.upper()
         if here[1:] != notation.bases:
@@ -179,7 +179,7 @@ def spell(
         return _normalized(chrom, start - 1, here, here[0], read_window)
 
     if notation.kind == "insertion":
-        anchor = read_window(chrom, start, start)
+        anchor = _read_exact_window(read_window, chrom, start, start)
         if not anchor:
             return "reference_unreadable"
         anchor = anchor.upper()
@@ -193,12 +193,12 @@ def spell(
     # CPIC's position is the run's first base, so a whole copy of the unit just before it means the
     # position sits inside the run and the rightward count below would come out short — an indel of
     # the wrong size, published without a word. Withheld instead.
-    before = read_window(chrom, start - len(unit), start - 1)
-    if before is None or len(before) != len(unit):
+    before = _read_exact_window(read_window, chrom, start - len(unit), start - 1)
+    if before is None:
         return "reference_unreadable"
     if before.upper() == unit:
         return "reference_disagrees"
-    run = read_window(chrom, start - 1, start - 1 + _RUN_WINDOW)
+    run = _read_exact_window(read_window, chrom, start - 1, start - 1 + _RUN_WINDOW)
     if run is None or len(run) < len(unit) + 1:
         return "reference_unreadable"
     run = run.upper()

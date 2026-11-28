@@ -41,10 +41,22 @@ from dataclasses import dataclass, field
 from ga4gh.vrs.dataproxy import create_dataproxy
 from just_dna_format.alleles import IUPAC_AMBIGUITY_CODES, trim_allele
 from just_dna_format.resolution import ResolutionRow
-from just_dna_format.vrs import VRS_ID_PATTERN, UnsupportedBuildError, refget_accession, refget_supports_build
+from just_dna_format.vrs import (
+    VRS_ID_PATTERN,
+    UnsupportedBuildError,
+    contig_length,
+    refget_accession,
+    refget_supports_build,
+)
 
 from just_dna_enricher.answer_store import AnswerRun, SourceAnswers
-from just_dna_enricher.fasta import FASTA_SCHEME, FastaContigIdentity, FastaReference
+from just_dna_enricher.fasta import (
+    _CHROM,
+    FASTA_SCHEME,
+    FastaContigIdentity,
+    FastaReference,
+    _interval_problem,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +77,34 @@ _ACGT = frozenset("ACGT")
 _MEMO_SIZE = 262_144
 
 
+def _window_length_problem(identifier: str, start: int, end: int, bases: str) -> str | None:
+    """Explain a reply whose length disagrees with the interbase interval it would represent."""
+    if len(bases) == end - start:
+        return None
+    chrom = _CHROM.get(identifier.removeprefix("ga4gh:"), identifier)
+    length = contig_length(chrom)
+    contig = f"{chrom} (length {length})" if length is not None else chrom
+    return (
+        f"sequence interval [{start},{end}) on {contig} returned {len(bases)} bases, expected {end - start}"
+    )
+
+
+def _complete_bases(identifier: str, start: int, end: int, bases: str | None) -> str | None:
+    if bases is not None:
+        problem = _window_length_problem(identifier, start, end, bases)
+        if problem:
+            logger.warning("%s", problem)
+            return None
+    return bases
+
+
+def _read_exact_window(
+    read_window: Callable[[str, int, int], str | None], chrom: str, first: int, last: int
+) -> str | None:
+    """Read a 1-based inclusive window, including when a host supplies the reader."""
+    return _complete_bases(chrom, first - 1, last, read_window(chrom, first, last))
+
+
 @dataclass
 class SequenceProxy:
     """Lazy, cached access to reference bases. Only an explicit local FASTA can answer offline.
@@ -82,7 +122,7 @@ class SequenceProxy:
     it rather than reading `None`. Two threads missing the same key at once may each read it; both get
     the same bases.
 
-    **It memoizes answers only.** A failed build, a read that raised and a read that came back empty
+    **It memoizes answers only.** Failed builds and reads that raised, were empty or had the wrong length
     are not stored: a proxy that outlives a run would otherwise carry one run's outage into every later
     one. The failure is held by the run that saw it, through a view of the proxy for that run
     (`held_by_one_run`): `enrich`, `verify_reference_alleles`, the minter and the drafters each read
@@ -113,20 +153,22 @@ class SequenceProxy:
             return None
         return self.proxy().contig_identity(chroms)
 
-    def local_read_problem(self, chrom: str, build: str) -> str:
+    def local_read_problem(self, chrom: str, build: str, interval: tuple[int, int] | None = None) -> str:
         """Explain a withheld local read using the identity check the reader itself performs."""
         if not refget_supports_build(build):
             return f"local FASTA: {chrom} on {build} is outside GRCh38"
-        if refget_accession(chrom, build) is None:
+        accession = refget_accession(chrom, build)
+        if accession is None:
             return f"local FASTA: {chrom} is outside the GRCh38 refget table"
+        if not self.local_fasta:
+            return f"local FASTA: could not read the requested interval on {chrom}"
         try:
-            records = self.contig_identity(chrom)
+            length = self.proxy().get_metadata(accession)["length"]
         except (OSError, ValueError) as exc:
             return str(exc)
-        if records is not None:
-            (record,) = records.values()
-            problem = record.identity_problem()
-            if problem is not None:
+        if interval is not None:
+            problem = _interval_problem(chrom, *interval, length)
+            if problem:
                 return problem
         return f"local FASTA: could not read the requested interval on {chrom}"
 
@@ -187,7 +229,8 @@ class SequenceProxy:
             )
             answers = SourceAnswers(AnswerRun.current(), self.uri.rstrip("/"), release)
             bases = answers.read([interval]).get(interval)
-        if bases is None:
+        from_store = bases is not None
+        if not from_store:
             proxy = local if local is not None else self.proxy()
             if proxy is None:
                 return None
@@ -198,17 +241,15 @@ class SequenceProxy:
             except Exception as exc:
                 logger.warning("Sequence read failed for %s:[%d,%d) (%s)", accession, start, end, exc)
                 return None
-            if not fetched:
+            if fetched is None:
                 return None
             bases = fetched.upper()
-            # The REST proxy returns response.text. A truncated interval or a 200 interstitial
-            # is not a durable answer for a sequence digest.
-            if (
-                answers is not None
-                and len(bases) == end - start
-                and set(bases) <= _ACGT | IUPAC_AMBIGUITY_CODES
-            ):
-                answers.write({interval: (bases, False)})
+        bases = _complete_bases(accession, start, end, bases)
+        if not bases:
+            return None
+        # A 200 interstitial is not a durable answer for a sequence digest.
+        if answers is not None and not from_store and set(bases) <= _ACGT | IUPAC_AMBIGUITY_CODES:
+            answers.write({interval: (bases, False)})
         with self._lock:
             if local is not None and local is not self._proxy:
                 return None
@@ -266,7 +307,7 @@ class _RunSequences(SequenceProxy):
         key = (accession, start, end)
         if key in self._unread or (self._stock and self._no_data_proxy):
             return None
-        bases = self._viewed.subsequence(accession, start, end)
+        bases = _complete_bases(accession, start, end, self._viewed.subsequence(accession, start, end))
         if bases is not None:
             return bases
         # A stock proxy holding no data proxy after a failed read found none: offline, or the build
@@ -307,24 +348,24 @@ def _left_align(
     spelling is `87310240 T>TA`. This is the standard normalization: drop a shared last base, and when
     a side empties, prefix the base before it and step left; then drop shared leading bases while both
     sides keep two. `read_window(chrom, start, end)` returns the 1-based inclusive reference bases,
-    read once over `_LEFT_ALIGN_WINDOW` bases; running off its edge withholds rather than guessing.
+    read once over REF and up to `_LEFT_ALIGN_WINDOW` preceding bases. An incomplete read withholds.
     """
-    window = read_window(chrom, max(1, pos - _LEFT_ALIGN_WINDOW), pos - 1) if pos > 1 else ""
+    # Include the REF itself. A valid upstream flank alone cannot establish that the
+    # anchor exists, or that a deletion anchored on the last base fits on this contig.
+    first = max(1, pos - _LEFT_ALIGN_WINDOW)
+    last = pos + len(ref) - 1
+    window = _read_exact_window(read_window, chrom, first, last)
     if window is None:
         return None
-    # Indexed from the right end, which is `pos - 1` whatever the start: a read clipped at a contig's
-    # first base is shorter, not shifted.
-    end = pos - 1
     ref, alt = ref.upper(), alt.upper()
     while True:
         if ref and alt and ref[-1] == alt[-1]:
             ref, alt = ref[:-1], alt[:-1]
         elif not ref or not alt:
-            k = len(window) - 1 - (end - (pos - 1))
-            if k < 0:
+            if pos <= first:
                 return None
-            base = window[k].upper()
             pos -= 1
+            base = window[pos - first].upper()
             ref, alt = base + ref, base + alt
         else:
             break
@@ -538,7 +579,7 @@ def indel_spellings(
     deletion = len(ref) > len(alt)
     payload = (ref if deletion else alt)[1:]
     first = pos + 1 + (len(payload) if deletion else 0)
-    window = read_window(chrom, first, first + _LEFT_ALIGN_WINDOW - 1)
+    window = _read_exact_window(read_window, chrom, first, first + _LEFT_ALIGN_WINDOW - 1)
     if window is None:
         return None
     seen = [(chrom, pos, ref, alt)]
@@ -762,7 +803,8 @@ def verify_reference_alleles(
         if actual is None or len(actual) != len(claimed):
             unread += 1
             if sequences.local_fasta:
-                reasons.add(sequences.local_read_problem(row.chrom, row.genome_build))
+                interval = (row.start - 1, row.start - 1 + len(claimed))
+                reasons.add(sequences.local_read_problem(row.chrom, row.genome_build, interval))
             continue
         subjects += 1
         if actual == claimed:

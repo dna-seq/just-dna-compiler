@@ -568,3 +568,23 @@ def test_a_caid_only_csq_row_reaches_the_registry_rather_than_being_refused(tmp_
         assert _needs_the_registry(row), (
             f"a CAID-only row stamped {row['identity_derivation']!r} was routed past the registry"
         )
+
+
+def test_civic_withholds_a_deletion_straddling_the_end_of_mt(
+    spec: Path, snapshot: Path, fasta: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    bases = "".join(fasta.read_text().splitlines()[1:]).upper()
+    length = len(bases)
+    caid = _caid_rows(snapshot)["allele_registry_id"][0]
+    # The anchor is readable. The first deleted base would fall outside MT.
+    registry = _StubRegistry(
+        {
+            caid: AlleleIdentity(caid=caid, outcome="needs_anchor", unanchored=("MT", length, "A", "")),
+        }
+    )
+    sequences = SequenceProxy(uri="fasta+" + fasta.as_uri(), offline=True)
+    result = draft_panel_from_civic(spec, snapshot=snapshot, registry=registry, sequences=sequences)
+    assert "MT" not in {row["chrom"] for row in _rows(spec / "variants.csv")}
+    assert result.withheld["anchor_base_unreadable"] > 0 and result.accounts_for_every_candidate()
+    assert any("MT" in msg and str(length) in msg for msg in caplog.messages)
+    assert any("MT" in msg and str(length) in msg for msg in result.warnings)

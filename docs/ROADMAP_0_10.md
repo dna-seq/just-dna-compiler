@@ -470,6 +470,7 @@ shares the reference across alignment, minting and REF checks, and names the wit
 contigs in reports. Seqrepo remains disabled offline. This adds neither provisioning nor a GRCh37
 reference and requires no format or compiler change.
 Round 1 (2026-11-28): the enricher reference names the local FASTA reader and the methods that verify and read a contig.
+Round 2 (2026-11-28): an incomplete FASTA interval withholds alignment, including a deletion whose anchor fits but whose REF extends past the contig, and only complete reads enter the sequence memo (R3).
 
 **Preview finding S165, built (2026-11-27).** The reader and proxy expose the indexed name,
 expected accession, computed digest and binding status per requested GRCh38 primary. The same

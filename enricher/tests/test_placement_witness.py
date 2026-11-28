@@ -101,17 +101,13 @@ _YAML = (
 
 
 def read(chrom: str, start: int, end: int) -> str | None:
-    """1-based inclusive bases from the recorded windows, clipped at the left edge only.
-
-    `_left_align` indexes its read from the right end, so a read clipped on the left is shorter, not
-    shifted; a read past a window's right edge is unreadable.
-    """
+    """1-based inclusive bases from a recording that holds the whole interval."""
     if chrom not in WINDOWS:
         return None
     first, bases = WINDOWS[chrom]
-    if end > first + len(bases) - 1 or end < first:
+    if start < first or end > first + len(bases) - 1:
         return None
-    return bases[max(start, first) - first : end - first + 1]
+    return bases[start - first : end - first + 1]
 
 
 class _RecordedBases(_DataProxy):
@@ -137,7 +133,7 @@ class RecordedSequences(SequenceProxy):
     """The run's own proxy class, reading the recorded windows instead of seqrepo.
 
     `proxy()` feeds `ga4gh.vrs`; `subsequence` feeds the run's window reads (the hosting settle and
-    `_left_align`), which read up to a kilobase left of a position and accept a left-clipped answer.
+    `_left_align`), bounded here by the flanks in the recordings.
     """
 
     def proxy(self) -> _DataProxy:
@@ -185,6 +181,7 @@ def test_same_event_by_vrs_id(rsid: str, expected: bool) -> None:
     ("rsid", "expected"),
     [("rs8176719", False), ("rs72613567", True), ("rs77944059", True)],
 )
+@pytest.mark.usefixtures("recorded_alignment_window")
 def test_same_event_by_left_alignment_when_no_id_can_be_minted(rsid: str, expected: bool) -> None:
     """The ladder's fourth rung: no id (an offline minter), and the reference window decides."""
     offline = VrsMinter(offline=True)
@@ -326,6 +323,7 @@ def _record(spec: Path) -> dict:
     return {r["check"]: r for r in doc["records"]}["placement_agreement"]
 
 
+@pytest.mark.usefixtures("recorded_alignment_window")
 def test_s117_is_withheld_and_both_respellings_are_written_with_their_witness(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, no_ambient_caches: Path
 ) -> None:
@@ -1043,6 +1041,7 @@ def _weights_ids(spec: Path, out: Path) -> dict[tuple, list | None]:
     }
 
 
+@pytest.mark.usefixtures("recorded_alignment_window")
 def test_rm270_a_filled_respelling_is_written_left_aligned_and_compiles_to_its_id(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, no_ambient_caches: Path
 ) -> None:
@@ -1062,6 +1061,7 @@ def test_rm270_a_filled_respelling_is_written_left_aligned_and_compiles_to_its_i
     assert ids[(*CLINVAR["rs77944059"][:3], "G")] == [RS77944059_ID]
 
 
+@pytest.mark.usefixtures("recorded_alignment_window")
 def test_rm270_an_authored_coordinate_is_judged_never_rewritten_and_its_id_joins_both_spellings(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, no_ambient_caches: Path
 ) -> None:
@@ -1127,6 +1127,7 @@ def test_rm270_offline_a_fill_keeps_its_links_spelling_and_says_unknown(
     assert result.spelling is not None and result.spelling.respelled == []
 
 
+@pytest.mark.usefixtures("recorded_alignment_window")
 def test_rm270_a_recorded_fill_is_respelled_only_on_rederive(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, no_ambient_caches: Path
 ) -> None:
@@ -1165,11 +1166,12 @@ def _consumer_join_window(chrom: str, start: int, end: int) -> str | None:
         name, span = header.rsplit(":", 1)
         first = int(span.split("-")[0])
         bases = body.replace("\n", "").upper()
-        if name == chrom and first <= end <= first + len(bases) - 1:
-            return bases[max(start, first) - first : end - first + 1]
+        if name == chrom and first <= start <= end <= first + len(bases) - 1:
+            return bases[start - first : end - first + 1]
     return None
 
 
+@pytest.mark.usefixtures("recorded_alignment_window")
 def test_rm270_shox_multi_allelic_fill_splits_into_the_two_spellings_a_caller_writes() -> None:
     """Ensembl's `X:634690 AGAG>AG,AGAGAG` is a 2 bp AG deletion and its duplication; ClinVar and a
     caller's `bcftools norm -m -any` write `X:634689 CAG>C` and `X:634689 C>CAG`. Two references, so two
@@ -1191,6 +1193,7 @@ def test_rm270_shox_multi_allelic_fill_splits_into_the_two_spellings_a_caller_wr
     assert verdict.verdict is False and verdict.normalized[1] == ("X", 634689, "C", "CAG")
 
 
+@pytest.mark.usefixtures("recorded_alignment_window")
 def test_rm270_a_pairs_recorded_locus_is_judged_and_kept_in_the_links_spelling(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, no_ambient_caches: Path
 ) -> None:
@@ -1216,6 +1219,7 @@ def test_rm270_a_pairs_recorded_locus_is_judged_and_kept_in_the_links_spelling(
         ("C/CAG", [("X", 634689, "CAG", "C"), ("X", 634689, "C", "CAG")]),
     ],
 )
+@pytest.mark.usefixtures("recorded_alignment_window")
 def test_rm270_a_split_writes_the_piece_the_genotype_is_about(genotype: str, written: list[tuple]) -> None:
     """The source locus passed the hosting filter as one site; after the split each piece must carry the
     alleles the row's genotype names, or a compound het of the two ALTs would lose its only locus."""
@@ -1226,6 +1230,7 @@ def test_rm270_a_split_writes_the_piece_the_genotype_is_about(genotype: str, wri
     assert {aligned for _, aligned in pieces} == {expected}
 
 
+@pytest.mark.usefixtures("recorded_alignment_window")
 def test_rm270_a_respelling_on_rederive_is_not_reported_as_the_source_moving(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, no_ambient_caches: Path
 ) -> None:
@@ -1400,10 +1405,10 @@ _S158_WINDOWS = {
 
 
 def _s158_read(chrom: str, start: int, end: int) -> str | None:
-    """1-based inclusive bases from the window holding `[start, end]`, clipped at its left edge, as `read`."""
+    """1-based inclusive bases from the window holding all of `[start, end]`, as `read`."""
     for (contig, first), bases in _S158_WINDOWS.items():
-        if contig == chrom and first <= end <= first + len(bases) - 1:
-            return bases[max(start, first) - first : end - first + 1]
+        if contig == chrom and first <= start <= end <= first + len(bases) - 1:
+            return bases[start - first : end - first + 1]
     return None
 
 

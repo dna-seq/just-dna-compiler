@@ -1,9 +1,11 @@
 """A local reference must earn the GRCh38 accession before any caller can read it (RM385)."""
 
+import ast
 import gzip
 import hashlib
 import os
 import shutil
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import FrozenInstanceError, replace
 from pathlib import Path
@@ -17,32 +19,31 @@ from just_dna_enricher.civic_build import CivicDownload
 from just_dna_enricher.civic_draft import CivicDraftResult
 from just_dna_enricher.cli import app
 from just_dna_enricher.clinvar_gkm_build import GRCH38_ACCESSIONS
+from just_dna_enricher.cpic_notation import Notation, spell
 from just_dna_enricher.enrich.orchestration import _grch38_window
+from just_dna_enricher.ensembl import _grch38_base_reader
 from just_dna_enricher.fasta import FastaConfigurationError, FastaReference
 from just_dna_enricher.pgx_draft import PgxDraftResult, _reference_reader
+from just_dna_enricher.placement import compare_placements
 from just_dna_enricher.sequences import (
     SequenceProxy,
+    _left_align,
+    _read_exact_window,
     held_by_one_run,
+    indel_spellings,
     left_normalize,
+    normalize_locus,
+    spelling_verdict,
     verify_reference_alleles,
 )
-from just_dna_enricher.vrs import VrsMinter
+from just_dna_enricher.vrs import VrsMinter, _WindowedReference
 from just_dna_format.resolution import ResolutionRow
 from just_dna_format.verification import read_verification
 from just_dna_format.vrs import REFGET_GRCh38, refget_accession
 from typer.testing import CliRunner
 
 _ROOT = Path(__file__).resolve().parents[2]
-_FASTA = next((_ROOT / "assets/grch38_mt_fasta").glob("*.fa"))
 _MODULE = _ROOT / "reference_examples/mt_common_deletion"
-
-
-@pytest.fixture
-def fasta(tmp_path: Path) -> Path:
-    path = tmp_path / "local MT.fa"
-    shutil.copyfile(_FASTA, path)
-    shutil.copyfile(f"{_FASTA}.fai", f"{path}.fai")
-    return path
 
 
 def _proxy(path: Path, *, offline: bool = True) -> SequenceProxy:
@@ -459,3 +460,202 @@ def test_a_partial_ref_at_the_contig_end_is_unread(fasta: Path) -> None:
     row = _rows()[0].model_copy(update={"start": len(bases), "ref": bases[-2:].decode()})
     check = verify_reference_alleles([row], sequences=_proxy(fasta), offline=True)
     assert (check.not_checked, check.unread, check.mismatches) == ("unreachable", 1, [])
+
+
+_DATA_READERS = (SequenceProxy.subsequence, _WindowedReference.get_sequence)
+_WINDOW_CONSUMERS = (_left_align, indel_spellings, spell)
+
+
+def test_every_window_reader_has_a_boundary_case() -> None:
+    """Cover raw data-proxy calls and functions that consume an injected window themselves."""
+    source = _ROOT / "enricher/src"
+    raw: set[str] = set()
+    windows: set[str] = set()
+
+    def visit(node: ast.AST, owner: str, takes_window: bool = False) -> None:
+        if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+            owner = f"{owner}.{node.name}"
+            takes_window = isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and any(
+                arg.arg == "read_window" for arg in (*node.args.args, *node.args.kwonlyargs)
+            )
+        if isinstance(node, ast.Call):
+            if isinstance(node.func, ast.Attribute) and node.func.attr == "get_sequence":
+                raw.add(owner)
+            if (
+                takes_window
+                and isinstance(node.func, ast.Name)
+                and node.func.id in {"read_window", "_read_exact_window"}
+            ):
+                windows.add(owner)
+        for child in ast.iter_child_nodes(node):
+            visit(child, owner, takes_window)
+
+    for path in source.rglob("*.py"):
+        module = ".".join(path.relative_to(source).with_suffix("").parts)
+        visit(ast.parse(path.read_text()), module)
+    assert raw == {f"{fn.__module__}.{fn.__qualname__}" for fn in _DATA_READERS}
+    assert windows == {
+        f"{fn.__module__}.{fn.__qualname__}" for fn in (*_WINDOW_CONSUMERS, _read_exact_window)
+    }
+
+
+@pytest.mark.parametrize("reader", _DATA_READERS, ids=lambda fn: fn.__qualname__)
+def test_every_data_proxy_reader_requires_the_whole_interval(
+    fasta: Path, reader: Callable[..., object]
+) -> None:
+    sequences = _proxy(fasta)
+    accession = REFGET_GRCh38["MT"]
+    alias = f"ga4gh:{accession}"
+    bases = _bases(fasta).decode()
+    length = len(bases)
+    invalid = ((length - 5, length + 20), (length + 29, length + 30), (-1, 1), (2, 1))
+    if reader is SequenceProxy.subsequence:
+        assert reader(sequences, accession, length - 5, length) == bases[-5:]
+        for lo, hi in invalid:
+            assert reader(sequences, accession, lo, hi) is None
+        assert set(sequences._cache) == {(accession, length - 5, length)}
+    else:
+        raw = sequences.proxy()
+        window = _WindowedReference(raw, alias, 0, None, {})
+        assert reader(window, alias, length - 5, length) == bases[-5:]
+        assert reader(window, alias, length, None) == ""
+        for lo, hi in invalid:
+            with pytest.raises(ValueError) as exc:
+                reader(window, alias, lo, hi)
+            assert "MT" in str(exc.value) and str(length) in str(exc.value)
+
+
+def test_a_short_service_read_is_retried_on_the_same_proxy(fasta: Path) -> None:
+    bases = _bases(fasta).decode()
+    service = Mock()
+    service.get_sequence.side_effect = [bases[-5:], bases[-25:]]
+    proxy = SequenceProxy(uri="seqrepo+file:///local", _proxy=service)
+    interval = (REFGET_GRCh38["MT"], len(bases) - 25, len(bases))
+    assert proxy.subsequence(*interval) is None
+    assert not proxy._cache
+    assert proxy.subsequence(*interval) == bases[-25:]
+    assert proxy.subsequence(*interval) == bases[-25:]
+    assert service.get_sequence.call_count == 2
+
+
+@pytest.mark.parametrize("offset", [30, 1, 0], ids=["MT-16599", "first-missing-base", "straddling-ref"])
+def test_unread_mt_indel_has_no_spelling_or_placement(
+    fasta: Path, offset: int, caplog: pytest.LogCaptureFixture
+) -> None:
+    bases = _bases(fasta).decode()
+    length = len(bases)
+    start = length + offset
+    ref, alt = ("A", "AA") if offset else (bases[-1] + "A", bases[-1])
+    sequences = _proxy(fasta)
+    read = _grch38_window(sequences.subsequence)
+    assert left_normalize("MT", start, ref, alt, read) is None
+    assert any("MT" in msg and str(length) in msg for msg in caplog.messages)
+    assert spelling_verdict("MT", start, ref, alt, read).verdict is None
+    locus = {"chrom": "MT", "start": start, "ref": ref, "alts": alt}
+    normalized = normalize_locus(locus, read)
+    assert (normalized.loci, normalized.aligned) == ([locus], None)
+    witness = {**locus, "start": start - 1}
+    checked = compare_placements(
+        {"rs1": [locus]},
+        {"rs1": "ensembl"},
+        {"clinvar": {"rs1": [witness]}},
+        mint=lambda *_: None,
+        read_window=read,
+    )
+    assert {verdict for _, verdict in checked.rows.values()} == {"undecided"}
+
+
+def test_mt_reference_check_and_mint_at_the_last_base(fasta: Path) -> None:
+    bases = _bases(fasta).decode()
+    length = len(bases)
+    anchor = bases[-1]
+    sequences = _proxy(fasta)
+    row = _rows()[0].model_copy(update={"chrom": "MT", "start": length, "ref": anchor})
+    over = row.model_copy(update={"ref": anchor + "A"})
+    checked = verify_reference_alleles([row, over], sequences=sequences)
+    assert (checked.subjects, checked.unread, checked.mismatches) == (1, 1, [])
+    assert any("MT" in msg and str(length) in msg for msg in checked.unread_reasons)
+    minter = VrsMinter(sequences=sequences)
+    assert minter.mint("MT", length, anchor, anchor + "A")[1] == "normalized"
+
+
+def test_mt_anchor_and_repeat_readers_at_the_last_base(fasta: Path) -> None:
+    bases = _bases(fasta).decode()
+    length = len(bases)
+    sequences = _proxy(fasta)
+    read_base = _grch38_base_reader(sequences.subsequence)
+    read = _reference_reader(sequences, offline=True)
+    assert read_base("MT", length) == bases[-1] and read_base("MT", length + 1) is None
+    assert read("MT", length - 4, length) == bases[-5:]
+    assert read("MT", length - 4, length + 20) is None
+    assert spell(Notation("deletion", bases[-1] + "A"), "MT", length, read) == "reference_unreadable"
+    anchor = bases[-2]
+    # A rightward repeat window straddles the end even though the anchor exists.
+    assert indel_spellings("MT", length - 1, anchor, anchor + "A", read) is None
+    assert left_normalize("MT", length, bases[-1], bases[-1] + "A", read) == (
+        "MT",
+        length,
+        bases[-1],
+        bases[-1] + "A",
+    )
+
+
+def test_a_short_injected_alignment_window_withholds(fasta: Path) -> None:
+    bases = _bases(fasta).decode()
+    start = len(bases) - 1
+
+    def short_read(chrom: str, first: int, last: int) -> str:
+        return bases[first - 1 : last - 1]
+
+    anchor = bases[start - 1]
+    assert left_normalize("MT", start, anchor, anchor * 2, short_read) is None
+
+
+def test_minter_withholds_an_unread_mt_allele_span(fasta: Path) -> None:
+    bases = _bases(fasta).decode()
+    minter = VrsMinter(sequences=_proxy(fasta))
+    for start, ref, alt in ((len(bases), bases[-1] + "A", bases[-1]), (len(bases) + 30, "A", "AA")):
+        assert minter.mint("MT", start, ref, alt) == (None, None)
+        why = minter.why_not("MT", start, ref, alt)
+        assert "MT" in why and str(len(bases)) in why
+
+
+def test_vrs_fallback_withholds_a_short_service_response(fasta: Path) -> None:
+    bases = _bases(fasta).decode()
+    alias = "ga4gh:" + REFGET_GRCh38["MT"]
+    service = Mock()
+    service.get_sequence.return_value = bases[-5:]
+    window = _WindowedReference(service, alias, 0, None, {alias: {"length": len(bases)}})
+    with pytest.raises(ValueError) as caught:
+        window.get_sequence(alias, len(bases) - 5, len(bases) + 20)
+    assert "MT" in str(caught.value) and str(len(bases)) in str(caught.value)
+
+
+@pytest.mark.parametrize("consumer", _WINDOW_CONSUMERS)
+def test_an_injected_short_window_withholds(fasta: Path, consumer: Callable[..., object]) -> None:
+    bases = _bases(fasta).decode()
+    start = len(bases) - 1
+    anchor = bases[start - 1]
+
+    def read_window(chrom: str, first: int, last: int) -> str:
+        return bases[first - 1 : last]
+
+    if consumer is spell:
+        assert consumer(Notation("repeat", anchor, 2), "MT", start, read_window) == "reference_unreadable"
+    elif consumer is indel_spellings:
+        assert consumer("MT", start, anchor, anchor + "A", read_window) is None
+    else:
+        assert consumer("MT", len(bases) + 30, "A", "AA", read_window) is None
+
+
+def test_run_view_withholds_a_short_injected_subsequence(fasta: Path) -> None:
+    bases = _bases(fasta).decode()
+
+    class ClippingProxy(SequenceProxy):
+        def subsequence(self, accession: str, start: int, end: int) -> str:
+            return bases[start:end]
+
+    run = held_by_one_run(ClippingProxy())
+    end = len(bases)
+    assert run.subsequence(REFGET_GRCh38["MT"], end - 2, end) == bases[-2:]
+    assert run.subsequence(REFGET_GRCh38["MT"], end - 2, end + 1) is None

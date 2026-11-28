@@ -41,6 +41,14 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md). The `0.8` branch merged into `main` at the 0.8.0 cut (2026-11-05).
 
+## 2026-11-28 — 0.10 review round 2: a short FASTA window withholds the placement (a minor, for 0.10)
+
+A local FASTA read past the end of a contig now reports the chromosome and its length (R3, RM385).
+Previously, GRCh38’s final MT bases could move `MT:16599 A>AA` to the nonexistent position 16598.
+Alignment now requires bases through the end of REF, so CIViC also withholds a deletion anchored
+on the last base if the deleted sequence would extend beyond it. Reads ending exactly at the last
+base still work. The shared sequence memo stores only answers that cover the interval requested.
+
 ## 2026-11-28 — 0.10 review round 1: new public Python names are documented in each tier (a minor, for 0.10)
 
 The tier references now name the public definitions added since `v0.9.0` (C6). A caller can

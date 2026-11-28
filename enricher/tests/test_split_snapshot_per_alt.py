@@ -75,8 +75,8 @@ def _window(chrom: str, start: int, end: int) -> str | None:
         name, span = header.rsplit(":", 1)
         first = int(span.split("-")[0])
         bases = body.replace("\n", "").upper()
-        if name == chrom and first <= end <= first + len(bases) - 1:
-            return bases[max(start, first) - first : end - first + 1]
+        if name == chrom and first <= start <= end <= first + len(bases) - 1:
+            return bases[start - first : end - first + 1]
     return None
 
 
@@ -174,6 +174,7 @@ def _written(
 
 
 @pytest.mark.parametrize("rsid", sorted(GENOTYPES))
+@pytest.mark.usefixtures("recorded_alignment_window")
 def test_online_the_split_rows_and_the_old_row_write_one_spelling_and_it_is_the_callers(rsid: str) -> None:
     """Both old rows were right-shifted, so the old snapshot was right only online, by left-alignment.
     Online, the two snapshots must agree with each other and with ClinVar."""
@@ -207,6 +208,7 @@ def test_a_genotype_in_the_split_rows_padded_frame_names_its_event_alone(
 
 
 @pytest.mark.parametrize(("rsid", "event", "split_frame", "old_frame"), FRAMED)
+@pytest.mark.usefixtures("recorded_alignment_window")
 def test_a_genotype_in_the_old_rows_padded_frame_names_its_event_alone(
     rsid: str, event: Spelling, split_frame: str, old_frame: str
 ) -> None:
@@ -216,6 +218,7 @@ def test_a_genotype_in_the_old_rows_padded_frame_names_its_event_alone(
 
 
 @pytest.mark.parametrize(("rsid", "event", "split_frame", "old_frame"), FRAMED)
+@pytest.mark.usefixtures("recorded_alignment_window")
 def test_the_trimmed_genotype_names_the_event_on_both_snapshots(
     rsid: str, event: Spelling, split_frame: str, old_frame: str
 ) -> None:

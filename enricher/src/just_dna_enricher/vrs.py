@@ -63,7 +63,12 @@ from just_dna_format.vrs import (
 )
 
 from just_dna_enricher.fasta import FastaReference
-from just_dna_enricher.sequences import DEFAULT_SEQREPO_URI, SequenceProxy, held_by_one_run
+from just_dna_enricher.sequences import (
+    DEFAULT_SEQREPO_URI,
+    SequenceProxy,
+    _window_length_problem,
+    held_by_one_run,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -274,7 +279,13 @@ class _WindowedReference:
             and self._lo <= start <= end <= self._lo + len(self._window)
         ):
             return self._window[start - self._lo : end - self._lo]
-        return self._proxy.get_sequence(identifier, start, end)
+        bases = self._proxy.get_sequence(identifier, start, end)
+        hi = self.get_metadata(identifier).get("length") if end is None else end
+        if hi is not None:
+            problem = _window_length_problem(identifier, start or 0, hi, bases)
+            if problem:
+                raise ValueError(problem)
+        return bases
 
 
 @dataclass
