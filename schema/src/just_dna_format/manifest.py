@@ -1280,6 +1280,32 @@ class GenePanelSpec(BaseModel):
     )
 
 
+class PanelProvenance(BaseModel):
+    """Records the requested gene panel, its unmatched genes, selection predicate and reference pin.
+
+    Move the gene list, significance predicate and digest from deprecated `panel:` here. The
+    licence row records the source and release label. Compilation copies this block to the
+    manifest and reverse restores it to the spec.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    genes: list[str] = Field(
+        default_factory=list, json_schema_extra=since("0.10.0"), description="Requested panel gene symbols"
+    )
+    genes_unmatched: list[str] = Field(
+        default_factory=list,
+        json_schema_extra=since("0.10.0"),
+        description="Requested genes with no row in variants.csv",
+    )
+    significance: list[str] = Field(
+        default_factory=list, json_schema_extra=since("0.10.0"), description="Significance predicate"
+    )
+    reference_sha256: str | None = Field(
+        default=None, json_schema_extra=since("0.10.0"), description="Digest of the exact reference resource"
+    )
+
+
 class ProvenanceItem(BaseModel):
     """One per-variant provenance record (SPEC ROADMAP item 1). Lives in the full `provenance.json`
     document, not in the manifest — the manifest carries only the `Provenance` summary pointer.
@@ -2161,6 +2187,11 @@ class ModuleManifest(BaseModel):
             "only in this version — the variant set is still enumerated in the artifact."
         ),
     )
+    panel_provenance: PanelProvenance | None = Field(
+        default=None,
+        json_schema_extra=since("0.10.0"),
+        description="Authored panel provenance, outside content_signature and artifact.digest",
+    )
     logo: FileEntry | None = Field(
         default=None,
         description=(
@@ -2196,5 +2227,13 @@ def read_manifest(path: Path) -> ModuleManifest:
 def write_manifest(manifest: ModuleManifest, path: Path) -> Path:
     """Write a manifest to disk as indented JSON. Returns the path written."""
     path = Path(path)
-    path.write_text(manifest.model_dump_json(indent=2, exclude_none=False) + "\n", encoding="utf-8")
+    # Reverse restores the authored keys, including an explicitly unknown digest. Preserve
+    # which keys were omitted when the manifest crosses the JSON boundary.
+    panel = manifest.panel_provenance
+    exclude = (
+        {"panel_provenance": set(PanelProvenance.model_fields) - panel.model_fields_set}
+        if panel is not None
+        else None
+    )
+    path.write_text(manifest.model_dump_json(indent=2, exclude=exclude) + "\n", encoding="utf-8")
     return path

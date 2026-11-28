@@ -224,7 +224,7 @@ Feature: The spec directory and the cells inside it
     And a clinvar licence row carrying a `dataset`
     When the module is compiled
     Then a warning says the block "is deprecated in 0.6 and removed at 1.0"
-    And it names the licence row's `dataset` column as what replaced its one reader
+    And it says "Move `genes`, `significance` and `reference_sha256` into `panel_provenance:`"
 
   # source: compiler/src/just_dna_compiler/compiler/validate.py
   # anchor: _validate_spec
@@ -235,9 +235,30 @@ Feature: The spec directory and the cells inside it
     Then the warning says "Do NOT delete the block yet"
     And it says the block "is currently the only record of which snapshot this module was drafted from"
     And it warns that re-drafting will not backfill the licence row
-    # One code, two sentences that give opposite instructions, because the state of the module decides
-    # which advice is safe. A deprecation belongs in a minor only where its audience can ACT on it, and
-    # here whether they can is a property of their own module.
+
+  # source: compiler/src/just_dna_compiler/compiler/validate.py
+  # anchor: _validate_spec
+  Scenario: a migrated panel still carries its deprecated block
+    Given a module with both panel blocks and a filled ClinVar licence dataset
+    When the module is validated
+    Then the warning says the three fields "already have their home in `panel_provenance:`"
+
+  # source: compiler/src/just_dna_compiler/compiler/validate.py
+  # anchor: _panel_provenance_warnings
+  @code:panel_unmatched_not_requested @actionable @both_modes
+  Scenario: the unmatched list includes genes outside the requested panel
+    Given genes_unmatched names two genes missing from genes
+    When the module is validated or compiled
+    Then one warning gives examples "absent from the requested genes"
+
+  # source: compiler/src/just_dna_compiler/compiler/validate.py
+  # anchor: _panel_provenance_warnings
+  @code:panel_unmatched_has_rows @actionable @both_modes
+  Scenario: the unmatched list includes genes in variant rows
+    Given variants.csv names a gene listed in genes_unmatched and another row has no gene
+    When the module is validated or compiled
+    Then one warning names genes that "already appear in variants.csv"
+    And it says to "re-run draft-panel"
 
   # source: compiler/src/just_dna_compiler/compiler/binning_checks.py
   # anchor: _check_binning_grounding

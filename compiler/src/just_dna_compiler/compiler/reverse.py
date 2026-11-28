@@ -83,6 +83,7 @@ REVERSE_RECONSTRUCTED: frozenset[str] = frozenset(
         "schema_version",
         "genome_build",
         "panel",
+        "panel_provenance",
         "authorship",
         "license",
         "weighting",
@@ -136,6 +137,7 @@ REVERSE_MANIFEST_RECONSTRUCTED: frozenset[str] = frozenset(
         "meta_selectors",
         "authorship",
         "panel",
+        "panel_provenance",
         "stats",
         # The fact sidecars' summaries: each table is re-emitted from its parquet and re-summarized.
         "frequency",
@@ -614,6 +616,8 @@ def reverse_module(
     # The advisory blocks, copied through from the manifest the compile copied them into, and each
     # written only when the module carried it, so a module without one reverses to a spec without one.
     if manifest is not None:
+        if manifest.panel_provenance is not None:
+            spec["panel_provenance"] = manifest.panel_provenance.model_dump(mode="json", exclude_unset=True)
         if manifest.panel is not None:
             spec["panel"] = manifest.panel.model_dump(mode="json", exclude_none=True)
         if manifest.authorship:

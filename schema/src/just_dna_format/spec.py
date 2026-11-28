@@ -49,6 +49,7 @@ from just_dna_format.manifest import (
     Contribution,
     Display,
     GenePanelSpec,
+    PanelProvenance,
     Weighting,
 )
 from just_dna_format.normalize import normalize_version, reject_authority_keys
@@ -470,13 +471,19 @@ class ModuleSpecConfig(BaseModel):
         json_schema_extra=since("0.2.0"),
         default=None,
         description=(
-            "DEPRECATED in 0.6, removed at 1.0 (RM4) — delete it. Descriptive provenance for modules "
+            "DEPRECATED in 0.6, removed at 1.0 (RM4) — move genes, significance and reference_sha256 to "
+            "panel_provenance. Descriptive provenance for modules "
             "derived from a gene set + significance predicate; the compiler records it verbatim and "
             "never materialized variants from it. Its one machine reader, the enricher's ClinVar "
             "clin_sig cross-check, now reads the drafted-from release out of the licence row's "
             "`dataset` column, which the drafting pass writes itself. A module carrying the block "
             "still compiles, with a deprecation warning."
         ),
+    )
+    panel_provenance: PanelProvenance | None = Field(
+        default=None,
+        json_schema_extra=since("0.10.0"),
+        description="Requested and unmatched panel genes, significance predicate and exact reference digest",
     )
     authorship: list[Contribution] = Field(
         json_schema_extra=since("0.4.0"),

@@ -41,6 +41,18 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md). The `0.8` branch merged into `main` at the 0.8.0 cut (2026-11-05).
 
+## 2026-11-28 — RM265: drafted panels retain their requested genes and reference pin (a minor, for 0.10)
+
+Move `genes`, `significance` and `reference_sha256` from `panel:` into the optional
+`panel_provenance:` block. It also records `genes_unmatched`, so a reader can distinguish a
+gene that yielded no row from one the author never requested. Both identity hashes stay the
+same and reverse restores the authored block. Validate and compile flag unmatched genes outside
+the request or present in variant rows. The deprecation now explains when to fill the licence
+row’s `dataset` and when the old block can go.
+
+ClinVar `draft-panel` prints the merged block for the author to paste, including on a dry run.
+A different snapshot digest stops the draft before it writes rows.
+
 ## 2026-11-27 — RM460: mirrored-site fills have their own warning code (a minor, for 0.10)
 
 The compiler now counts a genotype that reads as an insertion and a deletion at the same site under

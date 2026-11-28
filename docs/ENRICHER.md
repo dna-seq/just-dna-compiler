@@ -3276,7 +3276,7 @@ every lap (`@a-set-that-silences-is-narrower-than-one-that-raises`, taken the ot
 - **`locations.read_release(reference)`** — `just_dna_format.snapshot.read_release` since 0.8 (RM303): a
   snapshot's `release.json` as a `SnapshotRelease`, or `None` when it is absent or unreadable (it was a
   dict until 0.8; a caller reading `.get("dataset")` now reads `.dataset`, or `snapshot.release_label`). Written by every builder and, until 0.5.2, read by nothing but `cache status`;
-  it is what lets `enrich()` compare a module's `panel:` pin against the snapshot in front of it. `None`
+  ClinVar `draft-panel` reads its source digest to check the module’s reference pin. `None`
   for both absence and corruption on purpose: a caller must not be able to mistake "this snapshot does
   not say" for a release id.
 - **`download.py`** — `ensure_snapshot`, `ensure_clinvar_snapshot` and `ensure_constraint_snapshot` pull
@@ -5946,6 +5946,19 @@ So the provider writes a **partial row**: everything ClinVar publishes, with `ge
 and loudly incomplete until someone decides. A re-draft after those decisions adds nothing, because a
 partial row matches on the identity columns rather than on the natural key — that key runs straight
 through the column still holding the stub.
+
+ClinVar `draft-panel` prints a `panel_provenance:` YAML snippet to paste into
+`module_spec.yaml`. Paste the first block before the next run so that a request that yielded
+no rows remains in the panel history. The command leaves the spec YAML byte-for-byte intact.
+
+The merged block starts with the genes from the existing `panel_provenance:` block, falling
+back to `panel:` for migration. Newly requested genes follow in request order. The draft
+recomputes `genes_unmatched` from the resulting `variants.csv`. A dry run includes the rows
+it would append and prints the same snippet. The Python result exposes it as `panel_provenance`.
+The snippet records this run’s significance predicate and warns if a previously stated predicate
+differs. It reads `reference_sha256` from the snapshot’s `release.json` source digest. An unknown
+digest is reported and printed as `null`. A known digest that disagrees with either authored
+block stops the draft before any write, with both hashes in the error.
 
 **The alleles the author writes that genotype *from* stay in the report, and since 0.7 the report can
 be asked again (RM71).** A drafted row is rsID-only, so `rs118203998` arrives with empty `ref`/`alts`

@@ -133,7 +133,7 @@ reason its `source` column is inside its fact set while everywhere else `source`
 
 | File | Model (module) | Role |
 |---|---|---|
-| `module_spec.yaml` | `spec.ModuleSpecConfig` (`ModuleInfo`, `Defaults`) | identity / display / defaults / `panel` (deprecated, RM4) / `authorship` / `license` / `weighting` (0.6, RM92) / `authority_precedence` (0.7, RM134) |
+| `module_spec.yaml` | `spec.ModuleSpecConfig` (`ModuleInfo`, `Defaults`) | identity / display / defaults / `panel` (deprecated, RM4) / `panel_provenance` (0.10, RM265) / `authorship` / `license` / `weighting` (0.6, RM92) / `authority_precedence` (0.7, RM134) |
 | `variants.csv` | `spec.VariantRow` | SNP-core annotations (the weights table) |
 | `studies.csv` | `spec.StudyRow` | grounding evidence (PMID/DOI + provenance) |
 | `resolution.csv` | `resolution.ResolutionRow` | injected rsid↔coord facts (0.5; enricher-produced) |
@@ -300,7 +300,7 @@ reason its `source` column is inside its fact set while everywhere else `source`
   | `VALID_VERIFICATION_CHECKS` | 27 (closed) |  |
   | `VALID_VERIFICATION_SKIPS` | 9 (closed) |  |
   | `VALID_VERIFICATION_INDEPENDENCE` | 2 (closed) | `VerificationRecord.independence`, derived from the record's two sources and never typed (RM292) |
-  | `VALID_WARNING_CODES` | 86 (closed) | every code a compile may stamp on a finding (members in `RETIRED_WARNING_CODES` are no longer emitted); the catalogue with texts is in [COMPILER.md](COMPILER.md) |
+  | `VALID_WARNING_CODES` | 88 (closed) | every code a compile may stamp on a finding (members in `RETIRED_WARNING_CODES` are no longer emitted); the catalogue with texts is in [COMPILER.md](COMPILER.md) |
 
   Vocabularies owned by a leaf rather than by `vocab` (`spec`, `binning`, `pgx`, `pgs`, `manifest`,
   `sources`) are reached through the field markers above and not listed here, for the reason the bullet
@@ -2879,7 +2879,7 @@ module's can outweigh its data) while `display` is inlined into every card a cat
 `verify_manifest(check_readme=True)` re-hashes it, and `just-dna-compiler verify --check-readme` is
 the CLI surface.
 
-`Display` is the base of `spec.ModuleInfo`; `GenePanelSpec` and `Contribution` are authored via
+`Display` is the base of `spec.ModuleInfo`; `GenePanelSpec`, `PanelProvenance` and `Contribution` are authored via
 `ModuleSpecConfig`. Everything else in `manifest.py` is manifest-only, never authored into a CSV.
 
 **`GenePanelSpec` is deprecated in 0.6 and removed at 1.0 (RM4).** The compile-time materialization it
@@ -2890,6 +2890,23 @@ release out of the `dataset` column of the module's licence row, written by the 
 provenance claim belongs with the tool that copied the data, not in a block an author has to keep in
 step by hand. A module carrying `panel:` still validates and still compiles, with a deprecation warning,
 and deleting the block moves neither `artifact.digest` nor `content_signature`.
+
+**Panel provenance (0.10, RM265).** The optional top-level `panel_provenance:` block in
+`module_spec.yaml` records the gene selection used to draft a panel. A module migrating from
+`panel:` can copy `genes`, `significance` and `reference_sha256` directly. The licence row
+carries the source and release label in `source` and `dataset`.
+
+| Key | Meaning | Default |
+|---|---|---|
+| `genes` | Requested gene symbols, including genes that yielded no row | `[]` |
+| `genes_unmatched` | Requested genes with no corresponding gene in `variants.csv` | `[]` |
+| `significance` | The significance calls used to select rows | `[]` |
+| `reference_sha256` | Digest of the exact reference resource used for drafting | `null` (unknown) |
+
+The compiler copies the block into `manifest.panel_provenance`, and reverse restores it to the
+spec. It sits outside both `content_signature` and `artifact.digest`. The 0.9 manifest reader
+ignores this top-level field. A manifest carrying either new panel warning code needs a 0.10
+reader because 0.9 validates the keys in `compilation.warnings_summary`.
 
 ## Generated authoring reference & aggregation
 
@@ -3007,7 +3024,7 @@ and deleting the block moves neither `artifact.digest` nor `content_signature`.
   is the *complement* of a finite set rather than a finite set: pre-0.4 dropped every unknown key
   silently, so "what moved from warn to reject" is every name a model does not declare. What is
   enumerable is the other side — **every authored surface closes its namespace**: the `module_spec.yaml`
-  blocks (`ModuleSpecConfig` top level, `ModuleInfo`, `Defaults`, `GenePanelSpec` for `panel:`,
+  blocks (`ModuleSpecConfig` top level, `ModuleInfo`, `Defaults`, `GenePanelSpec` for `panel:`, `PanelProvenance` for `panel_provenance:`,
   `Contribution` for an `authorship:` entry) and every row model, whether it inherits `extra="forbid"`
   from `AuthoredModel` or sets it directly as the generated sidecars do (`ResolutionRow`, `SourceRow`,
   `FrequencyRow`, `GeneMetricsRow`, `LiteratureRow`). The legal key list for each is what this payload

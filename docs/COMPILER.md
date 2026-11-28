@@ -2069,6 +2069,19 @@ the concrete form of the standing rule: never derive an emitted row or a manifes
 
 ## Warning texts a consumer keys on
 
+### Panel provenance (0.10, RM265)
+
+Validate and compile report these findings in both modes. Each gene-list warning gives one line
+of examples. A row with an empty gene supplies no evidence of a match. A 0.9 reader rejects
+a published manifest if either new code appears in `compilation.warnings_summary`.
+
+| Code | Pinned fragment | What clears it |
+|---|---|---|
+| `panel_unmatched_not_requested` | “absent from the requested genes” | Correct the discrepancy between `genes_unmatched` and `genes`. |
+| `panel_unmatched_has_rows` | “already appear in variants.csv” | Re-run `draft-panel` and paste the refreshed block. |
+| `panel_block_deprecated` | “Move `genes`, `significance` and `reference_sha256` into `panel_provenance:`” | Move the three values, fill the ClinVar annotation licence row’s `dataset` if empty, then delete `panel:`. |
+| `panel_block_deprecated` with both blocks | “already have their home in `panel_provenance:`” | Once the licence row carries the release, delete `panel:`. |
+
 ### Since 0.7 the channel also carries codes and an actionability split (RM131)
 
 `manifest.compilation.warnings` still carries every finding, with its exact text — nothing that greps
@@ -2114,7 +2127,7 @@ actionable, which is `vocab.ACTIONABLE_WARNING_CODES`, derived by subtraction:
 
 - **spec directory / `module_spec.yaml`** — `table_file_misplaced`, `table_file_near_miss`,
   `sidecar_spelling_deprecated`, `module_version_coerced`, `panel_block_deprecated`,
-  `log_file_not_shipped`
+  `panel_unmatched_not_requested`, `panel_unmatched_has_rows`, `log_file_not_shipped`
 - **coordinates and the build** — `non_grch38_variant_keys`, `contig_ploidy_undecidable`,
   `contig_ploidy_mismatch`
 - **resolution** — `resolution_disabled`, `resolution_not_injected`, `resolution_skipped_cross_build`,
@@ -2997,20 +3010,10 @@ a patch: the objection is that filling a blank asserts what no curator wrote, no
    file's bytes and break the round-trip fixed point for any module carrying it. A warning the author
    acts on is the route.
 
-   **The warning has two branches since S69, and it stopped claiming nothing else is lost.**
-   Both halves were wrong in a way gating alone would not have fixed. `GenePanelSpec` carries **five**
-   fields and `SourceRow.dataset` is one release *label*: it cannot hold `genes` — the denominator,
-   and the only thing separating *this gene is not in the panel* from *it is in the panel and had
-   nothing to report* (reported as 425 declared genes against `gene_count: 298`) — it cannot hold
-   `significance`, the predicate that makes a panel module's row set reproducible, and it is a name
-   rather than a digest so it cannot hold `reference_sha256`. All three now say so in the message.
-   And the replacement is legitimately **absent** on a module drafted before the drafter filled
-   `dataset`: `merge_sources_file` is never-clobber, so re-running does not backfill it, and there is
-   no path from such a module to the state the old sentence assumed. So the check moved behind the
-   licence rows — a deprecation is legal in a minor only where its audience can *act* on it (P3), and
-   whether they can is a fact about a value the pass had not read when the warning fired. With no
-   filled `clinvar`/`annotation` `dataset` it now says **do not delete the block yet**, names what to
-   fill first, and warns that a re-draft will not do it.
+   Some older panels have an empty `dataset` on the ClinVar annotation licence row. Re-drafting
+   preserves that cell, so the deprecation asks the author to fill it before deleting the block.
+   Since 0.10 the warning also points to `panel_provenance:`, which preserves the requested genes,
+   significance predicate and reference digest through compile and reverse.
 
 ## Consequences worth knowing
 

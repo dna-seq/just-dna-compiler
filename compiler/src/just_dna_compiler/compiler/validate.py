@@ -13,6 +13,7 @@ from just_dna_format.gene_metrics import GeneMetricsRow
 from just_dna_format.gene_validity import GeneValidityRow
 from just_dna_format.gwas import GwasEffectRow
 from just_dna_format.literature import LiteratureRow
+from just_dna_format.manifest import PanelProvenance
 from just_dna_format.overrides import (
     LOSSY_OVERLAY_TABLES,
     OVERRIDABLE_TABLES,
@@ -24,6 +25,7 @@ from just_dna_format.overrides import (
 from just_dna_format.resolution import ResolutionRow
 from just_dna_format.sources import SourceRow
 from just_dna_format.spec import RESERVED_FLAGS, StudyRow, VariantRow
+from just_dna_format.spelling import gene_key
 
 from just_dna_compiler.compiler.allele_checks import (
     _apply_symbolic_drops,
@@ -82,7 +84,7 @@ from just_dna_compiler.compiler.resolution_step import (
     resolve_variants,
     unplaced_refusal,
 )
-from just_dna_compiler.compiler.subjects import module_subjects
+from just_dna_compiler.compiler.subjects import ModuleSubjects, module_subjects
 from just_dna_compiler.compiler.table_checks import (
     _check_misspelled_tables,
     _check_phenotype_classes,
@@ -90,6 +92,7 @@ from just_dna_compiler.compiler.table_checks import (
     _cross_validate_haplotype_definitions,
     _cross_validate_phase_ambiguity,
     _cross_validate_studies,
+    _examples,
     _validate_table_kind,
 )
 from just_dna_compiler.compiler.tables import (
@@ -160,6 +163,38 @@ def _overlay_targets_missing(overrides: list[OverrideRow], applied: set[str]) ->
             f"nothing. Run the pass that writes the table, or drop the override rows.",
         )
     ]
+
+
+def _panel_provenance_warnings(panel: PanelProvenance, variants: list[VariantRow]) -> list[str]:
+    """Compare the two authored lists and the positive evidence in variants.csv."""
+    if not panel.genes_unmatched:
+        return []
+    requested = {gene_key(gene) for gene in panel.genes}
+    rows = ModuleSubjects(genes=tuple(dict.fromkeys(row.gene for row in variants if row.gene)))
+    unmatched: dict[str, str] = {}
+    for gene in panel.genes_unmatched:
+        if gene.strip():
+            unmatched.setdefault(gene_key(gene), gene)
+    outside = [gene for key, gene in unmatched.items() if key not in requested]
+    matched = [gene for gene in unmatched.values() if rows.names_gene(gene)]
+    warnings = []
+    if outside:
+        warnings.append(
+            CodedWarning(
+                "panel_unmatched_not_requested",
+                f"panel_provenance: {len(outside)} genes_unmatched entries are absent from the requested genes "
+                f"({_examples(outside)}). Correct the requested or unmatched list.",
+            )
+        )
+    if matched:
+        warnings.append(
+            CodedWarning(
+                "panel_unmatched_has_rows",
+                f"panel_provenance: {len(matched)} genes_unmatched entries already appear in variants.csv "
+                f"({_examples(matched)}). To refresh the block, re-run draft-panel.",
+            )
+        )
+    return warnings
 
 
 def validate_spec(
@@ -587,58 +622,55 @@ def _validate_spec(
     if SourceRow in fact_rows:
         all_warnings.extend(_source_checks(source_rows, sources_in_use(injected.asserted, fact_rows)))
 
+    if config is not None and config.panel_provenance is not None:
+        all_warnings.extend(_panel_provenance_warnings(config.panel_provenance, variants))
+
     # The `panel:` block lost its last reader in 0.6 (RM4) and is removed at 1.0. Warn-only, and the
     # block still compiles and still reaches `manifest.panel` exactly as before — the charter's
     # cadence is deprecate in a minor, remove at the next major.
     #
     # **It fires from here rather than beside `_load_yaml` because a deprecation in a minor is legal
     # only where its audience can ACT on it (P3), and whether they can depends on a value this pass
-    # has not read until now (S69).** The replacement is the licence row's `dataset`, and a module
-    # drafted before the drafter filled that column has an empty one — `merge_sources_file` is
-    # never-clobber, so re-running the pass does not backfill it, and there is no path from such a
-    # module to the state the old sentence assumed. It told that author to delete the block on the
-    # strength of a replacement their module does not have.
+    # has not read until now (S69).** The replacement for the block's reader is the licence row's
+    # `dataset`, and a module drafted before the drafter filled that column has an empty one —
+    # `merge_sources_file` is never-clobber, so re-running the pass does not backfill it. Telling
+    # that author to delete the block would cost them the only record of the snapshot.
     #
-    # The other half is that the old sentence's closing clause was false in **both** states.
-    # `GenePanelSpec` carries five fields and `dataset` is one release *label*: it cannot hold
-    # `genes` (the denominator — which genes were searched and yielded nothing, the only thing
-    # separating *not in the panel* from *in the panel, nothing found*), it cannot hold
-    # `significance` (the predicate that makes the row set reproducible), and it is a name rather
-    # than a digest so it cannot hold `reference_sha256`. So the advice is narrowed rather than
-    # merely gated.
+    # The other half is the three fields `dataset` cannot hold: `genes` (the denominator — which genes
+    # were searched and yielded nothing), `significance` (the predicate that makes the row set
+    # reproducible) and `reference_sha256` (a digest, where `dataset` is a name). Until 0.10 they had
+    # no home, so the warning told an author to keep the block and warned forever (S114). RM265 gave
+    # them `panel_provenance:`, which is what makes the advice below actionable on both branches.
     if config is not None and config.panel is not None:
         replaced = any(
             row.source == "clinvar" and row.layer == "annotation" and (row.dataset or "").strip()
             for row in source_rows
         )
-        unreplaced = (
-            "`genes`, `significance` and `reference_sha256` have no replacement anywhere — keep the "
-            "block until 1.0 if you need them recorded."
+        migration = (
+            "`genes`, `significance` and `reference_sha256` already have their home in `panel_provenance:`. "
+            "Once the licence row carries the release, delete `panel:`."
+            if config.panel_provenance is not None
+            else "Move `genes`, `significance` and `reference_sha256` into `panel_provenance:`, then delete `panel:`."
         )
         if replaced:
-            all_warnings.append(
-                CodedWarning(
-                    "panel_block_deprecated",
-                    "module_spec.yaml declares a `panel:` block. It is deprecated in 0.6 and removed at "
-                    "1.0: the compiler never materialized rows from it, and the one thing that did read "
-                    "it — the enricher's ClinVar clin_sig cross-check, deciding whether a drafted module "
-                    "is being compared against its own source — now reads the `dataset` column of the "
-                    "module's licence row, which `just-dna-enricher draft-panel` writes itself. The rows "
-                    f"it describes are the authored variants.csv rows. {unreplaced}",
-                )
+            notice = (
+                "module_spec.yaml declares a `panel:` block. It is deprecated in 0.6 and removed at "
+                "1.0: the compiler never materialized rows from it, and the one thing that did read "
+                "it — the enricher's ClinVar clin_sig cross-check, deciding whether a drafted module "
+                "is being compared against its own source — now reads the `dataset` column of the "
+                "module's licence row, which `just-dna-enricher draft-panel` writes itself. The rows "
+                "it describes are the authored variants.csv rows."
             )
         else:
-            all_warnings.append(
-                CodedWarning(
-                    "panel_block_deprecated",
-                    "module_spec.yaml declares a `panel:` block, which is deprecated in 0.6 and removed "
-                    "at 1.0 — but this module has no clinvar/annotation licence row carrying a "
-                    "`dataset`, which is what replaced the block's one reader. Do NOT delete the block "
-                    "yet: it is currently the only record of which snapshot this module was drafted "
-                    "from. Fill the licence row's `dataset` first (re-drafting will not backfill it — "
-                    f"the merge is never-clobber), then delete. {unreplaced}",
-                )
+            notice = (
+                "module_spec.yaml declares a `panel:` block, which is deprecated in 0.6 and removed "
+                "at 1.0 — but this module has no clinvar/annotation licence row carrying a "
+                "`dataset`, which is what replaced the block's one reader. Do NOT delete the block "
+                "yet: it is currently the only record of which snapshot this module was drafted "
+                "from. Fill the licence row's `dataset` first (re-drafting will not "
+                "backfill it — the merge is never-clobber)."
             )
+        all_warnings.append(CodedWarning("panel_block_deprecated", f"{notice} {migration}"))
 
     # The verification attestation (RM45). Read here as well as in `compile_module` under the standing
     # rule — pure computation over injected bytes with no `output_dir` belongs in the pre-flight too —

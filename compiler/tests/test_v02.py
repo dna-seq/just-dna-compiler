@@ -3,12 +3,14 @@ gene-panel passthrough, the `negatives` field, module logo, `icon_set`, and sign
 
 All run with resolve_with_ensembl=False (no reference/network needed)."""
 
+import csv
 import json
 from pathlib import Path
 
 import polars as pl
 import pytest
-from just_dna_compiler.compiler import compile_module, validate_spec
+import yaml
+from just_dna_compiler.compiler import compile_module, reverse_module, validate_spec
 from just_dna_format.integrity import IntegrityError, sha256_file, verify_manifest
 from just_dna_format.manifest import README_CANDIDATES
 from just_dna_format.signing import generate_private_key_pem, public_key_b64_from_pem, sign_digest
@@ -464,8 +466,6 @@ def _with_clinvar_licence(spec: Path, dataset: str) -> Path:
     all, which the reporter noted and which is why the deprecation had no worked example on either
     side of the seam.
     """
-    import csv
-
     from just_dna_compiler.scaffold import authored_field_names
     from just_dna_format.sources import SourceRow
 
@@ -520,30 +520,6 @@ def test_the_panel_deprecation_advises_deletion_once_the_replacement_is_there(
     assert len(emitted) == 1
     assert "Do NOT delete the block yet" not in emitted[0]
     assert "removed at 1.0" in emitted[0] and "draft-panel" in emitted[0]
-
-
-def test_neither_branch_claims_nothing_else_is_lost(tmp_path: Path) -> None:
-    """The clause that was false in *both* states, which gating alone would not have fixed.
-
-    `GenePanelSpec` carries five fields and `SourceRow.dataset` is one release label. It cannot hold
-    `genes` — the denominator, and the only thing separating *not in the panel* from *in the panel,
-    nothing found*, which the reporter measured as 425 declared against `gene_count: 298`. It cannot
-    hold `significance`, the predicate that makes the row set reproducible. And it is a name rather
-    than a digest, so it cannot hold `reference_sha256`; ClinVar reissues, and a release label does
-    not pin bytes.
-    """
-    from just_dna_format.manifest import GenePanelSpec
-
-    unreplaced = {"genes", "significance", "reference_sha256"}
-    assert unreplaced < set(GenePanelSpec.model_fields)
-
-    for dataset in ("", "clinvar_2026-06-27"):
-        spec = _write_spec(tmp_path / f"s{len(dataset)}")
-        if dataset:
-            _with_clinvar_licence(spec, dataset)
-        emitted = [w for w in validate_spec(spec).warnings if "`panel:` block" in w]
-        assert "nothing else is lost" not in emitted[0]
-        assert all(field in emitted[0] for field in unreplaced), emitted[0]
 
 
 #: Proof-of-work bits for the attestation fixtures below. The production constant is 20 (~0.7s per
@@ -701,3 +677,83 @@ def test_load_spec_strips_injected_authority_keys(tmp_path: Path) -> None:
     with pytest.raises(SpecError, match="namespace"):
         load_spec(path)
     assert load_spec(path, authority_keys=IDENTITY_AUTHORITY_KEYS).module.name
+
+
+@pytest.mark.parametrize("dataset", ["", "clinvar_2026-06-27"])
+@pytest.mark.parametrize("moved", [False, True])
+def test_panel_provenance_migration_advice(tmp_path: Path, dataset: str, moved: bool) -> None:
+    spec = _with_clinvar_licence(_write_spec(tmp_path / "s"), dataset)
+    path = spec / "module_spec.yaml"
+    if moved:
+        legacy = yaml.safe_load(path.read_text())["panel"]
+        block = {key: legacy[key] for key in ("genes", "significance", "reference_sha256")}
+        with path.open("a") as handle:
+            handle.write(yaml.safe_dump({"panel_provenance": block}))
+    result = validate_spec(spec)
+    assert result.valid, result.errors
+    [warning] = [w for w in result.warnings if "`panel:` block" in w]
+    assert "nothing else is lost" not in warning
+    if moved:
+        assert "already have their home in `panel_provenance:`" in warning
+    else:
+        assert "Move `genes`, `significance` and `reference_sha256` into `panel_provenance:`" in warning
+    assert "delete `panel:`" in warning
+    assert ("Fill the licence row's `dataset` first" in warning) == (not dataset)
+
+
+@pytest.mark.parametrize("sparse", [False, True])
+def test_panel_provenance_survives_reverse_outside_identity(tmp_path: Path, sparse: bool) -> None:
+    spec = _write_spec(tmp_path / "s")
+    before = _compile(spec, tmp_path / "before")
+    path = spec / "module_spec.yaml"
+    legacy = yaml.safe_load(path.read_text())["panel"]
+    block = {"genes": legacy["genes"], "reference_sha256": None}
+    if not sparse:
+        block.update(
+            genes_unmatched=legacy["genes"],
+            significance=legacy["significance"],
+            reference_sha256=legacy["reference_sha256"],
+        )
+    with path.open("a") as handle:
+        handle.write(yaml.safe_dump({"panel_provenance": block}))
+
+    first = _compile(spec, tmp_path / "compiled")
+    reversed_spec = reverse_module(tmp_path / "compiled", tmp_path / "reversed")
+    assert yaml.safe_load((reversed_spec / "module_spec.yaml").read_text())["panel_provenance"] == block
+    second = _compile(reversed_spec, tmp_path / "second")
+    assert first.panel_provenance == second.panel_provenance
+    assert before.artifact.digest == first.artifact.digest == second.artifact.digest
+    assert before.content_signature == first.content_signature == second.content_signature
+
+
+@pytest.mark.parametrize("strict", [False, True])
+def test_panel_provenance_disagreements_are_warn_only(tmp_path: Path, strict: bool) -> None:
+    spec = _write_spec(tmp_path / "s")
+    path = spec / "variants.csv"
+    with path.open() as handle:
+        rows = list(csv.DictReader(handle))
+    rows[-1]["gene"] = ""
+    with path.open("w", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=rows[0])
+        writer.writeheader()
+        writer.writerows(rows)
+    matched = [r["gene"].lower() for r in rows if r["gene"]]
+    outside = ["BRCA1", "BRCA2"]
+    block = {"genes": [*matched, "PALB2"], "genes_unmatched": [*outside, *matched, "PALB2"]}
+    (spec / "module_spec.yaml").write_text(
+        _YAML.split("panel:")[0] + yaml.safe_dump({"panel_provenance": block})
+    )
+    pre = validate_spec(spec, strict=strict, resolve_with_ensembl=False)
+    compiled = compile_module(spec, tmp_path / "out", strict=strict, resolve_with_ensembl=False)
+    assert pre.valid and compiled.success, (pre.errors, compiled.errors)
+    for report in (pre, compiled, compiled.manifest.compilation):
+        assert {k: v for k, v in report.warnings_summary.items() if k.startswith("panel_")} == {
+            "panel_unmatched_not_requested": 1,
+            "panel_unmatched_has_rows": 1,
+        }
+        [missing] = [w for w in report.warnings if "absent from the requested genes" in w]
+        [present] = [w for w in report.warnings if "already appear in variants.csv" in w]
+        assert all(gene in missing for gene in outside)
+        assert all(gene in present for gene in matched)
+        assert "PALB2" not in missing + present
+        assert "re-run draft-panel" in present
